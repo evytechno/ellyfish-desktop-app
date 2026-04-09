@@ -1,0 +1,28 @@
+/* _layout.css */
+
+.page-wrapper {
+  transition: all 0.5s ease;
+  margin: 0 0 0 var(--sidenav-width); /* Assuming --sidenav-width is defined elsewhere */
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  left: 0;
+  min-height: calc(
+    100vh - (var(--cf-topbar-height) + 1px)
+  ); /* Assuming --cf-topbar-height is defined elsewhere */
+  transition: all 0.2s ease; /* This overrides the previous transition */
+}
+
+@media (max-width: 991.98px) {
+  /* Assuming 'lg' breakpoint is 992px or less */
+  .page-wrapper {
+    margin: 0;
+  }
+}
+
+.page-wrapper .content {
+  padding: calc(
+    1 * 1rem
+  ); /* Assuming $spacer is defined elsewhere, for example, 1rem */
+  min-height: calc(100vh - 96px);
+}

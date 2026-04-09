@@ -1,0 +1,380 @@
+/* Define CSS Custom Properties (variables) */
+:root {
+  --white: #ffffff;
+  --gray-200: #e0e0e0;
+  --primary: #007bff;
+  --purple: #6f42c1;
+  --dark: #343a40;
+  --success: #28a745;
+  --warning: #ffc107;
+  --danger: #dc3545;
+  --teal: #20c997;
+  --info: #17a2b8;
+  --indigo: #6610f2;
+  --pink: #e83e8c;
+  --orange: #fd7e14;
+  --secondary: #6c757d;
+  --font-weight-semibold: 600;
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  --sidenav-width: 250px;
+  --border-color: #dee2e6;
+  --light: #f8f9fa;
+  --gray-900: #212529;
+}
+
+/* Sidebar Contact */
+.sidebar-contact {
+  position: fixed;
+  top: 0;
+  right: -350px;
+  transform: translateY(-50%);
+  width: 350px;
+  height: auto;
+  background: var(--white);
+  box-sizing: border-box;
+  transition: 0.5s;
+  z-index: 9999;
+}
+
+.sidebar-contact .toggle-theme {
+  position: absolute;
+  width: 35px;
+  text-align: center;
+  cursor: pointer;
+  background: var(--primary);
+  top: 225px;
+  right: 350px;
+  padding: 6px;
+  height: 35px;
+  color: var(--white);
+  border-top-left-radius: 3px;
+  border-bottom-left-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-contact .toggle-theme .ti-spin {
+  -webkit-animation: rotate 2s infinite linear;
+  animation: rotate 2s linear infinite;
+}
+
+@keyframes rotate {
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* Sidebar Theme Settings */
+.sidebar-themesettings {
+  transition: all 0.5s;
+  width: 400px !important;
+  height: 100vh;
+  z-index: 99999;
+  overflow: auto;
+  max-width: 100%;
+}
+
+.sidebar-themesettings.open {
+  right: 0;
+}
+
+.sidebar-themesettings .offcanvas-header {
+  position: relative;
+}
+
+.sidebar-themesettings .offcanvas-header h5 {
+  color: var(--white);
+}
+
+.sidebar-themesettings .offcanvas-header .close {
+  color: var(--white);
+  font-size: 20px;
+}
+
+.sidebar-themesettings .offcanvas-header .close:hover {
+  color: var(--danger);
+}
+
+.sidebar-themesettings .offcanvas-body .bg-dark {
+  background: var(--dark) !important;
+}
+
+.sidebar-themesettings .offcanvas-body .bg-light {
+  background: var(--light) !important;
+}
+
+.sidebar-themesettings .offcanvas-body .bg-white {
+  background: var(--white) !important;
+}
+
+.sidebar-themesettings .offcanvas-body .bg-primary {
+  background: var(--primary) !important;
+}
+
+.sidebar-themesettings .offcanvas-body .bg-primary-gradient {
+  background-image: linear-gradient(
+    180deg,
+    #18accf 0%,
+    #0f59ad 100%
+  ) !important;
+}
+
+/* Theme Settings Inner */
+.sidebar-themesettings .themesettings-inner .accordion-button {
+  background-color: transparent;
+  font-size: 16px;
+  font-weight: var(--font-weight-semibold);
+}
+
+.input-themeselect {
+  background: var(--light);
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--gray-200);
+  margin-bottom: 15px;
+}
+
+.input-themeselect input[type="radio"] {
+  display: none;
+}
+
+.input-themeselect input[type="radio"]:checked ~ label .checkboxs-theme::after {
+  background-color: var(--purple);
+  border-color: var(--purple);
+}
+
+.input-themeselect
+  input[type="radio"]:checked
+  ~ label
+  .checkboxs-theme::before {
+  content: "\f00c";
+  font-family: "Font Awesome 5 Free";
+  color: var(--white);
+  font-weight: 700;
+  font-size: 10px;
+  right: 4px;
+  position: absolute;
+  top: -14px;
+  z-index: 9;
+}
+
+.input-themeselect img {
+  height: 80px;
+}
+
+.input-themeselect .checkboxs-theme {
+  position: relative;
+  width: 100%;
+  display: block;
+}
+
+.input-themeselect .checkboxs-theme::after {
+  position: absolute;
+  content: "";
+  border: 1px solid var(--border-color);
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  right: 0;
+  top: -17px;
+}
+
+/* Sidebar Theme Overlay */
+.sidebar-themeoverlay {
+  position: fixed;
+  width: 100%;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.75);
+  top: 0;
+  left: -100%;
+  z-index: 10000;
+}
+
+.sidebar-themeoverlay.open {
+  left: 0;
+}
+
+/* Theme Colors Set */
+.theme-colorsset {
+  line-height: 0;
+}
+
+.theme-colorsset label {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  position: relative;
+  border: 1px solid var(--gray-200);
+}
+
+.theme-colorsset label::before {
+  width: 24px;
+  height: 24px;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  content: "";
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+}
+
+.theme-colorsset label.primary-clr::before {
+  background: var(--primary);
+}
+
+.theme-colorsset label.secondary-clr::before {
+  background: var(--secondary);
+}
+
+.theme-colorsset label.purple-clr::before {
+  background: var(--purple);
+}
+
+.theme-colorsset label.indigo-clr::before {
+  background: var(--indigo);
+}
+
+.theme-colorsset label.pink-clr::before {
+  background: var(--pink);
+}
+
+.theme-colorsset label.info-clr::before {
+  background: var(--info);
+}
+
+.theme-colorsset label.teal-clr::before {
+  background: var(--teal);
+}
+
+.theme-colorsset label.orange-clr::before {
+  background: var(--orange);
+}
+
+.theme-colorsset label.warning-clr::before {
+  background: var(--warning);
+}
+
+.theme-colorsset label.success-clr::before {
+  background: var(--success);
+}
+
+.theme-colorsset label.danger-clr::before {
+  background: var(--danger);
+}
+
+.theme-colorsset input[type="radio"] {
+  display: none;
+}
+
+.theme-colorsset input[type="radio"]:checked ~ label {
+  border-color: var(--primary);
+}
+
+.theme-colorsset input[type="radio"]:checked ~ label::after {
+  content: "\ea5e";
+  font-family: "tabler-icons" !important;
+  color: var(--primary);
+  font-weight: 700;
+  font-size: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-radius: 4px;
+}
+
+/* Layout and Sidebar Customizations */
+.theme-layout {
+  text-align: center;
+}
+
+.theme-layout.active img {
+  border: 1px solid var(--primary);
+  border-radius: 5px;
+}
+
+.theme-layout input[type="radio"] {
+  display: none;
+}
+
+.theme-layout input[type="radio"]:checked ~ label .layout-img .theme-check {
+  display: block;
+}
+
+.theme-layout label .layout-img {
+  position: relative;
+}
+
+.theme-layout label .layout-img .theme-check {
+  width: 18px;
+  height: 18px;
+  background-color: var(--success);
+  color: var(--white);
+  display: block;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: none;
+}
+
+.theme-layout label .layout-img img {
+  border-radius: 5px;
+}
+
+.theme-layout label .layout-type {
+  color: var(--gray-900);
+  font-weight: var(--font-weight-medium);
+}
+
+.theme-sidebarcolor {
+  input[type="radio"] {
+    display: none;
+  }
+}
+
+.theme-sidebarcolor input[type="radio"]:checked ~ label {
+  border-color: var(--primary) !important;
+  position: relative;
+}
+
+.theme-sidebarcolor input[type="radio"]:checked ~ label::after {
+  content: "\f058";
+  font-family: "Fontawesome";
+  color: var(--primary);
+  font-weight: 700;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  position: absolute;
+}
+
+/* Button Overrides */
+.toggle-button {
+  display: inline-block;
+  padding: 12px 16px;
+  border-radius: 5px;
+  font-weight: var(--font-weight-medium);
+  color: var(--white);
+  background-color: var(--primary);
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.toggle-button:hover {
+  background-color: var(--dark);
+}

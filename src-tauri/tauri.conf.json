@@ -1,0 +1,93 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/schema.json",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devPath": "http://localhost:5173",
+    "distDir": "../build"
+  },
+  "package": {
+    "productName": "Elly Fish",
+    "version": "1.0.0"
+  },
+  "tauri": {
+    "allowlist": {
+      "all": false,
+      "shell": {
+        "open": true
+      },
+      "notification": {
+        "all": true
+      },
+      "window": {
+        "all": false,
+        "show": true,
+        "hide": true,
+        "minimize": true,
+        "maximize": true,
+        "close": true,
+        "setTitle": true,
+        "setSize": true,
+        "center": true,
+        "setFullscreen": true
+      }
+    },
+    "bundle": {
+      "active": true,
+      "targets": ["nsis", "updater"],
+      "identifier": "com.salesmanagement.app",
+      "icon": [
+        "icons/32x32.png",
+        "icons/128x128.png",
+        "icons/128x128@2x.png",
+        "icons/icon.ico"
+      ],
+      "resources": [],
+      "externalBin": [],
+      "copyright": "",
+      "category": "Business",
+      "shortDescription": "Elly Fish Desktop App",
+      "longDescription": "Elly Fish - A desktop application for managing sales orders, invoices, stock and payments.",
+      "windows": {
+        "nsis": {
+          "installMode": "currentUser"
+        },
+        "wix": null
+      }
+    },
+    "security": {
+      "csp": null,
+      "dangerousDisableAssetCspModification": true
+    },
+    "updater": {
+      "active": true,
+      "dialog": false,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc5RUFENDI0RTM1NEY1MApSV1JRVHpWT1FxMmVCeE04QWdXVEo3ejBscEkzZlEyejJRYlFMWWU0U2l5WDdqbm5SdW9pcXN2Uwo=",
+      "endpoints": [
+        "https://github.com/YOUR_USERNAME/YOUR_REPO/releases/latest/download/latest.json"
+      ]
+    },
+    "windows": [
+      {
+        "label": "main",
+        "title": "Elly Fish",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 960,
+        "minHeight": 600,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true,
+        "decorations": true,
+        "visible": true,
+        "focus": true,
+        "additionalBrowserArgs": "--allow-running-insecure-content --disable-web-security --allow-file-access-from-files --unsafely-treat-insecure-origin-as-secure=http://168.231.74.17:3000"
+      }
+    ],
+    "systemTray": {
+      "iconPath": "icons/32x32.png",
+      "iconAsTemplate": true,
+      "menuOnLeftClick": false
+    }
+  }
+}

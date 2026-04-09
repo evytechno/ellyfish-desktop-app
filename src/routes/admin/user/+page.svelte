@@ -1,0 +1,355 @@
+<script>
+  import DynamicDataTable from "$lib/components/DynamicDataTable.svelte";
+  import { goto } from "$app/navigation";
+  import { authApiFetch } from "$lib/api/client";
+  import { API_ROUTES } from "$lib/constants/apiRoutes";
+  import Swal from "sweetalert2";
+  import { errorHandle } from "$lib/utils/errorHandle";
+  import Loader from "$lib/components/Loader.svelte";
+  import { onMount } from "svelte";
+  import { checkAuth } from "$lib/utils/auth";
+  let loadingData = true;
+
+  let firstLoad = false;
+  let currentUser;
+  onMount(async () => {
+    currentUser = checkAuth();
+    if (currentUser?.role === "user") {
+      loadingData = false;
+      loading = false;
+      Swal.fire({
+        icon: "warning",
+        title: "Access Denied",
+        text: "You are not authorized to view this page.",
+        confirmButtonText: "Go Back",
+      }).then(() => {
+        window.history.back();
+      });
+      return;
+    }
+    fetchUsers();
+    setTimeout(() => {
+      firstLoad = true;
+    }, 500);
+    document.addEventListener("click", (e) => {
+      const target = e.target.closest(".updateStatus");
+      if (target) {
+        const id = target.dataset.id;
+        changeStatus(id);
+      }
+    });
+  });
+
+  let loading;
+
+  let trashBin = false;
+
+  let users = [];
+  let currentPage = 1;
+  let rowsPerPage = 10;
+  let totalItems = 0;
+  let searchTerm = "";
+  $: columns = [
+    {
+      key: "name",
+      label: "Name",
+      render: (val, row) => {
+        return `<a href="/admin/user/${row.id}" class="flex items-center gap-1 text-danger capitalize">${row.name}</a>`;
+      },
+    },
+    { key: "email", label: "Email" },
+    {
+      key: "company",
+      label: "Company",
+      render: (val, row) => {
+        return row?.company ? row?.company?.name : "-";
+      },
+    },
+    {
+      key: "role",
+      label: "Role",
+      render: (val, row) => {
+        return `<div class="capitalize">${row?.role}<div>`;
+      },
+    },
+    {
+      key: "status",
+      label: "Status",
+      render: (val, row) => {
+        if (row.status.toLowerCase() === "active") {
+          return `<div class="flex items-center gap-1 text-success capitalize cursor-pointer updateStatus" data-id="${row.id}">${row.status}</div>`;
+        }
+        if (row.status.toLowerCase() === "inactive") {
+          return `<div class="flex items-center gap-1 text-danger capitalize cursor-pointer updateStatus" data-id="${row.id}">${row.status}</div>`;
+        }
+        if (row.status.toLowerCase() === "banned") {
+          return `<div class="flex items-center gap-1 text-danger capitalize cursor-pointer updateStatus" data-id="${row.id}">${row.status}</div>`;
+        }
+      },
+    },
+    {
+      key: "lastLogin",
+      label: "Last Login",
+      render: (val, row) => {
+        if (row.lastLogin) {
+          const d = new Date(row.lastLogin);
+          return `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()} ${String(d.getHours() % 12 || 12).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")} ${d.getHours() >= 12 ? "PM" : "AM"}`;
+        } else {
+          return `-`;
+        }
+      },
+    },
+  ];
+
+  let actions = [
+    {
+      label: "Edit",
+      icon: "ti ti-edit",
+      onClick: (id) => editRecord(id),
+      color: "btn-soft-info",
+    },
+    {
+      label: "Delete",
+      icon: "ti ti-trash",
+      onClick: (id) => deleteRecord(id),
+      color: "btn-soft-danger",
+    },
+  ];
+
+  let refresh = false;
+  let debounceRefreshTimeout;
+  async function refreshPage() {
+    if (debounceRefreshTimeout) clearTimeout(debounceRefreshTimeout);
+    debounceRefreshTimeout = setTimeout(async () => {
+      refresh = true;
+      try {
+        await Promise.all([fetchUsers()]);
+      } catch (error) {
+        console.error("Error refreshing data:", error);
+      } finally {
+        refresh = false;
+      }
+    }, 200);
+  }
+
+  async function fetchUsers() {
+    loadingData = true;
+    try {
+      const query = new URLSearchParams({
+        page: currentPage.toString(),
+        limit: rowsPerPage.toString(),
+        search: searchTerm || "",
+      });
+      if (trashBin) {
+        query.append("withDeleted", trashBin);
+      }
+
+      const data = await authApiFetch(
+        `${API_ROUTES.USER}?${query.toString()}`,
+        { method: "GET" }
+      );
+
+      users = data.data;
+      totalItems = data.total;
+    } catch (error) {
+      console.error("Fetch error:", error);
+      loading = false;
+      const validationErrors = errorHandle(error);
+    } finally {
+      loading = false;
+      setTimeout(() => {
+        loadingData = false;
+      }, 500);
+    }
+  }
+
+  const editRecord = async (id) => {
+    goto("/admin/user/edit/" + id);
+  };
+
+  async function deleteRecord(id) {
+    Swal.fire({
+      title: "Delete Confirmation",
+      text: "Are you sure you want to delete this record.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Yes, delete it!",
+    }).then(async (result) => {
+      if (result.isConfirmed) {
+        try {
+          const data = await authApiFetch(`${API_ROUTES.USER}/${id}`, {
+            method: "DELETE",
+          });
+          users = users.filter((user) => user.id !== id); // Remove from local list
+          Swal.fire("Deleted!", data.message, "success");
+          goto("/admin/user");
+        } catch (err) {
+          const validationErrors = errorHandle(err);
+        }
+      }
+    });
+  }
+
+  async function changeStatus(id) {
+    const user = users.find((u) => u.id === Number(id));
+    if (!user) return console.error("User not found");
+
+    const { value: selectedStatus, isConfirmed } = await Swal.fire({
+      title: "Change User Status",
+      text: `Select a new status for ${user?.name}.`,
+      icon: "question",
+      input: "select",
+      inputOptions: {
+        active: "Active",
+        inactive: "Inactive",
+        banned: "Banned",
+      },
+      inputPlaceholder: "Choose status",
+      inputValue: user.status,
+      showCancelButton: true,
+      confirmButtonText: "Update Status",
+      cancelButtonText: "Cancel",
+      confirmButtonColor: "#28a745",
+      customClass: {
+        input: "form-select !w-auto",
+      },
+      inputValidator: (value) => {
+        if (!value) return "Please select a status!";
+      },
+    });
+
+    if (!isConfirmed) return;
+
+    try {
+      Swal.showLoading();
+
+      await authApiFetch(`${API_ROUTES.USER}/${id}`, {
+        method: "PUT",
+        data: JSON.stringify({ status: selectedStatus }),
+      });
+
+      users = users.map((u) =>
+        u.id === Number(id) ? { ...u, status: selectedStatus } : u
+      );
+
+      // Swal.fire(
+      //   "Success!",
+      //   `User status changed to "${selectedStatus}".`,
+      //   "success"
+      // );
+    } catch (err) {
+      console.error("Failed to change user status:", err);
+    }
+  }
+
+  $: [searchTerm, currentPage, rowsPerPage, trashBin], checkFetchRecord();
+
+  function checkFetchRecord() {
+    if (firstLoad) {
+      fetchUsers();
+    }
+  }
+</script>
+
+{#if loadingData}
+  <Loader />
+{/if}
+<div class="page-wrapper">
+  <!-- Start Content -->
+  <div class="content pb-0">
+    <!-- Page Header -->
+    <div class="flex items-center justify-between gap-2 mb-4 flex-wrap">
+      <div>
+        <h4 class="mb-1">Users</h4>
+        <nav aria-label="breadcrumb">
+          <ol class="breadcrumb mb-0 p-0">
+            <li class="breadcrumb-item"><a href="/admin/dashboard">Home</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Users</li>
+          </ol>
+        </nav>
+      </div>
+      <div class="gap-2 d-flex align-items-center flex-wrap">
+        <a
+          href="#refresh"
+          on:click={refreshPage}
+          class="btn btn-icon btn-outline-light shadow"
+          data-bs-toggle="tooltip"
+          data-bs-placement="top"
+          aria-label="Refresh"
+          data-bs-original-title="Refresh"><i class="ti ti-refresh"></i></a
+        >
+        <a
+          href="#collapse-header"
+          class="btn btn-icon btn-outline-light shadow"
+          data-bs-toggle="tooltip"
+          data-bs-placement="top"
+          aria-label="Collapse"
+          data-bs-original-title="Collapse"
+          id="collapse-header"><i class="ti ti-transition-top"></i></a
+        >
+      </div>
+    </div>
+    <!-- End Page Header -->
+
+    <!-- card start -->
+    <div class="card border-0 rounded-0">
+      <div
+        class="card-header flex items-center justify-between gap-2 flex-wrap"
+      >
+        {#if trashBin}
+          <div class="pb-2.5">
+            <button on:click={() => (trashBin = false)}>
+              <i class="ti ti-arrow-narrow-left me-1"></i>Back
+            </button>
+          </div>
+        {:else}
+          <div class="input-icon input-icon-start position-relative">
+            <h5>Users List</h5>
+          </div>
+
+          <div class="flex items-center gap-2 flex-wrap">
+            {#if currentUser?.role != "user"}
+              <div
+                class="d-flex align-items-center shadow p-1 rounded border view-icons bg-white"
+              >
+                <button
+                  on:click={() => (trashBin = true)}
+                  class="flex-shrink-0 btn btn-sm p-1 border-0 fs-14 bg-primary text-white"
+                >
+                  <i class="ti ti-trash"></i>
+                </button>
+              </div>
+            {/if}
+            <a href="/admin/user/add" class="btn btn-primary">
+              <i class="ti ti-square-rounded-plus-filled me-1"></i>Add User
+            </a>
+          </div>
+        {/if}
+      </div>
+      <div class="card-body">
+        <DynamicDataTable
+          loading={loadingData}
+          {columns}
+          {actions}
+          data={[...users]}
+          {currentPage}
+          {rowsPerPage}
+          {totalItems}
+          totalPages={Math.ceil(totalItems / rowsPerPage)}
+          serverMode={true}
+          on:pageChange={(e) => (currentPage = e.detail)}
+          on:rowsPerPageChange={(e) => {
+            rowsPerPage = e.detail;
+            currentPage = 1;
+          }}
+          on:search={(e) => {
+            searchTerm = e.detail;
+            currentPage = 1;
+          }}
+        />
+      </div>
+    </div>
+    <!-- card end -->
+  </div>
+  <!-- End Content -->
+</div>

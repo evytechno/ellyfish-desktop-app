@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="utf-8" />
+	<link rel="icon" href="%sveltekit.assets%/favicon.jpg" />
+	<meta name="viewport" content="width=device-width" />
+	%sveltekit.head%
+	<link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;700&display=swap" rel="stylesheet">
+	<link href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/3.34.1/tabler-icons.min.css" rel="stylesheet" />
+	<meta name="robots" content="nofollow, noindex" />
+	<style>
+		@media print {
+			body {
+				background-color: #fff !important;
+				margin: 0;
+				padding: 0;
+			}
+		}
+
+		/* ── Splash Screen ───────────────────────────────────── */
+		#splash {
+			position: fixed;
+			inset: 0;
+			z-index: 99999;
+			background: #ffffff;
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			justify-content: center;
+			gap: 20px;
+			transition: opacity 0.4s ease, visibility 0.4s ease;
+		}
+		#splash.hide {
+			opacity: 0;
+			visibility: hidden;
+		}
+		#splash img {
+			width: 120px;
+			height: auto;
+		}
+		#splash-spinner {
+			width: 36px;
+			height: 36px;
+			border: 3px solid #f0f0f0;
+			border-top-color: #ef4444;
+			border-radius: 50%;
+			animation: spin 0.8s linear infinite;
+		}
+		#splash-text {
+			font-family: 'Golos Text', sans-serif;
+			font-size: 13px;
+			color: #9ca3af;
+			letter-spacing: 0.5px;
+		}
+		@keyframes spin {
+			to { transform: rotate(360deg); }
+		}
+	</style>
+	<script>
+		// Fix: WebView2 on Windows doesn't forward keyboard events until
+		// the document has received explicit focus.
+		(function () {
+			function fixFocus() {
+				window.focus();
+				if (document.body) {
+					document.body.setAttribute('tabindex', '-1');
+					document.body.focus();
+					document.body.removeAttribute('tabindex');
+				}
+			}
+			fixFocus();
+			document.addEventListener('DOMContentLoaded', fixFocus);
+			window.addEventListener('load', function () {
+				setTimeout(fixFocus, 200);
+			});
+		})();
+
+		// Hide splash when SvelteKit finishes mounting
+		window.hideSplash = function () {
+			var splash = document.getElementById('splash');
+			if (splash) {
+				splash.classList.add('hide');
+				setTimeout(function () { splash.remove(); }, 450);
+			}
+		};
+	</script>
+</head>
+
+<body data-sveltekit-preload-data="hover">
+
+	<!-- Splash screen — shown until app is ready -->
+	<div id="splash">
+		<img src="/favicon.png" alt="Sales Management" />
+		<div id="splash-spinner"></div>
+		<div id="splash-text">Loading...</div>
+	</div>
+
+	<div style="display: contents">%sveltekit.body%</div>
+</body>
+
+</html>
