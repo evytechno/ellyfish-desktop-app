@@ -11,3 +11,6 @@ vite.config.ts.timestamp-*
 deploy.sh
 /target
 /src-tauri/target
+~/.tauri/
+**/*.key
+**/*.key.pub
