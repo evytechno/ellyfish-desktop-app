@@ -3,7 +3,9 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'   # triggers on v1.0.0, v1.2.3, etc.
+      - 'v*'          # production release:  git tag v1.0.0 && git push origin v1.0.0
+    branches:
+      - dev           # dev build on every push to dev branch
 
 jobs:
   release:
@@ -32,7 +34,8 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Build and release
+      - name: Build and release (production — tag)
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -47,3 +50,17 @@ jobs:
             See the full changelog below.
           releaseDraft: false
           prerelease: false
+
+      - name: Build and release (dev — pre-release)
+        if: github.ref == 'refs/heads/dev'
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+        with:
+          tagName: dev-build
+          releaseName: 'Elly Fish Dev Build'
+          releaseBody: 'Development build from dev branch. Not for production use.'
+          releaseDraft: false
+          prerelease: true
