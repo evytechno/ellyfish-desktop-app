@@ -216,9 +216,6 @@ fn main() {
                 }
             });
 
-            #[cfg(debug_assertions)]
-            window.open_devtools();
-
             Ok(())
         })
         .on_system_tray_event(|app, event| match event {
