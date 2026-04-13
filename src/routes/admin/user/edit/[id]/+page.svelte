@@ -18,6 +18,8 @@
   let whatsapp = "";
   let role = "";
   let companyId = null;
+  let loginStartTime = "";
+  let loginEndTime = "";
   let loading = false;
   let errorMessage = "";
   let formErrors = {};
@@ -52,6 +54,8 @@
       whatsapp = data.whatsapp;
       role = data.role;
       companyId = data?.company?.id || null;
+      loginStartTime = data.loginStartTime || "";
+      loginEndTime = data.loginEndTime || "";
     } catch (error) {
       errorMessage = "Failed to load user data.";
       console.error("Fetch error:", error);
@@ -72,7 +76,10 @@
     loading = true;
     formErrors = {};
 
-    const updatedUser = { name, email, mobile, whatsapp, role };
+    const updatedUser = { name, email, mobile, whatsapp, role,
+      loginStartTime: loginStartTime || null,
+      loginEndTime: loginEndTime || null,
+    };
     if (companyId != null) {
       updatedUser.company = companyId;
     }
@@ -270,6 +277,38 @@
               {#if formErrors.role}
                 <ul class="text-danger mt-1 text-xs capitalize">
                   <li>{formErrors.role[0]}</li>
+                </ul>
+              {/if}
+            </div>
+            <div>
+              <label class="form-label" for="loginStartTime">Login Start Time</label>
+              <input
+                class="form-control"
+                class:is-invalid={formErrors.loginStartTime}
+                type="time"
+                bind:value={loginStartTime}
+                id="loginStartTime"
+              />
+              <small class="text-muted">Leave blank to use default (09:00)</small>
+              {#if formErrors.loginStartTime}
+                <ul class="text-danger mt-1 text-xs capitalize">
+                  <li>{formErrors.loginStartTime[0]}</li>
+                </ul>
+              {/if}
+            </div>
+            <div>
+              <label class="form-label" for="loginEndTime">Login End Time</label>
+              <input
+                class="form-control"
+                class:is-invalid={formErrors.loginEndTime}
+                type="time"
+                bind:value={loginEndTime}
+                id="loginEndTime"
+              />
+              <small class="text-muted">Leave blank to use default (18:10)</small>
+              {#if formErrors.loginEndTime}
+                <ul class="text-danger mt-1 text-xs capitalize">
+                  <li>{formErrors.loginEndTime[0]}</li>
                 </ul>
               {/if}
             </div>

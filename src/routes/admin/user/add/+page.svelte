@@ -19,6 +19,8 @@
   let password = "";
   let role = "user";
   let companyId = null;
+  let loginStartTime = "";
+  let loginEndTime = "";
   let loading = false;
   let errorMessage = "";
 
@@ -55,7 +57,10 @@
     loading = true;
     formErrors = {}; // Reset previous errors
 
-    const newUser = { name, email, password, mobile, whatsapp, role };
+    const newUser = { name, email, password, mobile, whatsapp, role,
+      loginStartTime: loginStartTime || null,
+      loginEndTime: loginEndTime || null,
+    };
     if (companyId != null) {
       newUser.company = companyId;
     }
@@ -275,6 +280,38 @@
               {#if formErrors.password}
                 <ul class="text-danger mt-1 text-xs capitalize">
                   <li>{formErrors.password[0]}</li>
+                </ul>
+              {/if}
+            </div>
+            <div>
+              <label class="form-label" for="loginStartTime">Login Start Time</label>
+              <input
+                class="form-control"
+                class:is-invalid={formErrors.loginStartTime}
+                type="time"
+                bind:value={loginStartTime}
+                id="loginStartTime"
+              />
+              <small class="text-muted">Leave blank to use default (09:00)</small>
+              {#if formErrors.loginStartTime}
+                <ul class="text-danger mt-1 text-xs capitalize">
+                  <li>{formErrors.loginStartTime[0]}</li>
+                </ul>
+              {/if}
+            </div>
+            <div>
+              <label class="form-label" for="loginEndTime">Login End Time</label>
+              <input
+                class="form-control"
+                class:is-invalid={formErrors.loginEndTime}
+                type="time"
+                bind:value={loginEndTime}
+                id="loginEndTime"
+              />
+              <small class="text-muted">Leave blank to use default (18:10)</small>
+              {#if formErrors.loginEndTime}
+                <ul class="text-danger mt-1 text-xs capitalize">
+                  <li>{formErrors.loginEndTime[0]}</li>
                 </ul>
               {/if}
             </div>

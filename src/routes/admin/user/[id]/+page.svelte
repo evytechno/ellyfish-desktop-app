@@ -205,6 +205,24 @@
                     <p class="mb-0">{user?.address}</p>
                   </div>
                 {/if}
+                <div class="d-flex align-items-center mb-2">
+                  <span
+                    class="avatar avatar-xs bg-light p-0 flex-shrink-0 rounded-circle text-dark me-2"
+                  >
+                    <i class="ti ti-clock fs-14"></i>
+                  </span>
+                  <p class="mb-0">
+                    Login Window:
+                    <strong>
+                      {user?.loginStartTime || "09:00"} – {user?.loginEndTime || "18:10"} IST
+                    </strong>
+                    {#if user?.loginStartTime || user?.loginEndTime}
+                      <span class="badge bg-success ms-1" style="font-size:10px;">Custom</span>
+                    {:else}
+                      <span class="badge bg-secondary ms-1" style="font-size:10px;">Default</span>
+                    {/if}
+                  </p>
+                </div>
                 <div class="d-flex align-items-center">
                   <span
                     class="avatar avatar-xs bg-light p-0 flex-shrink-0 rounded-circle text-dark me-2"

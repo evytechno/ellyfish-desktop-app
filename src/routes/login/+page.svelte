@@ -2,6 +2,7 @@
   import { setUser } from "../../lib/stores/userStore";
   import { onMount } from "svelte";
   import { checkAuth, saveSession, restoreSession } from "$lib/utils/auth";
+  import { secureStorage } from "$lib/utils/secureStorage";
 
   import { goto } from "$app/navigation";
   import { apiFetch } from "$lib/api/client";
@@ -14,6 +15,7 @@
   let rememberMe = false;
   let errorMessage = "";
   let loading = false;
+  let showPassword = false;
   let checkingSession = true; // show "Checking session..." on startup
   let deviceName = "";
   let emailInput;
@@ -97,11 +99,13 @@
 
     checkingSession = false;
 
-    // Restore last used email (remember me)
+    // Restore last used email + password (remember me)
     const lastEmail = localStorage.getItem("last_email");
     if (lastEmail) {
       email = lastEmail;
       rememberMe = true;
+      const lastPassword = await secureStorage.get("last_password");
+      if (lastPassword) password = lastPassword;
     }
 
     await autoDetectDeviceName();
@@ -147,11 +151,13 @@
       await saveSession(data);
       setUser(data.user);
 
-      // Remember last email if checked
+      // Remember last email + password if checked
       if (rememberMe) {
         localStorage.setItem("last_email", email);
+        await secureStorage.set("last_password", password);
       } else {
         localStorage.removeItem("last_email");
+        await secureStorage.delete("last_password");
       }
 
       goto("/admin/dashboard");
@@ -205,14 +211,46 @@
       <label for="password" class="block text-sm font-medium text-gray-700">
         Password
       </label>
-      <input
-        type="password"
-        id="password"
-        class="mt-1 p-3 w-full border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-        placeholder="Password"
-        bind:value={password}
-        required
-      />
+      <div class="relative mt-1">
+        {#if showPassword}
+          <input
+            type="text"
+            id="password"
+            class="p-3 w-full border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 pr-10"
+            placeholder="Password"
+            bind:value={password}
+            required
+          />
+        {:else}
+          <input
+            type="password"
+            id="password"
+            class="p-3 w-full border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 pr-10"
+            placeholder="Password"
+            bind:value={password}
+            required
+          />
+        {/if}
+        <button
+          type="button"
+          class="absolute inset-y-0 right-0 flex items-center px-3 text-gray-500 hover:text-gray-700"
+          on:click={() => (showPassword = !showPassword)}
+          tabindex="-1"
+        >
+          {#if showPassword}
+            <!-- Eye Off -->
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-5 0-9-4-9-7a9.77 9.77 0 012.17-3.585M6.343 6.343A9.956 9.956 0 0112 5c5 0 9 4 9 7a9.77 9.77 0 01-2.17 3.585M15 12a3 3 0 11-6 0 3 3 0 016 0zM3 3l18 18" />
+            </svg>
+          {:else}
+            <!-- Eye -->
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+          {/if}
+        </button>
+      </div>
     </div>
 
     <div class="flex items-center mb-4">
@@ -233,11 +271,11 @@
       disabled={loading}>{loading ? "Signing in..." : "Sign In"}</button
     >
 
-    <p class="text-center text-sm text-gray-500 mt-4">
+    <!-- <p class="text-center text-sm text-gray-500 mt-4">
       <a href="#ForgotPassword" class="text-red-500 hover:text-red-600"
         >Forgot Password?</a
       >
-    </p>
+    </p> -->
 
     <!-- <p class="text-center text-sm text-gray-500 mt-2">
       New on our platform? <a
