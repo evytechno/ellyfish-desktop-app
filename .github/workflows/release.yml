@@ -12,27 +12,32 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
 
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
 
-      - name: Install frontend dependencies
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install WebView2
+        run: choco install microsoft-edge-webview2-runtime
+
+      - name: Install frontend deps
         run: npm ci
 
-      - name: Get version from tauri.conf.json
+      - name: Build frontend
+        run: npm run build
+
+      - name: Get version
         id: version
         run: |
           $version = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).package.version
@@ -47,9 +52,3 @@ jobs:
         with:
           tagName: v${{ steps.version.outputs.VERSION }}
           releaseName: 'Elly Fish v${{ steps.version.outputs.VERSION }}'
-          releaseBody: |
-            ## Elly Fish v${{ steps.version.outputs.VERSION }}
-
-            Download the installer below to update.
-          releaseDraft: false
-          prerelease: false
