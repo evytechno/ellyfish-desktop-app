@@ -37,6 +37,11 @@
         const id = target.dataset.id;
         changeStatus(id);
       }
+      const timeTarget = e.target.closest(".updateLoginTime");
+      if (timeTarget) {
+        const id = timeTarget.dataset.id;
+        changeLoginTime(id);
+      }
     });
   });
 
@@ -97,6 +102,22 @@
         } else {
           return `-`;
         }
+      },
+    },
+    {
+      key: "loginStartTime",
+      label: "Login Window",
+      render: (val, row) => {
+        const start = row.loginStartTime || "09:00";
+        const end   = row.loginEndTime   || "18:10";
+        const isCustom = row.loginStartTime || row.loginEndTime;
+        const badge = isCustom
+          ? `<span class="badge bg-success ms-1" style="font-size:10px;">Custom</span>`
+          : `<span class="badge bg-secondary ms-1" style="font-size:10px;">Default</span>`;
+        return `<div class="flex items-center gap-1 cursor-pointer updateLoginTime" data-id="${row.id}">
+          <i class="ti ti-clock text-primary fs-14"></i>
+          <span class="text-primary">${start} – ${end}</span>${badge}
+        </div>`;
       },
     },
   ];
@@ -239,6 +260,57 @@
       // );
     } catch (err) {
       console.error("Failed to change user status:", err);
+    }
+  }
+
+  async function changeLoginTime(id) {
+    const user = users.find((u) => u.id === Number(id));
+    if (!user) return;
+
+    const { value: formValues, isConfirmed } = await Swal.fire({
+      title: `Login Window — ${user.name}`,
+      html: `
+        <div class="text-start mb-3">
+          <label class="form-label fw-semibold">Login Start Time</label>
+          <input id="swal-start" type="time" class="form-control"
+            value="${user.loginStartTime || ''}" />
+          <small class="text-muted">Leave blank to use default (09:00)</small>
+        </div>
+        <div class="text-start">
+          <label class="form-label fw-semibold">Login End Time</label>
+          <input id="swal-end" type="time" class="form-control"
+            value="${user.loginEndTime || ''}" />
+          <small class="text-muted">Leave blank to use default (18:10)</small>
+        </div>`,
+      showCancelButton: true,
+      confirmButtonText: "Save",
+      cancelButtonText: "Cancel",
+      confirmButtonColor: "#28a745",
+      focusConfirm: false,
+      preConfirm: () => ({
+        loginStartTime: document.getElementById("swal-start").value || null,
+        loginEndTime:   document.getElementById("swal-end").value   || null,
+      }),
+    });
+
+    if (!isConfirmed) return;
+
+    try {
+      Swal.showLoading();
+      await authApiFetch(`${API_ROUTES.USER}/${id}`, {
+        method: "PUT",
+        data: JSON.stringify(formValues),
+      });
+
+      users = users.map((u) =>
+        u.id === Number(id)
+          ? { ...u, loginStartTime: formValues.loginStartTime, loginEndTime: formValues.loginEndTime }
+          : u
+      );
+
+      Swal.fire("Saved!", "Login window updated successfully.", "success");
+    } catch (err) {
+      Swal.fire("Error", errorHandle(err), "error");
     }
   }
 

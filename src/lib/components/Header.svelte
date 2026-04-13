@@ -210,16 +210,24 @@
     const month = now.getMonth();
     const date = now.getDate();
 
-    const sixPM = new Date(Date.UTC(year, month, date, 12, 30)); // 6:00 PM IST = 12:30 UTC
-    const sixTenPM = new Date(Date.UTC(year, month, date, 12, 40)); // 6:10 PM IST = 12:40 UTC
+    // Use per-user loginEndTime if set, otherwise fall back to global default 18:10
+    const endTimeStr = currentUser?.loginEndTime || "18:10";
+    const [endH, endM] = endTimeStr.split(":").map(Number);
 
-    if (now >= sixPM && now < sixTenPM) {
-      const remainingMillis = sixTenPM.getTime() - now.getTime();
+    // Warning starts 10 minutes before loginEndTime
+    const warnH = endM >= 10 ? endH : endH - 1;
+    const warnM = endM >= 10 ? endM - 10 : endM + 50;
+
+    // Convert to UTC for comparison (IST = UTC+5:30)
+    const warnTime = new Date(Date.UTC(year, month, date, warnH - 5, warnM - 30));
+    const endTime  = new Date(Date.UTC(year, month, date, endH  - 5, endM  - 30));
+
+    if (now >= warnTime && now < endTime) {
+      const remainingMillis = endTime.getTime() - now.getTime();
       const remainingSeconds = Math.floor(remainingMillis / 1000);
       startCountdown(remainingSeconds);
     } else {
       timerText = "";
-      // timerText = "Not between 6:00 and 6:10 PM IST";
     }
   }
 
