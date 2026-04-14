@@ -17,7 +17,7 @@
         updateManifest = manifest;
       }
     } catch (e) {
-      console.warn('Update check failed:', e.message);
+      console.warn('Update check failed:', e, JSON.stringify(e));
     }
   }
 
