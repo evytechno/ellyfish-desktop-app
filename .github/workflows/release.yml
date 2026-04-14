@@ -33,6 +33,17 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Create .env file
+        run: |
+          echo "VITE_PUBLIC_API_URL=${{ secrets.VITE_PUBLIC_API_URL }}" > .env
+          echo "VITE_PUBLIC_ATTACHMENT_URL=${{ secrets.VITE_PUBLIC_API_URL }}" >> .env
+          echo "VITE_PUBLIC_HMAC_WEBAPP_SECRET=${{ secrets.VITE_PUBLIC_HMAC_WEBAPP_SECRET }}" >> .env
+          echo "VITE_PUBLIC_STORE_API_URL=${{ secrets.VITE_PUBLIC_STORE_API_URL }}" >> .env
+          echo "VITE_PUBLIC_WORKSHOP_API_URL=${{ secrets.VITE_PUBLIC_WORKSHOP_API_URL }}" >> .env
+          echo "VITE_PUBLIC_WORKSHOP_IMAGE_URL=${{ secrets.VITE_PUBLIC_WORKSHOP_IMAGE_URL }}" >> .env
+          echo "TAURI_PRIVATE_KEY=${{ secrets.TAURI_PRIVATE_KEY }}" >> .env
+          echo "TAURI_KEY_PASSWORD=${{ secrets.TAURI_KEY_PASSWORD }}" >> .env
+
       - name: Get version from tauri.conf.json
         id: version
         run: |
