@@ -183,7 +183,7 @@ fn main() {
 
             // 🔥 HARD FIX
             let _ = window.set_fullscreen(false);
-            let _ = window.set_maximized(false);
+            let _ = window.unmaximize();
             let _ = window.set_decorations(true);
 
             // Focus fix
