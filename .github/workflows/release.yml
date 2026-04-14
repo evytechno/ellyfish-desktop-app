@@ -12,59 +12,33 @@ jobs:
 
     runs-on: windows-latest
 
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
     steps:
-      # 📦 Checkout repo
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 🟢 Setup Node
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
 
-      # 🦀 Install Rust
-      - name: Install Rust
+      - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
-      # ⚡ Cache Rust builds
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
 
-      # 🛠 Setup MSVC (required for Tauri on Windows)
-      - name: Setup MSVC
-        uses: ilammy/msvc-dev-cmd@v1
-
-      # 🌐 Install WebView2 (required runtime)
-      - name: Install WebView2
-        run: choco install microsoft-edge-webview2-runtime
-
-      # 📦 Install frontend dependencies
-      - name: Install dependencies
+      - name: Install frontend dependencies
         run: npm ci
 
-      # 🏗 Build frontend (CRITICAL)
-      - name: Build frontend
-        run: npm run build
-
-      # 🔍 Debug build (shows real errors if something fails)
-      - name: Debug Tauri build
-        run: npm run tauri build
-
-      # 🏷 Get version from config
-      - name: Get version
+      - name: Get version from tauri.conf.json
         id: version
         run: |
           $version = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).package.version
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
 
-      # 🚀 Build and create GitHub release
       - name: Build and release
         uses: tauri-apps/tauri-action@v0
         env:
@@ -73,7 +47,7 @@ jobs:
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
           tagName: v${{ steps.version.outputs.VERSION }}
-          releaseName: Elly Fish v${{ steps.version.outputs.VERSION }}
+          releaseName: 'Elly Fish v${{ steps.version.outputs.VERSION }}'
           releaseBody: |
             ## Elly Fish v${{ steps.version.outputs.VERSION }}
 
