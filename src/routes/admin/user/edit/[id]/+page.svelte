@@ -54,8 +54,8 @@
       whatsapp = data.whatsapp;
       role = data.role;
       companyId = data?.company?.id || null;
-      loginStartTime = data.loginStartTime || "";
-      loginEndTime = data.loginEndTime || "";
+      loginStartTime = data.loginStartTime || "09:00";
+      loginEndTime = data.loginEndTime || "18:10";
     } catch (error) {
       errorMessage = "Failed to load user data.";
       console.error("Fetch error:", error);

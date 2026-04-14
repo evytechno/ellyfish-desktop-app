@@ -19,8 +19,8 @@
   let password = "";
   let role = "user";
   let companyId = null;
-  let loginStartTime = "";
-  let loginEndTime = "";
+  let loginStartTime = "09:00";
+  let loginEndTime = "18:10";
   let loading = false;
   let errorMessage = "";
 
