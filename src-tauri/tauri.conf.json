@@ -19,9 +19,6 @@
       "notification": {
         "all": true
       },
-      "updater": {
-        "all": true
-      },
       "window": {
         "all": false,
         "show": true,
