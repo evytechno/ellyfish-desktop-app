@@ -8,10 +8,8 @@
   let installing = false;
   let error = null;
 
-  onMount(async () => {
-    // Only check for updates in production (not in dev mode)
+  async function doCheckUpdate() {
     if (!window.__TAURI__) return;
-
     try {
       const { shouldUpdate, manifest } = await checkUpdate();
       if (shouldUpdate) {
@@ -19,9 +17,15 @@
         updateManifest = manifest;
       }
     } catch (e) {
-      // Silently ignore — update server may not be configured yet
       console.warn('Update check failed:', e.message);
     }
+  }
+
+  onMount(() => {
+    // Check immediately on launch, then retry after 30s (network may not be ready)
+    doCheckUpdate();
+    const retryTimer = setTimeout(doCheckUpdate, 30000);
+    return () => clearTimeout(retryTimer);
   });
 
   async function install() {
