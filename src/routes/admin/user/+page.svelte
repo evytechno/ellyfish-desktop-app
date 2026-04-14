@@ -273,24 +273,26 @@
         <div class="text-start mb-3">
           <label class="form-label fw-semibold">Login Start Time</label>
           <input id="swal-start" type="time" class="form-control"
-            value="${user.loginStartTime || ''}" />
-          <small class="text-muted">Leave blank to use default (09:00)</small>
+            value="${user.loginStartTime || '09:00'}" />
         </div>
         <div class="text-start">
           <label class="form-label fw-semibold">Login End Time</label>
           <input id="swal-end" type="time" class="form-control"
-            value="${user.loginEndTime || ''}" />
-          <small class="text-muted">Leave blank to use default (18:10)</small>
+            value="${user.loginEndTime || '18:10'}" />
         </div>`,
       showCancelButton: true,
       confirmButtonText: "Save",
       cancelButtonText: "Cancel",
       confirmButtonColor: "#28a745",
       focusConfirm: false,
-      preConfirm: () => ({
-        loginStartTime: document.getElementById("swal-start").value || null,
-        loginEndTime:   document.getElementById("swal-end").value   || null,
-      }),
+      preConfirm: () => {
+        const start = document.getElementById("swal-start").value;
+        const end   = document.getElementById("swal-end").value;
+        return {
+          loginStartTime: (start && start !== '09:00') ? start : null,
+          loginEndTime:   (end   && end   !== '18:10') ? end   : null,
+        };
+      },
     });
 
     if (!isConfirmed) return;
