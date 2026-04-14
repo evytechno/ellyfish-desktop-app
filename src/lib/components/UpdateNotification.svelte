@@ -10,6 +10,7 @@
 
   async function doCheckUpdate() {
     if (!window.__TAURI__) return;
+    if (import.meta.env.DEV) return; // updater only works in production builds
     try {
       const { shouldUpdate, manifest } = await checkUpdate();
       if (shouldUpdate) {
