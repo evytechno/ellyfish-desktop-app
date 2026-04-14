@@ -65,3 +65,5 @@ jobs:
             Download the installer below to update.
           releaseDraft: false
           prerelease: false
+
+          updaterJson: true
