@@ -10,7 +10,6 @@
   import { API_ROUTES } from "$lib/constants/apiRoutes";
   import Loader from "$lib/components/Loader.svelte";
   import ServerOffline from "$lib/components/ServerOffline.svelte";
-  import UpdateNotification from "$lib/components/UpdateNotification.svelte";
   import InactivityWarning from "$lib/components/InactivityWarning.svelte";
   import { startInactivityTimer, stopInactivityTimer } from "$lib/utils/inactivityTimer";
   import { logoutUser } from "$lib/utils/auth";
@@ -223,7 +222,6 @@
   <Loader />
 {/if}
 <ServerOffline />
-<UpdateNotification />
 <InactivityWarning bind:show={showWarning} secondsLeft={warningSeconds} />
 <main class="main-wrapper min-h-screen bg-gray-50">
   <Header {setting} />
