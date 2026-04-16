@@ -200,7 +200,7 @@
       .toString()
       .padStart(2, "0");
     const secs = (seconds % 60).toString().padStart(2, "0");
-    timerText = `Session Time Remaining: ${minutes}:${secs}`;
+    timerText = `Session Expires in : ${minutes}:${secs}`;
   }
 
   function checkAndStartTimer() {
@@ -465,7 +465,7 @@
           <i class="ti ti-search"></i>
         </button>
         <!-- /Search -->
-        <div class="text-primary">
+        <div class="text-primary pl-2">
           {timerText}
         </div>
 
@@ -496,7 +496,7 @@
       <!-- Minimize -->
 
       <!-- Light/Dark Mode Button -->
-      <div class="header-item d-none d-sm-flex me-2">
+      <!-- <div class="header-item d-none d-sm-flex me-2">
         <button
           class="topbar-link btn topbar-link"
           id="light-dark-mode"
@@ -504,7 +504,7 @@
         >
           <i class="ti ti-moon fs-16"></i>
         </button>
-      </div>
+      </div> -->
 
       <!-- Notification Dropdown -->
       <Notification />
