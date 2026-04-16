@@ -39,6 +39,7 @@
 
   import { dashboardFilterStore } from "$lib/stores/filterStore";
   import { get } from "svelte/store";
+  import UpdateNotification from "../../../lib/components/UpdateNotification.svelte";
   let firstLoad = false;
   onMount(() => {
     const filterState = $dashboardFilterStore;
@@ -630,6 +631,10 @@
       <!-- end col -->
     </div>
     <!-- end row -->
+
+    <div class="p-3 border-t border-gray-100">
+      <UpdateNotification />
+    </div>
   </div>
   <!-- End Content -->
 </div>
