@@ -9,6 +9,7 @@
   import { errorHandle } from "$lib/utils/errorHandle";
   import { API_ROUTES } from "$lib/constants/apiRoutes";
   import Loader from "$lib/components/Loader.svelte";
+  import UpdateNotification from "$lib/components/UpdateNotification.svelte";
   import ServerOffline from "$lib/components/ServerOffline.svelte";
   import InactivityWarning from "$lib/components/InactivityWarning.svelte";
   import { startInactivityTimer, stopInactivityTimer } from "$lib/utils/inactivityTimer";
