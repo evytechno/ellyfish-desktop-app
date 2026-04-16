@@ -4,6 +4,7 @@
   import jQuery from "jquery";
   import { checkAuth } from "$lib/utils/auth";
   import { ATTACHMENT_BASE_URL } from "$lib/constants/constants";
+  import UpdateNotification from "$lib/components/UpdateNotification.svelte";
 
   export let setting;
 
@@ -432,6 +433,11 @@
         style="height: 101px; transform: translate3d(0px, 0px, 0px); display: block;"
       ></div>
     </div>
+  </div>
+
+  <!-- Update button at sidebar bottom -->
+  <div class="p-3 border-t border-gray-100">
+    <UpdateNotification />
   </div>
 </div>
 
