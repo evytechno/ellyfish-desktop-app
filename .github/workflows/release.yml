@@ -79,7 +79,7 @@ jobs:
           if (-not $sigFile) { Write-Error "No .sig file found"; exit 1 }
 
           $signature = (Get-Content $sigFile.FullName -Raw).Trim()
-          $zipName   = $sigFile.Name -replace '\.sig$', ''
+          $zipName   = ($sigFile.Name -replace '\.sig$', '').Replace(' ', '.')
           $downloadUrl = "https://github.com/evytechno/ellyfish-desktop-app/releases/download/v$version/$zipName"
           $pubDate = (Get-Date -Format "yyyy-MM-ddTHH:mm:ss.fffZ")
 

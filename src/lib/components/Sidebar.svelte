@@ -4,6 +4,7 @@
   import jQuery from "jquery";
   import { checkAuth } from "$lib/utils/auth";
   import { ATTACHMENT_BASE_URL } from "$lib/constants/constants";
+  import UpdateNotification from "$lib/components/UpdateNotification.svelte";
 
   export let setting;
 
@@ -173,7 +174,7 @@
   <!-- End Logo -->
 
   <!-- Sidenav Menu -->
-  <div class="sidebar-inner simplebar-scrollable-y" data-simplebar="init">
+  <div class="sidebar-inner simplebar-scrollable-y pb-14" data-simplebar="init">
     <div class="simplebar-wrapper" style="margin: 0px;">
       <div class="simplebar-height-auto-observer-wrapper">
         <div class="simplebar-height-auto-observer"></div>
@@ -434,8 +435,10 @@
     </div>
   </div>
 
-  <!-- Update button at sidebar bottom -->
-  
+  <!-- Update button pinned to sidebar bottom -->
+  <div class="absolute bottom-0 left-0 right-0 p-3 bg-white border-t border-gray-100 z-10">
+    <UpdateNotification />
+  </div>
 </div>
 
 <style>
