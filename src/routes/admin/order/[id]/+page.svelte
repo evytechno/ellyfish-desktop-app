@@ -78,6 +78,26 @@
     }
   }
 
+  let isDragging = false;
+
+  function handleDragOver(event) {
+    event.preventDefault();
+    isDragging = true;
+  }
+
+  function handleDragLeave() {
+    isDragging = false;
+  }
+
+  function handleDrop(event) {
+    event.preventDefault();
+    isDragging = false;
+    const dropped = Array.from(event.dataTransfer.files);
+    if (dropped.length > 0) {
+      files = [...files, ...dropped];
+    }
+  }
+
   function handleFileChangePaste(file) {
     if (file) {
       files = [...files, file];
@@ -1482,6 +1502,18 @@
                   </a>
                 </div>
 
+                {#if order.assignedUsers?.some(u => u.status === 'banned')}
+                  <div class="alert alert-danger py-1 px-2 mb-2 d-flex align-items-center gap-1" style="font-size:12px;">
+                    <i class="ti ti-alert-triangle"></i>
+                    <span>Some assigned users are <strong>banned</strong> — consider reassigning.</span>
+                  </div>
+                {/if}
+                {#if order.assignedUsers?.some(u => u.status === 'inactive')}
+                  <div class="alert alert-warning py-1 px-2 mb-2 d-flex align-items-center gap-1" style="font-size:12px;">
+                    <i class="ti ti-alert-circle"></i>
+                    <span>Some assigned users are <strong>inactive</strong>.</span>
+                  </div>
+                {/if}
                 {#each order.assignedUsers as assignedUser}
                   <div class="mb-3">
                     <div class="d-flex align-items-center">
@@ -1492,8 +1524,13 @@
                           class="img-fluid rounded-circle w-auto h-auto"
                         />
                       </span>
-                      <div>
+                      <div class="d-flex align-items-center gap-1 flex-wrap">
                         <p class="mb-0">{assignedUser?.name}</p>
+                        {#if assignedUser?.status === 'banned'}
+                          <span class="badge bg-danger" style="font-size:10px;">Banned</span>
+                        {:else if assignedUser?.status === 'inactive'}
+                          <span class="badge bg-secondary" style="font-size:10px;">Inactive</span>
+                        {/if}
                       </div>
                     </div>
                   </div>
@@ -2227,9 +2264,12 @@
                                     />
                                   </span>
                                   <p class="mb-0">
-                                    <span class="text-dark fw-medium"
-                                      >{chat?.user?.name}</span
-                                    >
+                                    <span class="text-dark fw-medium">{chat?.user?.name}</span>
+                                    {#if chat?.user?.status === 'banned'}
+                                      <span class="badge bg-danger ms-1" style="font-size:10px;">Banned</span>
+                                    {:else if chat?.user?.status === 'inactive'}
+                                      <span class="badge bg-secondary ms-1" style="font-size:10px;">Inactive</span>
+                                    {/if}
                                     ........ on
                                     {chat?.createdAt &&
                                       convertDate(chat?.createdAt, {
@@ -3109,18 +3149,29 @@
               <label class="form-label" for="attachment">
                 Attachment <span class="text-danger">*</span>
               </label>
+              <!-- svelte-ignore a11y-no-static-element-interactions -->
               <div
-                class="file-upload drag-file w-100 d-flex bg-light border shadow align-items-center justify-content-center flex-column p-3"
+                class="file-upload drag-file w-100 d-flex border shadow align-items-center justify-content-center flex-column p-3 transition-all"
+                class:bg-primary={isDragging}
+                class:bg-light={!isDragging}
+                style="border-style: dashed !important; border-color: {isDragging ? '#4f46e5' : '#dee2e6'} !important;"
+                on:dragover={handleDragOver}
+                on:dragleave={handleDragLeave}
+                on:drop={handleDrop}
               >
                 <span class="upload-img d-block mb-1">
-                  <i class="ti ti-folder-open text-primary fs-16"></i>
+                  <i class="ti ti-folder-open fs-16 {isDragging ? 'text-white' : 'text-primary'}"></i>
                 </span>
-                <p class="mb-0 fs-14 text-dark">
-                  Drop your files here or
-                  <a
-                    href="#browse"
-                    class="text-decoration-underline text-primary">browse</a
-                  >
+                <p class="mb-0 fs-14 {isDragging ? 'text-white' : 'text-dark'}">
+                  {#if isDragging}
+                    Release to upload files
+                  {:else}
+                    Drop your files here or
+                    <a
+                      href="#browse"
+                      class="text-decoration-underline text-primary">browse</a
+                    >
+                  {/if}
                 </p>
 
                 <input
@@ -3131,7 +3182,7 @@
                   multiple
                   on:change={handleFileChange}
                 />
-                <p class="fs-13 mb-0">Maximum limit: 10 Files</p>
+                <p class="fs-13 mb-0 {isDragging ? 'text-white' : ''}">Maximum limit: 10 Files</p>
               </div>
 
               {#if formErrors.file}
@@ -3375,23 +3426,27 @@
           <div class="access-wrap">
             {#if users.length}
               <ul>
-                {#each users as user}
+                {#each users.filter(u => u.status !== 'banned') as user}
                   <li class="select-people-checkbox">
-                    <label class="checkboxs d-flex align-items-center mb-3">
+                    <label class="checkboxs d-flex align-items-center mb-3" class:opacity-50={user.status === 'inactive'}>
                       <input
                         type="checkbox"
                         class="form-check-input me-2"
                         bind:group={seletedUsers}
                         value={user.id}
+                        disabled={user.status === 'inactive'}
                       />
                       <span class="checkmarks"></span>
-                      <span class="people-profile">
+                      <span class="people-profile d-flex align-items-center gap-1">
                         <img
                           src="/assets/img/profiles/user.png"
                           alt="img"
                           class="avatar avatar-sm rounded-circle"
                         />
                         <a href="#user">{user?.name}</a>
+                        {#if user.status === 'inactive'}
+                          <span class="badge bg-secondary" style="font-size:10px;">Inactive</span>
+                        {/if}
                       </span>
                     </label>
                   </li>

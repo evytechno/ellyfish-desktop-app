@@ -59,7 +59,13 @@
       key: "name",
       label: "Name",
       render: (val, row) => {
-        return `<a href="/admin/user/${row.id}" class="flex items-center gap-1 text-danger capitalize">${row.name}</a>`;
+        const badge =
+          row.status === "banned"
+            ? `<span class="badge bg-danger ms-1" style="font-size:10px;">Banned</span>`
+            : row.status === "inactive"
+            ? `<span class="badge bg-secondary ms-1" style="font-size:10px;">Inactive</span>`
+            : "";
+        return `<a href="/admin/user/${row.id}" class="flex items-center gap-1 text-danger capitalize">${row.name}</a>${badge}`;
       },
     },
     { key: "email", label: "Email" },
@@ -82,13 +88,13 @@
       label: "Status",
       render: (val, row) => {
         if (row.status.toLowerCase() === "active") {
-          return `<div class="flex items-center gap-1 text-success capitalize cursor-pointer updateStatus" data-id="${row.id}">${row.status}</div>`;
+          return `<div class="flex items-center gap-1 text-success capitalize cursor-pointer updateStatus" data-id="${row.id}"><i class="ti ti-circle-check me-1"></i>${row.status}</div>`;
         }
         if (row.status.toLowerCase() === "inactive") {
-          return `<div class="flex items-center gap-1 text-danger capitalize cursor-pointer updateStatus" data-id="${row.id}">${row.status}</div>`;
+          return `<div class="flex items-center gap-1 text-secondary capitalize cursor-pointer updateStatus" data-id="${row.id}"><i class="ti ti-circle-minus me-1"></i>${row.status}</div>`;
         }
         if (row.status.toLowerCase() === "banned") {
-          return `<div class="flex items-center gap-1 text-danger capitalize cursor-pointer updateStatus" data-id="${row.id}">${row.status}</div>`;
+          return `<div class="flex items-center gap-1 text-danger capitalize cursor-pointer updateStatus" data-id="${row.id}"><i class="ti ti-ban me-1"></i>${row.status}</div>`;
         }
       },
     },

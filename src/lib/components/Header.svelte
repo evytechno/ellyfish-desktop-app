@@ -139,7 +139,7 @@
         body.addClass("full-width").removeClass("mini-sidebar");
         $(".sidebar-overlay").addClass("opened");
         $(document).on("click", ".sidebar-close", () =>
-          $("body").removeClass("full-width")
+          $("body").removeClass("full-width"),
         );
       } else {
         body.removeClass("full-width");
@@ -148,7 +148,7 @@
       if (isHidden) {
         body.toggleClass("hidden-layout").removeClass("mini-sidebar");
         $(document).on("click", ".sidebar-close", () =>
-          $("body").removeClass("full-width")
+          $("body").removeClass("full-width"),
         );
       }
 
@@ -219,8 +219,10 @@
     const warnM = endM >= 10 ? endM - 10 : endM + 50;
 
     // Convert to UTC for comparison (IST = UTC+5:30)
-    const warnTime = new Date(Date.UTC(year, month, date, warnH - 5, warnM - 30));
-    const endTime  = new Date(Date.UTC(year, month, date, endH  - 5, endM  - 30));
+    const warnTime = new Date(
+      Date.UTC(year, month, date, warnH - 5, warnM - 30),
+    );
+    const endTime = new Date(Date.UTC(year, month, date, endH - 5, endM - 30));
 
     if (now >= warnTime && now < endTime) {
       const remainingMillis = endTime.getTime() - now.getTime();
@@ -283,7 +285,7 @@
       } else {
         const data = await authApiFetch(
           `${API_ROUTES.ORDER}/all-search-for-inquiry?${query.toString()}`,
-          { method: "GET" }
+          { method: "GET" },
         );
 
         totalItems = data.total;
@@ -392,7 +394,6 @@
 
   let reactive = 0;
   $: [setting], reactive++;
-
 </script>
 
 <!-- Header -->
@@ -468,7 +469,6 @@
         <div class="text-primary pl-2">
           {timerText}
         </div>
-
       </div>
     </div>
 
@@ -505,6 +505,25 @@
           <i class="ti ti-moon fs-16"></i>
         </button>
       </div> -->
+      {#if currentUser?.role === "master"}
+        {#key reactive}
+          <button
+            on:click={() => setOnlineStatus()}
+            class="header-item d-none d-sm-flex"
+            title="Status"
+          >
+            <div class="dropdown me-2">
+              <div class="btn topbar-link">
+                {#if setting?.onlineStatus}
+                  <i class="ti ti-circle-filled text-success"></i>
+                {:else}
+                  <i class="ti ti-circle text-secondary"></i>
+                {/if}
+              </div>
+            </div>
+          </button>
+        {/key}
+      {/if}
 
       <!-- Notification Dropdown -->
       <Notification />
@@ -629,5 +648,4 @@
       display: none;
     }
   }
-
 </style>

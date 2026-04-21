@@ -81,7 +81,8 @@
         "decorations": true,
         "visible": true,
         "focus": true,
-        "additionalBrowserArgs": "--allow-running-insecure-content --disable-web-security --allow-file-access-from-files --unsafely-treat-insecure-origin-as-secure=http://168.231.74.17:3000"
+        "additionalBrowserArgs": "--allow-running-insecure-content --disable-web-security --allow-file-access-from-files --unsafely-treat-insecure-origin-as-secure=http://168.231.74.17:3000",
+        "fileDropEnabled": false
       }
     ],
     "systemTray": {

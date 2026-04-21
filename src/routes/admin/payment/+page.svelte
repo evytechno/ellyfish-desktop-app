@@ -95,6 +95,26 @@
     }
   }
 
+  let isDragging = false;
+
+  function handleDragOver(event) {
+    event.preventDefault();
+    isDragging = true;
+  }
+
+  function handleDragLeave() {
+    isDragging = false;
+  }
+
+  function handleDrop(event) {
+    event.preventDefault();
+    isDragging = false;
+    const dropped = Array.from(event.dataTransfer.files);
+    if (dropped.length > 0) {
+      files = dropped;
+    }
+  }
+
   function closeOffcanvas() {
     const $ = jQuery;
     $("#offcanvas_add").removeClass("show");
@@ -497,7 +517,16 @@
           {
             key: "user",
             label: "User",
-            render: (val, row) => (row?.user ? row.user.name : "-"),
+            render: (val, row) => {
+              if (!row?.user) return "-";
+              const badge =
+                row.user.status === "banned"
+                  ? `<span class="badge bg-danger ms-1" style="font-size:10px;">Banned</span>`
+                  : row.user.status === "inactive"
+                  ? `<span class="badge bg-secondary ms-1" style="font-size:10px;">Inactive</span>`
+                  : "";
+              return `${row.user.name}${badge}`;
+            },
           },
         ]
       : []),
@@ -802,8 +831,10 @@
             <div class="flex items-center gap-2 flex-wrap">
               <select bind:value={userId} class="form-select">
                 <option value={null}>Select User</option>
-                {#each users as user}
-                  <option value={user?.id}>{user?.name}</option>
+                {#each users.filter(u => u.status !== 'banned') as user}
+                  <option value={user?.id}>
+                    {user?.name}{user?.status === 'inactive' ? ' (Inactive)' : ''}
+                  </option>
                 {/each}
               </select>
             </div>
@@ -1097,11 +1128,18 @@
           <label class="form-label" for="attachment">
             Images <span class="text-danger">*</span>
           </label>
+          <!-- svelte-ignore a11y-no-static-element-interactions -->
           <div
-            class="file-upload drag-file w-100 d-flex bg-light border shadow align-items-center justify-content-center flex-column p-3"
+            class="file-upload drag-file w-100 d-flex border shadow align-items-center justify-content-center flex-column p-3 transition-all"
+            class:bg-primary={isDragging}
+            class:bg-light={!isDragging}
+            style="border-style: dashed !important; border-color: {isDragging ? '#4f46e5' : '#dee2e6'} !important;"
+            on:dragover={handleDragOver}
+            on:dragleave={handleDragLeave}
+            on:drop={handleDrop}
           >
             <span class="upload-img d-block mb-1">
-              <i class="ti ti-folder-open text-primary fs-16"></i>
+              <i class="ti ti-folder-open fs-16 {isDragging ? 'text-white' : 'text-primary'}"></i>
             </span>
 
             {#if files && files.length > 0}
@@ -1114,14 +1152,13 @@
                 {/each}
               </ul>
             {:else}
-              <p class="mb-0 fs-14 text-dark">
-                Drop your files here or
-                <a
-                  href="#browse"
-                  class="text-decoration-underline text-primary"
-                >
-                  browse
-                </a>
+              <p class="mb-0 fs-14 {isDragging ? 'text-white' : 'text-dark'}">
+                {#if isDragging}
+                  Release to upload files
+                {:else}
+                  Drop your files here or
+                  <a href="#browse" class="text-decoration-underline text-primary">browse</a>
+                {/if}
               </p>
             {/if}
 
@@ -1133,7 +1170,7 @@
               multiple
               on:change={handleFilesChange}
             />
-            <p class="fs-13 mb-0">Maximum size: 50 MB each</p>
+            <p class="fs-13 mb-0 {isDragging ? 'text-white' : ''}">Maximum size: 50 MB each</p>
           </div>
           <div class="row mt-4">
             {#if images && images?.length}
