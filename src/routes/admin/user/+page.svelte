@@ -65,7 +65,7 @@
             : row.status === "inactive"
             ? `<span class="badge bg-secondary ms-1" style="font-size:10px;">Inactive</span>`
             : "";
-        return `<a href="/admin/user/${row.id}" class="flex items-center gap-1 text-danger capitalize">${row.name}</a>${badge}`;
+        return `<a href="/admin/user/${row.id}" class="flex items-center gap-1 text-danger capitalize">${row.name}</a>`;
       },
     },
     { key: "email", label: "Email" },
