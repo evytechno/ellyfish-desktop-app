@@ -741,9 +741,18 @@
       searchTerm = value;
     }, 300);
   }
+  let debounce1Timeout;
+  function handleCategoryChange(value) {
+    clearTimeout(debounce1Timeout);
+    debounce1Timeout = setTimeout(() => {
+      filterCategory = value;
+    }, 300);
+  }
 
   $: [
     searchTerm,
+    filterStatus,
+    filterCategory,
     selectedFilter,
     customStartDate,
     customEndDate,
@@ -827,6 +836,20 @@
     "Deal Won": "bg-green",
     "Deal Lost": "bg-red",
   };
+  let allStatuses = [
+    "New Lead",
+    "Contacted",
+    "Follow Up",
+    "Qualified",
+    "Unqualified",
+    "Needs Assessment",
+    "Quotation Sent",
+    "Negotiation In Progress",
+    "Deal Won",
+    "Deal Lost",
+    "Dispatched",
+    "Completed",
+  ];
 
   $: columns = [
     {
@@ -1120,6 +1143,31 @@
                   <option value={company?.id}>{company?.name}</option>
                 {/each}
               </select>
+            </div>
+          {/if}
+          {#if currentUser?.role != "user"}
+            <div class="flex items-center gap-2 flex-wrap">
+              <select bind:value={filterStatus} class="form-select">
+                <option value={null}>Select Status</option>
+                {#each allStatuses as status}
+                  <option value={status}>{status}</option>
+                {/each}
+              </select>
+            </div>
+          {/if}
+          {#if currentUser?.role != "user"}
+            <div class="flex items-center gap-2 flex-wrap">
+              <div>
+                <div class=" position-relative">
+                  <input
+                    type="text"
+                    value={filterCategory}
+                    on:input={(e) => handleCategoryChange(e.target.value)}
+                    class="form-control"
+                    placeholder="Category.."
+                  />
+                </div>
+              </div>
             </div>
           {/if}
         </div>

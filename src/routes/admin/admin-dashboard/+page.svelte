@@ -601,8 +601,8 @@
                         {#if grandTotal > 0}
                           <div class="mt-1">
                             <span
-                              class="badge bg-primary rounded-pill"
-                              style="font-size:10px;cursor:pointer;"
+                              class="badge bg-primary rounded-pill dash-link"
+                              style="font-size:10px;"
                               title="View all orders"
                               on:click={() => navigateToOrders()}
                             >{grandTotal}</span>
@@ -617,8 +617,8 @@
                           {#if colTotal > 0}
                             <div class="mt-1">
                               <span
-                                class="badge rounded-pill fw-semibold {cfg.cls}"
-                                style="font-size:10px;cursor:pointer;"
+                                class="badge rounded-pill fw-semibold dash-link {cfg.cls}"
+                                style="font-size:10px;"
                                 title="View all {status} orders"
                                 on:click={() => navigateToOrders({ status })}
                               >{colTotal}</span>
@@ -639,15 +639,14 @@
                           <tr>
                             <td class="text-left font-medium" style="position:sticky;left:0;z-index:1;background:#fff;">
                               <span
-                                class="text-primary fw-semibold"
-                                style="cursor:pointer;"
+                                class="text-primary fw-semibold dash-link"
                                 title="View {user?.userName}'s orders"
                                 on:click={() => navigateToOrders({ byUserId: user.userId })}
                               >{user?.userName}</span>
                             </td>
                             <td class="font-bold text-black">
                               <span
-                                style="cursor:pointer;"
+                                class="dash-count"
                                 title="View all {user?.userName}'s orders"
                                 on:click={() => navigateToOrders({ byUserId: user.userId })}
                               >{uTotal}</span>
@@ -662,8 +661,7 @@
                               <td>
                                 {#if count > 0}
                                   <span
-                                    class="badge rounded-pill fw-semibold {cfg.cls}"
-                                    style="cursor:pointer;"
+                                    class="badge rounded-pill fw-semibold dash-link {cfg.cls}"
                                     title="View {user?.userName}'s {status} orders"
                                     on:click={() => navigateToOrders({ byUserId: user.userId, status })}
                                   >{count}</span>
@@ -682,7 +680,7 @@
                         </td>
                         <td>
                           <span
-                            style="cursor:pointer;"
+                            class="dash-count"
                             title="View all orders"
                             on:click={() => navigateToOrders()}
                           >{grandTotal}</span>
@@ -693,8 +691,7 @@
                           <td>
                             {#if colTotal > 0}
                               <span
-                                class="badge rounded-pill fw-bold {cfg.cls}"
-                                style="cursor:pointer;"
+                                class="badge rounded-pill fw-bold dash-link {cfg.cls}"
                                 title="View all {status} orders"
                                 on:click={() => navigateToOrders({ status })}
                               >{colTotal}</span>
@@ -743,8 +740,8 @@
                         {#if catGrandTotal > 0}
                           <div class="mt-1">
                             <span
-                              class="badge bg-primary rounded-pill"
-                              style="font-size:10px;cursor:pointer;"
+                              class="badge bg-primary rounded-pill dash-link"
+                              style="font-size:10px;"
                               title="View all orders"
                               on:click={() => navigateToOrders()}
                             >{catGrandTotal}</span>
@@ -759,8 +756,8 @@
                           {#if colTotal > 0}
                             <div class="mt-1">
                               <span
-                                class="badge rounded-pill fw-semibold {cfg.cls}"
-                                style="font-size:10px;cursor:pointer;"
+                                class="badge rounded-pill fw-semibold dash-link {cfg.cls}"
+                                style="font-size:10px;"
                                 title="View all {status} orders"
                                 on:click={() => navigateToOrders({ status })}
                               >{colTotal}</span>
@@ -779,15 +776,14 @@
                         <tr>
                           <td class="text-left font-medium" style="position:sticky;left:0;z-index:1;background:#fff;">
                             <span
-                              class="text-primary fw-semibold"
-                              style="cursor:pointer;"
+                              class="text-primary fw-semibold dash-link"
                               title="View {cat.category} orders"
                               on:click={() => navigateToOrders({ category: cat.category })}
                             >{cat.category}</span>
                           </td>
                           <td class="font-bold text-black">
                             <span
-                              style="cursor:pointer;"
+                              class="dash-count"
                               title="View all {cat.category} orders"
                               on:click={() => navigateToOrders({ category: cat.category })}
                             >{cat.total}</span>
@@ -802,8 +798,7 @@
                             <td>
                               {#if count > 0}
                                 <span
-                                  class="badge rounded-pill fw-semibold {cfg.cls}"
-                                  style="cursor:pointer;"
+                                  class="badge rounded-pill fw-semibold dash-link {cfg.cls}"
                                   title="View {cat.category} {status} orders"
                                   on:click={() => navigateToOrders({ category: cat.category, status })}
                                 >{count}</span>
@@ -821,7 +816,7 @@
                         </td>
                         <td>
                           <span
-                            style="cursor:pointer;"
+                            class="dash-count"
                             title="View all orders"
                             on:click={() => navigateToOrders()}
                           >{catGrandTotal}</span>
@@ -832,8 +827,7 @@
                           <td>
                             {#if colTotal > 0}
                               <span
-                                class="badge rounded-pill fw-bold {cfg.cls}"
-                                style="cursor:pointer;"
+                                class="badge rounded-pill fw-bold dash-link {cfg.cls}"
                                 title="View all {status} orders"
                                 on:click={() => navigateToOrders({ status })}
                               >{colTotal}</span>
@@ -1042,3 +1036,43 @@
   </div>
   <!-- End Content -->
 </div>
+
+<style>
+  :global(.dash-link) {
+    background-color: transparent;
+    cursor: pointer;
+    display: inline-block;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease, opacity 0.15s ease;
+  }
+  :global(.dash-link:hover) {
+    background-color: transparent;
+    transform: translateY(-1px) scale(1.06);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15);
+    filter: brightness(1.06);
+    opacity: 0.92;
+  }
+  :global(.dash-link:active) {
+    transform: translateY(0) scale(0.97);
+    box-shadow: none;
+    filter: brightness(0.95);
+  }
+  :global(span.text-primary.dash-link:hover) {
+    text-decoration: none;
+    text-underline-offset: 2px;
+  }
+  :global(.dash-count) {
+    cursor: pointer;
+    display: inline-block;
+    transition: color 0.15s ease, transform 0.15s ease;
+    font-weight: 600;
+  }
+  :global(.dash-count:hover) {
+    color: #0d6efd !important;
+    transform: scale(1.1);
+    text-decoration: none;
+    text-underline-offset: 2px;
+  }
+  :global(.dash-count:active) {
+    transform: scale(0.95);
+  }
+</style>
