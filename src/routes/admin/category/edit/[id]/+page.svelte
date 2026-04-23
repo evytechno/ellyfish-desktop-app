@@ -9,16 +9,14 @@
   import Loader from "$lib/components/Loader.svelte";
   import { checkAuth } from "$lib/utils/auth";
   let loadingData = true;
-  import { ATTACHMENT_BASE_URL } from "$lib/constants/constants";
 
-  // Form state
   let name = "";
   let description = "";
+  let parentId = null;
+  let parentCategories = [];
 
   let loading = false;
   let errorMessage = "";
-
-  // Field-specific error messages
   let formErrors = {};
 
   let categoryId;
@@ -41,15 +39,19 @@
       return;
     }
     try {
-      const data = await authApiFetch(`${API_ROUTES.CATEGORY}/${categoryId}`);
+      const [categoryData, allData] = await Promise.all([
+        authApiFetch(`${API_ROUTES.CATEGORY}/${categoryId}`),
+        authApiFetch(API_ROUTES.CATEGORY + "/all"),
+      ]);
 
-      name = data.name;
-      description = data.description;
+      name = categoryData.name;
+      description = categoryData.description || "";
+      parentId = categoryData.parentId ?? null;
+      // Exclude the current category from parent options to prevent self-reference
+      parentCategories = allData.filter((c) => c.id !== Number(categoryId));
     } catch (error) {
       errorMessage = "Failed to load category data.";
       console.error("Fetch error:", error);
-      loading = false;
-      const validationErrors = errorHandle(error);
     } finally {
       loading = false;
       setTimeout(() => {
@@ -64,19 +66,21 @@
     loading = true;
     formErrors = {};
 
-    const categoryPayload = {};
-    categoryPayload.name = name;
-    categoryPayload.description = description;
+    const categoryPayload = {
+      name,
+      description: description || undefined,
+      parentId: parentId ? Number(parentId) : null,
+    };
 
     try {
       const data = await authApiFetch(`${API_ROUTES.CATEGORY}/${categoryId}`, {
         method: "PUT",
-        data: categoryPayload, // Send FormData
+        data: categoryPayload,
       });
 
-      // Reset Form
       name = "";
       description = "";
+      parentId = null;
       formErrors = {};
 
       Swal.fire("Success!", data.message, "success");
@@ -128,7 +132,7 @@
         <form on:submit={handleSubmit} class="needs-validation" novalidate>
           <div class="grid grid-cols-3 gap-4">
             <div class="col-span-1">
-              <label class="form-label" for="name">Name</label>
+              <label class="form-label" for="name">Name <span class="text-danger">*</span></label>
               <input
                 class="form-control"
                 class:is-invalid={formErrors.name}
@@ -143,6 +147,31 @@
                   <li>{formErrors.name[0]}</li>
                 </ul>
               {/if}
+            </div>
+
+            <div class="col-span-1">
+              <label class="form-label" for="parentId">Parent Category</label>
+              <select
+                class="form-control"
+                id="parentId"
+                bind:value={parentId}
+              >
+                <option value={null}>— None (Top Level) —</option>
+                {#each parentCategories as cat}
+                  <option value={cat.id}>{cat.name}</option>
+                {/each}
+              </select>
+            </div>
+
+            <div class="col-span-1">
+              <label class="form-label" for="description">Description</label>
+              <input
+                class="form-control"
+                type="text"
+                bind:value={description}
+                placeholder="Description (optional)"
+                id="description"
+              />
             </div>
           </div>
 

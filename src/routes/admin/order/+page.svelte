@@ -61,6 +61,8 @@
 
   let userId = null;
   let companyId = null;
+  let filterStatus = null;
+  let filterCategory = null;
   let searchTerm = "";
   let currentPage = 1;
   let rowsPerPage = 10;
@@ -138,6 +140,8 @@
 
     userId = filterState.userId || null;
     companyId = filterState.companyId || null;
+    filterStatus = filterState.filterStatus || null;
+    filterCategory = filterState.filterCategory || null;
     searchTerm = filterState.searchTerm || "";
     selectedFilter = filterState.selectedFilter || "last7days";
     customStartDate = filterState.customStartDate || null;
@@ -413,7 +417,10 @@
         .map((user) => `${user.name} (${user.email})`)
         .join(", ");
       const orderClients = (order?.orderClients || [])
-        .map((user) => `${user.name} (${user.email}, ${user.mobile}, ${user.whatsapp})`)
+        .map(
+          (user) =>
+            `${user.name} (${user.email}, ${user.mobile}, ${user.whatsapp})`,
+        )
         .join(", ");
 
       function formatDate(date) {
@@ -560,6 +567,13 @@
       startDateFilter.setHours(0, 0, 0, 0);
       endDateFilter.setHours(23, 59, 59, 999);
       searchString = "Today";
+    } else if (selectedFilter === "yesterday") {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      startDateFilter = yesterday;
+      startDateFilter.setHours(0, 0, 0, 0);
+      endDateFilter.setHours(23, 59, 59, 999);
+      searchString = "Yesterday";
     } else if (
       selectedFilter === "custom" &&
       customStartDate &&
@@ -582,6 +596,12 @@
     if (companyId) {
       query.append("byCompanyId", companyId);
     }
+    if (filterStatus) {
+      query.append("status", filterStatus);
+    }
+    if (filterCategory) {
+      query.append("category", filterCategory);
+    }
     if (trashBin) {
       query.append("withDeleted", trashBin);
     }
@@ -589,6 +609,8 @@
     updateFilterStore({
       userId,
       companyId,
+      filterStatus,
+      filterCategory,
       searchTerm,
       selectedFilter,
       customStartDate,
@@ -679,7 +701,13 @@
   async function getAllCategories() {
     if (!refresh) {
       const cached = get(categoriesAllStore);
-      if (cached && cached.length > 0) {
+      // validate cached format is grouped (array of objects with label)
+      if (
+        cached &&
+        cached.length > 0 &&
+        typeof cached[0] === "object" &&
+        cached[0].label
+      ) {
         categories = cached;
         loadingData = false;
         return;
@@ -688,7 +716,14 @@
     loadingData = true;
     try {
       const data = await authApiFetch(API_ROUTES.CATEGORY + "/all");
-      categories = data.map((item) => item.name);
+      // data = [{id, name, children:[{id,name}]}] — root categories with children
+      categories = data.map((parent) => ({
+        label: parent.name,
+        options:
+          parent.children && parent.children.length > 0
+            ? parent.children.map((c) => c.name)
+            : [parent.name],
+      }));
       categoriesAllStore.set(categories);
     } catch (err) {
       errorMessage = "Failed to load category data.";
@@ -1044,6 +1079,7 @@
             <select bind:value={selectedFilter} class="form-select">
               <option value="all">All Orders</option>
               <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
               <option value="last7days">Last 7 Days</option>
               <option value="last30days">Last 30 Days</option>
               <option value="custom">Custom Range</option>
@@ -1207,13 +1243,16 @@
         </div>
         <div>
           <label class="form-label" for="category">Category</label>
-          <TypeableSelect
-            id="category"
-            options={categories}
-            value={category != "" ? category : null}
-            placeholder="Select Category"
-            on:change={(e) => (category = e.detail)}
-          />
+          {#key categories.length}
+            <TypeableSelect
+              id="category"
+              options={categories}
+              grouped={true}
+              value={category != "" ? category : null}
+              placeholder="Select Category"
+              on:change={(e) => (category = e.detail)}
+            />
+          {/key}
           <!-- <input
             type="text"
             name="category"

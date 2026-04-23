@@ -11,6 +11,8 @@
   import OrdersUsersOverTimeLineChart from "$lib/components/OrdersUsersOverTimeLineChart.svelte";
   import { errorHandle } from "$lib/utils/errorHandle";
   import { usersAllStore } from "$lib/stores/dataStores";
+  import { orderFilterStore } from "$lib/stores/filterStore";
+  import { goto } from "$app/navigation";
 
   import html2canvas from "html2canvas";
   import pdfMake from "pdfmake/build/pdfmake";
@@ -108,6 +110,13 @@
         startDateFilter.setHours(0, 0, 0, 0);
         endDateFilter.setHours(23, 59, 59, 999);
         searchString = "Today";
+      } else if (selectedFilter === "yesterday") {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        startDateFilter = yesterday;
+        startDateFilter.setHours(0, 0, 0, 0);
+        endDateFilter.setHours(23, 59, 59, 999);
+        searchString = "Yesterday";
       } else if (
         selectedFilter === "custom" &&
         customStartDate &&
@@ -139,6 +148,7 @@
       loading = false;
 
       dashboardData = { ...data };
+      fetchCategoryStats();
     } catch (error) {
       console.error("Fetch error:", error);
       loading = false;
@@ -339,6 +349,87 @@
     "Dispatched",
     "Completed",
   ];
+
+  const statusConfig = {
+    "New Lead":                { abbr: "New Lead",    cls: "bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25" },
+    "Contacted":               { abbr: "Contacted",   cls: "bg-info bg-opacity-10 text-info border border-info border-opacity-25" },
+    "Follow Up":               { abbr: "Follow Up",   cls: "bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25" },
+    "Qualified":               { abbr: "Qualified",   cls: "bg-success bg-opacity-10 text-success border border-success border-opacity-25" },
+    "Unqualified":             { abbr: "Unqualified", cls: "bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25" },
+    "Needs Assessment":        { abbr: "Needs Asmt",  cls: "bg-warning bg-opacity-10 text-warning border border-warning border-opacity-25" },
+    "Quotation Sent":          { abbr: "Quot. Sent",  cls: "bg-warning bg-opacity-10 text-warning border border-warning border-opacity-25" },
+    "Negotiation In Progress": { abbr: "Negotiation", cls: "bg-secondary bg-opacity-10 text-dark border border-secondary border-opacity-25" },
+    "Deal Won":                { abbr: "Deal Won",    cls: "bg-success bg-opacity-10 text-success border border-success border-opacity-25" },
+    "Deal Lost":               { abbr: "Deal Lost",   cls: "bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25" },
+    "Dispatched":              { abbr: "Dispatched",  cls: "bg-info bg-opacity-10 text-info border border-info border-opacity-25" },
+    "Completed":               { abbr: "Completed",   cls: "bg-success bg-opacity-10 text-success border border-success border-opacity-25" },
+  };
+
+  function getUserTotal(user) {
+    return statuses.reduce((t, s) => {
+      const found = user.statusBreakdown.find((sb) => sb.status === s);
+      return t + (found ? found.count : 0);
+    }, 0);
+  }
+
+  function getColumnTotal(status) {
+    return (dashboardData?.userStats ?? []).reduce((sum, user) => {
+      const found = user.statusBreakdown.find((sb) => sb.status === status);
+      return sum + (found ? found.count : 0);
+    }, 0);
+  }
+
+  $: grandTotal =
+    dashboardData?.userStats?.reduce((sum, user) => sum + getUserTotal(user), 0) ?? 0;
+
+  function navigateToOrders({ byUserId = null, status = null, category = null } = {}) {
+    orderFilterStore.update((s) => ({
+      ...s,
+      userId: byUserId,
+      filterStatus: status,
+      filterCategory: category,
+      selectedFilter,
+      customStartDate,
+      customEndDate,
+    }));
+    goto("/admin/order");
+  }
+
+  let categoryStats = [];
+
+  async function fetchCategoryStats() {
+    try {
+      const query = new URLSearchParams();
+      if (selectedFilter === "last7days") {
+        const d = new Date(); d.setDate(d.getDate() - 7);
+        query.append("startDate", d.toLocaleDateString("en-CA"));
+        query.append("endDate", new Date().toLocaleDateString("en-CA"));
+      } else if (selectedFilter === "last30days") {
+        const d = new Date(); d.setDate(d.getDate() - 30);
+        query.append("startDate", d.toLocaleDateString("en-CA"));
+        query.append("endDate", new Date().toLocaleDateString("en-CA"));
+      } else if (selectedFilter === "today") {
+        query.append("startDate", new Date().toLocaleDateString("en-CA"));
+        query.append("endDate", new Date().toLocaleDateString("en-CA"));
+      } else if (selectedFilter === "custom" && customStartDate && customEndDate) {
+        query.append("startDate", customStartDate);
+        query.append("endDate", customEndDate);
+      }
+      const data = await authApiFetch(`${API_ROUTES.ORDER}/category-stats?${query.toString()}`, { method: "GET" });
+      categoryStats = Array.isArray(data) ? data : [];
+    } catch (e) {
+      categoryStats = [];
+    }
+  }
+
+  $: catGrandTotal = categoryStats.reduce((s, c) => s + c.total, 0);
+
+  function getCatColumnTotal(status) {
+    return categoryStats.reduce((sum, c) => {
+      const f = c.statusBreakdown.find((s) => s.status === status);
+      return sum + (f ? f.count : 0);
+    }, 0);
+  }
 </script>
 
 {#if loadingData}
@@ -463,6 +554,7 @@
                 <select bind:value={selectedFilter} class="form-select">
                   <option value="all">All</option>
                   <option value="today">Today</option>
+                  <option value="yesterday">Yesterday</option>
                   <option value="last7days">Last 7 Days</option>
                   <option value="last30days">Last 30 Days</option>
                   <option value="custom">Custom Range</option>
@@ -501,38 +593,38 @@
                 <table class="table dataTable table-nowrap no-footer">
                   <thead class="table-light text-center">
                     <tr>
-                      <th class="text-left align-middle"><div>Name</div></th>
+                      <th class="text-left align-middle" style="position:sticky;left:0;z-index:2;background:#f8f9fa;">
+                        Name
+                      </th>
                       <th class="align-middle text-center">
                         Total
-                        {#if dashboardData?.userStats?.length}
-                          <div class="text-[10px] text-primary">
-                            [All Total - {dashboardData.userStats.reduce(
-                              (sum, user) =>
-                                sum +
-                                user.statusBreakdown.reduce(
-                                  (s, sb) => s + sb.count,
-                                  0,
-                                ),
-                              0,
-                            )}]
+                        {#if grandTotal > 0}
+                          <div class="mt-1">
+                            <span
+                              class="badge bg-primary rounded-pill"
+                              style="font-size:10px;cursor:pointer;"
+                              title="View all orders"
+                              on:click={() => navigateToOrders()}
+                            >{grandTotal}</span>
                           </div>
                         {/if}
                       </th>
                       {#each statuses as status}
-                        <th>
-                          {status}
-                          {#if dashboardData?.userStats?.length}
-                            <div class="text-[10px] text-primary">
-                              [Total - {dashboardData.userStats.reduce(
-                                (sum, user) => {
-                                  const found = user.statusBreakdown.find(
-                                    (s) => s.status === status,
-                                  );
-                                  return sum + (found ? found.count : 0);
-                                },
-                                0,
-                              )}]
+                        {@const cfg = statusConfig[status]}
+                        {@const colTotal = getColumnTotal(status)}
+                        <th class="align-middle text-center" title={status}>
+                          <div>{cfg.abbr}</div>
+                          {#if colTotal > 0}
+                            <div class="mt-1">
+                              <span
+                                class="badge rounded-pill fw-semibold {cfg.cls}"
+                                style="font-size:10px;cursor:pointer;"
+                                title="View all {status} orders"
+                                on:click={() => navigateToOrders({ status })}
+                              >{colTotal}</span>
                             </div>
+                          {:else}
+                            <div class="text-muted mt-1" style="font-size:10px;">—</div>
                           {/if}
                         </th>
                       {/each}
@@ -542,57 +634,79 @@
                     {#if dashboardData?.userStats?.length}
                       {#each dashboardData?.userStats as user}
                         {#if userId === null || userId === user.userId}
+                          {@const uTotal = getUserTotal(user)}
+                          {@const barPct = grandTotal > 0 ? Math.round((uTotal / grandTotal) * 100) : 0}
                           <tr>
-                            <td class="text-left font-medium text-black"
-                              >{user?.userName}</td
-                            >
+                            <td class="text-left font-medium" style="position:sticky;left:0;z-index:1;background:#fff;">
+                              <span
+                                class="text-primary fw-semibold"
+                                style="cursor:pointer;"
+                                title="View {user?.userName}'s orders"
+                                on:click={() => navigateToOrders({ byUserId: user.userId })}
+                              >{user?.userName}</span>
+                            </td>
                             <td class="font-bold text-black">
-                              {statuses.reduce((total, status) => {
-                                const found = user?.statusBreakdown.find(
-                                  (s) => s.status === status,
-                                );
-                                return total + (found ? found.count : 0);
-                              }, 0)}
+                              <span
+                                style="cursor:pointer;"
+                                title="View all {user?.userName}'s orders"
+                                on:click={() => navigateToOrders({ byUserId: user.userId })}
+                              >{uTotal}</span>
+                              <div class="progress mt-1" style="height:3px;">
+                                <div class="progress-bar bg-primary" role="progressbar" style="width:{barPct}%;"></div>
+                              </div>
                             </td>
                             {#each statuses as status}
+                              {@const cfg = statusConfig[status]}
+                              {@const found = user?.statusBreakdown.find((s) => s.status === status)}
+                              {@const count = found ? found.count : 0}
                               <td>
-                                {#if user?.statusBreakdown.find((s) => s.status === status)}
-                                  {#if status === "Deal Won"}
-                                    <span
-                                      class="font-bold text-success border-1 border-green-500 px-1 py-0.5 rounded-full"
-                                    >
-                                      {user.statusBreakdown.find(
-                                        (s) => s.status === status,
-                                      ).count}
-                                    </span>
-                                  {:else if status === "Qualified"}
-                                    <span
-                                      class="font-bold text-success border-1 border-green-500 px-1 py-0.5 rounded-full"
-                                    >
-                                      {user.statusBreakdown.find(
-                                        (s) => s.status === status,
-                                      ).count}
-                                    </span>
-                                  {:else}
-                                    <span class="font-bold text-primary">
-                                      {user.statusBreakdown.find(
-                                        (s) => s.status === status,
-                                      ).count}
-                                    </span>
-                                  {/if}
+                                {#if count > 0}
+                                  <span
+                                    class="badge rounded-pill fw-semibold {cfg.cls}"
+                                    style="cursor:pointer;"
+                                    title="View {user?.userName}'s {status} orders"
+                                    on:click={() => navigateToOrders({ byUserId: user.userId, status })}
+                                  >{count}</span>
                                 {:else}
-                                  0
+                                  <span class="text-muted">—</span>
                                 {/if}
                               </td>
                             {/each}
                           </tr>
                         {/if}
                       {/each}
+                      <!-- Grand total row -->
+                      <tr class="table-light fw-bold">
+                        <td class="text-left" style="position:sticky;left:0;z-index:1;background:#f8f9fa;">
+                          Grand Total
+                        </td>
+                        <td>
+                          <span
+                            style="cursor:pointer;"
+                            title="View all orders"
+                            on:click={() => navigateToOrders()}
+                          >{grandTotal}</span>
+                        </td>
+                        {#each statuses as status}
+                          {@const cfg = statusConfig[status]}
+                          {@const colTotal = getColumnTotal(status)}
+                          <td>
+                            {#if colTotal > 0}
+                              <span
+                                class="badge rounded-pill fw-bold {cfg.cls}"
+                                style="cursor:pointer;"
+                                title="View all {status} orders"
+                                on:click={() => navigateToOrders({ status })}
+                              >{colTotal}</span>
+                            {:else}
+                              <span class="text-muted">—</span>
+                            {/if}
+                          </td>
+                        {/each}
+                      </tr>
                     {:else}
                       <tr>
-                        <td colspan={statuses.length + 2} class="text-center"
-                          >No Records Found.
-                        </td>
+                        <td colspan={statuses.length + 2} class="text-center">No Records Found.</td>
                       </tr>
                     {/if}
                   </tbody>
@@ -604,6 +718,145 @@
         </div>
         <!-- end card -->
       </div>
+      <!-- Category Inquiry Count -->
+      <div class="col-span-2">
+        <div class="card flex-fill">
+          <div class="card-header flex items-center justify-between flex-wrap row-gap-3">
+            <h6 class="mb-0 py-2">
+              Category Inquiry Count
+              <span class="text-xs font-normal">
+                {searchString ? `(${searchString})` : ""}
+              </span>
+            </h6>
+          </div>
+          <div class="card-body">
+            <div class="table-responsive custom-table">
+              <div class="dataTables_wrapper dt-bootstrap5 no-footer">
+                <table class="table dataTable table-nowrap no-footer">
+                  <thead class="table-light text-center">
+                    <tr>
+                      <th class="text-left align-middle" style="position:sticky;left:0;z-index:2;background:#f8f9fa;">
+                        Category
+                      </th>
+                      <th class="align-middle text-center">
+                        Total
+                        {#if catGrandTotal > 0}
+                          <div class="mt-1">
+                            <span
+                              class="badge bg-primary rounded-pill"
+                              style="font-size:10px;cursor:pointer;"
+                              title="View all orders"
+                              on:click={() => navigateToOrders()}
+                            >{catGrandTotal}</span>
+                          </div>
+                        {/if}
+                      </th>
+                      {#each statuses as status}
+                        {@const cfg = statusConfig[status]}
+                        {@const colTotal = getCatColumnTotal(status)}
+                        <th class="align-middle text-center" title={status}>
+                          <div>{cfg.abbr}</div>
+                          {#if colTotal > 0}
+                            <div class="mt-1">
+                              <span
+                                class="badge rounded-pill fw-semibold {cfg.cls}"
+                                style="font-size:10px;cursor:pointer;"
+                                title="View all {status} orders"
+                                on:click={() => navigateToOrders({ status })}
+                              >{colTotal}</span>
+                            </div>
+                          {:else}
+                            <div class="text-muted mt-1" style="font-size:10px;">—</div>
+                          {/if}
+                        </th>
+                      {/each}
+                    </tr>
+                  </thead>
+                  <tbody class="text-center">
+                    {#if categoryStats.length}
+                      {#each categoryStats as cat}
+                        {@const barPct = catGrandTotal > 0 ? Math.round((cat.total / catGrandTotal) * 100) : 0}
+                        <tr>
+                          <td class="text-left font-medium" style="position:sticky;left:0;z-index:1;background:#fff;">
+                            <span
+                              class="text-primary fw-semibold"
+                              style="cursor:pointer;"
+                              title="View {cat.category} orders"
+                              on:click={() => navigateToOrders({ category: cat.category })}
+                            >{cat.category}</span>
+                          </td>
+                          <td class="font-bold text-black">
+                            <span
+                              style="cursor:pointer;"
+                              title="View all {cat.category} orders"
+                              on:click={() => navigateToOrders({ category: cat.category })}
+                            >{cat.total}</span>
+                            <div class="progress mt-1" style="height:3px;">
+                              <div class="progress-bar bg-primary" role="progressbar" style="width:{barPct}%;"></div>
+                            </div>
+                          </td>
+                          {#each statuses as status}
+                            {@const cfg = statusConfig[status]}
+                            {@const found = cat.statusBreakdown.find((s) => s.status === status)}
+                            {@const count = found ? found.count : 0}
+                            <td>
+                              {#if count > 0}
+                                <span
+                                  class="badge rounded-pill fw-semibold {cfg.cls}"
+                                  style="cursor:pointer;"
+                                  title="View {cat.category} {status} orders"
+                                  on:click={() => navigateToOrders({ category: cat.category, status })}
+                                >{count}</span>
+                              {:else}
+                                <span class="text-muted">—</span>
+                              {/if}
+                            </td>
+                          {/each}
+                        </tr>
+                      {/each}
+                      <!-- Grand total row -->
+                      <tr class="table-light fw-bold">
+                        <td class="text-left" style="position:sticky;left:0;z-index:1;background:#f8f9fa;">
+                          Grand Total
+                        </td>
+                        <td>
+                          <span
+                            style="cursor:pointer;"
+                            title="View all orders"
+                            on:click={() => navigateToOrders()}
+                          >{catGrandTotal}</span>
+                        </td>
+                        {#each statuses as status}
+                          {@const cfg = statusConfig[status]}
+                          {@const colTotal = getCatColumnTotal(status)}
+                          <td>
+                            {#if colTotal > 0}
+                              <span
+                                class="badge rounded-pill fw-bold {cfg.cls}"
+                                style="cursor:pointer;"
+                                title="View all {status} orders"
+                                on:click={() => navigateToOrders({ status })}
+                              >{colTotal}</span>
+                            {:else}
+                              <span class="text-muted">—</span>
+                            {/if}
+                          </td>
+                        {/each}
+                      </tr>
+                    {:else}
+                      <tr>
+                        <td colspan={statuses.length + 2} class="text-center">No Records Found.</td>
+                      </tr>
+                    {/if}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- end category stats -->
+
       <!-- <div class="col-span-2">
         <div class="flex items-center justify-between gap-2 flex-wrap">
           <div><h6 class="mb-0">All Stats</h6></div>

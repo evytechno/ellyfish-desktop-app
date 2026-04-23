@@ -63,9 +63,13 @@
       key: "name",
       label: "Name",
       render: (val, row) => {
-        return `<a href="/admin/category/${row.id}"  class="flex items-center gap-1 text-danger">${row.name}</a>`;
-        // return `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()} ${String(d.getHours() % 12 || 12).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")} ${d.getHours() >= 12 ? "PM" : "AM"}`;
+        return `<a href="/admin/category/${row.id}" class="flex items-center gap-1 text-danger">${row.name}</a>`;
       },
+    },
+    {
+      key: "parent",
+      label: "Parent",
+      render: (val, row) => row.parent?.name || "—",
     },
     {
       key: "createdAt",

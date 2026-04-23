@@ -9,14 +9,13 @@
   import { checkAuth } from "$lib/utils/auth";
   let loadingData = true;
 
-  // Form state
   let name = "";
   let description = "";
+  let parentId = null;
+  let parentCategories = [];
 
   let loading = false;
   let errorMessage = "";
-
-  // Field-specific error messages
   let formErrors = {};
 
   let currentUser;
@@ -37,9 +36,17 @@
       });
       return;
     }
-    setTimeout(() => {
-      loadingData = false;
-    }, 500);
+
+    try {
+      const data = await authApiFetch(API_ROUTES.CATEGORY + "/all");
+      parentCategories = data;
+    } catch (err) {
+      console.error("Failed to load parent categories", err);
+    } finally {
+      setTimeout(() => {
+        loadingData = false;
+      }, 500);
+    }
   });
 
   async function handleSubmit(e) {
@@ -48,19 +55,21 @@
     loading = true;
     formErrors = {};
 
-    const categoryPayload = {};
-    categoryPayload.name = name;
-    categoryPayload.description = description;
+    const categoryPayload = {
+      name,
+      description: description || undefined,
+      parentId: parentId ? Number(parentId) : undefined,
+    };
 
     try {
       const data = await authApiFetch(API_ROUTES.CATEGORY, {
         method: "POST",
-        data: categoryPayload, // Send FormData
+        data: categoryPayload,
       });
 
-      // Reset Form
       name = "";
       description = "";
+      parentId = null;
       formErrors = {};
 
       Swal.fire("Success!", data.message, "success");
@@ -74,7 +83,6 @@
         console.error("Unexpected error:", error);
       }
     } finally {
-      console.log("formErrors:", formErrors);
       loading = false;
     }
   }
@@ -112,7 +120,7 @@
         <form on:submit={handleSubmit} class="needs-validation" novalidate>
           <div class="grid grid-cols-3 gap-4">
             <div class="col-span-1">
-              <label class="form-label" for="name">Name</label>
+              <label class="form-label" for="name">Name <span class="text-danger">*</span></label>
               <input
                 class="form-control"
                 class:is-invalid={formErrors.name}
@@ -127,6 +135,31 @@
                   <li>{formErrors.name[0]}</li>
                 </ul>
               {/if}
+            </div>
+
+            <div class="col-span-1">
+              <label class="form-label" for="parentId">Parent Category</label>
+              <select
+                class="form-control"
+                id="parentId"
+                bind:value={parentId}
+              >
+                <option value={null}>— None (Top Level) —</option>
+                {#each parentCategories as cat}
+                  <option value={cat.id}>{cat.name}</option>
+                {/each}
+              </select>
+            </div>
+
+            <div class="col-span-1">
+              <label class="form-label" for="description">Description</label>
+              <input
+                class="form-control"
+                type="text"
+                bind:value={description}
+                placeholder="Description (optional)"
+                id="description"
+              />
             </div>
           </div>
 

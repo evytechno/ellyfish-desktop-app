@@ -229,7 +229,7 @@
 
   async function getAllCategories() {
     const cached = get(categoriesAllStore);
-    if (cached && cached.length > 0) {
+    if (cached && cached.length > 0 && typeof cached[0] === "object" && cached[0].label) {
       categories = cached;
       loadingData = false;
       return;
@@ -237,7 +237,13 @@
     loadingData = true;
     try {
       const data = await authApiFetch(API_ROUTES.CATEGORY + "/all");
-      categories = data.map((item) => item.name);
+      categories = data.map((parent) => ({
+        label: parent.name,
+        options:
+          parent.children && parent.children.length > 0
+            ? parent.children.map((c) => c.name)
+            : [parent.name],
+      }));
       categoriesAllStore.set(categories);
     } catch (err) {
       errorMessage = "Failed to load category data.";
@@ -2831,13 +2837,16 @@
         </div>
         <div>
           <label class="form-label" for="category">Category</label>
-          <TypeableSelect
-            id="category"
-            options={categories}
-            value={category != "" ? category : null}
-            placeholder="Select Category"
-            on:change={(e) => (category = e.detail)}
-          />
+          {#key categories.length}
+            <TypeableSelect
+              id="category"
+              options={categories}
+              grouped={true}
+              value={category != "" ? category : null}
+              placeholder="Select Category"
+              on:change={(e) => (category = e.detail)}
+            />
+          {/key}
           <!-- <input
             type="text"
             name="category"
