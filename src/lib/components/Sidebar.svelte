@@ -290,6 +290,13 @@
                           </li>
                           <li>
                             <a
+                              href="/admin/order-list/excel"
+                              class:active={currentPath ===
+                                "/admin/order-list/excel"}>Excel Orders</a
+                            >
+                          </li>
+                          <li>
+                            <a
                               href="/admin/order/last-activity"
                               class:active={currentPath ===
                                 "/admin/order/last-activity"}>No Follow Up</a

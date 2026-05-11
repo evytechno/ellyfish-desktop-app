@@ -193,7 +193,7 @@
           method: "GET",
         },
       );
-      let newData = data.filter((order) => order.deletedAt == null);
+      let newData = data ? data?.data.filter((order) => order.deletedAt == null) : [];
       orders = [...newData];
     } catch (error) {
       console.error("Fetch error:", error);

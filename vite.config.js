@@ -8,6 +8,7 @@ export default defineConfig({
 	server: {
 		port: 5173,
 		strictPort: true,
+		host: true, // listen on 0.0.0.0 so WebView2 can reach it on Windows
 	},
 
 	// Tauri environment variables prefix

@@ -586,7 +586,7 @@
     formErrors = {};
 
     const reminderPayload = {
-      reminderTime,
+      reminderTime: reminderTime ? new Date(reminderTime).toISOString() : null,
       message: reminderMessage,
     };
     if (order) {
@@ -1037,11 +1037,10 @@
   }
 
   function convertDate(rawTimestamp, format) {
-    const istDateString = new Date(rawTimestamp).toLocaleString(
-      "en-GB",
-      format,
-    );
-    return istDateString;
+    if (!rawTimestamp) return "";
+    let s = String(rawTimestamp);
+    if (!s.endsWith("Z") && !/[+-]\d{2}:?\d{2}$/.test(s)) s += "Z";
+    return new Date(s).toLocaleString("en-GB", format);
   }
 
   let observer;
