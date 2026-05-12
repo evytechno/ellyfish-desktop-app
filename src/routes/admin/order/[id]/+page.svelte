@@ -1221,9 +1221,9 @@
           <div class="col-md-12">
             <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
               <div>
-                <a href="/admin/order">
+                <button on:click={() => history.length > 2 ? history.back() : goto('/admin/order')}>
                   <i class="ti ti-arrow-narrow-left me-1"></i>Back to Orders
-                </a>
+                </button>
               </div>
               <div class="flex items-center gap-2 flex-wrap">
                 <button

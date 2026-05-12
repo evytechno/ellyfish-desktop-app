@@ -86,6 +86,7 @@
   let editingCell  = null; // { orderId, field }
   let editingValue = "";
   let editingSaving = false;
+  let savingCell   = null; // { orderId, field } — which cell is currently calling the API
 
   // Fields that belong to orderClients[0]; all others are on the order itself
   const CLIENT_FIELDS = { mobile: true, email: true, address: true };
@@ -135,6 +136,7 @@
 
     cancelEdit();
     editingSaving = true;
+    savingCell = { orderId, field };
     try {
       if (isClientField) {
         const clientId = order.orderClients?.[0]?.id;
@@ -155,16 +157,45 @@
       }
       await refreshOrder(orderId);
     } catch (e) {
-      // Revert optimistic update on failure
       await refreshOrder(orderId);
       console.error(e);
     }
-    finally { editingSaving = false; }
+    finally { editingSaving = false; savingCell = null; }
   }
 
   function onCellKeydown(e) {
     if (e.key === "Enter")  { e.preventDefault(); saveEdit(); }
     if (e.key === "Escape") { e.preventDefault(); cancelEdit(); }
+  }
+
+  // ── city extraction ──────────────────────────────────────
+  function extractCity(address) {
+    if (!address) return "-";
+    // Strip common prefixes
+    let s = address.replace(/^address\s*[:\-]+\s*/i, "").trim();
+    // Split by comma
+    const parts = s.split(",").map(p => p.trim()).filter(p => p.length > 0);
+    // Remove 6-digit pincodes and "India"
+    const filtered = parts.filter(p => !/^\d{6}$/.test(p) && !/^india$/i.test(p));
+    if (filtered.length === 0) return s || "-";
+    // Last segment is usually city or state; prefer second-to-last if last looks like a state
+    return filtered[filtered.length - 1] || filtered[0] || "-";
+  }
+
+  // ── masking helpers ──────────────────────────────────────
+  function maskMobile(m) {
+    if (!m) return "-";
+    const s = String(m).replace(/\s/g, "");
+    if (s.length <= 4) return s;
+    return "•".repeat(s.length - 4) + s.slice(-4);
+  }
+
+  function maskEmail(e) {
+    if (!e) return "-";
+    const [user, domain] = e.split("@");
+    if (!domain) return e;
+    const visible = user.length > 2 ? user[0] + "•".repeat(user.length - 2) + user.slice(-1) : user[0] + "•";
+    return `${visible}@${domain}`;
   }
 
   // ── add order drawer ─────────────────────────────────────
@@ -296,7 +327,7 @@
     { key: "company", label: "Company",     width: 100, minWidth: 80 },
     { key: "mobile",  label: "Mobile",      width: 100, minWidth: 80 },
     { key: "email",   label: "Email",       width: 100, minWidth: 80 },
-    { key: "address", label: "Address",     width: 100, minWidth: 80 },
+    { key: "address", label: "City",         width: 100, minWidth: 80 },
     { key: "chats",   label: "Chats",       width: 220, minWidth: 160 },
     { key: "attach",  label: "Attachments", width: 200, minWidth: 140 },
     { key: "remind",  label: "Reminders",   width: 200, minWidth: 140 },
@@ -403,6 +434,9 @@
       reminderInput[orderId] = "";
       reminderTimeInput[orderId] = null;
       await refreshOrder(orderId);
+      await tick();
+      const el = document.getElementById(`remind-scroll-${orderId}`);
+      if (el) el.scrollTop = el.scrollHeight;
     } catch (e) { console.error(e); }
   }
 
@@ -415,6 +449,9 @@
     try {
       await authApiFetch(API_ROUTES.ORDER_ATTACHMENT, { method: "POST", data: form });
       await refreshOrder(orderId);
+      await tick();
+      const el = document.getElementById(`attach-scroll-${orderId}`);
+      if (el) el.scrollTop = el.scrollHeight;
     } catch (err) { console.error(err); }
     finally { e.target.value = ""; }
   }
@@ -575,12 +612,22 @@
               {@const isMobileEdit   = editingCell?.orderId === order.id && editingCell?.field === "mobile"}
               {@const isEmailEdit    = editingCell?.orderId === order.id && editingCell?.field === "email"}
               {@const isAddressEdit  = editingCell?.orderId === order.id && editingCell?.field === "address"}
+              {@const isTitleSaving   = savingCell?.orderId === order.id && savingCell?.field === "title"}
+              {@const isCompanySaving = savingCell?.orderId === order.id && savingCell?.field === "company"}
+              {@const isMobileSaving  = savingCell?.orderId === order.id && savingCell?.field === "mobile"}
+              {@const isEmailSaving   = savingCell?.orderId === order.id && savingCell?.field === "email"}
+              {@const isAddressSaving = savingCell?.orderId === order.id && savingCell?.field === "address"}
 
               <tr class="excel-row cursor-pointer" style="background:{rowBg};" on:click={() => toggleRow(order.id)}>
 
                 <!-- S.No -->
                 <td class="px-2 py-2 border border-gray-100 align-middle text-xs overflow-hidden h-[54px] text-center sticky-td-sno" style="background:{rowBg};">
-                  {(currentPage - 1) * pageSize + i + 1}
+                  <div class="flex flex-col items-center justify-center gap-0.5">
+                    <span>{(currentPage - 1) * pageSize + i + 1}</span>
+                    {#if isExp}
+                      <i class="ti ti-chevron-up text-blue-500" style="font-size:11px;line-height:1;"></i>
+                    {/if}
+                  </div>
                 </td>
 
                 <!-- pId -->
@@ -597,12 +644,12 @@
 
                 <!-- Title -->
                 <td
-                  class="px-2 py-2 border text-xs overflow-hidden h-[54px] align-middle cursor-text group"
+                  class="px-2 py-2 border text-xs overflow-hidden h-[54px] align-middle group"
+                  class:cursor-text={isExp}
                   class:border-blue-400={isTitleEdit}
                   class:border-gray-100={!isTitleEdit}
                   title={isTitleEdit ? "" : (order.title || "")}
-                  on:click={(e) => !isTitleEdit && startEdit(e, order.id, "title", order.title)}
-                  on:click|stopPropagation
+                  on:click={(e) => { if (!isExp) return; e.stopPropagation(); if (!isTitleEdit) startEdit(e, order.id, "title", order.title); }}
                 >
                   {#if isTitleEdit}
                     <input
@@ -613,69 +660,87 @@
                       on:blur={saveEdit}
                       on:click|stopPropagation
                     />
+                  {:else if isTitleSaving}
+                    <div class="flex items-center gap-1 text-gray-400"><span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span> <span class="truncate">{order.title || "-"}</span></div>
                   {:else}
-                    <div class="line-clamp-2 break-words leading-normal group-hover:text-blue-600">{order.title || "-"}</div>
+                    <div class="line-clamp-2 break-words leading-normal" class:group-hover:text-blue-600={isExp}>{order.title || "-"}</div>
                   {/if}
                 </td>
 
                 <!-- Company -->
                 <td
-                  class="px-2 py-2 border text-xs h-[54px] align-middle cursor-text group"
+                  class="px-2 py-2 border text-xs h-[54px] align-middle group"
+                  class:cursor-text={isExp}
                   class:border-blue-400={isCompanyEdit}
                   class:border-gray-100={!isCompanyEdit}
-                  on:click={(e) => !isCompanyEdit && startEdit(e, order.id, "company", order.company)}
-                  on:click|stopPropagation
+                  on:click={(e) => { if (!isExp) return; e.stopPropagation(); if (!isCompanyEdit) startEdit(e, order.id, "company", order.company); }}
                 >
                   {#if isCompanyEdit}
                     <input id="cell-input-{order.id}-company" class="w-full text-xs bg-transparent outline-none border-none p-0" bind:value={editingValue} on:keydown={onCellKeydown} on:blur={saveEdit} on:click|stopPropagation />
+                  {:else if isCompanySaving}
+                    <div class="flex items-center gap-1 text-gray-400"><span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span> <span class="truncate">{order.company || "-"}</span></div>
                   {:else}
-                    <div class="truncate group-hover:text-blue-600">{order.company || "-"}</div>
+                    <div class="truncate" class:group-hover:text-blue-600={isExp}>{order.company || "-"}</div>
                   {/if}
                 </td>
 
                 <!-- Mobile -->
                 <td
-                  class="px-2 py-2 border text-xs h-[54px] align-middle cursor-text group"
+                  class="px-2 py-2 border text-xs h-[54px] align-middle group"
+                  class:cursor-text={isExp}
                   class:border-blue-400={isMobileEdit}
                   class:border-gray-100={!isMobileEdit}
-                  on:click={(e) => !isMobileEdit && startEdit(e, order.id, "mobile", order.orderClients?.[0]?.mobile)}
-                  on:click|stopPropagation
+                  on:click={(e) => { if (!isExp) return; e.stopPropagation(); if (!isMobileEdit) startEdit(e, order.id, "mobile", order.orderClients?.[0]?.mobile); }}
                 >
                   {#if isMobileEdit}
                     <input id="cell-input-{order.id}-mobile" class="w-full text-xs bg-transparent outline-none border-none p-0" bind:value={editingValue} on:keydown={onCellKeydown} on:blur={saveEdit} on:click|stopPropagation />
-                  {:else}
+                  {:else if isMobileSaving}
+                    <div class="flex items-center gap-1 text-gray-400"><span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span> <span class="truncate">{order.orderClients?.[0]?.mobile || "-"}</span></div>
+                  {:else if isExp}
                     <div class="truncate group-hover:text-blue-600">{order.orderClients?.[0]?.mobile || "-"}</div>
+                  {:else}
+                    <div class="truncate text-gray-500 tracking-wider">{maskMobile(order.orderClients?.[0]?.mobile)}</div>
                   {/if}
                 </td>
 
                 <!-- Email -->
                 <td
-                  class="px-2 py-2 border text-xs h-[54px] align-middle cursor-text group"
+                  class="px-2 py-2 border text-xs h-[54px] align-middle group"
+                  class:cursor-text={isExp}
                   class:border-blue-400={isEmailEdit}
                   class:border-gray-100={!isEmailEdit}
-                  on:click={(e) => !isEmailEdit && startEdit(e, order.id, "email", order.orderClients?.[0]?.email)}
-                  on:click|stopPropagation
+                  on:click={(e) => { if (!isExp) return; e.stopPropagation(); if (!isEmailEdit) startEdit(e, order.id, "email", order.orderClients?.[0]?.email); }}
                 >
                   {#if isEmailEdit}
                     <input id="cell-input-{order.id}-email" class="w-full text-xs bg-transparent outline-none border-none p-0" bind:value={editingValue} on:keydown={onCellKeydown} on:blur={saveEdit} on:click|stopPropagation />
-                  {:else}
+                  {:else if isEmailSaving}
+                    <div class="flex items-center gap-1 text-gray-400"><span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span> <span class="truncate">{order.orderClients?.[0]?.email || "-"}</span></div>
+                  {:else if isExp}
                     <div class="truncate group-hover:text-blue-600">{order.orderClients?.[0]?.email || "-"}</div>
+                  {:else}
+                    <div class="truncate text-gray-500">{maskEmail(order.orderClients?.[0]?.email)}</div>
                   {/if}
                 </td>
 
-                <!-- Address -->
+                <!-- Address / City -->
                 <td
-                  class="px-2 py-2 border text-xs h-[54px] align-middle cursor-text group"
+                  class="px-2 py-2 border text-xs h-[54px] align-middle group"
+                  class:cursor-text={isExp}
                   class:border-blue-400={isAddressEdit}
                   class:border-gray-100={!isAddressEdit}
-                  title={isAddressEdit ? "" : (order.orderClients?.[0]?.address || "")}
-                  on:click={(e) => !isAddressEdit && startEdit(e, order.id, "address", order.orderClients?.[0]?.address)}
-                  on:click|stopPropagation
+                  title={isExp && !isAddressEdit ? (order.orderClients?.[0]?.address || "") : ""}
+                  on:click={(e) => { if (!isExp) return; e.stopPropagation(); if (!isAddressEdit) startEdit(e, order.id, "address", order.orderClients?.[0]?.address); }}
                 >
                   {#if isAddressEdit}
                     <input id="cell-input-{order.id}-address" class="w-full text-xs bg-transparent outline-none border-none p-0" bind:value={editingValue} on:keydown={onCellKeydown} on:blur={saveEdit} on:click|stopPropagation />
-                  {:else}
+                  {:else if isAddressSaving}
+                    <div class="flex items-center gap-1 text-gray-400"><span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span> <span class="truncate">{order.orderClients?.[0]?.address || "-"}</span></div>
+                  {:else if isExp}
+                    <!-- Expanded: show full address, editable -->
                     <div class="truncate group-hover:text-blue-600">{order.orderClients?.[0]?.address || "-"}</div>
+                  {:else}
+                    <!-- Collapsed: show city only -->
+                    <div class="truncate text-gray-700">{extractCity(order.orderClients?.[0]?.address)}</div>
                   {/if}
                 </td>
 
