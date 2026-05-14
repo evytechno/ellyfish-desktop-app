@@ -154,7 +154,10 @@
                   </div>
                   <div>
                     <h5 class="mb-1 capitalize">{user?.name}</h5>
-                    <p class="mb-2 capitalize">{user?.role}</p>
+                    <p class="mb-0 capitalize">{user?.role}</p>
+                    {#if user?.subRole}
+                      <p class="mb-2 text-muted small capitalize">{user.subRole}</p>
+                    {/if}
                   </div>
                 </div>
               </div>

@@ -258,6 +258,65 @@
   $: orderId = $page.params.id;
   let currentUser = null;
 
+  // Related Queries
+  let orderQueries = [];
+  let orderQueriesLoading = false;
+
+  async function loadOrderQueries() {
+    if (!orderId) return;
+    orderQueriesLoading = true;
+    try {
+      const res = await authApiFetch(`${API_ROUTES.QUERY}/order/${orderId}`);
+      orderQueries = Array.isArray(res) ? res : [];
+    } catch (_) {
+      orderQueries = [];
+    } finally {
+      orderQueriesLoading = false;
+    }
+  }
+
+  // Raise Query from order detail
+  let showQueryModal = false;
+  let querySubject = "";
+  let queryDescription = "";
+  let raisingQuery = false;
+  let queryError = "";
+
+  async function submitOrderQuery() {
+    queryError = "";
+    if (!querySubject.trim() || !queryDescription.trim()) {
+      queryError = "Subject and description are required.";
+      return;
+    }
+    raisingQuery = true;
+    try {
+      await authApiFetch(`${API_ROUTES.QUERY}`, {
+        method: "POST",
+        data: JSON.stringify({
+          subject: querySubject,
+          description: queryDescription,
+          orderId: Number(orderId),
+        }),
+      });
+      showQueryModal = false;
+      querySubject = "";
+      queryDescription = "";
+      Swal.fire({ icon: "success", title: "Query raised successfully", timer: 1500, showConfirmButton: false });
+      loadOrderQueries();
+    } catch (e) {
+      const msg = e?.data?.message;
+      if (typeof msg === "string") {
+        queryError = msg;
+      } else if (Array.isArray(msg)) {
+        queryError = msg.flatMap((m) => Object.values(m.constraints ?? {})).join(" • ");
+      } else {
+        queryError = "Failed to raise query.";
+      }
+    } finally {
+      raisingQuery = false;
+    }
+  }
+
   onMount(async () => {
     let loginUser = checkAuth();
     currentUser = loginUser;
@@ -315,6 +374,7 @@
       }, 500);
     }
     getAllCategories();
+    loadOrderQueries();
   });
 
   onMount(async () => {
@@ -1190,6 +1250,35 @@
   function addImages(imgs) {
     showImages = [imgs];
   }
+
+  // Open image in lightbox; open other files in a new tab
+  function openAttachment(url, mime, name) {
+    const isImg = mime
+      ? mime.startsWith("image/")
+      : /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(name ?? "");
+    if (isImg) {
+      addImages(url);
+    } else {
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+  }
+
+  // Return { icon, bg } based on mime type or filename
+  function fileIcon(mime, name) {
+    const m = mime ?? "";
+    const n = (name ?? "").toLowerCase();
+    if (m.startsWith("image/") || /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(n))
+      return { icon: "ti-photo", bg: "bg-success" };
+    if (m === "application/pdf" || n.endsWith(".pdf"))
+      return { icon: "ti-file-type-pdf", bg: "bg-danger" };
+    if (m.includes("word") || /\.(doc|docx)$/.test(n))
+      return { icon: "ti-file-type-doc", bg: "bg-primary" };
+    if (m.includes("excel") || m.includes("spreadsheet") || /\.(xls|xlsx|csv)$/.test(n))
+      return { icon: "ti-file-spreadsheet", bg: "bg-success" };
+    if (m.includes("zip") || m.includes("rar") || /\.(zip|rar|7z|tar|gz)$/.test(n))
+      return { icon: "ti-file-zip", bg: "bg-warning" };
+    return { icon: "ti-file", bg: "bg-secondary" };
+  }
 </script>
 
 {#if loadingData}
@@ -1241,8 +1330,46 @@
                   <i class="ti ti-square-rounded-plus-filled me-1"></i>Edit
                   Order
                 </a>
+                {#if currentUser?.subRole === "telecaller" || (currentUser?.role === "user" && !currentUser?.subRole)}
+                  <button
+                    class="btn btn-warning"
+                    on:click={() => (showQueryModal = true)}
+                  >
+                    <i class="ti ti-help-circle me-1"></i>Raise Query
+                  </button>
+                {/if}
               </div>
             </div>
+
+            <!-- Raise Query Modal -->
+            {#if showQueryModal}
+              <div
+                style="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1055;display:flex;align-items:center;justify-content:center;padding:1rem;"
+                on:click|self={() => (showQueryModal = false)}
+              >
+                <div class="card shadow-lg p-4" style="max-width:520px;width:100%;">
+                  <h5 class="fw-bold mb-3">Raise Query for This Order</h5>
+                  {#if queryError}
+                    <div class="alert alert-danger py-2">{queryError}</div>
+                  {/if}
+                  <div class="mb-3">
+                    <label class="form-label">Subject <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" bind:value={querySubject} placeholder="Brief subject..." maxlength="150" />
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label">Description <span class="text-danger">*</span></label>
+                    <textarea class="form-control" rows="4" bind:value={queryDescription} placeholder="Describe the issue in detail..."></textarea>
+                  </div>
+                  <div class="d-flex gap-2 justify-content-end">
+                    <button class="btn btn-secondary btn-sm" on:click={() => (showQueryModal = false)}>Cancel</button>
+                    <button class="btn btn-primary btn-sm" on:click={submitOrderQuery} disabled={raisingQuery}>
+                      {raisingQuery ? "Submitting..." : "Submit Query"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            {/if}
+
 
             <div class="card">
               <div class="card-body pb-2">
@@ -1693,6 +1820,28 @@
                       </span>
                     </a>
                   </li>
+                  {#if currentUser?.subRole !== "tech"}
+                    <li class="nav-item" role="presentation">
+                      <a
+                        href="#tab_10"
+                        data-bs-toggle="tab"
+                        aria-expanded="false"
+                        class="nav-link border-3"
+                        class:active={activeTab === "Queries"}
+                        on:click|preventDefault={() => { activeTab = "Queries"; loadOrderQueries(); }}
+                        aria-selected={activeTab === "Queries"}
+                        tabindex="-1"
+                        role="tab"
+                      >
+                        <span class="d-md-inline-block">
+                          <i class="ti ti-help-circle me-1"></i>Queries
+                          {#if orderQueries.length > 0}
+                            <span class="badge bg-primary ms-1" style="font-size:10px;">{orderQueries.length}</span>
+                          {/if}
+                        </span>
+                      </a>
+                    </li>
+                  {/if}
                   {#if ["Deal Won", "Dispatched", "Completed"].includes(order?.status)}
                     <li class="nav-item" role="presentation">
                       <a
@@ -2056,66 +2205,39 @@
                                   </p>
                                 {/if}
                                 {#if attachment?.file}
+                                  {@const fi = fileIcon(null, attachment?.fileName ?? attachment?.file)}
                                   <div
                                     class="row"
-                                    class:mt-3={attachment?.title ||
-                                      attachment?.link}
+                                    class:mt-3={attachment?.title || attachment?.link}
                                   >
                                     <div class="col-xxl-4 col-lg-5">
                                       <div
                                         class="card mb-0"
                                         role="button"
                                         tabindex="0"
-                                        aria-label="Show Quick View"
-                                        on:click={addImages(
-                                          ATTACHMENT_BASE_URL +
-                                            attachment?.file,
-                                        )}
-                                        on:keydown={(e) => {
-                                          if (
-                                            e.key === "Enter" ||
-                                            e.key === " "
-                                          )
-                                            addImages(
-                                              ATTACHMENT_BASE_URL +
-                                                attachment?.file,
-                                            );
-                                        }}
+                                        aria-label="Open attachment"
+                                        on:click={() => openAttachment(ATTACHMENT_BASE_URL + attachment?.file, null, attachment?.fileName)}
+                                        on:keydown={(e) => { if (e.key === "Enter" || e.key === " ") openAttachment(ATTACHMENT_BASE_URL + attachment?.file, null, attachment?.fileName); }}
+                                        style="cursor:pointer;"
                                       >
                                         <div class="card-body p-2">
-                                          <div
-                                            class="d-flex align-items-center justify-content-between flex-wrap row-gap-3"
-                                          >
-                                            <div
-                                              class="d-flex align-items-center me-3"
-                                            >
-                                              <span
-                                                class="avatar bg-success me-2"
-                                              >
-                                                <i
-                                                  class="ti ti-file-spreadsheet fs-20"
-                                                ></i>
+                                          <div class="d-flex align-items-center justify-content-between flex-wrap row-gap-3">
+                                            <div class="d-flex align-items-center me-3">
+                                              <span class="avatar {fi.bg} me-2">
+                                                <i class="ti {fi.icon} fs-20"></i>
                                               </span>
                                               <div>
-                                                <h6
-                                                  class="fw-medium fs-14 mb-1 trank"
-                                                  title={attachment?.fileName}
-                                                >
-                                                  {shortenFileName(
-                                                    attachment?.fileName,
-                                                  )}
+                                                <h6 class="fw-medium fs-14 mb-1 trank" title={attachment?.fileName}>
+                                                  {shortenFileName(attachment?.fileName)}
                                                 </h6>
-                                                <!-- <p class="mb-0">365 KB</p> -->
                                               </div>
                                             </div>
                                             <button
-                                              on:click={addImages(
-                                                ATTACHMENT_BASE_URL +
-                                                  attachment?.file,
-                                              )}
+                                              on:click|stopPropagation={() => openAttachment(ATTACHMENT_BASE_URL + attachment?.file, null, attachment?.fileName)}
                                               class="avatar avatar-xs rounded-circle bg-light text-dark"
+                                              title="Open"
                                             >
-                                              <i class="ti ti-link"></i>
+                                              <i class="ti ti-external-link"></i>
                                             </button>
                                           </div>
                                         </div>
@@ -2126,78 +2248,46 @@
                                 {#if attachment?.files}
                                   <div
                                     class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3"
-                                    class:mt-3={attachment?.title ||
-                                      attachment?.link}
+                                    class:mt-3={attachment?.title || attachment?.link}
                                   >
                                     {#each attachment?.files as file}
+                                      {@const fi = fileIcon(file?.mimeType, file?.originalName)}
                                       <div
                                         class="card mb-0"
                                         role="button"
                                         tabindex="0"
-                                        aria-label="Show Quick View"
-                                        on:click={addImages(
-                                          ATTACHMENT_BASE_URL + file?.url,
-                                        )}
-                                        on:keydown={(e) => {
-                                          if (
-                                            e.key === "Enter" ||
-                                            e.key === " "
-                                          )
-                                            addImages(
-                                              ATTACHMENT_BASE_URL + file?.url,
-                                            );
-                                        }}
+                                        aria-label="Open attachment"
+                                        on:click={() => openAttachment(ATTACHMENT_BASE_URL + file?.url, file?.mimeType, file?.originalName)}
+                                        on:keydown={(e) => { if (e.key === "Enter" || e.key === " ") openAttachment(ATTACHMENT_BASE_URL + file?.url, file?.mimeType, file?.originalName); }}
+                                        style="cursor:pointer;"
                                       >
                                         <div class="card-body p-2">
-                                          <div
-                                            class="d-flex align-items-center justify-content-between flex-wrap row-gap-3"
-                                          >
-                                            <div
-                                              class="d-flex align-items-center me-3"
-                                            >
-                                              {#if file.mimeType && file.mimeType.startsWith("image")}
-                                                <span
-                                                  class="avatar border me-2"
-                                                >
-                                                  <img
-                                                    src={ATTACHMENT_BASE_URL +
-                                                      file?.url}
-                                                    alt={file?.url}
-                                                    class="object-contain"
-                                                  />
+                                          <div class="d-flex align-items-center justify-content-between flex-wrap row-gap-3">
+                                            <div class="d-flex align-items-center me-3">
+                                              {#if file?.mimeType?.startsWith("image/")}
+                                                <span class="avatar border me-2">
+                                                  <img src={ATTACHMENT_BASE_URL + file?.url} alt={file?.originalName} class="object-contain" />
                                                 </span>
                                               {:else}
-                                                <span
-                                                  class="avatar bg-success me-2"
-                                                >
-                                                  <i
-                                                    class="ti ti-file-spreadsheet fs-20"
-                                                  ></i>
+                                                <span class="avatar {fi.bg} me-2">
+                                                  <i class="ti {fi.icon} fs-20"></i>
                                                 </span>
                                               {/if}
                                               <div>
-                                                <h6
-                                                  class="fw-medium lg:fs-14 fs-12 mb-1 trank"
-                                                  title={file?.originalName}
-                                                >
-                                                  {shortenFileName(
-                                                    file?.originalName,
-                                                  )}
+                                                <h6 class="fw-medium lg:fs-14 fs-12 mb-1 trank" title={file?.originalName}>
+                                                  {shortenFileName(file?.originalName)}
                                                 </h6>
                                                 <p class="mb-0 fs-12 md:fs-10">
-                                                  {(file.size / 1024).toFixed(
-                                                    2,
-                                                  )} KB
+                                                  {(file.size / 1024).toFixed(2)} KB
                                                 </p>
                                               </div>
                                             </div>
                                             <button
-                                              on:click={addImages(
-                                                ATTACHMENT_BASE_URL + file?.url,
-                                              )}
+                                              on:click|stopPropagation={() => openAttachment(ATTACHMENT_BASE_URL + file?.url, file?.mimeType, file?.originalName)}
                                               class="avatar avatar-xs rounded-circle bg-light text-dark"
+                                              title="Open"
                                             >
-                                              <i class="ti ti-link"></i>
+                                              <i class="ti ti-external-link"></i>
                                             </button>
                                           </div>
                                         </div>
@@ -2665,6 +2755,76 @@
                   </div>
                 </div>
                 <!-- /Chats -->
+              {/if}
+              {#if activeTab === "Queries" && currentUser?.subRole !== "tech"}
+                <!-- Queries Tab -->
+                <div class="tab-pane active show" id="tab_10">
+                  <div class="card">
+                    <div class="card-header d-flex align-items-center justify-content-between py-2">
+                      <h5 class="fw-semibold mb-0">
+                        <i class="ti ti-help-circle me-1 text-primary"></i>Related Queries
+                      </h5>
+                      {#if currentUser?.subRole === "telecaller" || (currentUser?.role === "user" && !currentUser?.subRole)}
+                        <button class="btn btn-sm btn-outline-warning" on:click={() => (showQueryModal = true)}>
+                          <i class="ti ti-plus me-1"></i>Raise Query
+                        </button>
+                      {/if}
+                    </div>
+                    <div class="card-body p-0">
+                      {#if orderQueriesLoading}
+                        <div class="text-center py-4">
+                          <span class="spinner-border spinner-border-sm text-primary"></span>
+                        </div>
+                      {:else if orderQueries.length === 0}
+                        <div class="text-center py-4 text-muted small">
+                          <i class="ti ti-help-off me-1"></i>No queries raised for this order yet.
+                        </div>
+                      {:else}
+                        <div class="table-responsive">
+                          <table class="table table-hover align-middle mb-0 small">
+                            <thead class="table-light">
+                              <tr>
+                                <th>Subject</th>
+                                {#if currentUser?.role !== "user"}
+                                  <th>Raised By</th>
+                                  <th>Assigned To</th>
+                                {/if}
+                                <th>Status</th>
+                                <th>Date</th>
+                                <th></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {#each orderQueries as q}
+                                <tr>
+                                  <td class="fw-semibold">{q.subject}</td>
+                                  {#if currentUser?.role !== "user"}
+                                    <td>{q.raisedBy?.name ?? "-"}</td>
+                                    <td>{q.assignedTo?.name ?? "Unassigned"}</td>
+                                  {/if}
+                                  <td>
+                                    <span class="badge {q.status === 'open' ? 'bg-primary' : q.status === 'in_progress' ? 'bg-warning text-dark' : q.status === 'resolved' ? 'bg-success' : q.status === 'reopened' ? 'bg-danger' : 'bg-secondary'}">
+                                      {q.status?.replace("_", " ")}
+                                    </span>
+                                  </td>
+                                  <td class="text-muted">
+                                    {new Date(q.createdAt).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                                  </td>
+                                  <td>
+                                    <a href="/admin/query/{q.id}" class="btn btn-sm btn-outline-primary">
+                                      <i class="ti ti-eye"></i>
+                                    </a>
+                                  </td>
+                                </tr>
+                              {/each}
+                            </tbody>
+                          </table>
+                        </div>
+                      {/if}
+                    </div>
+                  </div>
+                </div>
+                <!-- /Queries Tab -->
               {/if}
               {#if ["Deal Won", "Dispatched", "Completed"].includes(order?.status)}
                 {#if activeTab === "Components"}

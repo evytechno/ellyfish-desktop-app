@@ -197,6 +197,11 @@
       const data = await authApiFetch(`${API_ROUTES.SETTING}`);
       setting = data;
       settingStore.set(data);
+      // Cache logo for splash screen on next load (prefer logoSmall, fall back to logo)
+      const splashLogo = data?.logoSmall || data?.logo;
+      if (splashLogo) {
+        localStorage.setItem('splash_logo', ATTACHMENT_BASE_URL + splashLogo);
+      }
     } catch (error) {
       errorMessage = "Failed to load setting data.";
       console.error("Fetch error:", error);

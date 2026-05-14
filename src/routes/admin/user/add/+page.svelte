@@ -18,6 +18,8 @@
   let whatsapp = "";
   let password = "";
   let role = "user";
+  let subRole = null;
+  let orderAccess = true;
   let companyId = null;
   let loginStartTime = "09:00";
   let loginEndTime = "18:10";
@@ -58,6 +60,8 @@
     formErrors = {}; // Reset previous errors
 
     const newUser = { name, email, password, mobile, whatsapp, role,
+      subRole: role === "user" ? (subRole || null) : null,
+      orderAccess: (role === "user" && subRole === "tech") ? orderAccess : true,
       loginStartTime: loginStartTime || null,
       loginEndTime: loginEndTime || null,
     };
@@ -264,6 +268,37 @@
                 </ul>
               {/if}
             </div>
+            {#if role === "user"}
+              <div>
+                <label class="form-label" for="subRole">Sub Role</label>
+                <select
+                  name="subRole"
+                  id="subRole"
+                  class="select form-control"
+                  bind:value={subRole}
+                >
+                  <option value={null}>None</option>
+                  <option value="telecaller">Telecaller</option>
+                  <option value="tech">Tech</option>
+                </select>
+                {#if subRole === "tech"}
+                  <div class="d-flex align-items-center gap-2 mt-2">
+                    <div class="form-check form-switch mb-0">
+                      <input
+                        class="form-check-input"
+                        type="checkbox"
+                        id="orderAccess"
+                        bind:checked={orderAccess}
+                      />
+                      <label class="form-check-label" for="orderAccess">
+                        Order Access
+                      </label>
+                    </div>
+                    <span class="text-muted small">(allow this tech user to manage orders)</span>
+                  </div>
+                {/if}
+              </div>
+            {/if}
             <div>
               <label class="form-label" for="password"
                 >Password <span class="text-danger">*</span></label

@@ -16,4 +16,5 @@ export const API_ROUTES = {
   NOTIFICATION: `notifications`,
   ORDERS_INQUIRY:`all-search-for-inquiry`,
   AUTH_ACTIVITY: `auth-activity`,
+  QUERY: `queries`,
 };

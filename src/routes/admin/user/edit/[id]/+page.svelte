@@ -17,6 +17,8 @@
   let mobile = "";
   let whatsapp = "";
   let role = "";
+  let subRole = null;
+  let orderAccess = true;
   let companyId = null;
   let loginStartTime = "";
   let loginEndTime = "";
@@ -53,6 +55,8 @@
       mobile = data.mobile;
       whatsapp = data.whatsapp;
       role = data.role;
+      subRole = data.subRole || null;
+      orderAccess = data.orderAccess ?? true;
       companyId = data?.company?.id || null;
       loginStartTime = data.loginStartTime || "09:00";
       loginEndTime = data.loginEndTime || "18:10";
@@ -77,6 +81,8 @@
     formErrors = {};
 
     const updatedUser = { name, email, mobile, whatsapp, role,
+      subRole: role === "user" ? (subRole || null) : null,
+      orderAccess: (role === "user" && subRole === "tech") ? orderAccess : true,
       loginStartTime: loginStartTime || null,
       loginEndTime: loginEndTime || null,
     };
@@ -280,6 +286,37 @@
                 </ul>
               {/if}
             </div>
+            {#if role === "user"}
+              <div>
+                <label class="form-label" for="subRole">Sub Role</label>
+                <select
+                  name="subRole"
+                  id="subRole"
+                  class="select form-control"
+                  bind:value={subRole}
+                >
+                  <option value={null}>None</option>
+                  <option value="telecaller">Telecaller</option>
+                  <option value="tech">Tech</option>
+                </select>
+                {#if subRole === "tech"}
+                  <div class="d-flex align-items-center gap-2 mt-2">
+                    <div class="form-check form-switch mb-0">
+                      <input
+                        class="form-check-input"
+                        type="checkbox"
+                        id="orderAccess"
+                        bind:checked={orderAccess}
+                      />
+                      <label class="form-check-label" for="orderAccess">
+                        Order Access
+                      </label>
+                    </div>
+                    <span class="text-muted small">(allow this tech user to manage orders)</span>
+                  </div>
+                {/if}
+              </div>
+            {/if}
             <div>
               <label class="form-label" for="loginStartTime">Login Start Time</label>
               <input

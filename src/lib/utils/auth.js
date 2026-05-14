@@ -11,13 +11,20 @@ export const checkAuth = () => {
   return currentUser ? currentUser : false;
 };
 
+const PRESERVE_KEYS = ["device_name", "last_email", "last_password"];
+
 export const logoutUser = async () => {
   // Clear from secure storage (OS keychain)
   await secureStorage.clear(TOKEN_KEYS);
 
-  // Also clear localStorage mirror
-  TOKEN_KEYS.forEach(k => localStorage.removeItem(k));
-  localStorage.removeItem('last_location');
+  // Clear all localStorage except preserved keys
+  const preserved = {};
+  PRESERVE_KEYS.forEach(k => {
+    const v = localStorage.getItem(k);
+    if (v !== null) preserved[k] = v;
+  });
+  localStorage.clear();
+  Object.entries(preserved).forEach(([k, v]) => localStorage.setItem(k, v));
 };
 
 /**

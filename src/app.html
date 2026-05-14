@@ -36,8 +36,9 @@
 			visibility: hidden;
 		}
 		#splash img {
-			width: 120px;
+			width: 180px;
 			height: auto;
+			object-fit: contain;
 		}
 		#splash-spinner {
 			width: 36px;
@@ -91,10 +92,19 @@
 
 	<!-- Splash screen — shown until app is ready -->
 	<div id="splash">
-		<img src="/favicon.png" alt="Sales Management" />
+		<img id="splash-logo" src="/favicon.jpg" alt="Sales Management" />
 		<div id="splash-spinner"></div>
 		<div id="splash-text">Loading...</div>
 	</div>
+	<script>
+		(function () {
+			var logo = localStorage.getItem('splash_logo');
+			if (logo) {
+				var img = document.getElementById('splash-logo');
+				if (img) img.src = logo;
+			}
+		})();
+	</script>
 
 	<div style="display: contents">%sveltekit.body%</div>
 </body>

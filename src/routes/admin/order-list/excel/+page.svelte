@@ -89,7 +89,7 @@
   let savingCell   = null; // { orderId, field } — which cell is currently calling the API
 
   // Fields that belong to orderClients[0]; all others are on the order itself
-  const CLIENT_FIELDS = { mobile: true, email: true, address: true };
+  const CLIENT_FIELDS = { mobile: true, name: true, address: true };
 
   async function startEdit(e, orderId, field, currentValue) {
     e.stopPropagation();
@@ -326,7 +326,7 @@
     { key: "title",   label: "Title",       width: 160, minWidth: 80 },
     { key: "company", label: "Company",     width: 100, minWidth: 80 },
     { key: "mobile",  label: "Mobile",      width: 100, minWidth: 80 },
-    { key: "email",   label: "Email",       width: 100, minWidth: 80 },
+    { key: "name",    label: "Client Name",  width: 120, minWidth: 80 },
     { key: "address", label: "City",         width: 100, minWidth: 80 },
     { key: "chats",   label: "Chats",       width: 220, minWidth: 160 },
     { key: "attach",  label: "Attachments", width: 200, minWidth: 140 },
@@ -610,12 +610,12 @@
               {@const isTitleEdit    = editingCell?.orderId === order.id && editingCell?.field === "title"}
               {@const isCompanyEdit  = editingCell?.orderId === order.id && editingCell?.field === "company"}
               {@const isMobileEdit   = editingCell?.orderId === order.id && editingCell?.field === "mobile"}
-              {@const isEmailEdit    = editingCell?.orderId === order.id && editingCell?.field === "email"}
+              {@const isNameEdit     = editingCell?.orderId === order.id && editingCell?.field === "name"}
               {@const isAddressEdit  = editingCell?.orderId === order.id && editingCell?.field === "address"}
               {@const isTitleSaving   = savingCell?.orderId === order.id && savingCell?.field === "title"}
               {@const isCompanySaving = savingCell?.orderId === order.id && savingCell?.field === "company"}
               {@const isMobileSaving  = savingCell?.orderId === order.id && savingCell?.field === "mobile"}
-              {@const isEmailSaving   = savingCell?.orderId === order.id && savingCell?.field === "email"}
+              {@const isNameSaving    = savingCell?.orderId === order.id && savingCell?.field === "name"}
               {@const isAddressSaving = savingCell?.orderId === order.id && savingCell?.field === "address"}
 
               <tr class="excel-row cursor-pointer" style="background:{rowBg};" on:click={() => toggleRow(order.id)}>
@@ -703,22 +703,20 @@
                   {/if}
                 </td>
 
-                <!-- Email -->
+                <!-- Client Name -->
                 <td
                   class="px-2 py-2 border text-xs h-[54px] align-middle group"
                   class:cursor-text={isExp}
-                  class:border-blue-400={isEmailEdit}
-                  class:border-gray-100={!isEmailEdit}
-                  on:click={(e) => { if (!isExp) return; e.stopPropagation(); if (!isEmailEdit) startEdit(e, order.id, "email", order.orderClients?.[0]?.email); }}
+                  class:border-blue-400={isNameEdit}
+                  class:border-gray-100={!isNameEdit}
+                  on:click={(e) => { if (!isExp) return; e.stopPropagation(); if (!isNameEdit) startEdit(e, order.id, "name", order.orderClients?.[0]?.name); }}
                 >
-                  {#if isEmailEdit}
-                    <input id="cell-input-{order.id}-email" class="w-full text-xs bg-transparent outline-none border-none p-0" bind:value={editingValue} on:keydown={onCellKeydown} on:blur={saveEdit} on:click|stopPropagation />
-                  {:else if isEmailSaving}
-                    <div class="flex items-center gap-1 text-gray-400"><span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span> <span class="truncate">{order.orderClients?.[0]?.email || "-"}</span></div>
-                  {:else if isExp}
-                    <div class="truncate group-hover:text-blue-600">{order.orderClients?.[0]?.email || "-"}</div>
+                  {#if isNameEdit}
+                    <input id="cell-input-{order.id}-name" class="w-full text-xs bg-transparent outline-none border-none p-0" bind:value={editingValue} on:keydown={onCellKeydown} on:blur={saveEdit} on:click|stopPropagation />
+                  {:else if isNameSaving}
+                    <div class="flex items-center gap-1 text-gray-400"><span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span> <span class="truncate">{order.orderClients?.[0]?.name || "-"}</span></div>
                   {:else}
-                    <div class="truncate text-gray-500">{maskEmail(order.orderClients?.[0]?.email)}</div>
+                    <div class="truncate">{order.orderClients?.[0]?.name || "-"}</div>
                   {/if}
                 </td>
 

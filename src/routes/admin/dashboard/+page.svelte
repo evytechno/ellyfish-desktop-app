@@ -17,6 +17,29 @@
   let loadingData = true;
 
   let currentUser;
+  let techStats = {
+    open: 0,
+    inProgress: 0,
+    resolvedToday: 0,
+    totalResolved: 0,
+  };
+  let techQueries = [];
+
+  async function loadTechDashboard() {
+    loadingData = true;
+    try {
+      const [stats, assigned] = await Promise.all([
+        authApiFetch(`${API_ROUTES.QUERY}/stats`),
+        authApiFetch(`${API_ROUTES.QUERY}/assigned?page=1&limit=8`),
+      ]);
+      techStats = stats;
+      techQueries = assigned.data ?? [];
+    } catch (_) {
+    } finally {
+      loadingData = false;
+    }
+  }
+
   onMount(() => {
     currentUser = checkAuth();
     if (currentUser) {
@@ -50,7 +73,16 @@
     customStartDate = filterState.customStartDate || null;
     customEndDate = filterState.customEndDate || null;
 
-    fetchOrders(), fetchActivity(), fetchOrdersStats();
+    if (currentUser?.subRole === "tech") {
+      loadTechDashboard();
+      if (currentUser?.orderAccess) {
+        fetchOrders();
+        fetchActivity();
+        fetchOrdersStats();
+      }
+    } else {
+      fetchOrders(), fetchActivity(), fetchOrdersStats();
+    }
 
     setTimeout(() => {
       firstLoad = true;
@@ -193,7 +225,9 @@
           method: "GET",
         },
       );
-      let newData = data ? data?.data.filter((order) => order.deletedAt == null) : [];
+      let newData = data
+        ? data?.data.filter((order) => order.deletedAt == null)
+        : [];
       orders = [...newData];
     } catch (error) {
       console.error("Fetch error:", error);
@@ -295,7 +329,10 @@
     checkFetchRecord();
 
   function checkFetchRecord() {
-    if (firstLoad) {
+    if (
+      firstLoad &&
+      (currentUser?.subRole !== "tech" || currentUser?.orderAccess)
+    ) {
       if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) {
         return;
       }
@@ -384,257 +421,344 @@
   <Loader />
 {/if}
 <div class="page-wrapper">
-  <!-- Start Content -->
   <div class="content pb-0">
-    <!-- Page Header -->
-    <div class="flex items-center justify-between gap-2 mb-4 flex-wrap">
+    {#if currentUser?.subRole === "tech"}
+      <!-- ── Tech Dashboard ── -->
       <div>
-        <h4 class="mb-0">
-          Dashboard
-          <span class="text-xs font-normal">
-            {searchString ? `(${searchString})` : ""}
-          </span>
-        </h4>
-      </div>
-      <div class="flex items-center gap-2 flex-wrap">
-        <div class="flex items-center gap-2 flex-wrap">
-          <div class="flex items-center gap-2 flex-wrap">
-            <select bind:value={selectedFilter} class="form-select">
-              <option value="all">All</option>
-              <option value="today">Today</option>
-              <option value="last7days">Last 7 Days</option>
-              <option value="last30days">Last 30 Days</option>
-              <option value="custom">Custom Range</option>
-            </select>
+        <div
+          class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2"
+        >
+          <div>
+            <h4 class="fw-bold mb-1">My Dashboard</h4>
+            <p class="text-muted mb-0 small">
+              Welcome back! Here's your query overview.
+            </p>
           </div>
-
-          {#if selectedFilter === "custom"}
-            <div class="flex items-center gap-2">
-              <input
-                type="date"
-                bind:value={customStartDate}
-                class="form-control"
-              />
-            </div>
-            <div class="flex items-center gap-2">
-              <input
-                type="date"
-                bind:value={customEndDate}
-                class="form-control"
-              />
-            </div>
-          {/if}
+          
         </div>
 
-        {#if currentUser?.role != "user"}
-          <div class="flex items-center gap-2 flex-wrap">
-            <select bind:value={userId} class="form-select">
-              <option value={null}>Select User</option>
-              {#each users as user}
-                <option value={user?.id}>{user?.name}</option>
-              {/each}
-            </select>
+        <!-- Stats -->
+        <div class="row g-3 mb-4">
+          <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm text-center py-4">
+              <div class="fs-2 fw-bold text-primary">{techStats.open}</div>
+              <div class="text-muted small mt-1">Open Queries</div>
+              <a href="/admin/query/open" class="stretched-link"></a>
+            </div>
           </div>
-        {/if}
-        <div class="dropdown">
-          <a
-            href="#Export"
-            class="dropdown-toggle btn btn-outline-light px-2 shadow"
-            data-bs-toggle="dropdown"
-          >
-            <i class="ti ti-package-export me-2"></i>Export
-          </a>
-          <div class="dropdown-menu dropdown-menu-end">
-            <ul>
-              <li>
-                <button
-                  type="button"
-                  on:click={() => exportDashboardToPDF()}
-                  class="dropdown-item"
-                >
-                  <i class="ti ti-file-type-pdf me-1"></i>Export as PDF
-                </button>
-              </li>
-            </ul>
+          <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm text-center py-4">
+              <div class="fs-2 fw-bold text-warning">
+                {techStats.inProgress}
+              </div>
+              <div class="text-muted small mt-1">In Progress (mine)</div>
+              <a href="/admin/query/assigned" class="stretched-link"></a>
+            </div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm text-center py-4">
+              <div class="fs-2 fw-bold text-success">
+                {techStats.resolvedToday}
+              </div>
+              <div class="text-muted small mt-1">Resolved Today</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm text-center py-4">
+              <div class="fs-2 fw-bold text-secondary">
+                {techStats.totalResolved}
+              </div>
+              <div class="text-muted small mt-1">Total Resolved</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="row g-3 mb-4">
+          <div class="col-md-6">
+            <a
+              href="/admin/query/open"
+              class="card border-0 shadow-sm p-3 d-flex flex-row align-items-center gap-3 text-decoration-none"
+            >
+              <div class="rounded-circle bg-primary bg-opacity-10 p-3">
+                <i class="ti ti-inbox fs-4 text-primary"></i>
+              </div>
+              <div>
+                <div class="fw-semibold">Open Queue</div>
+                <div class="text-muted small">Pick up unassigned queries</div>
+              </div>
+              <i class="ti ti-chevron-right ms-auto text-muted"></i>
+            </a>
+          </div>
+          <div class="col-md-6">
+            <a
+              href="/admin/query/assigned"
+              class="card border-0 shadow-sm p-3 d-flex flex-row align-items-center gap-3 text-decoration-none"
+            >
+              <div class="rounded-circle bg-warning bg-opacity-10 p-3">
+                <i class="ti ti-clipboard-list fs-4 text-warning"></i>
+              </div>
+              <div>
+                <div class="fw-semibold">My Assigned</div>
+                <div class="text-muted small">
+                  Continue working on your queries
+                </div>
+              </div>
+              <i class="ti ti-chevron-right ms-auto text-muted"></i>
+            </a>
           </div>
         </div>
       </div>
-    </div>
-    <!-- End Page Header -->
-    {#if dashboardData}
-      <SummaryCards {dashboardData} />
     {/if}
-
-    <!-- start row -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      <div class="printDashboard">
-        <div class="card flex-fill">
-          <div
-            class="card-header flex items-center justify-between flex-wrap row-gap-3"
-          >
-            <h6 class="mb-0 py-2">Orders Over Time</h6>
-          </div>
-          <div class="card-body">
-            {#if !loading && dashboardData}
-              <OrdersOverTimeChart {dashboardData} />
-            {/if}
-          </div>
-          <!-- end card body -->
-        </div>
-        <!-- end card -->
-      </div>
-      <div class="printDashboard">
-        <div class="card flex-fill">
-          <div
-            class="card-header flex items-center justify-between flex-wrap row-gap-3"
-          >
-            <h6 class="mb-0 py-2">Orders By Status</h6>
-          </div>
-          <div class="card-body">
-            {#if !loading && dashboardData}
-              <OrdersByStatusChart {dashboardData} />
-            {/if}
-          </div>
-          <!-- end card body -->
-        </div>
-        <!-- end card -->
-      </div>
+    {#if currentUser?.subRole !== "tech" || currentUser?.orderAccess}
       <div>
-        <div class="card flex-fill">
-          <div
-            class="card-header flex items-center justify-between flex-wrap row-gap-3"
-          >
-            <h6 class="mb-0 py-2">Recently Orders</h6>
+        <!-- ── Order Dashboard ── -->
+        <!-- Page Header -->
+        <div class="flex items-center justify-between gap-2 mb-4 flex-wrap">
+          <div>
+            <h4 class="mb-0">
+              Dashboard
+              <span class="text-xs font-normal">
+                {searchString ? `(${searchString})` : ""}
+              </span>
+            </h4>
           </div>
-          <div class="card-body">
-            <div class="table-responsive custom-table">
-              <div class="dataTables_wrapper dt-bootstrap5 no-footer">
-                <table class="table dataTable table-nowrap no-footer">
-                  <thead class="table-light">
-                    <tr>
-                      <th>Name</th>
-                      <th>Price (₹)</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {#if orders?.length}
-                      {#each orders as order, index}
-                        {#if index < 7}
-                          <tr id={index}>
-                            <td>
-                              <a
-                                href={`/admin/order/${order?.id}`}
-                                class="fw-medium"
-                              >
-                                {order?.title}
-                              </a>
-                            </td>
-                            <td>
-                              {new Intl.NumberFormat("en-IN", {
-                                style: "currency",
-                                currency: order?.currency || "INR",
-                              })
-                                .format(order?.price || 0)
-                                .replace("₹", "₹ ")}
-                            </td>
-                            <td>
-                              <span
-                                class={`badge badge-pill text-white ${statusesColors[order?.status] || "bg-gray"}`}
-                                >{order?.status}</span
-                              >
+          <div class="flex items-center gap-2 flex-wrap">
+            <div class="flex items-center gap-2 flex-wrap">
+              <div class="flex items-center gap-2 flex-wrap">
+                <select bind:value={selectedFilter} class="form-select">
+                  <option value="all">All</option>
+                  <option value="today">Today</option>
+                  <option value="last7days">Last 7 Days</option>
+                  <option value="last30days">Last 30 Days</option>
+                  <option value="custom">Custom Range</option>
+                </select>
+              </div>
+
+              {#if selectedFilter === "custom"}
+                <div class="flex items-center gap-2">
+                  <input
+                    type="date"
+                    bind:value={customStartDate}
+                    class="form-control"
+                  />
+                </div>
+                <div class="flex items-center gap-2">
+                  <input
+                    type="date"
+                    bind:value={customEndDate}
+                    class="form-control"
+                  />
+                </div>
+              {/if}
+            </div>
+
+            {#if currentUser?.role != "user"}
+              <div class="flex items-center gap-2 flex-wrap">
+                <select bind:value={userId} class="form-select">
+                  <option value={null}>Select User</option>
+                  {#each users as user}
+                    <option value={user?.id}>{user?.name}</option>
+                  {/each}
+                </select>
+              </div>
+            {/if}
+            <div class="dropdown">
+              <a
+                href="#Export"
+                class="dropdown-toggle btn btn-outline-light px-2 shadow"
+                data-bs-toggle="dropdown"
+              >
+                <i class="ti ti-package-export me-2"></i>Export
+              </a>
+              <div class="dropdown-menu dropdown-menu-end">
+                <ul>
+                  <li>
+                    <button
+                      type="button"
+                      on:click={() => exportDashboardToPDF()}
+                      class="dropdown-item"
+                    >
+                      <i class="ti ti-file-type-pdf me-1"></i>Export as PDF
+                    </button>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- End Page Header -->
+        {#if dashboardData}
+          <SummaryCards {dashboardData} />
+        {/if}
+
+        <!-- start row -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="printDashboard">
+            <div class="card flex-fill">
+              <div
+                class="card-header flex items-center justify-between flex-wrap row-gap-3"
+              >
+                <h6 class="mb-0 py-2">Orders Over Time</h6>
+              </div>
+              <div class="card-body">
+                {#if !loading && dashboardData}
+                  <OrdersOverTimeChart {dashboardData} />
+                {/if}
+              </div>
+              <!-- end card body -->
+            </div>
+            <!-- end card -->
+          </div>
+          <div class="printDashboard">
+            <div class="card flex-fill">
+              <div
+                class="card-header flex items-center justify-between flex-wrap row-gap-3"
+              >
+                <h6 class="mb-0 py-2">Orders By Status</h6>
+              </div>
+              <div class="card-body">
+                {#if !loading && dashboardData}
+                  <OrdersByStatusChart {dashboardData} />
+                {/if}
+              </div>
+              <!-- end card body -->
+            </div>
+            <!-- end card -->
+          </div>
+          <div>
+            <div class="card flex-fill">
+              <div
+                class="card-header flex items-center justify-between flex-wrap row-gap-3"
+              >
+                <h6 class="mb-0 py-2">Recently Orders</h6>
+              </div>
+              <div class="card-body">
+                <div class="table-responsive custom-table">
+                  <div class="dataTables_wrapper dt-bootstrap5 no-footer">
+                    <table class="table dataTable table-nowrap no-footer">
+                      <thead class="table-light">
+                        <tr>
+                          <th>Name</th>
+                          <th>Price (₹)</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {#if orders?.length}
+                          {#each orders as order, index}
+                            {#if index < 7}
+                              <tr id={index}>
+                                <td>
+                                  <a
+                                    href={`/admin/order/${order?.id}`}
+                                    class="fw-medium"
+                                  >
+                                    {order?.title}
+                                  </a>
+                                </td>
+                                <td>
+                                  {new Intl.NumberFormat("en-IN", {
+                                    style: "currency",
+                                    currency: order?.currency || "INR",
+                                  })
+                                    .format(order?.price || 0)
+                                    .replace("₹", "₹ ")}
+                                </td>
+                                <td>
+                                  <span
+                                    class={`badge badge-pill text-white ${statusesColors[order?.status] || "bg-gray"}`}
+                                    >{order?.status}</span
+                                  >
+                                </td>
+                              </tr>
+                            {/if}
+                          {/each}
+                        {:else}
+                          <tr>
+                            <td colspan="4" class="text-center"
+                              >No Records Found.
                             </td>
                           </tr>
                         {/if}
-                      {/each}
-                    {:else}
-                      <tr>
-                        <td colspan="4" class="text-center"
-                          >No Records Found.
-                        </td>
-                      </tr>
-                    {/if}
-                  </tbody>
-                </table>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
+              <!-- end card body -->
             </div>
+            <!-- end card -->
           </div>
-          <!-- end card body -->
-        </div>
-        <!-- end card -->
-      </div>
-      <div>
-        <div class="card flex-fill">
-          <div
-            class="card-header flex items-center justify-between flex-wrap row-gap-3"
-          >
-            <h6 class="mb-0 py-2">Recently Activity</h6>
-          </div>
-          <div class="card-body">
-            <div class="table-responsive custom-table">
-              <div class="dataTables_wrapper dt-bootstrap5 no-footer">
-                <table class="table dataTable table-nowrap no-footer">
-                  <thead class="table-light">
-                    <tr>
-                      <th>Order</th>
-                      <th>Title</th>
-                      <!-- <th>Description</th> -->
-                      <th>Date</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {#if activities?.length}
-                      {#each activities as activity}
+          <div>
+            <div class="card flex-fill">
+              <div
+                class="card-header flex items-center justify-between flex-wrap row-gap-3"
+              >
+                <h6 class="mb-0 py-2">Recently Activity</h6>
+              </div>
+              <div class="card-body">
+                <div class="table-responsive custom-table">
+                  <div class="dataTables_wrapper dt-bootstrap5 no-footer">
+                    <table class="table dataTable table-nowrap no-footer">
+                      <thead class="table-light">
                         <tr>
-                          <td>
-                            <a
-                              href={`/admin/order/${activity?.order?.id}`}
-                              class="fw-medium"
-                            >
-                              {activity?.order?.title}
-                            </a>
-                          </td>
-                          <td>{activity?.title}</td>
-                          <!-- <td>{activity?.description}</td> -->
-                          <td
-                            >{activity?.createdAt &&
-                              new Date(activity.createdAt).toLocaleString(
-                                "en-GB",
-                                {
-                                  day: "2-digit",
-                                  month: "short",
-                                  year: "numeric",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                  hour12: true,
-                                },
-                              )}</td
-                          >
+                          <th>Order</th>
+                          <th>Title</th>
+                          <!-- <th>Description</th> -->
+                          <th>Date</th>
                         </tr>
-                      {/each}
-                    {:else}
-                      <tr>
-                        <td colspan="4" class="text-center"
-                          >No Records Found.
-                        </td>
-                      </tr>
-                    {/if}
-                  </tbody>
-                </table>
+                      </thead>
+                      <tbody>
+                        {#if activities?.length}
+                          {#each activities as activity}
+                            <tr>
+                              <td>
+                                <a
+                                  href={`/admin/order/${activity?.order?.id}`}
+                                  class="fw-medium"
+                                >
+                                  {activity?.order?.title}
+                                </a>
+                              </td>
+                              <td>{activity?.title}</td>
+                              <!-- <td>{activity?.description}</td> -->
+                              <td
+                                >{activity?.createdAt &&
+                                  new Date(activity.createdAt).toLocaleString(
+                                    "en-GB",
+                                    {
+                                      day: "2-digit",
+                                      month: "short",
+                                      year: "numeric",
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                      hour12: true,
+                                    },
+                                  )}</td
+                              >
+                            </tr>
+                          {/each}
+                        {:else}
+                          <tr>
+                            <td colspan="4" class="text-center"
+                              >No Records Found.
+                            </td>
+                          </tr>
+                        {/if}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
+              <!-- end card body -->
             </div>
+            <!-- end card -->
           </div>
-          <!-- end card body -->
+          <!-- end col -->
         </div>
-        <!-- end card -->
+        <!-- end row -->
       </div>
-      <!-- end col -->
-    </div>
-    <!-- end row -->
-
-    <div class="p-3 border-t border-gray-100">
-      <UpdateNotification />
-    </div>
+    {/if}
   </div>
-  <!-- End Content -->
 </div>

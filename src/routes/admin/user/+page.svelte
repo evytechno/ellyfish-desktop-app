@@ -80,7 +80,8 @@
       key: "role",
       label: "Role",
       render: (val, row) => {
-        return `<div class="capitalize">${row?.role}<div>`;
+        const sub = row?.subRole ? ` <span class="text-muted small">(${row.subRole})</span>` : "";
+        return `<div class="capitalize">${row?.role}${sub}</div>`;
       },
     },
     {

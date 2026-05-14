@@ -45,12 +45,7 @@
         {#if !$isOnline}
           Please check your network connection and try again.
         {:else}
-          Cannot connect to the server at <br />
-          <span class="font-mono text-xs text-gray-700 bg-gray-100 px-2 py-0.5 rounded mt-1 inline-block">
-            {import.meta.env.VITE_PUBLIC_API_URL}
-          </span>
-          <br /><br />
-          Please ensure the server is running.
+          Cannot connect to the server. Please ensure the server is running.
         {/if}
       </p>
 

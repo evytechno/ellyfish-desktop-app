@@ -48,7 +48,7 @@ export async function authApiFetch1(
           ? {
               Authorization: `Bearer ${authToken}`,
               "Content-Type": isFormData
-                ? "multipart/form-data"
+                ? undefined
                 : "application/json",
             }
           : {}),
@@ -85,7 +85,7 @@ export async function authApiFetch(
           ? {
               Authorization: `Bearer ${authToken}`,
               "Content-Type": isFormData
-                ? "multipart/form-data"
+                ? undefined
                 : "application/json",
             }
           : {}),
@@ -124,7 +124,7 @@ export async function authApiFetch(
             headers: {
               Authorization: `Bearer ${authToken}`,
               "Content-Type": isFormData
-                ? "multipart/form-data"
+                ? undefined
                 : "application/json",
             },
             data: options.data,
