@@ -7,6 +7,7 @@
   import { API_BASE_URL } from "$lib/constants/constants";
   import { formatDistanceToNow } from "date-fns";
   import { goto } from "$app/navigation";
+  import { page } from "$app/stores";
   import { checkAuth, logoutUser } from "$lib/utils/auth";
   import { invoke } from "@tauri-apps/api/tauri";
   import { openQueryCount } from "$lib/stores/queryStore";
@@ -192,9 +193,16 @@
           logoutUser().finally(() => goto("/login"));
           return;
         }
-        // #10 — play different sound per type
-        playNotificationSound(data.data.type);
-        addToast(data.data);
+        // Don't show toast if user is already viewing this exact query
+        const alreadyOnQuery =
+          data.data.queryId &&
+          $page.params?.id === String(data.data.queryId);
+
+        if (!alreadyOnQuery) {
+          // #10 — play different sound per type
+          playNotificationSound(data.data.type);
+          addToast(data.data);
+        }
         notifications = [data.data, ...notifications];
         // #4 — increment live open count for query_open events
         if (data.data.type === "query_open") {

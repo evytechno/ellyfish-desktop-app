@@ -6,6 +6,7 @@
   import { checkAuth } from "$lib/utils/auth";
   import { errorHandle } from "$lib/utils/errorHandle";
   import Swal from "sweetalert2";
+  import Pagination from "$lib/components/Pagination.svelte";
 
   let currentUser;
   let queries = [];
@@ -292,33 +293,13 @@
             </tbody>
           </table>
         </div>
-        </div>
-        <div class="d-flex justify-content-between align-items-center p-3 flex-wrap gap-2 border-top">
-          <div class="d-flex align-items-center gap-2">
-            <span class="text-muted small">
-              Showing {(currentPage - 1) * rowsPerPage + 1}–{Math.min(currentPage * rowsPerPage, totalItems)} of {totalItems}
-            </span>
-            <select class="form-select form-select-sm w-auto" bind:value={rowsPerPage}
-              on:change={() => { currentPage = 1; loadData(); }}>
-              <option value={10}>10 / page</option>
-              <option value={25}>25 / page</option>
-              <option value={50}>50 / page</option>
-              <option value={100}>100 / page</option>
-            </select>
-          </div>
-          {#if totalPages > 1}
-            <div class="d-flex gap-1">
-              <button class="btn btn-sm btn-outline-secondary" disabled={currentPage === 1}
-                on:click={() => { currentPage--; loadData(); }}>Prev</button>
-              {#each Array.from({ length: totalPages }, (_, i) => i + 1) as p}
-                <button
-                  class="btn btn-sm {currentPage === p ? 'btn-primary' : 'btn-outline-secondary'}"
-                  on:click={() => { currentPage = p; loadData(); }}>{p}</button>
-              {/each}
-              <button class="btn btn-sm btn-outline-secondary" disabled={currentPage >= totalPages}
-                on:click={() => { currentPage++; loadData(); }}>Next</button>
-            </div>
-          {/if}
+        <Pagination
+          {currentPage}
+          {totalPages}
+          {rowsPerPage}
+          on:pageChange={(e) => { currentPage = e.detail; loadData(); }}
+          on:rowsPerPageChange={(e) => { rowsPerPage = e.detail; currentPage = 1; loadData(); }}
+        />
         </div>
       </div>
     {/if}

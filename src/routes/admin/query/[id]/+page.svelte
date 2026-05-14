@@ -24,7 +24,8 @@
     }
   }
 
-  let queryId;
+  let queryId = $page.params.id;
+  let _prevId = $page.params.id;
   let currentUser;
   let query = null;
   let chats = [];
@@ -41,7 +42,24 @@
   let typingTimer = null;
   let isTyping = false;
 
-  $: queryId = $page.params.id;
+  $: {
+    const _id = $page.params.id;
+    if (_id && _prevId && _id !== _prevId) {
+      _prevId = _id;
+      queryId = _id;
+      _reloadForId(_id);
+    }
+  }
+
+  function _reloadForId(id) {
+    disconnectSocket();
+    query = null;
+    chats = [];
+    loadQuery(id);
+    loadChats(id);
+    connectSocket(id);
+    authApiFetch(`${API_ROUTES.QUERY}/${id}/read-notifications`, { method: "PATCH" }).catch(() => {});
+  }
 
   const isTelecaller = (u) => u?.subRole === "telecaller";
   const isTech = (u) => u?.subRole === "tech";
@@ -99,7 +117,7 @@
     disconnectSocket();
   });
 
-  function connectSocket() {
+  function connectSocket(id = queryId) {
     const token = localStorage.getItem("access_token");
     if (!token) return;
 
@@ -109,7 +127,7 @@
     });
 
     socket.on("connect", () => {
-      socket.emit("join-query", Number(queryId));
+      socket.emit("join-query", Number(id));
     });
 
     socket.on("new-message", (msg) => {
@@ -168,10 +186,10 @@
     }, 2500);
   }
 
-  async function loadQuery() {
+  async function loadQuery(id = queryId) {
     loading = true;
     try {
-      query = await authApiFetch(`${API_ROUTES.QUERY}/${queryId}`);
+      query = await authApiFetch(`${API_ROUTES.QUERY}/${id}`);
     } catch (e) {
       errorHandle(e);
     } finally {
@@ -179,9 +197,9 @@
     }
   }
 
-  async function loadChats() {
+  async function loadChats(id = queryId) {
     try {
-      chats = await authApiFetch(`${API_ROUTES.QUERY}/${queryId}/chat`);
+      chats = await authApiFetch(`${API_ROUTES.QUERY}/${id}/chat`);
       if (!Array.isArray(chats)) chats = [];
       await tick();
       if (chatContainer) chatContainer.scrollTop = chatContainer.scrollHeight;
@@ -511,9 +529,11 @@
                       <div class="chat-text">{chat.message}</div>
                     {/if}
                     {#if chat.attachments?.length}
-                      <div class="chat-attachments">
-                        {#each chat.attachments as att}
-                          {#if isImage(att.mime)}
+                      {@const imgs = chat.attachments.filter(a => isImage(a.mime))}
+                      {@const files = chat.attachments.filter(a => !isImage(a.mime))}
+                      {#if imgs.length}
+                        <div class="chat-attachments-grid" class:chat-attachments-grid--single={imgs.length === 1}>
+                          {#each imgs as att}
                             <button
                               class="chat-attachment-img-btn"
                               on:click={() => openAttachment(ATTACHMENT_BASE_URL + att.url, att.mime, att.name)}
@@ -521,16 +541,21 @@
                             >
                               <img src="{ATTACHMENT_BASE_URL}{att.url}" alt={att.name} class="chat-attachment-img" />
                             </button>
-                          {:else}
+                          {/each}
+                        </div>
+                      {/if}
+                      {#if files.length}
+                        <div class="chat-attachments-files">
+                          {#each files as att}
                             <button
                               class="chat-attachment-file {chat.isOwn ? 'chat-attachment-file--own' : ''}"
                               on:click={() => openAttachment(ATTACHMENT_BASE_URL + att.url, att.mime, att.name)}
                             >
                               <i class="ti ti-file-download me-1"></i>{att.name}
                             </button>
-                          {/if}
-                        {/each}
-                      </div>
+                          {/each}
+                        </div>
+                      {/if}
                     {/if}
                     <div class="chat-time">{formatDate(chat.createdAt)}</div>
                   </div>
@@ -625,7 +650,7 @@
     background: #fff;
     border-radius: 16px;
     box-shadow: 0 2px 16px rgba(0,0,0,0.08);
-    height: calc(100vh - 180px);
+    height: calc(100vh - 200px);
     min-height: 480px;
     overflow: hidden;
   }
@@ -712,15 +737,31 @@
   }
   .chat-attach-btn:hover:not(:disabled) { background: #e8ecf8; color: #3b5bdb; }
   .chat-attach-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-  .chat-attachments { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
-  .chat-attachment-img-btn {
-    background: none; border: none; padding: 0; cursor: pointer; display: block;
+  .chat-attachments-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 3px;
+    margin-top: 6px;
+    border-radius: 8px;
+    overflow: hidden;
+    max-width: 200px;
   }
+  .chat-attachments-grid--single { grid-template-columns: 1fr; }
+  .chat-attachments-files { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+  .chat-attachment-img-btn {
+    background: none; border: none; padding: 0; cursor: pointer;
+    display: block; width: 100%; aspect-ratio: 1; overflow: hidden;
+  }
+  .chat-attachments-grid--single .chat-attachment-img-btn { aspect-ratio: auto; }
   .chat-attachment-img-btn:hover .chat-attachment-img { opacity: 0.85; }
   .chat-attachment-img {
-    max-width: 200px; max-height: 200px; border-radius: 8px; display: block;
-    cursor: pointer; object-fit: cover; border: 1px solid rgba(0,0,0,0.06);
+    width: 100%; height: 100%; display: block;
+    cursor: pointer; object-fit: cover; border: none;
     transition: opacity 0.15s;
+  }
+  .chat-attachments-grid--single .chat-attachment-img {
+    max-width: 200px; max-height: 200px; width: auto; height: auto;
+    border-radius: 8px; border: 1px solid rgba(0,0,0,0.06); object-fit: contain;
   }
   .chat-attachment-file {
     display: inline-flex; align-items: center; gap: 6px;
