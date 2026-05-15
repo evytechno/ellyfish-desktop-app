@@ -186,7 +186,8 @@ fn main() {
             let _ = window.unmaximize();
             let _ = window.set_decorations(true);
 
-            // Focus fix
+            // Focus fix — ensures the window comes to the front after
+            // the WebView2 runtime finishes initialising on Windows.
             let w = window.clone();
             std::thread::spawn(move || {
                 std::thread::sleep(std::time::Duration::from_millis(500));
@@ -214,6 +215,10 @@ fn main() {
                     save_window_state(e.window());
                 }
                 tauri::WindowEvent::CloseRequested { api, .. } => {
+                    // Only intercept the main window — let splash (and any other window) close normally
+                    if e.window().label() != "main" {
+                        return;
+                    }
                     save_window_state(e.window());
                     e.window().hide().unwrap();
                     api.prevent_close();

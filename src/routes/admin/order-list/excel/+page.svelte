@@ -228,9 +228,11 @@
 
   // ── lightbox ─────────────────────────────────────────────
   let lightboxImages = [];
+  let lightboxStart = 0;
 
-  function openLightbox(url) {
-    lightboxImages = [url];
+  function openLightbox(urls, index = 0) {
+    lightboxStart = index;
+    lightboxImages = Array.isArray(urls) ? urls : [urls];
   }
 
   // file shape: { url, mimeType, originalName, size }
@@ -800,17 +802,19 @@
                   {:else}
                     <div id="attach-scroll-{order.id}" class="max-h-[110px] overflow-y-auto border border-gray-100 rounded p-1 bg-white text-[11px]">
                       {#each attachments as a}
+                        {@const aImgUrls = (a.files || []).filter(fileIsImage).map(fileUrl)}
                         {#each (a.files || []) as f}
+                          {@const fImgIdx = aImgUrls.indexOf(fileUrl(f))}
                           <div class="py-1 border-b border-gray-100 last:border-b-0">
                             {#if fileIsImage(f)}
                               <div class="flex items-center gap-1.5">
-                                <button class="flex-shrink-0 focus:outline-none" on:click|stopPropagation={() => openLightbox(fileUrl(f))} title="View image">
+                                <button class="flex-shrink-0 focus:outline-none" on:click|stopPropagation={() => openLightbox(aImgUrls, fImgIdx)} title="View image">
                                   <img src={fileUrl(f)} alt="" class="h-9 w-9 object-cover rounded border border-gray-200 hover:opacity-80 transition-opacity" />
                                 </button>
                                 <div class="min-w-0 flex-1">
                                   <div class="truncate text-[11px]">{fileName(f)}</div>
                                   <div class="text-[10px] text-gray-400">{formatDateTime(a.createdAt)}</div>
-                                  <button class="text-[10px] text-blue-500 hover:underline" on:click|stopPropagation={() => openLightbox(fileUrl(f))}>View</button>
+                                  <button class="text-[10px] text-blue-500 hover:underline" on:click|stopPropagation={() => openLightbox(aImgUrls, fImgIdx)}>View</button>
                                 </div>
                               </div>
                             {:else}
@@ -1101,7 +1105,7 @@
   </div>
 </div>
 
-<LightBox bind:data={lightboxImages} />
+<LightBox bind:data={lightboxImages} startIndex={lightboxStart} />
 
 <style>
   /* parent-hover → child filter: can't be done in Tailwind */

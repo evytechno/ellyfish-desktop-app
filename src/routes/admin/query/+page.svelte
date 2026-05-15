@@ -22,7 +22,7 @@
   let filterStatus = "";
   let filterType = "";
   let filterPriority = "";
-  let selectedFilter = "today";
+  let selectedFilter = "last7days";
   let customStartDate = "";
   let customEndDate = "";
   let raisedById = "";
@@ -251,7 +251,7 @@
     filterStatus = "";
     filterType = "";
     filterPriority = "";
-    selectedFilter = "today";
+    selectedFilter = "last7days";
     customStartDate = "";
     customEndDate = "";
     raisedById = "";
@@ -499,14 +499,17 @@
 
     <!-- Raise Query Modal -->
     {#if showRaiseForm}
-      <div
-        class="modal-backdrop-custom"
-        on:click|self={() => (showRaiseForm = false)}
-      >
+      <div class="modal-backdrop-custom">
         <div
-          class="card shadow-lg p-4"
+          class="card shadow-lg p-4 position-relative"
           style="max-width:540px;width:100%;margin:auto;margin-top:80px;"
         >
+          <!-- close button -->
+          <button
+            class="modal-close-btn"
+            on:click={() => (showRaiseForm = false)}
+            aria-label="Close"
+          ><i class="ti ti-x"></i></button>
           <h5 class="fw-bold mb-3">Raise New Query</h5>
           {#if raiseError}
             <div class="alert alert-danger py-2">{raiseError}</div>
@@ -764,6 +767,26 @@
     align-items: flex-start;
     justify-content: center;
     padding: 1rem;
+  }
+
+  .modal-close-btn {
+    position: absolute;
+    top: 0.6rem;
+    right: 0.75rem;
+    background: none;
+    border: none;
+    font-size: 1.25rem;
+    line-height: 1;
+    color: #6c757d;
+    cursor: pointer;
+    padding: 0.25rem 0.4rem;
+    border-radius: 4px;
+    transition: color 0.15s, background 0.15s;
+    z-index: 10;
+  }
+  .modal-close-btn:hover {
+    color: #dc3545;
+    background: rgba(220, 53, 69, 0.08);
   }
 
   .order-search-wrap {

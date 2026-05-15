@@ -21,7 +21,7 @@
   let search = "";
   let filterType = "";
   let filterPriority = "";
-  let selectedFilter = "today";
+  let selectedFilter = "last7days";
   let customStartDate = "";
   let customEndDate = "";
   let searchTimeout;
@@ -129,10 +129,22 @@
   async function pickUp(queryId) {
     try {
       await authApiFetch(`${API_ROUTES.QUERY}/${queryId}/assign`, { method: "PATCH" });
-      Swal.fire({ icon: "success", title: "Query assigned to you", timer: 1500, showConfirmButton: false });
-      await Promise.all([loadData(), loadStats()]);
+      await Swal.fire({ icon: "success", title: "Query assigned to you", timer: 1500, showConfirmButton: false });
+      goto(`/admin/query/${queryId}`);
     } catch (e) {
-      Swal.fire({ icon: "error", title: "Error", text: errorHandle(e) });
+      const status = e?.status ?? e?.response?.status;
+      if (status === 409) {
+        Swal.fire({
+          icon: "warning",
+          title: "Already picked up",
+          text: "This query was just picked up by another team member.",
+          timer: 2500,
+          showConfirmButton: false,
+        });
+        await Promise.all([loadData(), loadStats()]);
+      } else {
+        Swal.fire({ icon: "error", title: "Error", text: errorHandle(e) });
+      }
     }
   }
 

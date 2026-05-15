@@ -21,7 +21,7 @@
   let filterStatus = "";
   let filterType = "";
   let filterPriority = "";
-  let selectedFilter = "today";
+  let selectedFilter = "last7days";
   let customStartDate = "";
   let customEndDate = "";
   let searchTimeout;

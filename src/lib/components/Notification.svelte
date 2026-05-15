@@ -11,6 +11,7 @@
   import { checkAuth, logoutUser } from "$lib/utils/auth";
   import { invoke } from "@tauri-apps/api/tauri";
   import { openQueryCount } from "$lib/stores/queryStore";
+  import { incrementUnread } from "$lib/stores/queryUnreadCounts";
 
   let currentUser = null;
   onMount(() => {
@@ -207,6 +208,10 @@
         // #4 — increment live open count for query_open events
         if (data.data.type === "query_open") {
           openQueryCount.update((n) => n + 1);
+        }
+        // increment unread count for chat message notifications
+        if (data.data.type === "query" && data.data.queryId) {
+          incrementUnread(data.data.queryId);
         }
       }
     };

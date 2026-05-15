@@ -1,9 +1,14 @@
 <script>
   export let data = [];
+  export let startIndex = 0;
 
   $: displayImages = data.length > 0 ? data : [];
 
   let selectedIndex = 0;
+
+  $: if (data.length > 0) {
+    selectedIndex = startIndex ?? 0;
+  }
 
   function openModal(index) {
     selectedIndex = index;
@@ -85,22 +90,24 @@
       </button>
 
       <!-- Previous Button -->
-      <!-- <button
-        on:click={goToPrevious}
-        class="absolute left-4 text-white hover:text-gray-300 transition-colors p-3 rounded-full hover:bg-white hover:bg-opacity-10 z-10"
-        aria-label="Previous"
-      >
-        <svg
-          width="40"
-          height="40"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
+      {#if displayImages.length > 1}
+        <button
+          on:click={goToPrevious}
+          class="absolute left-4 text-white hover:text-gray-300 transition-colors p-3 rounded-full hover:bg-white hover:bg-opacity-10 z-10"
+          aria-label="Previous"
         >
-          <path d="M15 18l-6-6 6-6" />
-        </svg>
-      </button> -->
+          <svg
+            width="40"
+            height="40"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+        </button>
+      {/if}
 
       <!-- Image Container -->
       <div
@@ -152,30 +159,34 @@
         {/if}
 
         <!-- Image Counter -->
-        <!-- <div
-          class="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-black bg-opacity-70 text-white px-4 py-2 rounded-full text-sm"
-        >
-          {selectedIndex + 1} / {displayImages.length}
-        </div> -->
+        {#if displayImages.length > 1}
+          <div
+            class="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-black bg-opacity-70 text-white px-4 py-2 rounded-full text-sm"
+          >
+            {selectedIndex + 1} / {displayImages.length}
+          </div>
+        {/if}
       </div>
 
       <!-- Next Button -->
-      <!-- <button
-        on:click={goToNext}
-        class="absolute right-4 text-white hover:text-gray-300 transition-colors p-3 rounded-full hover:bg-white hover:bg-opacity-10 z-10"
-        aria-label="Next"
-      >
-        <svg
-          width="40"
-          height="40"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
+      {#if displayImages.length > 1}
+        <button
+          on:click={goToNext}
+          class="absolute right-4 text-white hover:text-gray-300 transition-colors p-3 rounded-full hover:bg-white hover:bg-opacity-10 z-10"
+          aria-label="Next"
         >
-          <path d="M9 18l6-6-6-6" />
-        </svg>
-      </button> -->
+          <svg
+            width="40"
+            height="40"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+        </button>
+      {/if}
     </div>
   {/if}
 </div>

@@ -1019,6 +1019,22 @@
     return name.slice(0, keepStart) + "..." + name.slice(-keepEnd);
   }
 
+  function fileIcon(mime, name) {
+    const m = mime ?? "";
+    const n = (name ?? "").toLowerCase();
+    if (m.startsWith("image/") || /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(n))
+      return { icon: "ti-photo", bg: "bg-success" };
+    if (m === "application/pdf" || n.endsWith(".pdf"))
+      return { icon: "ti-file-type-pdf", bg: "bg-danger" };
+    if (m.includes("word") || n.endsWith(".doc") || n.endsWith(".docx"))
+      return { icon: "ti-file-type-doc", bg: "bg-primary" };
+    if (m.includes("excel") || m.includes("spreadsheet") || n.endsWith(".xls") || n.endsWith(".xlsx"))
+      return { icon: "ti-file-spreadsheet", bg: "bg-success" };
+    if (n.endsWith(".zip") || n.endsWith(".rar"))
+      return { icon: "ti-file-zip", bg: "bg-warning" };
+    return { icon: "ti-file", bg: "bg-secondary" };
+  }
+
   function convertDate(rawTimestamp, format) {
     const istDateString = new Date(rawTimestamp).toLocaleString(
       "en-GB",
@@ -1171,8 +1187,22 @@
   }
   const sources = ["Whatsapp", "Website", "Mail"];
   let showImages = [];
-  function addImages(imgs) {
-    showImages = [imgs];
+  let showImagesStart = 0;
+
+  function openImageLightbox(urls, index = 0) {
+    showImagesStart = index;
+    showImages = Array.isArray(urls) ? urls : [urls];
+  }
+
+  function openAttachment(url, mime, name) {
+    const isImg = mime
+      ? mime.startsWith("image/")
+      : /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(name ?? "");
+    if (isImg) {
+      openImageLightbox([url], 0);
+    } else {
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
   }
 
   function generateHmacSignature({ method, path, timestamp }) {
@@ -1310,7 +1340,7 @@
     <!-- End Page Header -->
     {#if !loadingData}
       {#if order}
-        <LightBox data={showImages} />
+        <LightBox data={showImages} startIndex={showImagesStart} />
         <div class="row">
           <div class="col-md-12">
             <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
@@ -2133,66 +2163,39 @@
                                   </p>
                                 {/if}
                                 {#if attachment?.file}
+                                  {@const fi = fileIcon(null, attachment?.fileName ?? attachment?.file)}
                                   <div
                                     class="row"
-                                    class:mt-3={attachment?.title ||
-                                      attachment?.link}
+                                    class:mt-3={attachment?.title || attachment?.link}
                                   >
                                     <div class="col-xxl-4 col-lg-5">
                                       <div
                                         class="card mb-0"
                                         role="button"
                                         tabindex="0"
-                                        aria-label="Show Quick View"
-                                        on:click={addImages(
-                                          ATTACHMENT_BASE_URL +
-                                            attachment?.file,
-                                        )}
-                                        on:keydown={(e) => {
-                                          if (
-                                            e.key === "Enter" ||
-                                            e.key === " "
-                                          )
-                                            addImages(
-                                              ATTACHMENT_BASE_URL +
-                                                attachment?.file,
-                                            );
-                                        }}
+                                        aria-label="Open attachment"
+                                        on:click={() => openAttachment(ATTACHMENT_BASE_URL + attachment?.file, null, attachment?.fileName)}
+                                        on:keydown={(e) => { if (e.key === "Enter" || e.key === " ") openAttachment(ATTACHMENT_BASE_URL + attachment?.file, null, attachment?.fileName); }}
+                                        style="cursor:pointer;"
                                       >
                                         <div class="card-body p-2">
-                                          <div
-                                            class="d-flex align-items-center justify-content-between flex-wrap row-gap-3"
-                                          >
-                                            <div
-                                              class="d-flex align-items-center me-3"
-                                            >
-                                              <span
-                                                class="avatar bg-success me-2"
-                                              >
-                                                <i
-                                                  class="ti ti-file-spreadsheet fs-20"
-                                                ></i>
+                                          <div class="d-flex align-items-center justify-content-between flex-wrap row-gap-3">
+                                            <div class="d-flex align-items-center me-3">
+                                              <span class="avatar {fi.bg} me-2">
+                                                <i class="ti {fi.icon} fs-20"></i>
                                               </span>
                                               <div>
-                                                <h6
-                                                  class="fw-medium fs-14 mb-1 trank"
-                                                  title={attachment?.fileName}
-                                                >
-                                                  {shortenFileName(
-                                                    attachment?.fileName,
-                                                  )}
+                                                <h6 class="fw-medium fs-14 mb-1 trank" title={attachment?.fileName}>
+                                                  {shortenFileName(attachment?.fileName)}
                                                 </h6>
-                                                <!-- <p class="mb-0">365 KB</p> -->
                                               </div>
                                             </div>
                                             <button
-                                              on:click={addImages(
-                                                ATTACHMENT_BASE_URL +
-                                                  attachment?.file,
-                                              )}
+                                              on:click|stopPropagation={() => openAttachment(ATTACHMENT_BASE_URL + attachment?.file, null, attachment?.fileName)}
                                               class="avatar avatar-xs rounded-circle bg-light text-dark"
+                                              title="Open"
                                             >
-                                              <i class="ti ti-link"></i>
+                                              <i class="ti ti-external-link"></i>
                                             </button>
                                           </div>
                                         </div>
@@ -2201,80 +2204,53 @@
                                   </div>
                                 {/if}
                                 {#if attachment?.files}
+                                  {@const attachImgUrls = attachment.files
+                                    .filter(f => f?.mimeType?.startsWith("image/") || /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(f?.originalName ?? ""))
+                                    .map(f => ATTACHMENT_BASE_URL + f.url)}
                                   <div
                                     class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3"
-                                    class:mt-3={attachment?.title ||
-                                      attachment?.link}
+                                    class:mt-3={attachment?.title || attachment?.link}
                                   >
                                     {#each attachment?.files as file}
+                                      {@const fi = fileIcon(file?.mimeType, file?.originalName)}
+                                      {@const isImg = file?.mimeType?.startsWith("image/") || /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(file?.originalName ?? "")}
+                                      {@const imgIdx = attachImgUrls.indexOf(ATTACHMENT_BASE_URL + file?.url)}
                                       <div
                                         class="card mb-0"
                                         role="button"
                                         tabindex="0"
-                                        aria-label="Show Quick View"
-                                        on:click={addImages(
-                                          ATTACHMENT_BASE_URL + file?.url,
-                                        )}
-                                        on:keydown={(e) => {
-                                          if (
-                                            e.key === "Enter" ||
-                                            e.key === " "
-                                          )
-                                            addImages(
-                                              ATTACHMENT_BASE_URL + file?.url,
-                                            );
-                                        }}
+                                        aria-label="Open attachment"
+                                        on:click={() => isImg ? openImageLightbox(attachImgUrls, imgIdx) : openAttachment(ATTACHMENT_BASE_URL + file?.url, file?.mimeType, file?.originalName)}
+                                        on:keydown={(e) => { if (e.key === "Enter" || e.key === " ") isImg ? openImageLightbox(attachImgUrls, imgIdx) : openAttachment(ATTACHMENT_BASE_URL + file?.url, file?.mimeType, file?.originalName); }}
+                                        style="cursor:pointer;"
                                       >
                                         <div class="card-body p-2">
-                                          <div
-                                            class="d-flex align-items-center justify-content-between flex-wrap row-gap-3"
-                                          >
-                                            <div
-                                              class="d-flex align-items-center me-3"
-                                            >
-                                              {#if file.mimeType && file.mimeType.startsWith("image")}
-                                                <span
-                                                  class="avatar border me-2"
-                                                >
-                                                  <img
-                                                    src={ATTACHMENT_BASE_URL +
-                                                      file?.url}
-                                                    alt={file?.url}
-                                                    class="object-contain"
-                                                  />
+                                          <div class="d-flex align-items-center justify-content-between flex-wrap row-gap-3">
+                                            <div class="d-flex align-items-center me-3">
+                                              {#if isImg}
+                                                <span class="avatar border me-2">
+                                                  <img src={ATTACHMENT_BASE_URL + file?.url} alt={file?.originalName} class="object-contain" />
                                                 </span>
                                               {:else}
-                                                <span
-                                                  class="avatar bg-success me-2"
-                                                >
-                                                  <i
-                                                    class="ti ti-file-spreadsheet fs-20"
-                                                  ></i>
+                                                <span class="avatar {fi.bg} me-2">
+                                                  <i class="ti {fi.icon} fs-20"></i>
                                                 </span>
                                               {/if}
                                               <div>
-                                                <h6
-                                                  class="fw-medium lg:fs-14 fs-12 mb-1 trank"
-                                                  title={file?.originalName}
-                                                >
-                                                  {shortenFileName(
-                                                    file?.originalName,
-                                                  )}
+                                                <h6 class="fw-medium lg:fs-14 fs-12 mb-1 trank" title={file?.originalName}>
+                                                  {shortenFileName(file?.originalName)}
                                                 </h6>
                                                 <p class="mb-0 fs-12 md:fs-10">
-                                                  {(file.size / 1024).toFixed(
-                                                    2,
-                                                  )} KB
+                                                  {(file.size / 1024).toFixed(2)} KB
                                                 </p>
                                               </div>
                                             </div>
                                             <button
-                                              on:click={addImages(
-                                                ATTACHMENT_BASE_URL + file?.url,
-                                              )}
+                                              on:click|stopPropagation={() => isImg ? openImageLightbox(attachImgUrls, imgIdx) : openAttachment(ATTACHMENT_BASE_URL + file?.url, file?.mimeType, file?.originalName)}
                                               class="avatar avatar-xs rounded-circle bg-light text-dark"
+                                              title="Open"
                                             >
-                                              <i class="ti ti-link"></i>
+                                              <i class="ti ti-external-link"></i>
                                             </button>
                                           </div>
                                         </div>

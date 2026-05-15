@@ -3,7 +3,7 @@
 
 <head>
 	<meta charset="utf-8" />
-	<link rel="icon" href="%sveltekit.assets%/favicon.jpg" />
+	<link rel="icon" href="%sveltekit.assets%/assets/img/logo.jpg" />
 	<meta name="viewport" content="width=device-width" />
 	%sveltekit.head%
 	<link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;700&display=swap" rel="stylesheet">
@@ -28,34 +28,52 @@
 			flex-direction: column;
 			align-items: center;
 			justify-content: center;
-			gap: 20px;
+			user-select: none;
+			padding: 0 10px;
+
 			transition: opacity 0.4s ease, visibility 0.4s ease;
 		}
+
 		#splash.hide {
 			opacity: 0;
 			visibility: hidden;
 		}
+
 		#splash img {
-			width: 180px;
-			height: auto;
+			width: 140px;
+			height: 80px;
 			object-fit: contain;
+			display: block;
+			margin-bottom: 28px;
 		}
-		#splash-spinner {
-			width: 36px;
-			height: 36px;
-			border: 3px solid #f0f0f0;
-			border-top-color: #ef4444;
-			border-radius: 50%;
-			animation: spin 0.8s linear infinite;
+
+		#splash-bar-wrap {
+			width: 120px;
+			height: 3px;
+			background: #e9ecef;
+			border-radius: 3px;
+			overflow: hidden;
 		}
-		#splash-text {
-			font-family: 'Golos Text', sans-serif;
-			font-size: 13px;
-			color: #9ca3af;
-			letter-spacing: 0.5px;
+
+		#splash-bar {
+			height: 100%;
+			background: #3b5bdb;
+			border-radius: 3px;
+			animation: splash-fill 2.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 		}
-		@keyframes spin {
-			to { transform: rotate(360deg); }
+
+		@keyframes splash-fill {
+			0% {
+				width: 0%;
+			}
+
+			60% {
+				width: 75%;
+			}
+
+			100% {
+				width: 100%;
+			}
 		}
 	</style>
 	<script>
@@ -77,35 +95,33 @@
 			});
 		})();
 
-		// Hide splash when SvelteKit finishes mounting
+		// Hide splash — called by SvelteKit onMount, or by the fallback timer below
 		window.hideSplash = function () {
-			var splash = document.getElementById('splash');
-			if (splash) {
-				splash.classList.add('hide');
-				setTimeout(function () { splash.remove(); }, 450);
-			}
+			var el = document.getElementById('splash');
+			if (!el || el.dataset.hiding) return;
+			el.dataset.hiding = '1';
+			el.classList.add('hide');
+			setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 450);
 		};
+
+		// Remove stale splash_logo key that used to override the logo src
+		try { localStorage.removeItem('splash_logo'); } catch (e) { }
+
+		// Guaranteed fallback: always hide after 3 s even if SvelteKit onMount
+		// doesn't fire (e.g. route error, slow network in dev mode).
+		setTimeout(window.hideSplash, 3000);
 	</script>
 </head>
 
 <body data-sveltekit-preload-data="hover">
 
-	<!-- Splash screen — shown until app is ready -->
+	<!-- Splash screen — shown until SvelteKit finishes mounting -->
 	<div id="splash">
-		<img id="splash-logo" src="/favicon.jpg" alt="Sales Management" />
-		<div id="splash-spinner"></div>
-		<div id="splash-text">Loading...</div>
+		<img id="splash-logo" src="/assets/img/logo.jpg" alt="Elly Fish" draggable="false" />
+		<div id="splash-bar-wrap">
+			<div id="splash-bar"></div>
+		</div>
 	</div>
-	<script>
-		(function () {
-			var logo = localStorage.getItem('splash_logo');
-			if (logo) {
-				var img = document.getElementById('splash-logo');
-				if (img) img.src = logo;
-			}
-		})();
-	</script>
-
 	<div style="display: contents">%sveltekit.body%</div>
 </body>
 

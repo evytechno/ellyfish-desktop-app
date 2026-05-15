@@ -5,6 +5,19 @@
 body {
   font-family: "Golos Text", sans-serif;
 }
+
+/* ── Global scrollbar theme ─────────────────────────────────────────────── */
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #c5cff9 transparent;
+}
+/* Chrome / Edge / Tauri / WebKit */
+::-webkit-scrollbar          { width: 6px; height: 6px; }
+::-webkit-scrollbar-track    { background: transparent; }
+::-webkit-scrollbar-thumb    { background: #c5cff9; border-radius: 10px; transition: background 0.8s ease; }
+::-webkit-scrollbar-thumb:hover { background: #3b5bdb; }
+/* ───────────────────────────────────────────────────────────────────────── */
 .styled-toast {
   padding: 0.5rem !important;
 }

@@ -1247,8 +1247,11 @@
   }
   const sources = ["Whatsapp", "Website", "Mail"];
   let showImages = [];
-  function addImages(imgs) {
-    showImages = [imgs];
+  let showImagesStart = 0;
+
+  function openImageLightbox(urls, index = 0) {
+    showImagesStart = index;
+    showImages = Array.isArray(urls) ? urls : [urls];
   }
 
   // Open image in lightbox; open other files in a new tab
@@ -1257,7 +1260,7 @@
       ? mime.startsWith("image/")
       : /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(name ?? "");
     if (isImg) {
-      addImages(url);
+      openImageLightbox([url], 0);
     } else {
       window.open(url, "_blank", "noopener,noreferrer");
     }
@@ -1305,7 +1308,7 @@
     <!-- End Page Header -->
     {#if !loadingData}
       {#if order}
-        <LightBox data={showImages} />
+        <LightBox data={showImages} startIndex={showImagesStart} />
         <div class="row">
           <div class="col-md-12">
             <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
@@ -2246,25 +2249,30 @@
                                   </div>
                                 {/if}
                                 {#if attachment?.files}
+                                  {@const attachImgUrls = attachment.files
+                                    .filter(f => f?.mimeType?.startsWith("image/") || /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(f?.originalName ?? ""))
+                                    .map(f => ATTACHMENT_BASE_URL + f.url)}
                                   <div
                                     class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3"
                                     class:mt-3={attachment?.title || attachment?.link}
                                   >
                                     {#each attachment?.files as file}
                                       {@const fi = fileIcon(file?.mimeType, file?.originalName)}
+                                      {@const isImg = file?.mimeType?.startsWith("image/") || /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(file?.originalName ?? "")}
+                                      {@const imgIdx = attachImgUrls.indexOf(ATTACHMENT_BASE_URL + file?.url)}
                                       <div
                                         class="card mb-0"
                                         role="button"
                                         tabindex="0"
                                         aria-label="Open attachment"
-                                        on:click={() => openAttachment(ATTACHMENT_BASE_URL + file?.url, file?.mimeType, file?.originalName)}
-                                        on:keydown={(e) => { if (e.key === "Enter" || e.key === " ") openAttachment(ATTACHMENT_BASE_URL + file?.url, file?.mimeType, file?.originalName); }}
+                                        on:click={() => isImg ? openImageLightbox(attachImgUrls, imgIdx) : openAttachment(ATTACHMENT_BASE_URL + file?.url, file?.mimeType, file?.originalName)}
+                                        on:keydown={(e) => { if (e.key === "Enter" || e.key === " ") isImg ? openImageLightbox(attachImgUrls, imgIdx) : openAttachment(ATTACHMENT_BASE_URL + file?.url, file?.mimeType, file?.originalName); }}
                                         style="cursor:pointer;"
                                       >
                                         <div class="card-body p-2">
                                           <div class="d-flex align-items-center justify-content-between flex-wrap row-gap-3">
                                             <div class="d-flex align-items-center me-3">
-                                              {#if file?.mimeType?.startsWith("image/")}
+                                              {#if isImg}
                                                 <span class="avatar border me-2">
                                                   <img src={ATTACHMENT_BASE_URL + file?.url} alt={file?.originalName} class="object-contain" />
                                                 </span>
@@ -2283,7 +2291,7 @@
                                               </div>
                                             </div>
                                             <button
-                                              on:click|stopPropagation={() => openAttachment(ATTACHMENT_BASE_URL + file?.url, file?.mimeType, file?.originalName)}
+                                              on:click|stopPropagation={() => isImg ? openImageLightbox(attachImgUrls, imgIdx) : openAttachment(ATTACHMENT_BASE_URL + file?.url, file?.mimeType, file?.originalName)}
                                               class="avatar avatar-xs rounded-circle bg-light text-dark"
                                               title="Open"
                                             >
