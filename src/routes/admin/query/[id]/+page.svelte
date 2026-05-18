@@ -47,6 +47,9 @@
   // reply state
   let replyTo = null; // { id, senderLabel, message, senderType } | null
 
+  // final flag state
+  let settingFinalFlag = null; // chatId being toggled
+
   // read-more state
   const CHAR_LIMIT = 300;
   let expandedMessages = new Set();
@@ -66,27 +69,55 @@
   // in-progress list
   let inProgressList = [];
   let inProgressLoading = false;
-  const IN_PROGRESS_LIMIT = 5;
+  let inProgressLoadingMore = false;
+  let inProgressPage = 1;
+  let inProgressTotal = 0;
+  const IN_PROGRESS_LIMIT = 15;
 
-  async function loadInProgress() {
-    // only show the spinner on the very first load (empty list)
-    // subsequent refreshes update silently — list stays visible
-    if (inProgressList.length === 0) inProgressLoading = true;
+  async function loadInProgress(reset = true) {
+    if (reset) {
+      inProgressPage = 1;
+      inProgressTotal = 0;
+    }
+    // full spinner only on first page with empty list; otherwise silent refresh or bottom spinner
+    if (inProgressPage === 1 && inProgressList.length === 0) inProgressLoading = true;
+    else if (inProgressPage > 1) inProgressLoadingMore = true;
     try {
       let res;
+      const p = inProgressPage;
       if (isTech(currentUser)) {
-        res = await authApiFetch(`${API_ROUTES.QUERY}/assigned?status=in_progress&limit=${IN_PROGRESS_LIMIT}&page=1`);
+        res = await authApiFetch(`${API_ROUTES.QUERY}/assigned?status=in_progress&limit=${IN_PROGRESS_LIMIT}&page=${p}`);
       } else if (isTelecaller(currentUser)) {
-        res = await authApiFetch(`${API_ROUTES.QUERY}/my?status=in_progress&limit=${IN_PROGRESS_LIMIT}&page=1`);
+        res = await authApiFetch(`${API_ROUTES.QUERY}/my?status=in_progress&limit=${IN_PROGRESS_LIMIT}&page=${p}`);
       } else {
-        res = await authApiFetch(`${API_ROUTES.QUERY}?status=in_progress&limit=${IN_PROGRESS_LIMIT}&page=1`);
+        res = await authApiFetch(`${API_ROUTES.QUERY}?status=in_progress&limit=${IN_PROGRESS_LIMIT}&page=${p}`);
       }
-      inProgressList = Array.isArray(res?.data) ? res.data : [];
-      joinInProgressRooms();
+      const newItems = Array.isArray(res?.data) ? res.data : [];
+      inProgressTotal = res?.total ?? inProgressTotal;
+      if (p === 1) {
+        inProgressList = newItems;
+        joinInProgressRooms();
+      } else {
+        inProgressList = [...inProgressList, ...newItems];
+      }
     } catch (_) {
-      inProgressList = [];
+      if (inProgressPage === 1) inProgressList = [];
     } finally {
       inProgressLoading = false;
+      inProgressLoadingMore = false;
+    }
+  }
+
+  async function loadMoreInProgress() {
+    if (inProgressLoadingMore || inProgressLoading || inProgressList.length >= inProgressTotal) return;
+    inProgressPage += 1;
+    await loadInProgress(false);
+  }
+
+  function handleInProgressScroll(e) {
+    const el = e.currentTarget;
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 30) {
+      loadMoreInProgress();
     }
   }
 
@@ -170,6 +201,29 @@
   function setReply(chat) {
     replyTo = { id: chat.id, senderLabel: chat.senderLabel, message: chat.message, senderType: chat.senderType };
     chatInputEl?.focus();
+  }
+
+  function canSetFinalFlag() {
+    return currentUser?.subRole === 'telecaller' || currentUser?.subRole === 'tech';
+  }
+
+  async function toggleFinalFlag(chat) {
+    if (settingFinalFlag === chat.id) return;
+    settingFinalFlag = chat.id;
+    try {
+      const res = await authApiFetch(`${API_ROUTES.QUERY}/${queryId}/chat/${chat.id}/flag`, { method: 'PATCH' });
+      const isFinal = res?.data?.isFinal ?? false;
+      // Clear previous final flag in local state, then set new one
+      chats = chats.map(c => ({
+        ...c,
+        isFinal: c.id === chat.id ? isFinal : (isFinal ? false : c.isFinal),
+        finalSetById: c.id === chat.id ? (isFinal ? currentUser?.id : null) : (isFinal ? null : c.finalSetById),
+      }));
+    } catch (e) {
+      Swal.fire({ icon: 'error', title: 'Error', text: 'Could not update final flag.' });
+    } finally {
+      settingFinalFlag = null;
+    }
   }
 
   function scrollToMessage(msgId) {
@@ -306,8 +360,22 @@
     });
 
     socket.on("new-message", (msg) => {
-      // ignore messages from watched-but-not-viewing rooms
-      if (msg.queryId !== Number(queryId)) return;
+      // handle messages for other in-progress queries — bubble to top of list
+      if (msg.queryId !== Number(queryId)) {
+        const idx = inProgressList.findIndex(q => q.id === msg.queryId);
+        if (idx === 0) {
+          // already at top — just refresh lastMessage preview
+          inProgressList[0] = { ...inProgressList[0], lastMessage: msg.message ?? inProgressList[0].lastMessage };
+          inProgressList = [...inProgressList];
+        } else if (idx > 0) {
+          const item = { ...inProgressList[idx], lastMessage: msg.message ?? inProgressList[idx].lastMessage };
+          inProgressList = [item, ...inProgressList.filter((_, i) => i !== idx)];
+        } else {
+          // not in loaded pages yet — refresh from page 1
+          loadInProgress(true);
+        }
+        return;
+      }
       // skip if already added locally (own message added immediately after send)
       if (chats.find((c) => c.id === msg.id)) return;
 
@@ -441,7 +509,7 @@
     try {
       const raw = await authApiFetch(`${API_ROUTES.QUERY}/${id}/chat`);
       chats = Array.isArray(raw)
-        ? raw.map((c) => ({ ...c, senderType: deriveSenderType(c.isOwn, c.senderLabel, c.senderSubRole) }))
+        ? raw.map((c) => ({ ...c, senderType: deriveSenderType(c.isOwn, c.senderLabel, c.senderSubRole), isFinal: c.isFinal ?? false, finalSetById: c.finalSetById ?? null }))
         : [];
       await tick();
       if (chatContainer) chatContainer.scrollTop = chatContainer.scrollHeight;
@@ -697,7 +765,7 @@
 
       <div class="row g-4">
         <!-- Left: query info + actions -->
-        <div class="col-lg-4">
+        <div class="col-lg-4 query-left-col">
           {#if !isTech(currentUser) && query.order}
             <div class="card border-0 shadow-sm mb-3">
               <div class="card-header py-2 d-flex align-items-center gap-2">
@@ -836,18 +904,18 @@
               <span class="spinner-border spinner-border-sm text-primary"></span>
             </div>
           {:else if inProgressList.length > 0}
-            <div class="card border-0 shadow-sm">
+            <div class="card border-0 shadow-sm ip-card">
               <div class="card-header py-2 px-3 d-flex align-items-center gap-2">
                 <i class="ti ti-loader text-warning"></i>
                 <span class="fw-semibold small">In Progress</span>
-                <span class="badge bg-warning text-dark ms-1">{inProgressList.length}</span>
+                <span class="badge bg-warning text-dark ms-1">{inProgressTotal || inProgressList.length}</span>
                 {#if isTech(currentUser)}
                   <a href="/admin/query/assigned" class="ms-auto small text-muted text-decoration-none">View all →</a>
                 {:else}
                   <a href="/admin/query" class="ms-auto small text-muted text-decoration-none">View all →</a>
                 {/if}
               </div>
-              <div class="card-body p-0">
+              <div class="card-body p-0 ip-list-body" on:scroll={handleInProgressScroll}>
                 {#each inProgressList as q}
                   {@const unread = $queryUnreadCounts[q.id] ?? 0}
                   {@const isTypingHere = typingQueries.has(q.id)}
@@ -880,6 +948,11 @@
                           {typeLabel}
                         {/if}
                       </span>
+                      {#if isMasterView(currentUser)}
+                        <span class="ip-meta">
+                          {#if q.raisedBy?.name}<i class="ti ti-user" style="font-size:9px;"></i> {q.raisedBy.name}{/if}{#if q.assignedTo?.name}&nbsp;·&nbsp;<i class="ti ti-user-check" style="font-size:9px;"></i> {q.assignedTo.name}{/if}
+                        </span>
+                      {/if}
                     </div>
 
                     <!-- unread count -->
@@ -888,6 +961,13 @@
                     {/if}
                   </div>
                 {/each}
+                {#if inProgressLoadingMore}
+                  <div class="ip-loading-more">
+                    <span class="spinner-border spinner-border-sm text-warning" style="width:14px;height:14px;border-width:2px;"></span>
+                  </div>
+                {:else if inProgressList.length > 0 && inProgressList.length >= inProgressTotal && inProgressTotal > IN_PROGRESS_LIMIT}
+                  <div class="ip-all-loaded">All caught up</div>
+                {/if}
               </div>
             </div>
           {/if}
@@ -948,7 +1028,7 @@
                     </div>
                   {/if}
                   <div class="chat-bubble-wrap">
-                  <div class="chat-bubble chat-bubble--{chat.senderType ?? (chat.isOwn ? 'own' : 'other')}">
+                  <div class="chat-bubble chat-bubble--{chat.senderType ?? (chat.isOwn ? 'own' : 'other')} {chat.isFinal ? 'chat-bubble--final' : ''}">
                     <!-- reply quote block -->
                     {#if chat.replyTo}
                       <div
@@ -1023,8 +1103,28 @@
                         </div>
                       {/if}
                     {/if}
-                    <div class="chat-time">{formatDate(chat.createdAt)}</div>
+                    <div class="chat-time-row">
+                      <span class="chat-time">{formatDate(chat.createdAt)}</span>
+                      {#if chat.isFinal}
+                        <span class="final-badge"><i class="ti ti-flag-check"></i> Final Quotation</span>
+                      {/if}
+                    </div>
                   </div>
+                  <!-- final flag button — sits below bubble inside bubble-wrap -->
+                  {#if canSetFinalFlag()}
+                    <button
+                      class="final-flag-btn {chat.isFinal ? 'final-flag-btn--active' : ''}"
+                      title="{chat.isFinal ? 'Remove final flag' : 'Mark as Final Quotation'}"
+                      disabled={settingFinalFlag === chat.id}
+                      on:click={() => toggleFinalFlag(chat)}
+                    >
+                      {#if settingFinalFlag === chat.id}
+                        <span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span>
+                      {:else}
+                        <i class="ti ti-flag"></i>
+                      {/if}
+                    </button>
+                  {/if}
                   </div>
                   <!-- reply button — sits in the flex row between bubble and avatar -->
                   {#if canSendChat()}
@@ -1259,6 +1359,8 @@
     max-width: 68%;
   }
   .chat-row--own .chat-bubble-wrap { align-items: flex-end; }
+  /* extra horizontal space so the absolutely-positioned flag button isn't clipped */
+  .chat-bubble-wrap { overflow: visible; }
 
   /* reply button — flex sibling in chat-row, shown on row hover */
   .chat-reply-btn {
@@ -1338,7 +1440,51 @@
   .read-more-btn--tech       { color: #0ca678; }
   .read-more-btn--telecaller { color: #f59f00; }
   .read-more-btn--other      { color: #3b5bdb; }
-  .chat-time { font-size: 10px; margin-top: 5px; opacity: 0.6; text-align: right; }
+  .chat-time-row {
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 5px; justify-content: flex-end; flex-wrap: wrap;
+  }
+  .chat-row--own .chat-time-row { flex-direction: row-reverse; }
+  .chat-time { font-size: 10px; opacity: 0.6; }
+  .final-badge {
+    display: inline-flex; align-items: center; gap: 3px;
+    font-size: 9.5px; font-weight: 700; letter-spacing: 0.3px;
+    color: #0ca678; background: #e6fcf5; border: 1px solid #0ca678;
+    padding: 1px 7px; border-radius: 20px;
+  }
+  .final-badge i { font-size: 10px; }
+
+  /* final flag button — absolutely positioned at the top corner of the bubble-wrap */
+  .final-flag-btn {
+    display: none;
+    align-items: center; justify-content: center;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: #f1f3f5; border: 1px solid #e9ecef;
+    color: #adb5bd; font-size: 11px; cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    position: absolute;
+    top: 4px;
+    right: -26px; /* other messages: flag appears on the right side */
+    left: auto;
+  }
+  .chat-row--own .final-flag-btn {
+    right: auto;
+    left: -26px; /* own messages: flag appears on the left side */
+  }
+  .chat-row:hover .final-flag-btn { display: flex; }
+  .final-flag-btn:hover { background: #e6fcf5; color: #0ca678; border-color: #0ca678; }
+  .final-flag-btn--active {
+    display: flex !important;
+    background: #e6fcf5; color: #0ca678; border-color: #0ca678;
+  }
+  .final-flag-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* highlighted bubble when marked as final quotation */
+  .chat-bubble--final {
+    outline: 2px solid #0ca678;
+    outline-offset: 1px;
+  }
   .chat-input-bar {
     display: flex; align-items: flex-end; gap: 10px;
     padding: 10px 16px 12px; background: transparent;
@@ -1618,6 +1764,64 @@
   @keyframes typing-fade {
     0%, 100% { opacity: 0.45; }
     50%       { opacity: 1; }
+  }
+
+  /* left column — same height as chat card */
+  .query-left-col {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 200px);
+    min-height: 480px;
+    overflow: hidden;
+  }
+  /* qd-card: fixed height, scrollable if content overflows */
+  .query-left-col .qd-card {
+    flex-shrink: 0;
+    overflow-y: auto;
+    min-height: 0;
+  }
+  /* optional linked order card: also fixed */
+  .query-left-col > .card.border-0.shadow-sm.mb-3 {
+    flex-shrink: 0;
+  }
+  /* in-progress card: fill remaining space */
+  .ip-card {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .ip-card .card-header { flex-shrink: 0; }
+
+  /* scrollable list body — fills ip-card, no fixed max-height */
+  .ip-list-body {
+    flex: 1 1 0;
+    max-height: none;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #e9ecef transparent;
+  }
+  .ip-list-body::-webkit-scrollbar { width: 4px; }
+  .ip-list-body::-webkit-scrollbar-track { background: transparent; }
+  .ip-list-body::-webkit-scrollbar-thumb { background: #dee2e6; border-radius: 10px; }
+  .ip-list-body::-webkit-scrollbar-thumb:hover { background: #adb5bd; }
+
+  /* raised by / assigned to meta line */
+  .ip-meta {
+    font-size: 10px; color: #adb5bd;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    display: flex; align-items: center; gap: 2px; margin-top: 1px;
+  }
+
+  /* load-more bottom states */
+  .ip-loading-more {
+    display: flex; align-items: center; justify-content: center;
+    padding: 8px 0;
+  }
+  .ip-all-loaded {
+    text-align: center; font-size: 10px; color: #ced4da;
+    padding: 6px 0; letter-spacing: 0.3px;
   }
 
   /* unread count */

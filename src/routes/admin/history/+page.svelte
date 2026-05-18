@@ -398,22 +398,18 @@
   // ── event badge colour ────────────────────────────────────────────────────
   function eventBadgeClass(event) {
     switch (event) {
-      case "login":
-        return "badge bg-success";
-      case "logout":
-        return "badge bg-secondary";
-      case "failed_login":
-        return "badge bg-danger";
-      case "token_refresh":
-        return "badge bg-info text-dark";
-      case "location_blocked":
-        return "badge bg-warning text-dark";
-      case "time_blocked":
-        return "badge bg-warning text-dark";
-      case "account_blocked":
-        return "badge bg-danger";
-      default:
-        return "badge bg-light text-dark";
+      case "login":           return "badge bg-success";
+      case "logout":          return "badge bg-secondary";
+      case "failed_login":    return "badge bg-danger";
+      case "token_refresh":   return "badge bg-info text-dark";
+      case "location_blocked":return "badge bg-warning text-dark";
+      case "time_blocked":    return "badge bg-warning text-dark";
+      case "account_blocked": return "badge bg-danger";
+      case "password_changed":return "badge bg-primary";
+      case "profile_updated": return "badge bg-primary bg-opacity-75";
+      case "user_created":    return "badge bg-success bg-opacity-75";
+      case "user_deleted":    return "badge bg-danger bg-opacity-75";
+      default:                return "badge bg-light text-dark";
     }
   }
 
@@ -494,13 +490,57 @@
     },
     {
       key: "userEmail",
-      label: "User",
+      label: "Actor",
       render: (val, row) =>
         row?.user?.name
           ? `<div>${row.user.name}</div><div class="text-muted small">${val ?? ""}</div>`
           : (val ?? "-"),
     },
-    { key: "ipAddress", label: "IP Address", render: (val) => val ?? "-" },
+    {
+      key: "metadata",
+      label: "Details",
+      render: (val, row) => {
+        // Parse metadata JSON
+        let meta = null;
+        try { meta = val ? JSON.parse(val) : null; } catch { meta = null; }
+
+        const parts = [];
+
+        // Target user (for admin actions)
+        if (meta?.targetUserName) {
+          parts.push(`<div class="fw-semibold text-dark small">→ ${meta.targetUserName}</div>`);
+        }
+
+        // Changed fields (profile_updated)
+        if (Array.isArray(meta?.changedFields) && meta.changedFields.length) {
+          parts.push(`<div class="text-muted small">Fields: ${meta.changedFields.join(', ')}</div>`);
+        }
+
+        // changedBy (password_changed)
+        if (meta?.changedBy) {
+          parts.push(`<div class="text-muted small">By: ${meta.changedBy}</div>`);
+        }
+
+        // role/email for user_created or user_deleted
+        if (meta?.role) {
+          parts.push(`<div class="text-muted small">Role: ${meta.role}${meta.subRole ? ' / ' + meta.subRole : ''}</div>`);
+        }
+        if (meta?.permanent !== undefined) {
+          parts.push(`<div class="text-muted small">${meta.permanent ? 'Permanent delete' : 'Soft delete'}</div>`);
+        }
+
+        return parts.length ? parts.join('') : `<span class="text-muted">-</span>`;
+      },
+    },
+    {
+      key: "ipAddress",
+      label: "IP / City",
+      render: (val, row) => {
+        const ip = val ?? "-";
+        const city = row?.city ? `<div class="text-muted small">${row.city}</div>` : "";
+        return `<div>${ip}</div>${city}`;
+      },
+    },
     {
       key: "browser",
       label: "Device / Browser",
@@ -729,6 +769,10 @@
             <option value="location_blocked">Location Blocked</option>
             <option value="time_blocked">Time Blocked</option>
             <option value="account_blocked">Account Blocked</option>
+            <option value="password_changed">Password Changed</option>
+            <option value="profile_updated">Profile Updated</option>
+            <option value="user_created">User Created</option>
+            <option value="user_deleted">User Deleted</option>
           </select>
 
           <!-- Date filter -->

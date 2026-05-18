@@ -233,6 +233,13 @@
     } catch (_) {}
   }
 
+  function fmtMins(mins) {
+    if (mins === null || mins === undefined) return "-";
+    if (mins < 1) return `${Math.round(mins * 60)}s`;
+    if (mins < 60) return `${Math.round(mins)}m`;
+    return `${Math.floor(mins / 60)}h ${Math.round(mins % 60)}m`;
+  }
+
   function onSearchInput() {
     clearTimeout(searchTimeout);
     searchTimeout = setTimeout(() => {
@@ -666,6 +673,10 @@
                   <th>Status</th>
                   <th>Order</th>
                   <th>Raised At</th>
+                  {#if isMasterView(currentUser)}
+                    <th title="Final quotation flagged in chat">Final Quot.</th>
+                    <th title="First response time vs SLA">Delay</th>
+                  {/if}
                   <th>Action</th>
                 </tr>
               </thead>
@@ -724,6 +735,26 @@
                       {/if}
                     </td>
                     <td>{formatDate(q.createdAt)}</td>
+                    {#if isMasterView(currentUser)}
+                      <td>
+                        {#if q.hasFinalQuotation}
+                          <span class="badge bg-success" style="font-size:10px;"><i class="ti ti-flag-check me-1"></i>Sent</span>
+                        {:else}
+                          <span class="badge bg-light text-muted border" style="font-size:10px;">Pending</span>
+                        {/if}
+                      </td>
+                      <td>
+                        {#if q.slaBreached}
+                          <span class="badge bg-danger text-white" style="font-size:10px;" title="{q.firstResponseMins}m">
+                            <i class="ti ti-clock-exclamation me-1"></i>{fmtMins(q.firstResponseMins)}
+                          </span>
+                        {:else if q.firstResponseMins !== null}
+                          <span class="badge bg-success text-white" style="font-size:10px;">{fmtMins(q.firstResponseMins)}</span>
+                        {:else}
+                          <span class="text-muted small">-</span>
+                        {/if}
+                      </td>
+                    {/if}
                     <td>
                       <a
                         href="/admin/query/{q.id}"
@@ -820,4 +851,5 @@
   .order-dropdown-item:last-child {
     border-bottom: none;
   }
+
 </style>

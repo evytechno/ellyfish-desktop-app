@@ -226,7 +226,22 @@
                             </li>
                           </ul>
                         </li>
-                      {:else if currentUser?.role !== "user" || currentUser?.subRole === "telecaller"}
+                      {:else if currentUser?.role !== "user"}
+                        <li class="submenu">
+                          <a href="#queries" class:active={currentPath.startsWith("/admin/query")}>
+                            <i class="ti ti-help-circle"></i><span>Queries</span>
+                            <span class="menu-arrow"></span>
+                          </a>
+                          <ul>
+                            <li>
+                              <a href="/admin/query" class:active={currentPath === "/admin/query"}>All Queries</a>
+                            </li>
+                            <li>
+                              <a href="/admin/query/dashboard" class:active={currentPath === "/admin/query/dashboard"}>Dashboard</a>
+                            </li>
+                          </ul>
+                        </li>
+                      {:else if currentUser?.subRole === "telecaller"}
                         <li class:active={currentPath.startsWith("/admin/query")}>
                           <a href="/admin/query" class:active={currentPath.startsWith("/admin/query")}>
                             <i class="ti ti-help-circle"></i><span>Queries</span>
