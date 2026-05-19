@@ -445,8 +445,20 @@
                     <td>
                       <a href="/admin/query/{q.id}" class="text-primary fw-semibold">{q.subject}</a>
                     </td>
-                    <td>{q.raisedBy?.name ?? "-"}</td>
-                    <td>{q.assignedTo?.name ?? "Unassigned"}</td>
+                    <td>
+                      {#if q.raisedBy}
+                        <a href="/admin/query/user/{q.raisedBy.id}" class="text-body text-decoration-none user-link">
+                          {q.raisedBy.name}
+                        </a>
+                      {:else}-{/if}
+                    </td>
+                    <td>
+                      {#if q.assignedTo}
+                        <a href="/admin/query/user/{q.assignedTo.id}" class="text-body text-decoration-none user-link">
+                          {q.assignedTo.name}
+                        </a>
+                      {:else}<span class="text-muted">Unassigned</span>{/if}
+                    </td>
                     <td>
                       <span class="badge bg-light text-dark border" style="font-size:11px;">
                         {QUERY_TYPES.find(t => t.value === q.type)?.label ?? q.type ?? "-"}
@@ -515,6 +527,8 @@
 </div>
 
 <style>
+  .user-link:hover { text-decoration: underline !important; color: #3b5bdb !important; }
+
   .section-label {
     font-size: 11px; font-weight: 700; text-transform: uppercase;
     letter-spacing: 0.8px; color: #adb5bd; margin-bottom: 10px;

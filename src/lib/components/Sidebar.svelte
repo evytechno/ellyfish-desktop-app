@@ -234,10 +234,13 @@
                           </a>
                           <ul>
                             <li>
-                              <a href="/admin/query" class:active={currentPath === "/admin/query"}>All Queries</a>
+                              <a href="/admin/query/dashboard" class:active={currentPath === "/admin/query/dashboard"}>Dashboard</a>
                             </li>
                             <li>
-                              <a href="/admin/query/dashboard" class:active={currentPath === "/admin/query/dashboard"}>Dashboard</a>
+                              <a href="/admin/query/user" class:active={currentPath.startsWith("/admin/query/user")}>User Stats</a>
+                            </li>
+                            <li>
+                              <a href="/admin/query" class:active={currentPath === "/admin/query"}>All Queries</a>
                             </li>
                           </ul>
                         </li>

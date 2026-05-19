@@ -19,6 +19,8 @@
   let role = "";
   let subRole = null;
   let orderAccess = true;
+  let queryAccessTelecaller = true;
+  let queryAccessTech = true;
   let companyId = null;
   let loginStartTime = "";
   let loginEndTime = "";
@@ -57,6 +59,8 @@
       role = data.role;
       subRole = data.subRole || null;
       orderAccess = data.orderAccess ?? true;
+      queryAccessTelecaller = data.queryAccessTelecaller ?? true;
+      queryAccessTech = data.queryAccessTech ?? true;
       companyId = data?.company?.id || null;
       loginStartTime = data.loginStartTime || "09:00";
       loginEndTime = data.loginEndTime || "18:10";
@@ -85,6 +89,10 @@
       orderAccess: (role === "user" && subRole === "tech") ? orderAccess : true,
       loginStartTime: loginStartTime || null,
       loginEndTime: loginEndTime || null,
+      // query access toggles — only meaningful for admin/manager, master always has full access
+      ...(["admin", "manager"].includes(role) && currentUser?.role === "master"
+        ? { queryAccessTelecaller, queryAccessTech }
+        : {}),
     };
     if (companyId != null) {
       updatedUser.company = companyId;
@@ -317,6 +325,38 @@
                 {/if}
               </div>
             {/if}
+
+            <!-- Query Access Permissions — master only, for admin/manager roles -->
+            {#if currentUser?.role === "master" && (role === "admin" || role === "manager")}
+              <div class="query-access-box">
+                <div class="query-access-title">
+                  <i class="ti ti-shield-lock me-1"></i> Query Access Permissions
+                  <span class="text-muted fw-normal ms-1" style="font-size:11px;">(visible to master only)</span>
+                </div>
+                <div class="d-flex flex-column gap-2 mt-2">
+                  <div class="d-flex align-items-center justify-content-between gap-3 query-access-row">
+                    <div>
+                      <div class="fw-semibold" style="font-size:13px;">View Telecaller Info</div>
+                      <div class="text-muted" style="font-size:11px;">Can see telecaller names in queries, chat &amp; stats</div>
+                    </div>
+                    <div class="form-check form-switch mb-0">
+                      <input class="form-check-input" type="checkbox" id="qat" bind:checked={queryAccessTelecaller} />
+                      <label class="form-check-label" for="qat">{queryAccessTelecaller ? "Allowed" : "Blocked"}</label>
+                    </div>
+                  </div>
+                  <div class="d-flex align-items-center justify-content-between gap-3 query-access-row">
+                    <div>
+                      <div class="fw-semibold" style="font-size:13px;">View Tech Info</div>
+                      <div class="text-muted" style="font-size:11px;">Can see tech names in queries, chat &amp; stats</div>
+                    </div>
+                    <div class="form-check form-switch mb-0">
+                      <input class="form-check-input" type="checkbox" id="qatech" bind:checked={queryAccessTech} />
+                      <label class="form-check-label" for="qatech">{queryAccessTech ? "Allowed" : "Blocked"}</label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            {/if}
             <div>
               <label class="form-label" for="loginStartTime">Login Start Time</label>
               <input
@@ -361,3 +401,25 @@
     </div>
   </div>
 </div>
+
+<style>
+  .query-access-box {
+    background: #f8f9ff;
+    border: 1px solid #d0d7f5;
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .query-access-title {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #3b5bdb;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .query-access-row {
+    background: #fff;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 10px 14px;
+  }
+</style>

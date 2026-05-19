@@ -324,7 +324,8 @@
   // ── column resize ────────────────────────────────────────
   const ALL_COLS = [
     { key: "sno",     label: "#",           width: 50,  minWidth: 40 },
-    { key: "pId",     label: "Order No.",         width: 80,  minWidth: 60 },
+    { key: "pId",     label: "Order No.",   width: 80,  minWidth: 60 },
+    { key: "inqCode", label: "Inq. Code",   width: 100, minWidth: 70 },
     { key: "title",   label: "Title",       width: 160, minWidth: 80 },
     { key: "company", label: "Company",     width: 100, minWidth: 80 },
     { key: "mobile",  label: "Mobile",      width: 100, minWidth: 80 },
@@ -493,6 +494,13 @@
     "Deal Won", "Deal Lost",
   ];
 
+  let refresh = false;
+  async function refreshPage() {
+    refresh = true;
+    try { await fetchOrders(currentPage); }
+    finally { refresh = false; }
+  }
+
   $: pageNumbers = Array.from({ length: totalPages }, (_, i) => i + 1);
   $: snoWidth = cols[0]?.width ?? 50;
   $: dateRangeLabel = DATE_RANGE_OPTIONS.find(d => d.value === filterDateRange)?.label || "All Time";
@@ -558,6 +566,16 @@
       <button class="btn btn-outline-light shadow" on:click={resetColWidths} title="Reset column widths">
         <i class="ti ti-layout-columns me-1"></i>Reset Columns
       </button>
+      <!-- Refresh -->
+      <a
+        href="#refresh"
+        on:click|preventDefault={refreshPage}
+        class="btn btn-icon btn-outline-light shadow"
+        title="Refresh"
+        aria-label="Refresh"
+      >
+        <i class="ti ti-refresh" class:animate-spin={refresh}></i>
+      </a>
     </div>
 
     {#if loadingData}
@@ -641,6 +659,15 @@
                   >#{order.pId || order.id}</a>
                   {#if order.workOrderNumber}
                     <div class="mt-0.5 text-[10px] text-gray-500 truncate">{order.workOrderNumber}</div>
+                  {/if}
+                </td>
+
+                <!-- Inq. Code -->
+                <td class="px-2 py-2 border border-gray-100 align-middle text-xs overflow-hidden h-[54px]" style="background:{rowBg};">
+                  {#if order.inqCode}
+                    <span class="font-mono text-[11px] text-gray-700">{order.inqCode}</span>
+                  {:else}
+                    <span class="text-gray-300">—</span>
                   {/if}
                 </td>
 

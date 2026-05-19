@@ -691,8 +691,20 @@
                       >
                     </td>
                     {#if isMasterView(currentUser)}
-                      <td>{q.raisedBy?.name ?? "-"}</td>
-                      <td>{q.assignedTo?.name ?? "Unassigned"}</td>
+                      <td>
+                        {#if q.raisedBy}
+                          <a href="/admin/query/user/{q.raisedBy.id}" class="text-body text-decoration-none user-link">
+                            {q.raisedBy.name}
+                          </a>
+                        {:else}-{/if}
+                      </td>
+                      <td>
+                        {#if q.assignedTo}
+                          <a href="/admin/query/user/{q.assignedTo.id}" class="text-body text-decoration-none user-link">
+                            {q.assignedTo.name}
+                          </a>
+                        {:else}<span class="text-muted">Unassigned</span>{/if}
+                      </td>
                     {/if}
                     <td>
                       <span
@@ -789,6 +801,8 @@
 </div>
 
 <style>
+  .user-link:hover { text-decoration: underline !important; color: #3b5bdb !important; }
+
   .modal-backdrop-custom {
     position: fixed;
     inset: 0;

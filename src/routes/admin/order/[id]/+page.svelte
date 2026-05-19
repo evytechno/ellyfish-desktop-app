@@ -57,7 +57,8 @@
   let reminderTime = null;
   let reminderMessage = "";
 
-  let seletedUsers = [];
+  let selectedUsers = [];
+  let userSearch = "";
   let categories = [];
 
   let orderTitle = "";
@@ -956,7 +957,7 @@
       title,
     };
     let newAssignedUsers = [];
-    newAssignedUsers = seletedUsers
+    newAssignedUsers = selectedUsers
       .map((id) => users.find((u) => u.id === id))
       .filter(Boolean);
     const existingAdminUsers = order.assignedUsers.filter(
@@ -964,10 +965,19 @@
     );
     updateOrder.assignedUsers = [...newAssignedUsers, ...existingAdminUsers];
 
-    let names = newAssignedUsers.map((user) => user.name).join(", ");
+    const prevUserIds = order.assignedUsers
+      .filter((u) => u.role === "user")
+      .map((u) => u.id);
+    const addedUsers = newAssignedUsers.filter((u) => !prevUserIds.includes(u.id));
+    const removedUsers = order.assignedUsers.filter(
+      (u) => u.role === "user" && !selectedUsers.includes(u.id),
+    );
+    const parts = [];
+    if (addedUsers.length) parts.push(`Assigned: ${addedUsers.map((u) => u.name).join(", ")}`);
+    if (removedUsers.length) parts.push(`Removed: ${removedUsers.map((u) => u.name).join(", ")}`);
     let newActivity = {
-      title: "Order Assigned to User",
-      description: `Order has been assigned to '${names}'.`,
+      title: "Assigned Users Updated",
+      description: parts.length ? parts.join(". ") + "." : "Assigned users updated.",
     };
     updateOrder.orderActivity = newActivity;
 
@@ -1065,10 +1075,11 @@
   };
 
   function setAssignedUsers() {
-    seletedUsers = [];
-    order?.assignedUsers.map((user) => {
-      if (user?.role == "user") {
-        seletedUsers.push(user?.id);
+    selectedUsers = [];
+    userSearch = "";
+    order?.assignedUsers.forEach((user) => {
+      if (user?.role === "user") {
+        selectedUsers.push(user?.id);
       }
     });
   }
@@ -1465,6 +1476,16 @@
                       </p>
                     </div>
                   {/if}
+                  {#if order?.inqCode}
+                    <div
+                      class="d-flex align-items-center justify-content-between mb-2"
+                    >
+                      <p class="mb-0">Inq. Code</p>
+                      <p class="mb-0 text-dark font-mono">
+                        {order?.inqCode}
+                      </p>
+                    </div>
+                  {/if}
                   <div
                     class="d-flex align-items-center justify-content-between mb-2"
                   >
@@ -1823,28 +1844,31 @@
                       </span>
                     </a>
                   </li>
-                  {#if currentUser?.subRole !== "tech"}
-                    <li class="nav-item" role="presentation">
-                      <a
-                        href="#tab_10"
-                        data-bs-toggle="tab"
-                        aria-expanded="false"
-                        class="nav-link border-3"
-                        class:active={activeTab === "Queries"}
-                        on:click|preventDefault={() => { activeTab = "Queries"; loadOrderQueries(); }}
-                        aria-selected={activeTab === "Queries"}
-                        tabindex="-1"
-                        role="tab"
-                      >
-                        <span class="d-md-inline-block">
-                          <i class="ti ti-help-circle me-1"></i>Queries
-                          {#if orderQueries.length > 0}
-                            <span class="badge bg-primary ms-1" style="font-size:10px;">{orderQueries.length}</span>
+                  <li class="nav-item" role="presentation">
+                    <a
+                      href="#tab_10"
+                      data-bs-toggle="tab"
+                      aria-expanded="false"
+                      class="nav-link border-3"
+                      class:active={activeTab === "Queries"}
+                      on:click|preventDefault={() => { activeTab = "Queries"; loadOrderQueries(); }}
+                      aria-selected={activeTab === "Queries"}
+                      tabindex="-1"
+                      role="tab"
+                    >
+                      <span class="d-md-inline-block">
+                        <i class="ti ti-help-circle me-1"></i>Queries
+                        {#if currentUser?.subRole === "tech"}
+                          {@const myCount = orderQueries.filter(q => q.assignedTo?.id === currentUser?.id).length}
+                          {#if myCount > 0}
+                            <span class="badge bg-success ms-1" style="font-size:10px;">{myCount}</span>
                           {/if}
-                        </span>
-                      </a>
-                    </li>
-                  {/if}
+                        {:else if orderQueries.length > 0}
+                          <span class="badge bg-primary ms-1" style="font-size:10px;">{orderQueries.length}</span>
+                        {/if}
+                      </span>
+                    </a>
+                  </li>
                   {#if ["Deal Won", "Dispatched", "Completed"].includes(order?.status)}
                     <li class="nav-item" role="presentation">
                       <a
@@ -2764,13 +2788,18 @@
                 </div>
                 <!-- /Chats -->
               {/if}
-              {#if activeTab === "Queries" && currentUser?.subRole !== "tech"}
+              {#if activeTab === "Queries"}
                 <!-- Queries Tab -->
                 <div class="tab-pane active show" id="tab_10">
                   <div class="card">
                     <div class="card-header d-flex align-items-center justify-content-between py-2">
                       <h5 class="fw-semibold mb-0">
-                        <i class="ti ti-help-circle me-1 text-primary"></i>Related Queries
+                        <i class="ti ti-help-circle me-1 text-primary"></i>
+                        {#if currentUser?.subRole === "tech"}
+                          My Assigned Queries
+                        {:else}
+                          Related Queries
+                        {/if}
                       </h5>
                       {#if currentUser?.subRole === "telecaller" || (currentUser?.role === "user" && !currentUser?.subRole)}
                         <button class="btn btn-sm btn-outline-warning" on:click={() => (showQueryModal = true)}>
@@ -2783,51 +2812,100 @@
                         <div class="text-center py-4">
                           <span class="spinner-border spinner-border-sm text-primary"></span>
                         </div>
-                      {:else if orderQueries.length === 0}
-                        <div class="text-center py-4 text-muted small">
-                          <i class="ti ti-help-off me-1"></i>No queries raised for this order yet.
-                        </div>
                       {:else}
-                        <div class="table-responsive">
-                          <table class="table table-hover align-middle mb-0 small">
-                            <thead class="table-light">
-                              <tr>
-                                <th>Subject</th>
-                                {#if currentUser?.role !== "user"}
-                                  <th>Raised By</th>
-                                  <th>Assigned To</th>
-                                {/if}
-                                <th>Status</th>
-                                <th>Date</th>
-                                <th></th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {#each orderQueries as q}
+                        {@const visibleQueries = currentUser?.subRole === "tech"
+                          ? orderQueries.filter(q => q.assignedTo?.id === currentUser?.id)
+                          : currentUser?.subRole === "telecaller"
+                            ? orderQueries.filter(q => q.raisedBy?.id === currentUser?.id)
+                            : orderQueries}
+                        {#if visibleQueries.length === 0}
+                          <div class="text-center py-4 text-muted small">
+                            {#if currentUser?.subRole === "tech"}
+                              <i class="ti ti-help-off me-1"></i>No queries assigned to you for this order.
+                            {:else if currentUser?.subRole === "telecaller"}
+                              <i class="ti ti-help-off me-1"></i>You haven't raised any queries for this order yet.
+                            {:else}
+                              <i class="ti ti-help-off me-1"></i>No queries raised for this order yet.
+                            {/if}
+                          </div>
+                        {:else}
+                          <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0 small">
+                              <thead class="table-light">
                                 <tr>
-                                  <td class="fw-semibold">{q.subject}</td>
-                                  {#if currentUser?.role !== "user"}
-                                    <td>{q.raisedBy?.name ?? "-"}</td>
-                                    <td>{q.assignedTo?.name ?? "Unassigned"}</td>
+                                  <th>Subject</th>
+                                  {#if currentUser?.subRole === "tech"}
+                                    <th>Raised By</th>
+                                  {:else if currentUser?.subRole === "telecaller"}
+                                    <th>Assigned To</th>
+                                  {:else}
+                                    <th>Raised By</th>
+                                    <th>Assigned To</th>
                                   {/if}
-                                  <td>
-                                    <span class="badge {q.status === 'open' ? 'bg-primary' : q.status === 'in_progress' ? 'bg-warning text-dark' : q.status === 'resolved' ? 'bg-success' : q.status === 'reopened' ? 'bg-danger' : 'bg-secondary'}">
-                                      {q.status?.replace("_", " ")}
-                                    </span>
-                                  </td>
-                                  <td class="text-muted">
-                                    {new Date(q.createdAt).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
-                                  </td>
-                                  <td>
-                                    <a href="/admin/query/{q.id}" class="btn btn-sm btn-outline-primary">
-                                      <i class="ti ti-eye"></i>
-                                    </a>
-                                  </td>
+                                  <th>Status</th>
+                                  <th>Date</th>
+                                  <th></th>
                                 </tr>
-                              {/each}
-                            </tbody>
-                          </table>
-                        </div>
+                              </thead>
+                              <tbody>
+                                {#each visibleQueries as q}
+                                  <tr>
+                                    <td class="fw-semibold">{q.subject}</td>
+                                    {#if currentUser?.subRole === "tech"}
+                                      <td>{q.raisedBy?.name ?? "-"}</td>
+                                    {:else if currentUser?.subRole === "telecaller"}
+                                      <td>
+                                        {#if q.assignedTo}
+                                          <span class="badge bg-success-subtle text-success-emphasis">{q.assignedTo.name}</span>
+                                        {:else}
+                                          <span class="text-muted">Unassigned</span>
+                                        {/if}
+                                      </td>
+                                    {:else}
+                                      <td>
+                                        {#if q.raisedBy}
+                                          {#if q.raisedBy.name === "Telecaller"}
+                                            <span class="text-muted small"><i class="ti ti-lock me-1"></i>Hidden</span>
+                                          {:else}
+                                            <div class="d-flex align-items-center gap-1">
+                                              <span>{q.raisedBy.name}</span>
+                                              <span class="badge bg-warning-subtle text-warning-emphasis" style="font-size:10px;">Telecaller</span>
+                                            </div>
+                                          {/if}
+                                        {:else}-{/if}
+                                      </td>
+                                      <td>
+                                        {#if q.assignedTo}
+                                          {#if q.assignedTo.name === "Tech"}
+                                            <span class="text-muted small"><i class="ti ti-lock me-1"></i>Hidden</span>
+                                          {:else}
+                                            <div class="d-flex align-items-center gap-1">
+                                              <span>{q.assignedTo.name}</span>
+                                              <span class="badge bg-success-subtle text-success-emphasis" style="font-size:10px;">Tech</span>
+                                            </div>
+                                          {/if}
+                                        {:else}<span class="text-muted">Unassigned</span>{/if}
+                                      </td>
+                                    {/if}
+                                    <td>
+                                      <span class="badge {q.status === 'open' ? 'bg-primary' : q.status === 'in_progress' ? 'bg-warning text-dark' : q.status === 'resolved' ? 'bg-success' : q.status === 'reopened' ? 'bg-danger' : 'bg-secondary'}">
+                                        {q.status?.replace("_", " ")}
+                                      </span>
+                                    </td>
+                                    <td class="text-muted">
+                                      {new Date(q.createdAt).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                                    </td>
+                                    <td>
+                                      <a href="/admin/query/{q.id}" class="btn btn-sm btn-outline-primary">
+                                        <i class="ti ti-eye"></i>
+                                      </a>
+                                    </td>
+                                  </tr>
+                                {/each}
+                              </tbody>
+                            </table>
+                          </div>
+                        {/if}
                       {/if}
                     </div>
                   </div>
@@ -3579,12 +3657,17 @@
 </div>
 <!-- /Create Reminder -->
 
-<!-- Add Assigned Users -->
+<!-- Manage Assigned Users -->
 <div class="modal custom-modal fade" id="add_contact" role="dialog">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title">Add Assigned Users</h5>
+        <div>
+          <h5 class="modal-title">Manage Assigned Users</h5>
+          <small class="text-muted">
+            {selectedUsers.length} user{selectedUsers.length === 1 ? "" : "s"} selected
+          </small>
+        </div>
         <button
           class="btn-close custom-btn-close border p-1 me-0 text-dark"
           data-bs-dismiss="modal"
@@ -3596,45 +3679,81 @@
       <div class="modal-body">
         <form
           on:submit={addAssignedUser}
-          class="needs-validation space-y-4"
+          class="needs-validation"
           novalidate
         >
-          <div class="access-wrap">
+          <!-- Search -->
+          <div class="input-group mb-3">
+            <span class="input-group-text bg-white border-end-0">
+              <i class="ti ti-search text-muted"></i>
+            </span>
+            <input
+              type="text"
+              class="form-control border-start-0 ps-0"
+              placeholder="Search users..."
+              bind:value={userSearch}
+            />
+          </div>
+
+          <!-- User list -->
+          <div class="access-wrap" style="max-height: 300px; overflow-y: auto; overflow-x: hidden;">
             {#if users.length}
-              <ul>
-                {#each users.filter(u => u.status !== 'banned') as user}
-                  <li class="select-people-checkbox">
-                    <label class="checkboxs d-flex align-items-center mb-3" class:opacity-50={user.status === 'inactive'}>
-                      <input
-                        type="checkbox"
-                        class="form-check-input me-2"
-                        bind:group={seletedUsers}
-                        value={user.id}
-                        disabled={user.status === 'inactive'}
-                      />
-                      <span class="checkmarks"></span>
-                      <span class="people-profile d-flex align-items-center gap-1">
-                        <img
-                          src="/assets/img/profiles/user.png"
-                          alt="img"
-                          class="avatar avatar-sm rounded-circle"
+              {@const filteredUsers = users
+                .filter((u) => u.status !== "banned")
+                .filter((u) => u.name?.toLowerCase().includes(userSearch.toLowerCase()))
+              }
+              {#if filteredUsers.length}
+                <div class="row g-2">
+                  {#each filteredUsers as user}
+                    <div class="col-6">
+                      <label
+                        class="checkboxs d-flex align-items-center p-2 rounded border h-100"
+                        class:bg-light={selectedUsers.includes(user.id)}
+                        class:border-primary={selectedUsers.includes(user.id)}
+                        class:opacity-50={user.status === "inactive"}
+                        style="cursor:{user.status === 'inactive' ? 'not-allowed' : 'pointer'}; transition: background 0.15s;"
+                      >
+                        <input
+                          type="checkbox"
+                          class="form-check-input me-2 mt-0 flex-shrink-0"
+                          bind:group={selectedUsers}
+                          value={user.id}
+                          disabled={user.status === "inactive"}
                         />
-                        <a href="#user">{user?.name}</a>
-                        {#if user.status === 'inactive'}
-                          <span class="badge bg-secondary" style="font-size:10px;">Inactive</span>
-                        {/if}
-                      </span>
-                    </label>
-                  </li>
-                {/each}
-              </ul>
+                        <span class="avatar avatar-xs rounded-circle me-2 flex-shrink-0">
+                          <img
+                            src="/assets/img/profiles/user.png"
+                            alt="img"
+                            class="rounded-circle"
+                            style="width:28px;height:28px;object-fit:cover;"
+                          />
+                        </span>
+                        <div class="overflow-hidden">
+                          <p class="fw-medium mb-0 text-truncate" style="font-size:0.85rem;">{user?.name}</p>
+                          <span class="text-muted text-capitalize" style="font-size:0.72rem;">
+                            {#if user.status === "inactive"}
+                              Inactive
+                            {:else}
+                              {user?.subRole || user?.role}
+                            {/if}
+                          </span>
+                        </div>
+                      </label>
+                    </div>
+                  {/each}
+                </div>
+              {:else}
+                <p class="text-muted text-center py-3 mb-0">No users match "{userSearch}"</p>
+              {/if}
+            {:else}
+              <p class="text-muted text-center py-3 mb-0">No users available</p>
             {/if}
           </div>
-          <div class="modal-btn text-end">
+
+          <div class="modal-btn text-end mt-3">
             <button
               type="button"
-              href="#"
-              class="btn btn-light"
+              class="btn btn-light me-2"
               data-bs-dismiss="modal"
             >
               Cancel
@@ -3648,7 +3767,7 @@
     </div>
   </div>
 </div>
-<!-- /Add Assigned Users -->
+<!-- /Manage Assigned Users -->
 
 <!-- Create Client -->
 <div class="modal fade" id="create_client" role="dialog">

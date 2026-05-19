@@ -395,6 +395,7 @@
     const headers = [
       "OrderID",
       "UniqueId",
+      "InqCode",
       "Title",
       "Category",
       "Status",
@@ -439,6 +440,7 @@
       return {
         OrderID: order?.id,
         UniqueId: order?.financialYear + "/" + order?.pId,
+        InqCode: order?.inqCode ?? "",
         Title: order?.title,
         Category: order?.category,
         Status: order?.status,
@@ -862,6 +864,11 @@
     {
       key: "workOrderNumber",
       label: "Work Order No.",
+    },
+    {
+      key: "inqCode",
+      label: "Inq. Code",
+      render: (val) => val ? `<span class="font-mono text-xs">${val}</span>` : `<span class="text-muted">—</span>`,
     },
     {
       key: "status",
