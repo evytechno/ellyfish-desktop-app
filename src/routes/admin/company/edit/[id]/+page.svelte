@@ -20,12 +20,20 @@
   let logoUrl = null;
   let gstNumber = "";
   let address = "";
-  let bankName = "";
-  let accountHolderName = "";
-  let accountNumber = "";
-  let ifscCode = "";
-  let branchAddress = "";
   let description = "";
+
+  // Multiple bank accounts
+  let bankAccounts = [
+    { label: "", bankName: "", accountHolderName: "", accountNumber: "", ifscCode: "", branchAddress: "" }
+  ];
+
+  function addBankAccount() {
+    bankAccounts = [...bankAccounts, { label: "", bankName: "", accountHolderName: "", accountNumber: "", ifscCode: "", branchAddress: "" }];
+  }
+
+  function removeBankAccount(index) {
+    bankAccounts = bankAccounts.filter((_, i) => i !== index);
+  }
 
   let loading = false;
   let errorMessage = "";
@@ -71,12 +79,23 @@
       logoUrl = data.logo;
       gstNumber = data.gstNumber;
       address = data.address;
-      bankName = data.bankName;
-      accountHolderName = data.accountHolderName;
-      accountNumber = data.accountNumber;
-      ifscCode = data.ifscCode;
-      branchAddress = data.branchAddress;
       description = data.description;
+
+      // Load bankAccounts; fall back to old single-bank fields for legacy records
+      if (Array.isArray(data.bankAccounts) && data.bankAccounts.length > 0) {
+        bankAccounts = data.bankAccounts;
+      } else if (data.bankName || data.accountNumber) {
+        bankAccounts = [{
+          label: "Primary",
+          bankName: data.bankName || "",
+          accountHolderName: data.accountHolderName || "",
+          accountNumber: data.accountNumber || "",
+          ifscCode: data.ifscCode || "",
+          branchAddress: data.branchAddress || "",
+        }];
+      } else {
+        bankAccounts = [{ label: "", bankName: "", accountHolderName: "", accountNumber: "", ifscCode: "", branchAddress: "" }];
+      }
     } catch (error) {
       errorMessage = "Failed to load company data.";
       console.error("Fetch error:", error);
@@ -106,36 +125,14 @@
     companyPayload.append("whatsapp", whatsapp);
     companyPayload.append("gstNumber", gstNumber);
     companyPayload.append("address", address);
-    companyPayload.append("bankName", bankName);
-    companyPayload.append("accountHolderName", accountHolderName);
-    companyPayload.append("ifscCode", ifscCode);
-    companyPayload.append("branchAddress", branchAddress);
     companyPayload.append("description", description);
-    if (accountNumber || accountNumber != "") {
-      companyPayload.append("accountNumber", accountNumber);
-    }
+    companyPayload.append("bankAccounts", JSON.stringify(bankAccounts.filter(b => b.bankName || b.accountNumber)));
 
     try {
       const data = await authApiFetch(`${API_ROUTES.COMPANY}/${companyId}`, {
         method: "PUT",
-        data: companyPayload, // Send FormData
+        data: companyPayload,
       });
-
-      // Reset Form
-      name = "";
-      email = "";
-      mobile = "";
-      whatsapp = "";
-      logo = null;
-      gstNumber = "";
-      address = "";
-      bankName = "";
-      accountHolderName = "";
-      accountNumber = "";
-      ifscCode = "";
-      branchAddress = "";
-      description = "";
-      formErrors = {};
 
       Swal.fire("Success!", data.message, "success");
       goto("/admin/company");
@@ -324,105 +321,53 @@
                 </ul>
               {/if}
             </div>
-            <div class="col-span-3 border-top pt-3">
-              <h6>Bank Details</h6>
+
+            <!-- Bank Accounts -->
+            <div class="col-span-3 border-top pt-3 flex items-center justify-between">
+              <h6 class="mb-0">Bank Accounts</h6>
+              <button type="button" class="btn btn-sm btn-outline-primary" on:click={addBankAccount}>
+                <i class="ti ti-plus me-1"></i>Add Bank Account
+              </button>
             </div>
 
-            <div>
-              <label class="form-label" for="bankName">Bank Name</label>
-              <input
-                class="form-control"
-                class:is-invalid={formErrors.bankName}
-                type="text"
-                bind:value={bankName}
-                placeholder="Bank Name"
-                id="bankName"
-                required
-              />
-              {#if formErrors.bankName}
-                <ul class="text-danger mt-1 text-xs capitalize">
-                  <li>{formErrors.bankName[0]}</li>
-                </ul>
-              {/if}
-            </div>
-
-            <div>
-              <label class="form-label" for="accountHolderName"
-                >Account Holder Name</label
-              >
-              <input
-                class="form-control"
-                class:is-invalid={formErrors.accountHolderName}
-                type="text"
-                bind:value={accountHolderName}
-                placeholder="Account Holder Name"
-                id="accountHolderName"
-                required
-              />
-              {#if formErrors.accountHolderName}
-                <ul class="text-danger mt-1 text-xs capitalize">
-                  <li>{formErrors.accountHolderName[0]}</li>
-                </ul>
-              {/if}
-            </div>
-
-            <div>
-              <label class="form-label" for="accountNumber"
-                >Account Number</label
-              >
-              <input
-                class="form-control"
-                class:is-invalid={formErrors.accountNumber}
-                type="text"
-                bind:value={accountNumber}
-                placeholder="Account Number"
-                id="accountNumber"
-                required
-              />
-              {#if formErrors.accountNumber}
-                <ul class="text-danger mt-1 text-xs capitalize">
-                  <li>{formErrors.accountNumber[0]}</li>
-                </ul>
-              {/if}
-            </div>
-
-            <div>
-              <label class="form-label" for="ifscCode">IFSC Code</label>
-              <input
-                class="form-control"
-                class:is-invalid={formErrors.ifscCode}
-                type="text"
-                bind:value={ifscCode}
-                placeholder="IFSC Code"
-                id="ifscCode"
-                required
-              />
-              {#if formErrors.ifscCode}
-                <ul class="text-danger mt-1 text-xs capitalize">
-                  <li>{formErrors.ifscCode[0]}</li>
-                </ul>
-              {/if}
-            </div>
-
-            <div>
-              <label class="form-label" for="branchAddress"
-                >Branch Address</label
-              >
-              <input
-                class="form-control"
-                class:is-invalid={formErrors.branchAddress}
-                type="text"
-                bind:value={branchAddress}
-                placeholder="Branch Address"
-                id="branchAddress"
-                required
-              />
-              {#if formErrors.branchAddress}
-                <ul class="text-danger mt-1 text-xs capitalize">
-                  <li>{formErrors.branchAddress[0]}</li>
-                </ul>
-              {/if}
-            </div>
+            {#each bankAccounts as bank, i}
+              <div class="col-span-3 border rounded p-3 position-relative">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span class="fw-semibold text-sm">Bank Account #{i + 1}</span>
+                  {#if bankAccounts.length > 1}
+                    <button type="button" class="btn btn-sm btn-outline-danger" on:click={() => removeBankAccount(i)}>
+                      <i class="ti ti-trash"></i>
+                    </button>
+                  {/if}
+                </div>
+                <div class="grid grid-cols-3 gap-3">
+                  <div>
+                    <label class="form-label">Label (e.g. Primary, USD)</label>
+                    <input class="form-control" type="text" bind:value={bank.label} placeholder="Label" />
+                  </div>
+                  <div>
+                    <label class="form-label">Bank Name</label>
+                    <input class="form-control" type="text" bind:value={bank.bankName} placeholder="Bank Name" />
+                  </div>
+                  <div>
+                    <label class="form-label">Account Holder Name</label>
+                    <input class="form-control" type="text" bind:value={bank.accountHolderName} placeholder="Account Holder Name" />
+                  </div>
+                  <div>
+                    <label class="form-label">Account Number</label>
+                    <input class="form-control" type="text" bind:value={bank.accountNumber} placeholder="Account Number" />
+                  </div>
+                  <div>
+                    <label class="form-label">IFSC Code</label>
+                    <input class="form-control" type="text" bind:value={bank.ifscCode} placeholder="IFSC Code" />
+                  </div>
+                  <div>
+                    <label class="form-label">Branch Address</label>
+                    <input class="form-control" type="text" bind:value={bank.branchAddress} placeholder="Branch Address" />
+                  </div>
+                </div>
+              </div>
+            {/each}
 
             <div class="col-span-3">
               <label class="form-label" for="description">Description</label>

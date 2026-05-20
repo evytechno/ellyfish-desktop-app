@@ -81,6 +81,123 @@
   let raiseOrderText = "";
   let raiseError = "";
 
+  // edit query form
+  let showEditForm = false;
+  let editingQuery = null;
+  let editing = false;
+  let editSubject = "";
+  let editDescription = "";
+  let editType = "other";
+  let editPriority = "medium";
+  let editOrderId = null;
+  let editOrderText = "";
+  let editError = "";
+
+  // order search for edit form
+  let editOrderSearch = "";
+  let editOrderResults = [];
+  let editOrderLoading = false;
+  let showEditOrderDropdown = false;
+  let editOrderSearchTimeout;
+
+  function onEditOrderInput() {
+    editOrderId = null;
+    editOrderText = editOrderSearch;
+    clearTimeout(editOrderSearchTimeout);
+    if (!editOrderSearch.trim()) {
+      editOrderResults = [];
+      showEditOrderDropdown = false;
+      return;
+    }
+    editOrderSearchTimeout = setTimeout(async () => {
+      editOrderLoading = true;
+      showEditOrderDropdown = true;
+      try {
+        const res = await authApiFetch(
+          `${API_ROUTES.ORDER}?search=${encodeURIComponent(editOrderSearch)}&limit=10`,
+        );
+        editOrderResults = res.data ?? [];
+      } catch (_) {
+        editOrderResults = [];
+      } finally {
+        editOrderLoading = false;
+      }
+    }, 300);
+  }
+
+  function selectEditOrder(order) {
+    editOrderId = order.id;
+    editOrderText = order.title ? `#${order.pId} — ${order.title}` : `#${order.pId}`;
+    editOrderSearch = editOrderText;
+    editOrderResults = [];
+    showEditOrderDropdown = false;
+  }
+
+  function clearEditOrder() {
+    editOrderId = null;
+    editOrderText = "";
+    editOrderSearch = "";
+    editOrderResults = [];
+    showEditOrderDropdown = false;
+  }
+
+  function openEditForm(q) {
+    editingQuery = q;
+    editSubject = q.subject ?? "";
+    editDescription = q.description ?? "";
+    editType = q.type ?? "other";
+    editPriority = q.priority ?? "medium";
+    // pre-fill linked order if any
+    if (q.order) {
+      editOrderId = q.order.id;
+      editOrderText = q.order.title ? `#${q.order.pId} — ${q.order.title}` : `#${q.order.pId}`;
+      editOrderSearch = editOrderText;
+    } else {
+      editOrderId = null;
+      editOrderText = "";
+      editOrderSearch = "";
+    }
+    editOrderResults = [];
+    showEditOrderDropdown = false;
+    editError = "";
+    showEditForm = true;
+  }
+
+  async function submitEditQuery() {
+    editError = "";
+    if (!editSubject.trim() || !editDescription.trim()) {
+      editError = "Subject and description are required.";
+      return;
+    }
+    editing = true;
+    try {
+      const payload = {
+        subject: editSubject,
+        description: editDescription,
+        type: editType,
+        priority: editPriority,
+        orderId: editOrderId ?? null,
+      };
+      await authApiFetch(`${API_ROUTES.QUERY}/${editingQuery.id}`, {
+        method: "PATCH",
+        data: JSON.stringify(payload),
+      });
+      showEditForm = false;
+      editingQuery = null;
+      Swal.fire({ icon: "success", title: "Query updated", timer: 1200, showConfirmButton: false });
+      await loadData();
+      if (isMasterView(currentUser)) loadStats();
+    } catch (e) {
+      const msg = e?.data?.message;
+      if (typeof msg === "string") editError = msg;
+      else if (Array.isArray(msg))
+        editError = msg.flatMap((m) => Object.values(m.constraints ?? {})).join(" • ");
+      else editError = "Failed to update query.";
+    } finally {
+      editing = false;
+    }
+  }
+
   // order search dropdown
   let orderSearch = "";
   let orderResults = [];
@@ -645,6 +762,122 @@
       </div>
     {/if}
 
+    <!-- Edit Query Modal -->
+    {#if showEditForm}
+      <div class="modal-backdrop-custom">
+        <div
+          class="card shadow-lg p-4 position-relative"
+          style="max-width:560px;width:100%;margin:auto;margin-top:60px;"
+        >
+          <button
+            class="modal-close-btn"
+            on:click={() => (showEditForm = false)}
+            aria-label="Close"
+          ><i class="ti ti-x"></i></button>
+          <h5 class="fw-bold mb-3">Edit Query</h5>
+          {#if editError}
+            <div class="alert alert-danger py-2">{editError}</div>
+          {/if}
+          <div class="mb-3">
+            <label class="form-label">Subject <span class="text-danger">*</span></label>
+            <input
+              type="text"
+              class="form-control"
+              bind:value={editSubject}
+              placeholder="Brief subject..."
+              maxlength="150"
+            />
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Description <span class="text-danger">*</span></label>
+            <textarea
+              class="form-control"
+              rows="4"
+              bind:value={editDescription}
+              placeholder="Describe the issue..."
+            ></textarea>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label">Type</label>
+              <select class="form-select" bind:value={editType}>
+                {#each QUERY_TYPES.slice(1) as t}
+                  <option value={t.value}>{t.label}</option>
+                {/each}
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label">Priority</label>
+              <select class="form-select" bind:value={editPriority}>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Link to Order <span class="text-muted">(optional)</span></label>
+            <div class="order-search-wrap">
+              <div class="input-group">
+                <input
+                  type="text"
+                  class="form-control"
+                  placeholder="Search by order title or ID..."
+                  bind:value={editOrderSearch}
+                  on:input={onEditOrderInput}
+                  on:focus={() => { if (editOrderResults.length) showEditOrderDropdown = true; }}
+                  autocomplete="off"
+                />
+                {#if editOrderId}
+                  <button class="btn btn-outline-secondary" type="button" on:click={clearEditOrder}>
+                    <i class="ti ti-x"></i>
+                  </button>
+                {/if}
+              </div>
+              {#if editOrderId}
+                <div class="mt-1 small text-success">
+                  <i class="ti ti-circle-check me-1"></i>Linked: {editOrderText}
+                </div>
+              {/if}
+              {#if showEditOrderDropdown}
+                <div class="order-dropdown shadow-sm border rounded bg-white">
+                  {#if editOrderLoading}
+                    <div class="px-3 py-2 text-muted small">
+                      <span class="spinner-border spinner-border-sm me-1"></span>Searching...
+                    </div>
+                  {:else if editOrderResults.length === 0}
+                    <div class="px-3 py-2 text-muted small">No orders found.</div>
+                  {:else}
+                    {#each editOrderResults as o}
+                      <button type="button" class="order-dropdown-item" on:click={() => selectEditOrder(o)}>
+                        <span class="fw-semibold text-primary">#{o.pId}</span>
+                        {#if o.title}<span class="ms-1">{o.title}</span>{/if}
+                        {#if o.company}<span class="text-muted ms-1 small">· {o.company}</span>{/if}
+                        <span class="badge bg-secondary ms-auto" style="font-size:10px;">{o.status}</span>
+                      </button>
+                    {/each}
+                  {/if}
+                </div>
+              {/if}
+            </div>
+          </div>
+          <div class="d-flex gap-2 justify-content-end">
+            <button
+              class="btn btn-secondary btn-sm"
+              on:click={() => (showEditForm = false)}>Cancel</button
+            >
+            <button
+              class="btn btn-primary btn-sm"
+              on:click={submitEditQuery}
+              disabled={editing}
+            >
+              {editing ? "Saving..." : "Save Changes"}
+            </button>
+          </div>
+        </div>
+      </div>
+    {/if}
+
     <!-- Query Table -->
     {#if loading}
       <div class="text-center py-5">
@@ -767,13 +1000,23 @@
                         {/if}
                       </td>
                     {/if}
-                    <td>
+                    <td class="d-flex gap-1">
                       <a
                         href="/admin/query/{q.id}"
                         class="btn btn-sm btn-outline-primary"
+                        title="View"
                       >
                         <i class="ti ti-eye"></i>
                       </a>
+                      {#if isMasterView(currentUser) || isTelecaller(currentUser)}
+                        <button
+                          class="btn btn-sm btn-outline-secondary"
+                          title="Edit"
+                          on:click={() => openEditForm(q)}
+                        >
+                          <i class="ti ti-edit"></i>
+                        </button>
+                      {/if}
                     </td>
                   </tr>
                 {/each}

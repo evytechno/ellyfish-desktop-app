@@ -229,7 +229,7 @@
 <ServerOffline />
 <InactivityWarning bind:show={showWarning} secondsLeft={warningSeconds} />
 <main class="main-wrapper min-h-screen bg-gray-50">
-  <Header {setting} />
+  <Header />
   <Sidebar {setting} />
   <slot />
 

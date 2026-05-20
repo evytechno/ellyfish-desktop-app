@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import jQuery from "jquery";
   import { authApiFetch } from "$lib/api/client";
   import { errorHandle } from "$lib/utils/errorHandle";
@@ -83,6 +83,8 @@
   let shipToMobile = "";
   let shipToEmail = "";
 
+  let selectedBankAccount = null;
+
   let loading = false;
   let errorMessage = "";
 
@@ -153,20 +155,55 @@
       shipToEmail = billToEmail;
     }
   }
+  async function scrollToFirstError() {
+    await tick();
+    const body = document.querySelector("#offcanvas_add .offcanvas-body");
+    const firstError = body?.querySelector(".is-invalid");
+    if (firstError) {
+      firstError.scrollIntoView({ behavior: "smooth", block: "center" });
+      firstError.focus?.();
+    }
+  }
+
   async function orderValueChange(e) {
-    const id = Number(e.target.value); // or parseInt(e.target.value, 10)
-    if (!isNaN(id)) {
-      const newOrder = orders.find((order) => order.id === id);
-      if (newOrder) {
-        console.log("newOrder:", newOrder);
-        title = newOrder.title;
-        billToName = newOrder.company;
-        billToGSTNumber = newOrder.gstNumber;
-      } else {
-        console.log("Order not found for id:", id);
-      }
-    } else {
-      console.warn("Invalid ID: Not a number");
+    const id = Number(e.target.value);
+    if (isNaN(id) || id <= 0) {
+      console.warn("Invalid order ID");
+      return;
+    }
+    try {
+      const order = await authApiFetch(API_ROUTES.ORDER + "/" + id);
+      if (!order) return;
+
+      const client = order.orderClients?.[0];
+
+      // Order-level fields
+      if (order.title)          title           = order.title;
+      if (order.currency)       currency        = order.currency;
+      if (order.priceTerms)     priceTerms      = order.priceTerms;
+      if (order.termsCondition) termsConditions = order.termsCondition;
+
+      // Derive bill-to values (first client preferred, fallback to order fields)
+      const bName    = client?.name    || order.company  || "";
+      const bEmail   = client?.email   || "";
+      const bMobile  = client?.mobile  || "";
+      const bAddress = client?.address || "";
+      const bGST     = order.gstNumber || "";
+
+      if (bName)    billToName      = bName;
+      if (bEmail)   billToEmail     = bEmail;
+      if (bMobile)  billToMobile    = bMobile;
+      if (bAddress) billToAddress   = bAddress;
+      if (bGST)     billToGSTNumber = bGST;
+
+      // Ship-to mirrors bill-to from order data
+      if (bName)    shipToName      = bName;
+      if (bEmail)   shipToEmail     = bEmail;
+      if (bMobile)  shipToMobile    = bMobile;
+      if (bAddress) shipToAddress   = bAddress;
+      if (bGST)     shipToGSTNumber = bGST;
+    } catch (err) {
+      console.error("Failed to fetch order details for auto-fill:", err);
     }
   }
 
@@ -209,6 +246,8 @@
     shipToGSTNumber = "";
     shipToMobile = "";
     shipToEmail = "";
+
+    selectedBankAccount = null;
   }
 
   $: taxItems.forEach((item) => {
@@ -251,6 +290,7 @@
       discount,
       totalAmountTitle,
       totalAmountValue,
+      selectedBankAccount,
 
       billToName,
       billToAddress,
@@ -279,12 +319,14 @@
       if (orderId == null) {
         formErrors.orderId = ["Order is required."];
         loading = false;
+        await scrollToFirstError();
         return;
       }
     }
     if (companyId == null) {
       formErrors.companyId = ["Company is required."];
       loading = false;
+      await scrollToFirstError();
       return;
     }
     if (items.length == 0) {
@@ -351,6 +393,7 @@
       discount,
       totalAmountTitle,
       totalAmountValue,
+      selectedBankAccount,
 
       billToName,
       billToAddress,
@@ -379,12 +422,14 @@
       if (orderId == null) {
         formErrors.orderId = ["Order is required."];
         loading = false;
+        await scrollToFirstError();
         return;
       }
     }
     if (companyId == null) {
       formErrors.companyId = ["Company is required."];
       loading = false;
+      await scrollToFirstError();
       return;
     }
     if (items.length == 0) {
@@ -794,6 +839,8 @@
       shipToGSTNumber = newInvoice?.shipToGSTNumber;
       shipToMobile = newInvoice?.shipToMobile;
       shipToEmail = newInvoice?.shipToEmail;
+
+      selectedBankAccount = newInvoice?.selectedBankAccount ?? null;
     }
   }
 
@@ -871,6 +918,32 @@
     { code: "INR", symbol: "₹" },
     { code: "USD", symbol: "$" },
   ];
+
+  // Derive available bank accounts from selected company (companies/all now returns bankAccounts)
+  $: selectedCompanyData = companies.find((c) => c.id === companyId) ?? null;
+  $: availableBankAccounts = (() => {
+    if (!selectedCompanyData) return [];
+    if (Array.isArray(selectedCompanyData.bankAccounts) && selectedCompanyData.bankAccounts.length > 0) {
+      return selectedCompanyData.bankAccounts;
+    }
+    // Fall back to old single-bank fields for legacy companies
+    if (selectedCompanyData.bankName || selectedCompanyData.accountNumber) {
+      return [{
+        label: "Primary",
+        bankName: selectedCompanyData.bankName || "",
+        accountHolderName: selectedCompanyData.accountHolderName || "",
+        accountNumber: selectedCompanyData.accountNumber || "",
+        ifscCode: selectedCompanyData.ifscCode || "",
+        branchAddress: selectedCompanyData.branchAddress || "",
+      }];
+    }
+    return [];
+  })();
+
+  // Auto-select first bank account when company changes (only when not editing)
+  $: if (availableBankAccounts.length > 0 && !updateInvoice) {
+    selectedBankAccount = availableBankAccounts[0];
+  }
 </script>
 
 {#if loadingData}
@@ -1164,6 +1237,25 @@
             </ul>
           {/if}
         </div>
+
+        {#if availableBankAccounts.length > 0}
+          <div>
+            <label class="form-label" for="bankAccountSelect">Bank Account</label>
+            <select
+              id="bankAccountSelect"
+              class="select form-control"
+              bind:value={selectedBankAccount}
+            >
+              <option value={null}>-- Select Bank Account --</option>
+              {#each availableBankAccounts as bank, i}
+                <option value={bank}>
+                  {bank.label ? bank.label + " — " : ""}{bank.bankName || "Bank " + (i + 1)}{bank.accountNumber ? " (" + bank.accountNumber + ")" : ""}
+                </option>
+              {/each}
+            </select>
+          </div>
+        {/if}
+
         <div>
           <label class="form-label" for="invoiceDate">Invoice Date</label>
           <input

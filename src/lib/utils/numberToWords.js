@@ -12,6 +12,8 @@ export const numberToWords = (num) => {
         "", "Thousand", "Million", "Billion", "Trillion"
     ];
 
+    if (!Number.isFinite(num) || num < 0) return "Zero";
+    num = Math.round(num); // handle floats — e.g. 0.72 → 1, 2.72 → 3
     if (num === 0) return "Zero";
 
     let words = "";
@@ -27,9 +29,10 @@ export const numberToWords = (num) => {
                 return helper(Math.floor(n / unit)) + " " + thousands[i + 1] + (n % unit !== 0 ? " " + helper(n % unit) : "");
             }
         }
+        return "";
     }
 
-    words = helper(num).trim();
+    words = (helper(num) ?? "").trim();
 
     return words;
 }

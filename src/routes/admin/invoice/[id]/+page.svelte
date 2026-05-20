@@ -37,18 +37,18 @@
   });
 
   $: subtotal =
-    invoice?.items.reduce((sum, item) => sum + item.total, 0) -
-    invoice?.discount;
-  $: extratotal = invoice?.extraItems.reduce(
-    (sum, item) => sum + item.total,
+    (invoice?.items ?? []).reduce((sum, item) => sum + (item.total ?? 0), 0) -
+    (invoice?.discount ?? 0);
+  $: extratotal = (invoice?.extraItems ?? []).reduce(
+    (sum, item) => sum + (item.total ?? 0),
     0
   );
-  $: subplustotal = subtotal + extratotal;
-  $: taxtotal = invoice?.taxItems.length
-    ? invoice?.taxItems.reduce((sum, item) => sum + item.total, 0)
+  $: subplustotal = (subtotal ?? 0) + (extratotal ?? 0);
+  $: taxtotal = invoice?.taxItems?.length
+    ? invoice.taxItems.reduce((sum, item) => sum + (item.total ?? 0), 0)
     : 0;
-  $: total = Math.round(subplustotal + taxtotal);
-  $: totalInWord = numberToWords(total || 0) + " Only";
+  $: total = Math.round((subplustotal ?? 0) + (taxtotal ?? 0));
+  $: totalInWord = numberToWords(Number.isFinite(total) ? Math.round(total) : 0) + " Only";
 
   const currencies = [
     { code: "INR", symbol: "₹" },
@@ -290,36 +290,23 @@
                   <div class="space-y-2">
                     <div class="font-semibold">Bank Details :</div>
                     <div class="space-y-1">
-                      {#if invoice?.company?.accountHolderName}
-                        <div>
-                          Account Holder Name :
-                          {invoice?.company?.accountHolderName}
-                        </div>
-                      {/if}
-                      {#if invoice?.company?.bankName}
-                        <div>
-                          Bank Name :
-                          {invoice?.company?.bankName}
-                        </div>
-                      {/if}
-                      {#if invoice?.company?.accountNumber}
-                        <div>
-                          Account Number :
-                          {invoice?.company?.accountNumber}
-                        </div>
-                      {/if}
-                      {#if invoice?.company?.bankAddress}
-                        <div>
-                          Bank Address :
-                          {invoice?.company?.bankAddress}
-                        </div>
-                      {/if}
-                      {#if invoice?.company?.ifscCode}
-                        <div>
-                          IFSC Code :
-                          {invoice?.company?.ifscCode}
-                        </div>
-                      {/if}
+                      {#each [invoice?.selectedBankAccount ?? invoice?.company] as b}
+                        {#if b?.accountHolderName}
+                          <div>Account Holder Name : {b.accountHolderName}</div>
+                        {/if}
+                        {#if b?.bankName}
+                          <div>Bank Name : {b.bankName}</div>
+                        {/if}
+                        {#if b?.accountNumber}
+                          <div>Account Number : {b.accountNumber}</div>
+                        {/if}
+                        {#if b?.branchAddress || b?.bankAddress}
+                          <div>Bank Address : {b.branchAddress || b.bankAddress}</div>
+                        {/if}
+                        {#if b?.ifscCode}
+                          <div>IFSC Code : {b.ifscCode}</div>
+                        {/if}
+                      {/each}
                     </div>
                   </div>
                   <div>

@@ -858,7 +858,11 @@
       key: "title",
       label: "Title",
       render: (val, row) => {
-        return `<a href="/admin/order/${row.id}" class="flex items-center gap-1"><div class="max-w-[300px] truncate">${row?.title}</div></a>`;
+        const sub = [
+          row?.pId ? `#${String(row.pId).padStart(6, "0")}` : null,
+          row?.inqCode ? row.inqCode : null,
+        ].filter(Boolean).join(" · ");
+        return `<a href="/admin/order/${row.id}" class="flex flex-col gap-0.5"><div class="max-w-[300px] truncate">${row?.title}</div>${sub ? `<div class="text-[10px] text-[#e41f07] font-mono">${sub}</div>` : ""}</a>`;
       },
     },
     {

@@ -53,8 +53,8 @@
             title={order?.title}
             class="capitalize">{order?.title}</a
           >
-          <div class="text-[10px] text-[#e41f07]">
-            #{order?.pId?.toString().padStart(6, "0")} ({order?.workOrderNumber})
+          <div class="text-[8px] text-[#e41f07]">
+            #{order?.pId?.toString().padStart(6, "0")} ({order?.workOrderNumber}){order?.inqCode ? ` · ${order.inqCode}` : ""}
           </div>
         </h6>
       </div>

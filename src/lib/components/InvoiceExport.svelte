@@ -6,19 +6,19 @@
   export let invoice;
 
   $: subtotal =
-    invoice?.items.reduce((sum, item) => sum + item.total, 0) -
-    invoice?.discount;
-  $: extratotal = invoice?.extraItems.reduce(
-    (sum, item) => sum + item.total,
+    (invoice?.items ?? []).reduce((sum, item) => sum + (item.total ?? 0), 0) -
+    (invoice?.discount ?? 0);
+  $: extratotal = (invoice?.extraItems ?? []).reduce(
+    (sum, item) => sum + (item.total ?? 0),
     0
   );
-  $: subplustotal = subtotal + extratotal;
-  $: taxtotal = invoice?.taxItems.length
-    ? invoice?.taxItems.reduce((sum, item) => sum + item.total, 0)
+  $: subplustotal = (subtotal ?? 0) + (extratotal ?? 0);
+  $: taxtotal = invoice?.taxItems?.length
+    ? invoice.taxItems.reduce((sum, item) => sum + (item.total ?? 0), 0)
     : 0;
-  $: total = Math.round(subplustotal + taxtotal);
-  $: totalInWord = numberToWords(total || 0) + " Only";
-  $: taxTotalInWord = numberToWords(taxtotal || 0) + " Only";
+  $: total = Math.round((subplustotal ?? 0) + (taxtotal ?? 0));
+  $: totalInWord = numberToWords(Number.isFinite(total) ? Math.round(total) : 0) + " Only";
+  $: taxTotalInWord = numberToWords(Number.isFinite(taxtotal) ? Math.round(taxtotal) : 0) + " Only";
 
   const currencies = [
     { code: "INR", symbol: "₹" },
@@ -972,15 +972,17 @@
       invoice?.taxItems.length +
       7;
     sheet.mergeCells(`A${taxTotalInWorkColumnNo}:H${taxTotalInWorkColumnNo}`);
+    // Use selectedBankAccount if available, fall back to company-level bank fields
+    const bankData = invoice?.selectedBankAccount ?? invoice?.company;
     sheet.getCell(`A${taxTotalInWorkColumnNo}`).value = [
       `Tax Amount (in words) : INR ${taxTotalInWord}`,
       "",
       "Company’s Bank Details",
-      `Bank Name : ${invoice?.company?.bankName}`,
-      `Account Holder Name : ${invoice?.company?.accountHolderName}`,
-      `A/c No. : ${invoice?.company?.accountNumber}`,
-      `Branch Name : ${invoice?.company?.branchAddress}`,
-      `IFS Code : ${invoice?.company?.ifscCode}`,
+      `Bank Name : ${bankData?.bankName ?? ""}`,
+      `Account Holder Name : ${bankData?.accountHolderName ?? ""}`,
+      `A/c No. : ${bankData?.accountNumber ?? ""}`,
+      `Branch Name : ${bankData?.branchAddress ?? ""}`,
+      `IFS Code : ${bankData?.ifscCode ?? ""}`,
     ].join("\n");
     sheet.getCell(`A${taxTotalInWorkColumnNo}`).font = {
       name: "Arial",
