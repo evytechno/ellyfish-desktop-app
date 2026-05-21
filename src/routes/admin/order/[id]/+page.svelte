@@ -1725,6 +1725,43 @@
                     </div>
                   </div>
                 </div>
+
+                {#if (order?.workOrders?.length > 0) || (order?.orderPayments?.length > 0)}
+                  <div class="border-top pt-3 mt-3">
+                    <h6 class="mb-3 fw-semibold">Linked Documents</h6>
+
+                    {#if order?.workOrders?.length > 0}
+                      <p class="mb-1 text-muted fs-12 fw-semibold">Work Orders</p>
+                      {#each order.workOrders as wo}
+                        <div class="mb-1">
+                          <a
+                            href="/admin/workorder/{wo.id}"
+                            class="text-primary fs-12 d-inline-flex align-items-center gap-1"
+                          >
+                            <i class="ti ti-file-description"></i>
+                            WO {wo.financialYear}/{String(wo.workOrderNo).padStart(6, "0")}
+                          </a>
+                        </div>
+                      {/each}
+                    {/if}
+
+                    {#if order?.orderPayments?.length > 0}
+                      <p class="mb-1 mt-2 text-muted fs-12 fw-semibold">Proforma Invoices</p>
+                      {#each order.orderPayments as pi}
+                        <div class="mb-1">
+                          <a
+                            href="/admin/invoice/{pi.id}"
+                            class="text-primary fs-12 d-inline-flex align-items-center gap-1"
+                          >
+                            <i class="ti ti-receipt"></i>
+                            PI {pi.financialYear}/{String(pi.invoiceNo).padStart(6, "0")}
+                          </a>
+                        </div>
+                      {/each}
+                    {/if}
+                  </div>
+                {/if}
+
               </div>
             </div>
           </div>

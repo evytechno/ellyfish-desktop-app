@@ -1,6 +1,7 @@
 <script>
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
+  import { page } from "$app/stores";
   import { authApiFetch } from "$lib/api/client";
   import { errorHandle } from "$lib/utils/errorHandle";
   import { API_ROUTES } from "$lib/constants/apiRoutes";
@@ -36,6 +37,7 @@
 
   let loading = false;
   let errorMessage = "";
+  let woWarning = null;
 
   // Field-specific error messages
   let formErrors = {};
@@ -46,16 +48,24 @@
   });
 
   async function orderValueChange(e) {
-    const id = Number(e.target.value); // or parseInt(e.target.value, 10)
-    if (!isNaN(id)) {
+    const id = Number(e.target.value);
+    woWarning = null;
+    if (!isNaN(id) && id > 0) {
       const newOrder = orders.find((order) => order.id === id);
       if (newOrder) {
         title = newOrder.title;
-      } else {
-        console.log("Order not found for id:", id);
       }
-    } else {
-      console.warn("Invalid ID: Not a number");
+      try {
+        const check = await authApiFetch(`${API_ROUTES.WORK_ORDER}/check/${id}`);
+        if (check.count > 0) {
+          const labels = check.items
+            .map((w) => `WO ${w.financialYear}/${String(w.workOrderNo).padStart(6, "0")}`)
+            .join(", ");
+          woWarning = `This order already has ${check.count} work order(s): ${labels}`;
+        }
+      } catch (err) {
+        console.error("WO duplicate check failed", err);
+      }
     }
   }
 
@@ -175,6 +185,47 @@
     }
   });
 
+  // Pre-fill from PI if ?fromInvoice=<id> is present
+  onMount(async () => {
+    const fromInvoiceId = $page.url.searchParams.get("fromInvoice");
+    if (!fromInvoiceId) return;
+    try {
+      const inv = await authApiFetch(
+        `${API_ROUTES.ORDER_PAYMENT}/${fromInvoiceId}`,
+      );
+      if (inv.company?.id) companyId = inv.company.id;
+      if (inv.order?.id) {
+        orderId = inv.order.id;
+        workOrderType = "order";
+      } else {
+        workOrderType = "self";
+      }
+      title = inv.order?.title ?? inv.billToName ?? "";
+      poNumber = inv.poNumber ?? "";
+      orderNo = inv.invoiceNo
+        ? String(inv.invoiceNo).padStart(6, "0")
+        : "";
+      remarks = inv.remarks ?? "";
+      const piItems = (inv.items ?? []).map((i) => ({
+        item: i.item ?? "",
+        quantity: i.quantity ?? "0",
+        price: 0,
+        hsCode: i.hsCode ?? "",
+        total: 0,
+      }));
+      const extraItems = (inv.extraItems ?? []).map((i) => ({
+        item: i.item ?? "",
+        quantity: "0",
+        price: 0,
+        hsCode: "",
+        total: 0,
+      }));
+      items = [...piItems, ...extraItems];
+    } catch (err) {
+      console.error("Failed to prefill from invoice", err);
+    }
+  });
+
   let inCotermsArray = ["In India", "Outside India"];
   let inCotermsInArray = ["Ex", "Door Delivery", "Godown"];
   let inCotermsOutsideArray = ["Ex", "FOB", "CIF"];
@@ -271,6 +322,9 @@
                   <ul class="text-danger mt-1 text-xs capitalize">
                     <li>{formErrors.orderId[0]}</li>
                   </ul>
+                {/if}
+                {#if woWarning}
+                  <div class="mt-1 text-xs" style="color: #b45309;">&#9888; {woWarning}</div>
                 {/if}
               </div>
             {:else}

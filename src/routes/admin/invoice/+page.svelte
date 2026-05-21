@@ -87,6 +87,7 @@
 
   let loading = false;
   let errorMessage = "";
+  let piWarning = null;
 
   let formErrors = {};
 
@@ -167,9 +168,23 @@
 
   async function orderValueChange(e) {
     const id = Number(e.target.value);
+    piWarning = null;
     if (isNaN(id) || id <= 0) {
       console.warn("Invalid order ID");
       return;
+    }
+    if (formType === "Create") {
+      try {
+        const check = await authApiFetch(`${API_ROUTES.ORDER_PAYMENT}/check/${id}`);
+        if (check.count > 0) {
+          const labels = check.items
+            .map((p) => `PI ${p.financialYear}/${String(p.invoiceNo).padStart(6, "0")}`)
+            .join(", ");
+          piWarning = `This order already has ${check.count} PI(s): ${labels}`;
+        }
+      } catch (err) {
+        console.error("PI duplicate check failed", err);
+      }
     }
     try {
       const order = await authApiFetch(API_ROUTES.ORDER + "/" + id);
@@ -208,6 +223,7 @@
   }
 
   function resetForm() {
+    piWarning = null;
     invoiceType = "order";
     title = "";
     items = [];
@@ -840,7 +856,31 @@
       shipToMobile = newInvoice?.shipToMobile;
       shipToEmail = newInvoice?.shipToEmail;
 
-      selectedBankAccount = newInvoice?.selectedBankAccount ?? null;
+      // Resolve selectedBankAccount to the exact object reference inside
+      // availableBankAccounts so that Svelte's bind:value (=== comparison) matches.
+      // Done here synchronously so the reactive below (which fires when companyId
+      // changes) sees a non-null value and does not override with the first account.
+      const stored = newInvoice?.selectedBankAccount ?? null;
+      const cd = companies.find((c) => c.id === newInvoice?.company?.id);
+      const bankList = (() => {
+        if (!cd) return [];
+        if (Array.isArray(cd.bankAccounts) && cd.bankAccounts.length > 0) return cd.bankAccounts;
+        if (cd.bankName || cd.accountNumber) return [{ label: "Primary", bankName: cd.bankName || "", accountHolderName: cd.accountHolderName || "", accountNumber: cd.accountNumber || "", ifscCode: cd.ifscCode || "", branchAddress: cd.branchAddress || "" }];
+        return [];
+      })();
+      if (stored?.accountNumber || stored?.bankName || stored?.ifscCode) {
+        // Stored value exists — find the live reference by key fields
+        const match = bankList.find((b) =>
+          b.accountNumber === stored.accountNumber &&
+          b.bankName === stored.bankName &&
+          b.ifscCode === stored.ifscCode
+        );
+        // If match found use it; otherwise fall back to first available
+        selectedBankAccount = match ?? bankList[0] ?? null;
+      } else {
+        // No bank account stored (null in DB) — auto-select first available
+        selectedBankAccount = bankList[0] ?? null;
+      }
     }
   }
 
@@ -940,7 +980,9 @@
     return [];
   })();
 
-  // Auto-select first bank account when company changes (only when not editing)
+  // Auto-select first bank account on create (or when company changes during create).
+  // Edit mode is handled entirely inside fillDataOnForm so this reactive never
+  // interferes with a stored bank account selection.
   $: if (availableBankAccounts.length > 0 && !updateInvoice) {
     selectedBankAccount = availableBankAccounts[0];
   }
@@ -1190,6 +1232,9 @@
               <ul class="text-danger mt-1 text-xs capitalize">
                 <li>{formErrors.orderId[0]}</li>
               </ul>
+            {/if}
+            {#if piWarning}
+              <div class="mt-1 text-xs" style="color: #b45309;">&#9888; {piWarning}</div>
             {/if}
           </div>
         {:else}

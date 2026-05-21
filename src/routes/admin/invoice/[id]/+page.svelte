@@ -394,6 +394,12 @@
                 >
                   <InvoiceExport {invoice} />
                   <a
+                    href="/admin/workorder/add?fromInvoice={invoiceId}"
+                    class="btn btn-md btn-success d-flex align-items-center"
+                  >
+                    <i class="ti ti-clipboard-plus me-1"></i>Create Work Order
+                  </a>
+                  <a
                     href="#print"
                     class="btn btn-md btn-primary d-flex align-items-center"
                     on:click={() => window.print()}
