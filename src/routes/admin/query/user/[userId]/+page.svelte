@@ -7,6 +7,7 @@
   import { checkAuth } from "$lib/utils/auth";
   import { errorHandle } from "$lib/utils/errorHandle";
   import Pagination from "$lib/components/Pagination.svelte";
+  import { queryPrivacy } from "$lib/stores/queryPrivacy";
 
   let currentUser;
   let userId = Number($page.params.userId);
@@ -98,7 +99,7 @@
   async function loadUser() {
     userLoading = true;
     try { user = await authApiFetch(`${API_ROUTES.USER}/${userId}`); }
-    catch (e) { errorHandle(e); }
+    catch (e) { if (!e?.isNetworkError && e?.status !== 0) errorHandle(e); }
     finally { userLoading = false; }
   }
 
@@ -177,7 +178,7 @@
       const q = buildUserParams({ page: currentPage, limit: rowsPerPage });
       const res = await authApiFetch(`${API_ROUTES.QUERY}?${q}`);
       queries = res.data ?? []; totalItems = res.total ?? 0; totalPages = res.totalPages ?? 0;
-    } catch (e) { errorHandle(e); }
+    } catch (e) { if (!e?.isNetworkError && e?.status !== 0) errorHandle(e); }
     finally { listLoading = false; }
   }
 
@@ -234,6 +235,11 @@
   $: heatMax = detail ? Math.max(...detail.activityHeatmap, 1) : 1;
 
   function replyPct(count, total) { return total > 0 ? Math.round(count / total * 100) : 0; }
+
+  $: maskTC   = (name) => (currentUser?.role === "master" && $queryPrivacy.telecaller && name) ? "Telecaller" : (name ?? "-");
+  $: maskTech = (name) => (currentUser?.role === "master" && $queryPrivacy.tech       && name) ? "Tech"        : (name ?? "-");
+  $: maskedUserName     = user ? (isTelecaller(user) ? maskTC(user.name) : maskTech(user.name)) : "";
+  $: maskedUserInitials = maskedUserName ? initials(maskedUserName) : "?";
   $: replyTotal = detail
     ? detail.replyDistribution.under1min + detail.replyDistribution._1to5min +
       detail.replyDistribution._5to15min + detail.replyDistribution.over15min
@@ -268,10 +274,10 @@
     {:else if user}
       <div class="user-header-card mb-4">
         <div class="d-flex align-items-center gap-3">
-          <div class="user-avatar user-avatar--{user.subRole ?? 'other'} flex-shrink-0">{initials(user.name)}</div>
+          <div class="user-avatar user-avatar--{user.subRole ?? 'other'} flex-shrink-0">{maskedUserInitials}</div>
           <div class="flex-grow-1 min-w-0">
             <div class="d-flex align-items-center gap-2 flex-wrap">
-              <span class="fw-bold fs-5">{user.name}</span>
+              <span class="fw-bold fs-5">{maskedUserName}</span>
               <span class="badge {isTelecaller(user) ? 'bg-warning text-dark' : 'bg-teal text-white'}">{subRoleLabel(user.subRole)}</span>
               <span class="badge {user.status === 'active' ? 'bg-success' : 'bg-secondary'}" style="font-size:10px;">{user.status ?? "active"}</span>
             </div>
@@ -719,9 +725,9 @@
                     <td>{(currentPage-1)*rowsPerPage+i+1}</td>
                     <td><a href="/admin/query/{q.id}" class="text-primary fw-semibold">{q.subject}</a></td>
                     {#if isTelecaller(user)}
-                      <td>{#if q.assignedTo?.name}{q.assignedTo.name}{:else}<span class="text-muted">Unassigned</span>{/if}</td>
+                      <td>{#if q.assignedTo?.name}{maskTech(q.assignedTo.name)}{:else}<span class="text-muted">Unassigned</span>{/if}</td>
                     {:else}
-                      <td>{q.raisedBy?.name ?? "-"}</td>
+                      <td>{maskTC(q.raisedBy?.name)}</td>
                     {/if}
                     <td><span class="badge bg-light text-dark border" style="font-size:11px;">{typeLabel(q.type)}</span></td>
                     <td><span class={PRIORITY_COLORS[q.priority] ?? "badge bg-secondary"} style="font-size:11px;">{q.priority ?? "-"}</span></td>

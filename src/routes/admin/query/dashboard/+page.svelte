@@ -6,6 +6,7 @@
   import { checkAuth } from "$lib/utils/auth";
   import { errorHandle } from "$lib/utils/errorHandle";
   import Pagination from "$lib/components/Pagination.svelte";
+  import { queryPrivacy } from "$lib/stores/queryPrivacy";
 
   let currentUser;
   let dashboard = null;
@@ -138,7 +139,7 @@
       totalItems = res.total ?? 0;
       totalPages = res.totalPages ?? 0;
     } catch (e) {
-      errorHandle(e);
+      if (!e?.isNetworkError && e?.status !== 0) errorHandle(e);
     } finally {
       listLoading = false;
     }
@@ -182,6 +183,9 @@
       hour: "2-digit", minute: "2-digit",
     });
   }
+
+  $: maskTC   = (name) => (currentUser?.role === "master" && $queryPrivacy.telecaller && name) ? "Telecaller" : (name ?? "-");
+  $: maskTech = (name) => (currentUser?.role === "master" && $queryPrivacy.tech       && name) ? "Tech"        : (name ?? "-");
 </script>
 
 <div class="page-wrapper">
@@ -448,14 +452,14 @@
                     <td>
                       {#if q.raisedBy}
                         <a href="/admin/query/user/{q.raisedBy.id}" class="text-body text-decoration-none user-link">
-                          {q.raisedBy.name}
+                          {maskTC(q.raisedBy.name)}
                         </a>
                       {:else}-{/if}
                     </td>
                     <td>
                       {#if q.assignedTo}
                         <a href="/admin/query/user/{q.assignedTo.id}" class="text-body text-decoration-none user-link">
-                          {q.assignedTo.name}
+                          {maskTech(q.assignedTo.name)}
                         </a>
                       {:else}<span class="text-muted">Unassigned</span>{/if}
                     </td>

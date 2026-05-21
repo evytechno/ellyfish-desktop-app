@@ -108,7 +108,7 @@
       totalItems = res.total ?? 0;
       totalPages = res.totalPages ?? 0;
     } catch (e) {
-      errorHandle(e);
+      if (!e?.isNetworkError && e?.status !== 0) errorHandle(e);
     } finally {
       loading = false;
     }

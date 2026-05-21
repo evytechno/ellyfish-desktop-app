@@ -4,6 +4,7 @@
   import { authApiFetch } from "$lib/api/client";
   import { API_ROUTES } from "$lib/constants/apiRoutes";
   import { checkAuth } from "$lib/utils/auth";
+  import { queryPrivacy } from "$lib/stores/queryPrivacy";
 
   let currentUser;
   let users   = [];
@@ -28,6 +29,9 @@
     if (!name) return "?";
     return name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
   }
+
+  $: maskTC   = (name) => (currentUser?.role === "master" && $queryPrivacy.telecaller && name) ? "Telecaller" : (name ?? "?");
+  $: maskTech = (name) => (currentUser?.role === "master" && $queryPrivacy.tech       && name) ? "Tech"        : (name ?? "?");
 </script>
 
 <div class="page-wrapper">
@@ -56,8 +60,8 @@
           {#each telecallers as u}
             <div class="col-6 col-md-3">
               <a href="/admin/query/user/{u.id}" class="user-card user-card--telecaller">
-                <div class="uc-avatar">{initials(u.name)}</div>
-                <div class="uc-name">{u.name}</div>
+                <div class="uc-avatar">{initials(maskTC(u.name))}</div>
+                <div class="uc-name">{maskTC(u.name)}</div>
                 <div class="uc-sub">Telecaller</div>
                 <span class="uc-status {u.status === 'active' ? 'uc-status--active' : 'uc-status--inactive'}">
                   {u.status ?? "active"}
@@ -79,8 +83,8 @@
           {#each techUsers as u}
             <div class="col-6 col-md-3">
               <a href="/admin/query/user/{u.id}" class="user-card user-card--tech">
-                <div class="uc-avatar uc-avatar--tech">{initials(u.name)}</div>
-                <div class="uc-name">{u.name}</div>
+                <div class="uc-avatar uc-avatar--tech">{initials(maskTech(u.name))}</div>
+                <div class="uc-name">{maskTech(u.name)}</div>
                 <div class="uc-sub">Tech</div>
                 <span class="uc-status {u.status === 'active' ? 'uc-status--active' : 'uc-status--inactive'}">
                   {u.status ?? "active"}

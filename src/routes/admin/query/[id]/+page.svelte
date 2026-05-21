@@ -9,6 +9,7 @@
   import { checkAuth } from "$lib/utils/auth";
   import { errorHandle } from "$lib/utils/errorHandle";
   import { queryUnreadCounts, clearUnread } from "$lib/stores/queryUnreadCounts";
+  import { queryPrivacy } from "$lib/stores/queryPrivacy";
   import Swal from "sweetalert2";
   import LightBox from "$lib/components/LightBox.svelte";
 
@@ -39,6 +40,8 @@
   let loading = true;
   let chatMessage = "";
   let attachedFiles = [];
+  let pendingFiles = []; // staged from drop/paste — shown in preview modal before confirm
+  let pendingIndex = 0;  // active slide in the preview modal
   let fileInputEl;
   let sendingChat = false;
   let actionLoading = false;
@@ -46,6 +49,11 @@
 
   // reply state
   let replyTo = null; // { id, senderLabel, message, senderType } | null
+
+  // edit state
+  let editingChatId = null;
+  let editingChatText = "";
+  let savingEdit = false;
 
   // final flag state
   let settingFinalFlag = null; // chatId being toggled
@@ -160,7 +168,13 @@
     expandedMessages = new Set();
     chatMessage = "";
     attachedFiles = [];
+    cancelPending();
     replyTo = null;
+    editingChatId = null;
+    editingChatText = "";
+    newMsgCount = 0;
+    showNewMsgBanner = false;
+    isAtBottom = true;
     statusBanner = null;
     if (bannerTimer) clearTimeout(bannerTimer);
     clearUnread(Number(id));
@@ -205,6 +219,49 @@
 
   function canSetFinalFlag() {
     return currentUser?.subRole === 'telecaller' || currentUser?.subRole === 'tech';
+  }
+
+  function canEditChat(chat) {
+    if (!chat.isOwn) return false;
+    const ageMs = Date.now() - new Date(chat.createdAt).getTime();
+    return ageMs <= 30 * 60 * 1000;
+  }
+
+  function startEditChat(chat) {
+    editingChatId = chat.id;
+    editingChatText = chat.message ?? "";
+  }
+
+  function cancelEditChat() {
+    editingChatId = null;
+    editingChatText = "";
+  }
+
+  async function saveEditChat(chatId) {
+    if (!editingChatText.trim()) return;
+    savingEdit = true;
+    try {
+      const result = await authApiFetch(`${API_ROUTES.QUERY}/${queryId}/chat/${chatId}`, {
+        method: "PATCH",
+        data: JSON.stringify({ message: editingChatText.trim() }),
+      });
+      chats = chats.map((c) =>
+        c.id === chatId
+          ? { ...c, message: result.data.message, editedAt: result.data.editedAt }
+          : c
+      );
+      editingChatId = null;
+      editingChatText = "";
+    } catch (e) {
+      const msg = e?.data?.message;
+      Swal.fire({
+        icon: "error",
+        title: "Cannot edit",
+        text: typeof msg === "string" ? msg : "Failed to edit message.",
+      });
+    } finally {
+      savingEdit = false;
+    }
   }
 
   async function toggleFinalFlag(chat) {
@@ -261,12 +318,43 @@
 
   let chatContainer;
   let shouldScroll = false;
+  let isAtBottom = true;
+  let newMsgCount = 0;
+  let showNewMsgBanner = false;
+
+  // drag-and-drop state
+  let isDragOver = false;
+  let dragDepth = 0;
+  const previewCache = new WeakMap(); // File → blob URL; avoids duplicate createObjectURL calls
+
+  function checkAtBottom() {
+    if (!chatContainer) return true;
+    return chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight < 60;
+  }
+
+  function handleChatScroll() {
+    isAtBottom = checkAtBottom();
+    if (isAtBottom) {
+      newMsgCount = 0;
+      showNewMsgBanner = false;
+    }
+  }
+
+  function scrollToBottom() {
+    if (!chatContainer) return;
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+    newMsgCount = 0;
+    showNewMsgBanner = false;
+    isAtBottom = true;
+  }
 
   $: if (chats || otherTyping) shouldScroll = true;
 
   afterUpdate(() => {
     if (shouldScroll && chatContainer) {
-      chatContainer.scrollTop = chatContainer.scrollHeight;
+      if (isAtBottom) {
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+      }
       shouldScroll = false;
     }
   });
@@ -308,7 +396,13 @@
     expandedMessages = new Set();
     chatMessage = "";
     attachedFiles = [];
+    cancelPending();
     replyTo = null;
+    editingChatId = null;
+    editingChatText = "";
+    newMsgCount = 0;
+    showNewMsgBanner = false;
+    isAtBottom = true;
     statusBanner = null;
     if (bannerTimer) clearTimeout(bannerTimer);
     if (chatInputEl) chatInputEl.style.height = "auto";
@@ -405,6 +499,7 @@
         if (ref) msgReplyTo = { id: ref.id, senderLabel: ref.senderLabel, message: ref.message, senderType: ref.senderType };
       }
 
+      const atBottom = checkAtBottom();
       chats = [
         ...chats,
         {
@@ -416,8 +511,13 @@
           senderLabel,
           senderType,
           replyTo: msgReplyTo,
+          isNew: true,
         },
       ];
+      if (!atBottom && !isOwn) {
+        newMsgCount += 1;
+        showNewMsgBanner = true;
+      }
     });
 
     socket.on("user-typing", (data) => {
@@ -445,6 +545,15 @@
     // personal room event — another query's status changed, refresh our list
     socket.on("query-list-changed", () => {
       loadInProgress();
+    });
+
+    socket.on("message-edited", (data) => {
+      if (data.queryId !== Number(queryId)) return;
+      chats = chats.map((c) =>
+        c.id === data.chatId
+          ? { ...c, message: data.message, editedAt: data.editedAt }
+          : c
+      );
     });
 
     socket.on("status-update", (data) => {
@@ -499,7 +608,8 @@
     try {
       query = await authApiFetch(`${API_ROUTES.QUERY}/${id}`);
     } catch (e) {
-      errorHandle(e);
+      // network errors: ServerOffline modal already covers the UI
+      if (!e?.isNetworkError && e?.status !== 0) errorHandle(e);
     } finally {
       loading = false;
     }
@@ -530,6 +640,9 @@
   }
 
   function clearAttachment(index) {
+    const f = attachedFiles[index];
+    const url = previewCache.get(f);
+    if (url) { URL.revokeObjectURL(url); previewCache.delete(f); }
     attachedFiles = attachedFiles.filter((_, i) => i !== index);
   }
 
@@ -578,11 +691,17 @@
             senderLabel: "You",
             senderType: "own",
             replyTo: msgReplyTo ? { id: msgReplyTo.id, senderLabel: msgReplyTo.senderLabel, message: msgReplyTo.message, senderType: msgReplyTo.senderType } : null,
+            isNew: true,
           },
         ];
       }
       await tick();
       if (chatContainer) chatContainer.scrollTop = chatContainer.scrollHeight;
+      // revoke blob preview URLs created for chip thumbnails (files now uploaded)
+      for (const f of msgFiles) {
+        const url = previewCache.get(f);
+        if (url) { URL.revokeObjectURL(url); previewCache.delete(f); }
+      }
     } catch (e) {
       chatMessage = msgText;
       attachedFiles = msgFiles;
@@ -723,6 +842,117 @@
 
   const ALLOWED_TYPES = "image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar";
 
+  // ── Privacy masking (master-only) ────────────────────────────────────────
+  $: maskTC   = (name) => (currentUser?.role === "master" && $queryPrivacy.telecaller && name) ? "Telecaller" : (name ?? "-");
+  $: maskTech = (name) => (currentUser?.role === "master" && $queryPrivacy.tech       && name) ? "Tech"        : (name ?? "-");
+  $: maskChatSender = (chat) => {
+    if (currentUser?.role !== "master") return chat.senderLabel;
+    if ($queryPrivacy.telecaller && chat.senderType === "telecaller") return "Telecaller";
+    if ($queryPrivacy.tech       && chat.senderType === "tech")       return "Tech";
+    return chat.senderLabel;
+  };
+
+  // ── Preview attached file before sending ─────────────────────────────────
+  function previewAttachedFile(file) {
+    if (file.type.startsWith("image/")) {
+      const imgFiles = attachedFiles.filter(f => f.type.startsWith("image/"));
+      const urls = imgFiles.map(f => URL.createObjectURL(f));
+      const idx = imgFiles.indexOf(file);
+      openImageLightbox(urls, idx < 0 ? 0 : idx);
+      setTimeout(() => urls.forEach(u => URL.revokeObjectURL(u)), 60_000);
+    } else {
+      const url = URL.createObjectURL(file);
+      window.open(url, "_blank", "noopener,noreferrer");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    }
+  }
+
+  // ── Pending files helpers ─────────────────────────────────────────────────
+  function getPreviewUrl(file) {
+    if (previewCache.has(file)) return previewCache.get(file);
+    const url = URL.createObjectURL(file);
+    previewCache.set(file, url);
+    return url;
+  }
+
+  function confirmPendingFiles() {
+    const remaining = 5 - attachedFiles.length;
+    if (remaining <= 0) { cancelPending(); return; }
+    attachedFiles = [...attachedFiles, ...pendingFiles.slice(0, remaining)];
+    pendingFiles = []; // URLs kept alive in previewCache — reused by chip thumbnails
+  }
+
+  function cancelPending() {
+    for (const f of pendingFiles) {
+      const url = previewCache.get(f);
+      if (url) { URL.revokeObjectURL(url); previewCache.delete(f); }
+    }
+    pendingFiles = [];
+    pendingIndex = 0;
+  }
+
+  function removePendingFile(i) {
+    const f = pendingFiles[i];
+    const url = previewCache.get(f);
+    if (url) { URL.revokeObjectURL(url); previewCache.delete(f); }
+    pendingFiles = pendingFiles.filter((_, idx) => idx !== i);
+    // keep index in-bounds after removal
+    if (pendingIndex >= pendingFiles.length) {
+      pendingIndex = Math.max(0, pendingFiles.length - 1);
+    }
+  }
+
+  function prevPending()  { if (pendingIndex > 0) pendingIndex--; }
+  function nextPending()  { if (pendingIndex < pendingFiles.length - 1) pendingIndex++; }
+  function jumpPending(i) { pendingIndex = i; }
+
+  // ── Drag & drop handlers ──────────────────────────────────────────────────
+  function handleDragEnter(e) {
+    if (!canSendChat()) return;
+    e.preventDefault();
+    dragDepth++;
+    isDragOver = true;
+  }
+
+  function handleDragLeave(e) {
+    if (!canSendChat()) return;
+    dragDepth--;
+    if (dragDepth <= 0) { dragDepth = 0; isDragOver = false; }
+  }
+
+  function handleDragOver(e) {
+    if (!canSendChat()) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  }
+
+  function handleDrop(e) {
+    if (!canSendChat()) return;
+    e.preventDefault();
+    dragDepth = 0;
+    isDragOver = false;
+    const files = Array.from(e.dataTransfer?.files ?? []);
+    if (!files.length) return;
+    const capacity = 5 - attachedFiles.length - pendingFiles.length;
+    if (capacity <= 0) return;
+    pendingFiles = [...pendingFiles, ...files.slice(0, capacity)];
+  }
+
+  // ── Paste image handler ───────────────────────────────────────────────────
+  function handlePaste(e) {
+    if (!canSendChat()) return;
+    const items = Array.from(e.clipboardData?.items ?? []);
+    const imageItems = items.filter(item => item.kind === "file" && item.type.startsWith("image/"));
+    if (!imageItems.length) return;
+    e.preventDefault();
+    const capacity = 5 - attachedFiles.length - pendingFiles.length;
+    if (capacity <= 0) return;
+    imageItems.slice(0, capacity).forEach(item => {
+      const file = item.getAsFile();
+      if (file) pendingFiles = [...pendingFiles, file];
+    });
+  }
+
   function formatDate(dateStr) {
     if (!dateStr) return "-";
     return new Date(dateStr).toLocaleString("en-IN", {
@@ -747,6 +977,107 @@
     {:else}
       <LightBox data={lightboxData} startIndex={lightboxStartIndex} />
 
+      <!-- ── Pending-files preview modal (slider) ─────────────────────────── -->
+      {#if pendingFiles.length > 0}
+        {@const totalAllowed = Math.max(0, 5 - attachedFiles.length)}
+        {@const cur = pendingFiles[pendingIndex]}
+        {@const curAllowed = pendingIndex < totalAllowed}
+        <div class="pf-backdrop" on:click={cancelPending} role="dialog" aria-modal="true" aria-label="Preview files">
+          <div class="pf-card" on:click|stopPropagation role="document">
+
+            <!-- header -->
+            <div class="pf-header">
+              <i class="ti ti-photo-check" style="color:#3b5bdb;font-size:15px;"></i>
+              <span>Preview Files</span>
+              <span class="pf-index">{pendingIndex + 1} / {pendingFiles.length}</span>
+              <button class="pf-close" on:click={cancelPending} title="Discard"><i class="ti ti-x"></i></button>
+            </div>
+
+            <!-- over-limit warning -->
+            {#if pendingFiles.length > totalAllowed}
+              <div class="pf-warn">
+                <i class="ti ti-alert-triangle"></i>
+                Only {totalAllowed} of {pendingFiles.length} file{pendingFiles.length !== 1 ? 's' : ''} can be added (5-file limit). Dimmed items will be skipped.
+              </div>
+            {/if}
+
+            <!-- main stage -->
+            <div class="pf-stage">
+              {#if pendingIndex > 0}
+                <button class="pf-arrow pf-arrow--left" on:click={prevPending} title="Previous">
+                  <i class="ti ti-chevron-left"></i>
+                </button>
+              {/if}
+
+              <div class="pf-preview" class:pf-preview--overlimit={!curAllowed}>
+                {#if cur?.type.startsWith('image/')}
+                  <img src={getPreviewUrl(cur)} alt={cur.name} class="pf-stage-img" />
+                {:else}
+                  <div
+                    class="pf-stage-file"
+                    role="button"
+                    tabindex="0"
+                    title="Click to open file"
+                    on:click={() => window.open(getPreviewUrl(cur), '_blank', 'noopener,noreferrer')}
+                    on:keydown={(e) => e.key === 'Enter' && window.open(getPreviewUrl(cur), '_blank', 'noopener,noreferrer')}
+                  >
+                    <i class="ti ti-file-description pf-stage-file-icon"></i>
+                    <span class="pf-stage-ext">.{cur?.name.split('.').pop()?.toLowerCase() ?? 'file'}</span>
+                    <span class="pf-stage-open-hint"><i class="ti ti-external-link"></i> Click to open</span>
+                  </div>
+                {/if}
+
+                {#if curAllowed}
+                  <button class="pf-stage-remove" on:click={() => removePendingFile(pendingIndex)}>
+                    <i class="ti ti-trash"></i> Remove
+                  </button>
+                {:else}
+                  <div class="pf-overlimit-badge"><i class="ti ti-ban"></i> Over limit</div>
+                {/if}
+              </div>
+
+              {#if pendingIndex < pendingFiles.length - 1}
+                <button class="pf-arrow pf-arrow--right" on:click={nextPending} title="Next">
+                  <i class="ti ti-chevron-right"></i>
+                </button>
+              {/if}
+            </div>
+
+            <!-- filename -->
+            <div class="pf-stage-name" title={cur?.name}>{cur?.name}</div>
+
+            <!-- thumbnail strip -->
+            <div class="pf-strip">
+              {#each pendingFiles as file, i}
+                <button
+                  class="pf-thumb"
+                  class:pf-thumb--active={i === pendingIndex}
+                  class:pf-thumb--overlimit={i >= totalAllowed}
+                  on:click={() => jumpPending(i)}
+                  title={file.name}
+                >
+                  {#if file.type.startsWith('image/')}
+                    <img src={getPreviewUrl(file)} alt={file.name} class="pf-thumb-img" />
+                  {:else}
+                    <i class="ti ti-file-description pf-thumb-icon"></i>
+                  {/if}
+                </button>
+              {/each}
+            </div>
+
+            <!-- footer -->
+            <div class="pf-footer">
+              <button class="pf-btn-cancel" on:click={cancelPending}>Discard</button>
+              <button class="pf-btn-confirm" on:click={confirmPendingFiles} disabled={attachedFiles.length >= 5}>
+                <i class="ti ti-check"></i>
+                Add {Math.min(pendingFiles.length, totalAllowed)} file{Math.min(pendingFiles.length, totalAllowed) !== 1 ? 's' : ''}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      {/if}
+
       {#if statusBanner}
         <div class="status-live-banner status-live-banner--{statusBanner.status.replace('_','-')}">
           <i class="ti ti-refresh-alert me-2"></i>
@@ -754,7 +1085,7 @@
             Status updated to
             <strong>{statusBanner.status.replace("_", " ")}</strong>
             {#if statusBanner.assignedToName}
-              — assigned to <strong>{statusBanner.assignedToName}</strong>
+              — assigned to <strong>{maskTech(statusBanner.assignedToName)}</strong>
             {/if}
           </span>
           <button class="status-banner-close" on:click={() => statusBanner = null}>
@@ -846,11 +1177,11 @@
               {#if isMasterView(currentUser)}
                 <div class="qd-meta-row">
                   <span class="qd-meta-label"><i class="ti ti-user"></i> Raised by</span>
-                  <span class="qd-meta-value">{query.raisedBy?.name ?? "-"}</span>
+                  <span class="qd-meta-value">{maskTC(query.raisedBy?.name)}</span>
                 </div>
                 <div class="qd-meta-row">
                   <span class="qd-meta-label"><i class="ti ti-user-check"></i> Assigned</span>
-                  <span class="qd-meta-value">{query.assignedTo?.name ?? "Unassigned"}</span>
+                  <span class="qd-meta-value">{query.assignedTo ? maskTech(query.assignedTo.name) : "Unassigned"}</span>
                 </div>
                 {#if query.orderId}
                   <div class="qd-meta-row">
@@ -950,7 +1281,7 @@
                       </span>
                       {#if isMasterView(currentUser)}
                         <span class="ip-meta">
-                          {#if q.raisedBy?.name}<i class="ti ti-user" style="font-size:9px;"></i> {q.raisedBy.name}{/if}{#if q.assignedTo?.name}&nbsp;·&nbsp;<i class="ti ti-user-check" style="font-size:9px;"></i> {q.assignedTo.name}{/if}
+                          {#if q.raisedBy?.name}<i class="ti ti-user" style="font-size:9px;"></i> {maskTC(q.raisedBy.name)}{/if}{#if q.assignedTo?.name}&nbsp;·&nbsp;<i class="ti ti-user-check" style="font-size:9px;"></i> {maskTech(q.assignedTo.name)}{/if}
                         </span>
                       {/if}
                     </div>
@@ -1013,7 +1344,21 @@
             </div>
 
             <!-- Messages -->
-            <div bind:this={chatContainer} class="chat-messages flex-grow-1 overflow-auto px-4 py-3">
+            <div class="chat-messages-wrap"
+              on:dragenter={handleDragEnter}
+              on:dragleave={handleDragLeave}
+              on:dragover={handleDragOver}
+              on:drop={handleDrop}
+            >
+            {#if isDragOver}
+              <div class="drag-overlay" aria-hidden="true">
+                <div class="drag-overlay-content">
+                  <i class="ti ti-upload"></i>
+                  <span>Drop files here</span>
+                </div>
+              </div>
+            {/if}
+            <div bind:this={chatContainer} class="chat-messages flex-grow-1 overflow-auto px-4 py-3" style="flex:1 1 0;min-height:0;" on:scroll={handleChatScroll}>
               {#if chats.length === 0}
                 <div class="chat-empty">
                   <i class="ti ti-messages-off"></i>
@@ -1021,14 +1366,14 @@
                 </div>
               {/if}
               {#each chats as chat}
-                <div class="chat-row" class:chat-row--own={chat.isOwn} id="chat-msg-{chat.id}">
+                <div class="chat-row" class:chat-row--own={chat.isOwn} class:chat-row--new={chat.isNew} id="chat-msg-{chat.id}">
                   {#if !chat.isOwn}
                     <div class="chat-avatar chat-avatar--sm chat-avatar--{chat.senderType ?? 'other'}">
-                      {chat.senderLabel.charAt(0).toUpperCase()}
+                      {maskChatSender(chat).charAt(0).toUpperCase()}
                     </div>
                   {/if}
                   <div class="chat-bubble-wrap">
-                  <div class="chat-bubble chat-bubble--{chat.senderType ?? (chat.isOwn ? 'own' : 'other')} {chat.isFinal ? 'chat-bubble--final' : ''}">
+                  <div class="chat-bubble chat-bubble--{chat.senderType ?? (chat.isOwn ? 'own' : 'other')} {chat.isFinal ? 'chat-bubble--final' : ''} {chat.isNew ? 'chat-bubble--new' : ''}">
                     <!-- reply quote block -->
                     {#if chat.replyTo}
                       <div
@@ -1049,8 +1394,29 @@
                         </span>
                       </div>
                     {/if}
-                    <div class="chat-sender">{chat.senderLabel}</div>
-                    {#if chat.message}
+                    <div class="chat-sender">{maskChatSender(chat)}</div>
+                    {#if editingChatId === chat.id}
+                      <!-- inline edit mode -->
+                      <textarea
+                        class="chat-edit-input"
+                        bind:value={editingChatText}
+                        rows="2"
+                        on:keydown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); saveEditChat(chat.id); }
+                          if (e.key === "Escape") cancelEditChat();
+                        }}
+                      ></textarea>
+                      <div class="chat-edit-actions">
+                        <button
+                          class="chat-edit-save"
+                          on:click={() => saveEditChat(chat.id)}
+                          disabled={savingEdit || !editingChatText.trim()}
+                        >
+                          {savingEdit ? "Saving…" : "Save"}
+                        </button>
+                        <button class="chat-edit-cancel" on:click={cancelEditChat}>Cancel</button>
+                      </div>
+                    {:else if chat.message}
                       {@const isLong = chat.message.length > CHAR_LIMIT}
                       {@const expanded = expandedMessages.has(chat.id)}
                       <div class="chat-text">
@@ -1105,39 +1471,63 @@
                     {/if}
                     <div class="chat-time-row">
                       <span class="chat-time">{formatDate(chat.createdAt)}</span>
+                      {#if chat.editedAt}
+                        <span class="chat-edited-badge">edited</span>
+                      {/if}
                       {#if chat.isFinal}
                         <span class="final-badge"><i class="ti ti-flag-check"></i> Final Quotation</span>
                       {/if}
                     </div>
                   </div>
-                  <!-- final flag button — sits below bubble inside bubble-wrap -->
-                  {#if canSetFinalFlag()}
-                    <button
-                      class="final-flag-btn {chat.isFinal ? 'final-flag-btn--active' : ''}"
-                      title="{chat.isFinal ? 'Remove final flag' : 'Mark as Final Quotation'}"
-                      disabled={settingFinalFlag === chat.id}
-                      on:click={() => toggleFinalFlag(chat)}
-                    >
-                      {#if settingFinalFlag === chat.id}
-                        <span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span>
-                      {:else}
-                        <i class="ti ti-flag"></i>
-                      {/if}
-                    </button>
-                  {/if}
                   </div>
-                  <!-- reply button — sits in the flex row between bubble and avatar -->
-                  {#if canSendChat()}
-                    <button
-                      class="chat-reply-btn"
-                      title="Reply"
-                      on:click={() => setReply(chat)}
-                    >
-                      <i class="ti ti-corner-up-left"></i>
-                    </button>
-                  {/if}
+                  <!-- action buttons: flag → edit → reply -->
+                  <div class="chat-action-btns">
+                    {#if canSetFinalFlag()}
+                      <button
+                        class="final-flag-btn {chat.isFinal ? 'final-flag-btn--active' : ''}"
+                        title="{chat.isFinal ? 'Remove final flag' : 'Mark as Final Quotation'}"
+                        disabled={settingFinalFlag === chat.id}
+                        on:click={() => toggleFinalFlag(chat)}
+                      >
+                        {#if settingFinalFlag === chat.id}
+                          <span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span>
+                        {:else}
+                          <i class="ti ti-flag"></i>
+                        {/if}
+                      </button>
+                    {/if}
+                    {#if canEditChat(chat) && editingChatId !== chat.id}
+                      <button
+                        class="chat-edit-btn"
+                        title="Edit message (within 30 min)"
+                        on:click={() => startEditChat(chat)}
+                      >
+                        <i class="ti ti-pencil"></i>
+                      </button>
+                    {/if}
+                    {#if canSendChat()}
+                      <button
+                        class="chat-reply-btn"
+                        title="Reply"
+                        on:click={() => setReply(chat)}
+                      >
+                        <i class="ti ti-corner-up-left"></i>
+                      </button>
+                    {/if}
+                  </div>
                 </div>
               {/each}
+            </div>
+            {#if showNewMsgBanner}
+              <button class="new-msg-banner" on:click={scrollToBottom}>
+                <i class="ti ti-arrow-down"></i>
+                {newMsgCount > 1 ? `${newMsgCount} new messages` : "New message"}
+              </button>
+            {:else if !isAtBottom}
+              <button class="scroll-bottom-btn" title="Scroll to bottom" on:click={scrollToBottom}>
+                <i class="ti ti-arrow-down"></i>
+              </button>
+            {/if}
             </div>
 
             <!-- Input -->
@@ -1173,10 +1563,21 @@
                 {#if attachedFiles.length > 0}
                   <div class="chat-file-preview-row">
                     {#each attachedFiles as file, i}
-                      <div class="chat-file-chip">
-                        <i class="ti ti-{file.type.startsWith('image/') ? 'photo' : 'file-text'}"></i>
+                      <div
+                        class="chat-file-chip"
+                        role="button"
+                        tabindex="0"
+                        title="Click to preview"
+                        on:click={() => previewAttachedFile(file)}
+                        on:keydown={(e) => e.key === "Enter" && previewAttachedFile(file)}
+                      >
+                        {#if file.type.startsWith('image/')}
+                          <img src={getPreviewUrl(file)} alt={file.name} class="chip-thumb" />
+                        {:else}
+                          <i class="ti ti-file-text"></i>
+                        {/if}
                         <span class="chip-name">{file.name}</span>
-                        <button type="button" class="chip-remove" on:click={() => clearAttachment(i)} title="Remove">
+                        <button type="button" class="chip-remove" on:click|stopPropagation={() => clearAttachment(i)} title="Remove">
                           <i class="ti ti-x"></i>
                         </button>
                       </div>
@@ -1204,6 +1605,7 @@
                       bind:value={chatMessage}
                       bind:this={chatInputEl}
                       on:input={handleTyping}
+                      on:paste={handlePaste}
                       on:keydown={(e) => {
                         if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); }
                       }}
@@ -1296,9 +1698,98 @@
     0%   { transform: translateX(100%); }
     100% { transform: translateX(-100%); }
   }
+  .chat-messages-wrap {
+    position: relative;
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  /* drag-and-drop overlay */
+  .drag-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(59, 91, 219, 0.10);
+    border: 2.5px dashed #3b5bdb;
+    border-radius: 8px;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    animation: drag-overlay-in 0.15s ease;
+  }
+  @keyframes drag-overlay-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  .drag-overlay-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    color: #3b5bdb;
+    font-weight: 700;
+    font-size: 18px;
+    background: rgba(255, 255, 255, 0.88);
+    padding: 28px 40px;
+    border-radius: 14px;
+    box-shadow: 0 4px 20px rgba(59, 91, 219, 0.18);
+  }
+  .drag-overlay-content i { font-size: 42px; opacity: 0.85; }
   .chat-messages {
     display: flex; flex-direction: column; gap: 16px;
     padding: 20px; background: #f8f9fa;
+  }
+  .new-msg-banner {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 16px;
+    background: #3b5bdb;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    border: none;
+    border-radius: 20px;
+    cursor: pointer;
+    box-shadow: 0 3px 10px rgba(59,91,219,0.35);
+    animation: new-msg-slide-up 0.2s ease;
+    z-index: 10;
+    white-space: nowrap;
+  }
+  .new-msg-banner:hover { background: #2f4ac2; }
+  .new-msg-banner i { font-size: 13px; }
+  @keyframes new-msg-slide-up {
+    from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+    to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+  }
+  .scroll-bottom-btn {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    background: #fff;
+    border: 1.5px solid #c5cff9;
+    color: #3b5bdb;
+    font-size: 16px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(59,91,219,0.15);
+    transition: background 0.15s, border-color 0.15s;
+    z-index: 10;
+    animation: scroll-btn-slide-up 0.2s ease;
+  }
+  .scroll-bottom-btn:hover { background: #eef2ff; border-color: #748ffc; }
+  @keyframes scroll-btn-slide-up {
+    from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+    to   { opacity: 1; transform: translateX(-50%) translateY(0); }
   }
   .chat-empty { text-align: center; color: #adb5bd; margin-top: 40px; font-size: 14px; }
   .chat-empty i { font-size: 2.5rem; display: block; margin-bottom: 8px; }
@@ -1310,6 +1801,20 @@
     0%, 100% { box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
     25%       { box-shadow: 0 0 0 3px #748ffc66; }
     75%       { box-shadow: 0 0 0 3px #748ffc33; }
+  }
+  /* new message: slide-in on row */
+  .chat-row--new { animation: new-row-slide-in 0.25s ease; }
+  @keyframes new-row-slide-in {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  /* new message: glow pulse on bubble */
+  .chat-bubble--new { animation: new-bubble-glow 1.4s ease forwards; }
+  @keyframes new-bubble-glow {
+    0%   { box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+    25%  { box-shadow: 0 0 0 4px rgba(59,91,219,0.22); }
+    65%  { box-shadow: 0 0 0 4px rgba(59,91,219,0.08); }
+    100% { box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
   }
   .chat-bubble {
     width: 100%; padding: 10px 14px; border-radius: 16px;
@@ -1364,28 +1869,22 @@
 
   /* reply button — flex sibling in chat-row, shown on row hover */
   .chat-reply-btn {
-    display: none;
+    display: flex;
     align-items: center; justify-content: center;
     width: 26px; height: 26px; border-radius: 50%;
     background: #f1f3f5; border: 1px solid #e9ecef;
     color: #6c757d; font-size: 13px; cursor: pointer;
     flex-shrink: 0;
-    align-self: flex-end;
-    margin-bottom: 6px;
     transition: background 0.15s, color 0.15s;
   }
-  .chat-row:hover .chat-reply-btn { display: flex; }
   .chat-reply-btn:hover { background: #dbe4ff; color: #3b5bdb; border-color: #c5cff9; }
 
   /*
    * Own messages use flex-direction: row-reverse.
-   * HTML order: [bubble-wrap] [reply-btn] [own-avatar]
-   * Without order, row-reverse puts bubble-wrap on the RIGHT and avatar on the LEFT — wrong.
-   * Fix: give avatar order:0 (default, rightmost), reply-btn order:2, bubble-wrap order:3 (leftmost).
+   * HTML order: [bubble-wrap] [chat-action-btns] [own-avatar]
+   * row-reverse order: avatar(right, order 0) → bubble(middle, order 2) → action-btns(left, order 3)
    */
-  /* row-reverse order: avatar(right, order 0) → bubble(middle, order 2) → reply-btn(left, order 3) */
   .chat-row--own .chat-bubble-wrap { order: 2; }
-  .chat-row--own .chat-reply-btn   { order: 3; }
 
   /* reply quote block inside bubble */
   .chat-reply-quote {
@@ -1454,30 +1953,18 @@
   }
   .final-badge i { font-size: 10px; }
 
-  /* final flag button — absolutely positioned at the top corner of the bubble-wrap */
+  /* final flag button — inline inside chat-action-btns */
   .final-flag-btn {
-    display: none;
+    display: flex;
     align-items: center; justify-content: center;
-    width: 22px; height: 22px; border-radius: 50%;
+    width: 26px; height: 26px; border-radius: 50%;
     background: #f1f3f5; border: 1px solid #e9ecef;
-    color: #adb5bd; font-size: 11px; cursor: pointer;
+    color: #adb5bd; font-size: 13px; cursor: pointer;
     flex-shrink: 0;
     transition: background 0.15s, color 0.15s, border-color 0.15s;
-    position: absolute;
-    top: 4px;
-    right: -26px; /* other messages: flag appears on the right side */
-    left: auto;
   }
-  .chat-row--own .final-flag-btn {
-    right: auto;
-    left: -26px; /* own messages: flag appears on the left side */
-  }
-  .chat-row:hover .final-flag-btn { display: flex; }
   .final-flag-btn:hover { background: #e6fcf5; color: #0ca678; border-color: #0ca678; }
-  .final-flag-btn--active {
-    display: flex !important;
-    background: #e6fcf5; color: #0ca678; border-color: #0ca678;
-  }
+  .final-flag-btn--active { background: #e6fcf5; color: #0ca678; border-color: #0ca678; }
   .final-flag-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
   /* highlighted bubble when marked as final quotation */
@@ -1531,7 +2018,9 @@
     padding: 5px 10px 5px 8px; border-radius: 20px;
     background: #eef2ff; border: 1px solid #c5cff9;
     color: #3b5bdb; font-size: 12px; font-weight: 500; max-width: 100%;
+    cursor: pointer; transition: background 0.15s, border-color 0.15s;
   }
+  .chat-file-chip:hover { background: #dbe4ff; border-color: #748ffc; }
   .chip-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
   .chip-remove {
     background: none; border: none; padding: 0; line-height: 1;
@@ -1539,6 +2028,206 @@
     display: flex; align-items: center; flex-shrink: 0;
   }
   .chip-remove:hover { opacity: 1; }
+  /* ── Chip image thumbnail ───────────────────────────────────────────────── */
+  .chip-thumb {
+    width: 20px; height: 20px; object-fit: cover;
+    border-radius: 4px; flex-shrink: 0; display: block;
+  }
+
+  /* ── Pending-files preview modal — slider ────────────────────────────────── */
+  .pf-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.50);
+    z-index: 1200;
+    display: flex; align-items: center; justify-content: center;
+    animation: pf-fade-in 0.15s ease;
+  }
+  @keyframes pf-fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  .pf-card {
+    background: #fff;
+    border-radius: 18px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+    width: min(420px, 94vw);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    animation: pf-slide-in 0.18s ease;
+  }
+  @keyframes pf-slide-in {
+    from { opacity: 0; transform: scale(0.96) translateY(-10px); }
+    to   { opacity: 1; transform: scale(1)    translateY(0); }
+  }
+
+  /* header */
+  .pf-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 13px 16px;
+    border-bottom: 1px solid #f1f3f5;
+    font-size: 13px; font-weight: 700; color: #212529;
+    flex-shrink: 0;
+  }
+  .pf-index {
+    margin-left: auto;
+    font-size: 11px; font-weight: 600; color: #868e96;
+    background: #f1f3f5; padding: 2px 9px; border-radius: 20px;
+  }
+  .pf-close {
+    background: none; border: none; padding: 2px 4px; cursor: pointer;
+    color: #adb5bd; font-size: 14px;
+    display: flex; align-items: center; border-radius: 4px;
+    transition: color 0.15s;
+  }
+  .pf-close:hover { color: #dc3545; }
+
+  /* over-limit warning */
+  .pf-warn {
+    display: flex; align-items: center; gap: 7px;
+    padding: 8px 14px;
+    background: #fff8e6; border-bottom: 1px solid #ffc94d;
+    font-size: 11.5px; font-weight: 600; color: #7a4800;
+    flex-shrink: 0;
+  }
+
+  /* main stage */
+  .pf-stage {
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+    height: 240px;
+    background: #f8f9fa;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+  .pf-preview {
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  .pf-preview--overlimit::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.28);
+    pointer-events: none;
+  }
+  .pf-stage-img {
+    max-width: 100%; max-height: 100%;
+    object-fit: contain; display: block;
+    user-select: none;
+  }
+  .pf-stage-file {
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    cursor: pointer; padding: 16px; border-radius: 12px;
+    transition: background 0.15s;
+    outline: none;
+  }
+  .pf-stage-file:hover { background: rgba(59,91,219,0.06); }
+  .pf-stage-file:hover .pf-stage-file-icon { color: #3b5bdb; }
+  .pf-stage-file:hover .pf-stage-open-hint { opacity: 1; }
+  .pf-stage-file-icon { font-size: 72px; color: #adb5bd; line-height: 1; transition: color 0.15s; }
+  .pf-stage-ext {
+    font-size: 12px; font-weight: 700; color: #6c757d;
+    background: #e9ecef; padding: 3px 12px; border-radius: 20px;
+    letter-spacing: 0.5px; text-transform: uppercase;
+  }
+  .pf-stage-open-hint {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 11px; font-weight: 600; color: #3b5bdb;
+    opacity: 0; transition: opacity 0.15s;
+  }
+  /* remove button — bottom-centre of stage */
+  .pf-stage-remove {
+    position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 16px; border-radius: 20px;
+    background: rgba(220,53,69,0.85); border: none; color: #fff;
+    font-size: 12px; font-weight: 600; cursor: pointer;
+    transition: background 0.15s;
+    z-index: 2; white-space: nowrap;
+  }
+  .pf-stage-remove:hover { background: #dc3545; }
+  /* over-limit badge */
+  .pf-overlimit-badge {
+    position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 13px; border-radius: 20px;
+    background: rgba(0,0,0,0.55); color: #fff;
+    font-size: 11.5px; font-weight: 600;
+    z-index: 3; white-space: nowrap;
+  }
+  /* arrow buttons */
+  .pf-arrow {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    z-index: 5;
+    width: 32px; height: 32px; border-radius: 50%;
+    background: rgba(255,255,255,0.92); border: 1px solid #dee2e6;
+    color: #495057; font-size: 17px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.14);
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .pf-arrow:hover { background: #fff; color: #3b5bdb; border-color: #748ffc; }
+  .pf-arrow--left  { left: 10px; }
+  .pf-arrow--right { right: 10px; }
+
+  /* filename label */
+  .pf-stage-name {
+    padding: 8px 16px 4px;
+    font-size: 11.5px; font-weight: 500; color: #495057;
+    text-align: center;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    flex-shrink: 0;
+  }
+
+  /* thumbnail strip */
+  .pf-strip {
+    display: flex; gap: 6px; align-items: center;
+    padding: 8px 14px 12px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    flex-shrink: 0;
+  }
+  .pf-strip::-webkit-scrollbar { display: none; }
+  .pf-thumb {
+    flex-shrink: 0;
+    width: 46px; height: 46px;
+    border-radius: 8px; overflow: hidden;
+    border: 2.5px solid transparent;
+    background: #f1f3f5;
+    cursor: pointer; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    transition: border-color 0.15s, opacity 0.15s;
+  }
+  .pf-thumb--active  { border-color: #3b5bdb; }
+  .pf-thumb--overlimit { opacity: 0.35; }
+  .pf-thumb-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .pf-thumb-icon { font-size: 22px; color: #adb5bd; }
+
+  /* footer */
+  .pf-footer {
+    display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+    padding: 12px 16px;
+    border-top: 1px solid #f1f3f5;
+    flex-shrink: 0;
+  }
+  .pf-btn-cancel {
+    padding: 7px 16px; border-radius: 8px;
+    border: 1px solid #dee2e6; background: #fff;
+    color: #6c757d; font-size: 13px; font-weight: 500; cursor: pointer;
+    transition: background 0.15s;
+  }
+  .pf-btn-cancel:hover { background: #f8f9fa; }
+  .pf-btn-confirm {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 18px; border-radius: 8px;
+    background: #3b5bdb; border: none; color: #fff;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    transition: background 0.15s;
+  }
+  .pf-btn-confirm:hover:not(:disabled) { background: #2f4ac2; }
+  .pf-btn-confirm:disabled { background: #adb5bd; cursor: not-allowed; }
+
   .chat-attach-btn {
     width: 36px; height: 36px; border-radius: 50%; background: #f1f3f5;
     color: #6c757d; display: flex; align-items: center; justify-content: center;
@@ -1582,6 +2271,70 @@
   .chat-attachment-file:hover { background: rgba(0,0,0,0.13); text-decoration: none; }
   .chat-attachment-file--own { background: rgba(59,91,219,0.12); color: #1c3faa; }
   .chat-attachment-file--own:hover { background: rgba(59,91,219,0.2); }
+
+  /* ── Chat action buttons (reply + edit) ─────────────────────────────────── */
+  .chat-action-btns {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-self: flex-end;
+    margin-bottom: 6px;
+    flex-shrink: 0;
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .chat-row:hover .chat-action-btns { visibility: visible; opacity: 1; }
+  .chat-row--own .chat-action-btns { order: 3; }
+
+  .chat-edit-btn {
+    display: flex;
+    align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 50%;
+    background: #f1f3f5; border: 1px solid #e9ecef;
+    color: #6c757d; font-size: 13px; cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .chat-edit-btn:hover { background: #fff3cd; color: #b45309; border-color: #fde68a; }
+
+  .chat-edit-input {
+    width: 100%;
+    border: 1px solid #748ffc;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 13px;
+    resize: none;
+    outline: none;
+    line-height: 1.5;
+    background: rgba(255,255,255,0.85);
+    color: inherit;
+    margin-top: 4px;
+    box-sizing: border-box;
+  }
+  .chat-edit-input:focus { border-color: #3b5bdb; }
+
+  .chat-edit-actions {
+    display: flex; gap: 6px; margin-top: 5px; justify-content: flex-end;
+  }
+  .chat-edit-save {
+    padding: 3px 12px; border-radius: 6px; border: none;
+    background: #3b5bdb; color: #fff; font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: background 0.15s;
+  }
+  .chat-edit-save:hover:not(:disabled) { background: #2f4ac2; }
+  .chat-edit-save:disabled { opacity: 0.55; cursor: not-allowed; }
+  .chat-edit-cancel {
+    padding: 3px 10px; border-radius: 6px;
+    border: 1px solid #dee2e6; background: #fff;
+    color: #6c757d; font-size: 12px; cursor: pointer;
+    transition: background 0.15s;
+  }
+  .chat-edit-cancel:hover { background: #f8f9fa; }
+
+  .chat-edited-badge {
+    font-size: 9.5px; color: #adb5bd;
+    font-style: italic; letter-spacing: 0.2px;
+  }
 
   /* ── Switch shimmer bar ─────────────────────────────────────────────────── */
   /* Always 3px tall so layout never shifts — only the animation turns on/off */

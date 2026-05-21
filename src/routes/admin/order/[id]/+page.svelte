@@ -283,6 +283,12 @@
   let raisingQuery = false;
   let queryError = "";
 
+  function openQueryModal() {
+    if (!querySubject.trim())     querySubject     = order?.title ?? "";
+    if (!queryDescription.trim()) queryDescription = order?.title ?? "";
+    showQueryModal = true;
+  }
+
   async function submitOrderQuery() {
     queryError = "";
     if (!querySubject.trim() || !queryDescription.trim()) {
@@ -1347,7 +1353,7 @@
                 {#if currentUser?.subRole === "telecaller" || (currentUser?.role === "user" && !currentUser?.subRole)}
                   <button
                     class="btn btn-warning"
-                    on:click={() => (showQueryModal = true)}
+                    on:click={openQueryModal}
                   >
                     <i class="ti ti-help-circle me-1"></i>Raise Query
                   </button>
@@ -2839,7 +2845,7 @@
                         {/if}
                       </h5>
                       {#if currentUser?.subRole === "telecaller" || (currentUser?.role === "user" && !currentUser?.subRole)}
-                        <button class="btn btn-sm btn-outline-warning" on:click={() => (showQueryModal = true)}>
+                        <button class="btn btn-sm btn-outline-warning" on:click={openQueryModal}>
                           <i class="ti ti-plus me-1"></i>Raise Query
                         </button>
                       {/if}

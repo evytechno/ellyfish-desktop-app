@@ -32,6 +32,7 @@
   let selectedFilter = "last7days";
   let customStartDate = null;
   let customEndDate = null;
+  let readFilter = "";
 
   let loading = true;
   let errorMessage = "";
@@ -116,6 +117,10 @@
         startDateFilter = new Date();
         startDateFilter.setHours(0, 0, 0, 0);
         endDateFilter.setHours(23, 59, 59, 999);
+      } else if (selectedFilter === "last24hours") {
+        const twentyFourHoursAgo = new Date();
+        twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
+        startDateFilter = twentyFourHoursAgo;
       } else if (
         selectedFilter === "custom" &&
         customStartDate &&
@@ -135,6 +140,10 @@
         query.append("byUserId", userId);
       }
 
+      if (readFilter !== "") {
+        query.append("read", readFilter);
+      }
+
       updateFilterStore({
         userId,
         searchTerm,
@@ -143,6 +152,7 @@
         selectedFilter,
         customStartDate,
         customEndDate,
+        readFilter,
       });
 
       const data = await authApiFetch(
@@ -203,6 +213,7 @@
     currentPage,
     rowsPerPage,
     userId,
+    readFilter,
   ],
     checkFetchRecord();
 
@@ -330,9 +341,17 @@
           <select bind:value={selectedFilter} class="form-select">
             <option value="all">All</option>
             <option value="today">Today</option>
+            <option value="last24hours">Last 24 Hours</option>
             <option value="last7days">Last 7 Days</option>
             <option value="last30days">Last 30 Days</option>
             <option value="custom">Custom Range</option>
+          </select>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <select bind:value={readFilter} class="form-select">
+            <option value="">All Status</option>
+            <option value="false">Unread</option>
+            <option value="true">Read</option>
           </select>
         </div>
 

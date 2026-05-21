@@ -7,6 +7,7 @@
   import { errorHandle } from "$lib/utils/errorHandle";
   import Swal from "sweetalert2";
   import Pagination from "$lib/components/Pagination.svelte";
+  import { queryPrivacy } from "$lib/stores/queryPrivacy";
 
   let currentUser;
   let queries = [];
@@ -238,6 +239,9 @@
     orderSearch = raiseOrderText;
     orderResults = [];
     showOrderDropdown = false;
+    // Auto-fill subject/description with order title if the field is still empty
+    if (!raiseSubject.trim())     raiseSubject     = order.title ?? "";
+    if (!raiseDescription.trim()) raiseDescription = order.title ?? "";
   }
 
   function clearOrder() {
@@ -337,7 +341,7 @@
       totalItems = res.total ?? 0;
       totalPages = res.totalPages ?? 0;
     } catch (e) {
-      errorHandle(e);
+      if (!e?.isNetworkError && e?.status !== 0) errorHandle(e);
     } finally {
       loading = false;
     }
@@ -447,6 +451,9 @@
       minute: "2-digit",
     });
   }
+
+  $: maskTC   = (name) => (currentUser?.role === "master" && $queryPrivacy.telecaller && name) ? "Telecaller" : (name ?? "-");
+  $: maskTech = (name) => (currentUser?.role === "master" && $queryPrivacy.tech       && name) ? "Tech"        : (name ?? "-");
 </script>
 
 <div class="page-wrapper">
@@ -917,24 +924,25 @@
                 {#each queries as q, i}
                   <tr>
                     <td>{(currentPage - 1) * rowsPerPage + i + 1}</td>
-                    <td>
+                    <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
                       <a
                         href="/admin/query/{q.id}"
-                        class="text-primary fw-semibold">{q.subject}</a
+                        class="text-primary fw-semibold"
+                        title={q.subject}>{q.subject}</a
                       >
                     </td>
                     {#if isMasterView(currentUser)}
                       <td>
                         {#if q.raisedBy}
                           <a href="/admin/query/user/{q.raisedBy.id}" class="text-body text-decoration-none user-link">
-                            {q.raisedBy.name}
+                            {maskTC(q.raisedBy.name)}
                           </a>
                         {:else}-{/if}
                       </td>
                       <td>
                         {#if q.assignedTo}
                           <a href="/admin/query/user/{q.assignedTo.id}" class="text-body text-decoration-none user-link">
-                            {q.assignedTo.name}
+                            {maskTech(q.assignedTo.name)}
                           </a>
                         {:else}<span class="text-muted">Unassigned</span>{/if}
                       </td>
@@ -965,11 +973,12 @@
                         {q.status?.replace("_", " ")}
                       </span>
                     </td>
-                    <td>
+                    <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
                       {#if q.order}
                         <a
                           href="/admin/order/{q.order.id}"
                           class="text-primary small"
+                          title={q.order.title ? `#${q.order.pId} — ${q.order.title}` : `#${q.order.pId}`}
                         >
                           #{q.order.pId}{q.order.title
                             ? ` — ${q.order.title}`
