@@ -9,10 +9,11 @@
   import Loader from "$lib/components/Loader.svelte";
   import { get } from "svelte/store";
   import { companiesAllStore } from "$lib/stores/dataStores";
+  import OrderSearchSelect from "$lib/components/OrderSearchSelect.svelte";
   let loadingData = true;
 
-  let orders = [];
   let companies = [];
+  let selectedOrderTitle = "";
 
   // Form state
   let workOrderType = "order";
@@ -55,7 +56,8 @@
         workOrderType = "self";
       }
       title = data?.title;
-      orderId = data?.order ? data?.order?.id : null;
+      orderId = data?.order?.id ?? null;
+      selectedOrderTitle = data?.order?.title ?? "";
       companyId = data?.company?.id;
       if (data?.workOrderDate) {
         workOrderDate = formatDateForInput(data?.workOrderDate);
@@ -97,18 +99,8 @@
     return d.toISOString().split("T")[0]; // Returns YYYY-MM-DD
   }
 
-  async function orderValueChange(e) {
-    const id = Number(e.target.value); // or parseInt(e.target.value, 10)
-    if (!isNaN(id)) {
-      const newOrder = orders.find((order) => order.id === id);
-      if (newOrder) {
-        title = newOrder.title;
-      } else {
-        console.log("Order not found for id:", id);
-      }
-    } else {
-      console.warn("Invalid ID: Not a number");
-    }
+  function orderValueChange(id, text) {
+    if (id) title = text || "";
   }
   async function handleSubmit(event) {
     event.preventDefault();
@@ -194,20 +186,6 @@
   function removeItem(index) {
     items = items.filter((_, i) => i !== index);
   }
-
-  onMount(async () => {
-    loadingData = true;
-    try {
-      const data = await authApiFetch(API_ROUTES.ORDER);
-      orders = data;
-    } catch (err) {
-      errorMessage = "Failed to load order data.";
-    } finally {
-      setTimeout(() => {
-        loadingData = false;
-      }, 500);
-    }
-  });
 
   onMount(async () => {
     const cached = get(companiesAllStore);
@@ -308,20 +286,18 @@
                 <label class="form-label" for="orderId">
                   Order <span class="text-danger">*</span>
                 </label>
-                <select
-                  name="orderId"
-                  id="orderId"
-                  class="select form-control"
-                  class:is-invalid={formErrors.orderId}
-                  on:change={(e) => orderValueChange(e)}
-                  bind:value={orderId}
-                  required
-                >
-                  <option value={null}>Select Order</option>
-                  {#each orders as order}
-                    <option value={order?.id}>{order?.title}</option>
-                  {/each}
-                </select>
+                {#if !loadingData}
+                  <OrderSearchSelect
+                    id="orderId"
+                    initialValue={orderId}
+                    initialTitle={selectedOrderTitle}
+                    isInvalid={!!formErrors.orderId}
+                    on:change={(e) => {
+                      orderId = e.detail.id;
+                      orderValueChange(e.detail.id, e.detail.text);
+                    }}
+                  />
+                {/if}
                 {#if formErrors.orderId}
                   <ul class="text-danger mt-1 text-xs capitalize">
                     <li>{formErrors.orderId[0]}</li>
@@ -647,6 +623,7 @@
                     <thead class="table-light border-bottom bg-gray-100">
                       <tr>
                         <th class="p-2">Item</th>
+                        <th class="p-2">Quantity</th>
                         <th class="p-2"></th>
                       </tr>
                     </thead>
@@ -659,6 +636,15 @@
                                 type="text"
                                 class="form-control"
                                 bind:value={item.item}
+                              />
+                            </div>
+                          </td>
+                          <td class="p-2">
+                            <div>
+                              <input
+                                type="text"
+                                class="form-control"
+                                bind:value={item.quantity}
                               />
                             </div>
                           </td>

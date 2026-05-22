@@ -8,6 +8,11 @@
   import { errorHandle } from "$lib/utils/errorHandle";
   import Pagination from "$lib/components/Pagination.svelte";
   import { queryPrivacy } from "$lib/stores/queryPrivacy";
+  import { tick } from "svelte";
+  import Swal from "sweetalert2";
+  import html2canvas from "html2canvas";
+  import pdfMake from "pdfmake/build/pdfmake";
+  import * as pdfFonts from "pdfmake/build/vfs_fonts";
 
   let currentUser;
   let userId = Number($page.params.userId);
@@ -27,6 +32,7 @@
   let detailLoading = true;
   let detailError   = "";
   let showMistakes  = false;
+  let exportingPdf  = false;
 
   // ── Query list ───────────────────────────────────────────────────────────────
   let queries     = [];
@@ -250,6 +256,117 @@
     const better = lower ? userVal <= teamVal : userVal >= teamVal;
     return { better, diff: Math.abs(userVal - teamVal) };
   }
+
+  // ── PDF Export ────────────────────────────────────────────────────────────────
+  async function exportPdf() {
+    if (exportingPdf) return;
+    exportingPdf = true;
+    await tick(); // let Svelte hide filter bar before capture
+
+    try {
+      pdfMake.vfs = pdfFonts.vfs;
+
+      // 1. Build PDF header text
+      const dp = buildDateParams();
+      const periodLabel = dp.dateFrom ? `${dp.dateFrom}  →  ${dp.dateTo}` : "All Time";
+      const content = [];
+      content.push({
+        text: `Query Stats — ${maskedUserName} (${subRoleLabel(user?.subRole)})`,
+        fontSize: 14, bold: true, margin: [0, 0, 0, 3],
+      });
+      content.push({
+        text: `Period: ${periodLabel}   ·   Exported: ${new Date().toLocaleString("en-IN")}`,
+        fontSize: 8.5, color: "#6c757d", margin: [0, 0, 0, 12],
+      });
+
+      // 2. Capture each visual section via html2canvas
+      const sections = Array.from(document.querySelectorAll(".pdf-section"));
+      for (const section of sections) {
+        const canvas = await html2canvas(section, {
+          scale: 1.5,
+          useCORS: true,
+          backgroundColor: "#ffffff",
+          logging: false,
+        });
+        content.push({
+          image: canvas.toDataURL("image/jpeg", 0.88),
+          width: 515,
+          margin: [0, 0, 0, 8],
+        });
+      }
+
+      // 3. Fetch ALL queries for the current filters (no pagination)
+      const allQ = buildUserParams({ page: 1, limit: 1000 });
+      let allQueries = [];
+      try {
+        const res = await authApiFetch(`${API_ROUTES.QUERY}?${allQ}`);
+        allQueries = res.data ?? [];
+      } catch (_) {}
+
+      // 4. Build query list table
+      if (allQueries.length > 0) {
+        const isTc = isTelecaller(user);
+        const tableBody = [
+          // header row
+          [
+            { text: "#",                                 bold: true, fontSize: 8, fillColor: "#f1f3f5" },
+            { text: "Subject",                           bold: true, fontSize: 8, fillColor: "#f1f3f5" },
+            { text: isTc ? "Assigned To" : "Raised By", bold: true, fontSize: 8, fillColor: "#f1f3f5" },
+            { text: "Type",                              bold: true, fontSize: 8, fillColor: "#f1f3f5" },
+            { text: "Priority",                          bold: true, fontSize: 8, fillColor: "#f1f3f5" },
+            { text: "Status",                            bold: true, fontSize: 8, fillColor: "#f1f3f5" },
+            { text: "Delay",                             bold: true, fontSize: 8, fillColor: "#f1f3f5" },
+            { text: "Raised At",                         bold: true, fontSize: 8, fillColor: "#f1f3f5" },
+          ],
+          // data rows
+          ...allQueries.map((q, i) => {
+            const person = isTc
+              ? (q.assignedTo?.name ? maskTech(q.assignedTo.name) : "Unassigned")
+              : maskTC(q.raisedBy?.name ?? "-");
+            const delay = q.slaBreached
+              ? `! ${fmtMins(q.firstResponseMins)}`
+              : q.firstResponseMins != null ? fmtMins(q.firstResponseMins) : "-";
+            const fill = i % 2 === 1 ? "#fafafa" : null;
+            return [
+              { text: String(i + 1),                              fontSize: 7.5, fillColor: fill },
+              { text: q.subject ?? "-",                           fontSize: 7.5, fillColor: fill },
+              { text: person,                                     fontSize: 7.5, fillColor: fill },
+              { text: typeLabel(q.type),                          fontSize: 7.5, fillColor: fill },
+              { text: q.priority ?? "-",                          fontSize: 7.5, fillColor: fill },
+              { text: (q.status ?? "-").replace("_", " "),        fontSize: 7.5, fillColor: fill },
+              { text: delay,                                      fontSize: 7.5, fillColor: fill },
+              { text: formatDate(q.createdAt),                    fontSize: 7,   fillColor: fill },
+            ];
+          }),
+        ];
+
+        content.push({
+          text: `${isTc ? "Queries Raised" : "Queries Assigned"} — ${allQueries.length} record${allQueries.length !== 1 ? "s" : ""}`,
+          fontSize: 10, bold: true, pageBreak: "before", margin: [0, 0, 0, 8],
+        });
+        content.push({
+          table: {
+            headerRows: 1,
+            widths: ["auto", "*", 75, 58, 38, 45, 36, 68],
+            body: tableBody,
+          },
+          layout: "lightHorizontalLines",
+        });
+      }
+
+      // 5. Download PDF
+      const safeName = maskedUserName.replace(/\s+/g, "_").toLowerCase();
+      const dateStr  = new Date().toISOString().split("T")[0];
+      pdfMake.createPdf({ pageSize: "A4", pageMargins: [30, 30, 30, 30], content })
+        .download(`${safeName}-stats-${dateStr}.pdf`);
+
+    } catch (e) {
+      console.error("PDF export failed:", e);
+      Swal.fire({ icon: "error", title: "Export Failed", text: "Could not generate PDF. Please try again." });
+    } finally {
+      exportingPdf = false;
+    }
+  }
 </script>
 
 <div class="page-wrapper">
@@ -261,6 +378,17 @@
         <i class="ti ti-arrow-left"></i> Back
       </button>
       <h4 class="fw-bold mb-0">Query User Dashboard</h4>
+      {#if user && stats && detail}
+        <button class="btn btn-sm btn-outline-success ms-auto"
+          on:click={exportPdf}
+          disabled={exportingPdf || statsLoading || detailLoading || listLoading}>
+          {#if exportingPdf}
+            <span class="spinner-border spinner-border-sm me-1" style="width:12px;height:12px;"></span>Generating…
+          {:else}
+            <i class="ti ti-file-type-pdf me-1"></i>Export PDF
+          {/if}
+        </button>
+      {/if}
     </div>
 
     <!-- ── User header ────────────────────────────────────────────────────────── -->
@@ -272,7 +400,7 @@
         </div>
       </div>
     {:else if user}
-      <div class="user-header-card mb-4">
+      <div class="user-header-card mb-4 pdf-section">
         <div class="d-flex align-items-center gap-3">
           <div class="user-avatar user-avatar--{user.subRole ?? 'other'} flex-shrink-0">{maskedUserInitials}</div>
           <div class="flex-grow-1 min-w-0">
@@ -283,7 +411,7 @@
             </div>
             <div class="text-muted small mt-1">{user.email ?? ""}</div>
           </div>
-          <div class="flex-shrink-0">
+          <div class="flex-shrink-0" class:pdf-hide={exportingPdf}>
             <label class="form-label mb-1 text-muted" style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Switch User</label>
             <select class="form-select form-select-sm" style="width:210px;"
               bind:value={selectedUserId} on:change={() => switchUser(selectedUserId)}>
@@ -306,7 +434,7 @@
         </div>
 
         <!-- Filter bar -->
-        <div class="d-flex align-items-center gap-2 flex-wrap mt-3 pt-3 border-top">
+        <div class="d-flex align-items-center gap-2 flex-wrap mt-3 pt-3 border-top" class:pdf-hide={exportingPdf}>
           <select class="form-select form-select-sm" style="width:155px;" bind:value={selectedFilter} on:change={onFilterChange}>
             <option value="all">All Time</option>
             <option value="today">Today</option>
@@ -350,6 +478,7 @@
     {#if statsLoading}
       <div class="text-center py-3"><span class="spinner-border spinner-border-sm text-primary"></span><span class="text-muted small ms-2">Loading…</span></div>
     {:else if stats && user}
+      <div class="pdf-section">
       <div class="section-label">Status Overview</div>
       <div class="row g-3 mb-4">
         {#if isTelecaller(user)}
@@ -435,6 +564,7 @@
           </div>
         {/if}
       </div>
+      </div><!-- /pdf-section stats+perf -->
     {/if}
 
     <!-- ── Detailed analytics ─────────────────────────────────────────────────── -->
@@ -443,7 +573,7 @@
     {:else if detail}
 
       <!-- Row 1: Trend chart + Resolution rate + Type breakdown -->
-      <div class="row g-3 mb-4">
+      <div class="row g-3 mb-4 pdf-section">
 
         <!-- Trend chart -->
         <div class="col-lg-6">
@@ -532,7 +662,7 @@
       </div>
 
       <!-- Row 2: Reply time distribution + Activity heatmap -->
-      <div class="row g-3 mb-4">
+      <div class="row g-3 mb-4 pdf-section">
 
         <!-- Reply time distribution -->
         <div class="col-lg-5">
@@ -597,7 +727,7 @@
       </div>
 
       <!-- Row 3: Stuck queries + Mistake details -->
-      <div class="row g-3 mb-4">
+      <div class="row g-3 mb-4 pdf-section">
 
         <!-- Stuck / oldest open queries -->
         <div class="col-lg-6">
@@ -669,7 +799,7 @@
 
       <!-- Final quotation list (telecaller only) -->
       {#if isTelecaller(user) && detail.finalList.length > 0}
-        <div class="detail-card mb-4">
+        <div class="detail-card mb-4 pdf-section">
           <div class="detail-card-title"><i class="ti ti-flag-check text-success"></i> Final Quotation List</div>
           <div class="table-responsive">
             <table class="table table-sm align-middle mb-0" style="font-size:12.5px;">
@@ -766,6 +896,7 @@
 
 <style>
   .bg-teal { background: #0ca678 !important; }
+  .pdf-hide { display: none !important; }
   .section-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:#adb5bd; margin-bottom:10px; }
 
   /* User header */

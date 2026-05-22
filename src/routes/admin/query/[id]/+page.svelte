@@ -164,6 +164,8 @@
     typingQueries = new Set();
     query = null;
     chats = [];
+    hasMoreOlderChats = false;
+    loadingOlder = false;
     otherTyping = false;
     expandedMessages = new Set();
     chatMessage = "";
@@ -322,6 +324,11 @@
   let newMsgCount = 0;
   let showNewMsgBanner = false;
 
+  // WhatsApp-style chat pagination
+  const CHAT_LIMIT = 30;
+  let hasMoreOlderChats = false;
+  let loadingOlder = false;
+
   // drag-and-drop state
   let isDragOver = false;
   let dragDepth = 0;
@@ -337,6 +344,10 @@
     if (isAtBottom) {
       newMsgCount = 0;
       showNewMsgBanner = false;
+    }
+    // Load older messages when user scrolls near the top (WhatsApp style)
+    if (chatContainer && chatContainer.scrollTop < 60 && hasMoreOlderChats && !loadingOlder) {
+      loadOlderChats();
     }
   }
 
@@ -418,16 +429,18 @@
     loadInProgress();
 
     // fetch both panels in parallel
-    const [newQuery, newChats] = await Promise.all([
+    const [newQuery, newChatsRes] = await Promise.all([
       authApiFetch(`${API_ROUTES.QUERY}/${newId}`).catch(() => null),
-      authApiFetch(`${API_ROUTES.QUERY}/${newId}/chat`).catch(() => []),
+      authApiFetch(`${API_ROUTES.QUERY}/${newId}/chat?limit=${CHAT_LIMIT}`).catch(() => ({ data: [], hasMore: false })),
     ]);
 
     // atomic swap — single render tick, no blank flash
     query = newQuery;
-    chats = Array.isArray(newChats)
-      ? newChats.map((c) => ({ ...c, senderType: deriveSenderType(c.isOwn, c.senderLabel, c.senderSubRole) }))
+    chats = Array.isArray(newChatsRes.data)
+      ? newChatsRes.data.map((c) => ({ ...c, senderType: deriveSenderType(c.isOwn, c.senderLabel, c.senderSubRole), isFinal: c.isFinal ?? false, finalSetById: c.finalSetById ?? null }))
       : [];
+    hasMoreOlderChats = newChatsRes.hasMore ?? false;
+    loadingOlder = false;
     switching = false;
 
     await tick();
@@ -617,13 +630,36 @@
 
   async function loadChats(id = queryId) {
     try {
-      const raw = await authApiFetch(`${API_ROUTES.QUERY}/${id}/chat`);
-      chats = Array.isArray(raw)
-        ? raw.map((c) => ({ ...c, senderType: deriveSenderType(c.isOwn, c.senderLabel, c.senderSubRole), isFinal: c.isFinal ?? false, finalSetById: c.finalSetById ?? null }))
+      const res = await authApiFetch(`${API_ROUTES.QUERY}/${id}/chat?limit=${CHAT_LIMIT}`);
+      chats = Array.isArray(res.data)
+        ? res.data.map((c) => ({ ...c, senderType: deriveSenderType(c.isOwn, c.senderLabel, c.senderSubRole), isFinal: c.isFinal ?? false, finalSetById: c.finalSetById ?? null }))
         : [];
+      hasMoreOlderChats = res.hasMore ?? false;
       await tick();
       if (chatContainer) chatContainer.scrollTop = chatContainer.scrollHeight;
     } catch (_) {}
+  }
+
+  async function loadOlderChats() {
+    if (loadingOlder || !hasMoreOlderChats || chats.length === 0) return;
+    loadingOlder = true;
+    const oldestId = chats[0].id;
+    const prevScrollHeight = chatContainer?.scrollHeight ?? 0;
+    try {
+      const res = await authApiFetch(`${API_ROUTES.QUERY}/${queryId}/chat?limit=${CHAT_LIMIT}&before=${oldestId}`);
+      const older = Array.isArray(res.data)
+        ? res.data.map((c) => ({ ...c, senderType: deriveSenderType(c.isOwn, c.senderLabel, c.senderSubRole), isFinal: c.isFinal ?? false, finalSetById: c.finalSetById ?? null }))
+        : [];
+      hasMoreOlderChats = res.hasMore ?? false;
+      chats = [...older, ...chats]; // prepend older messages
+      await tick();
+      // Restore scroll position — new content above expanded scrollHeight
+      if (chatContainer) {
+        chatContainer.scrollTop = chatContainer.scrollHeight - prevScrollHeight;
+      }
+    } catch (_) {} finally {
+      loadingOlder = false;
+    }
   }
 
   function onFileSelect(e) {
@@ -1359,6 +1395,23 @@
               </div>
             {/if}
             <div bind:this={chatContainer} class="chat-messages flex-grow-1 overflow-auto px-4 py-3" style="flex:1 1 0;min-height:0;" on:scroll={handleChatScroll}>
+              <!-- Load older messages (WhatsApp style) -->
+              {#if hasMoreOlderChats || loadingOlder}
+                <div class="text-center py-2">
+                  {#if loadingOlder}
+                    <span class="text-xs text-muted">
+                      <i class="ti ti-loader animate-spin me-1"></i>Loading older messages...
+                    </span>
+                  {:else}
+                    <button
+                      class="btn btn-sm btn-outline-secondary px-3 py-1 text-xs"
+                      on:click={loadOlderChats}
+                    >
+                      <i class="ti ti-chevron-up me-1"></i>Load older messages
+                    </button>
+                  {/if}
+                </div>
+              {/if}
               {#if chats.length === 0}
                 <div class="chat-empty">
                   <i class="ti ti-messages-off"></i>

@@ -7,11 +7,11 @@
   import { API_ROUTES } from "$lib/constants/apiRoutes";
   import Swal from "sweetalert2";
   import Loader from "$lib/components/Loader.svelte";
+  import OrderSearchSelect from "$lib/components/OrderSearchSelect.svelte";
   import { get } from "svelte/store";
   import { companiesAllStore } from "$lib/stores/dataStores";
   let loadingData = true;
 
-  let orders = [];
   let companies = [];
 
   // Form state
@@ -47,25 +47,20 @@
     }, 500);
   });
 
-  async function orderValueChange(e) {
-    const id = Number(e.target.value);
+  async function orderValueChange(id, text) {
     woWarning = null;
-    if (!isNaN(id) && id > 0) {
-      const newOrder = orders.find((order) => order.id === id);
-      if (newOrder) {
-        title = newOrder.title;
+    if (!id || id <= 0) return;
+    title = text || "";
+    try {
+      const check = await authApiFetch(`${API_ROUTES.WORK_ORDER}/check/${id}`);
+      if (check.count > 0) {
+        const labels = check.items
+          .map((w) => `WO ${w.financialYear}/${String(w.workOrderNo).padStart(6, "0")}`)
+          .join(", ");
+        woWarning = `This order already has ${check.count} work order(s): ${labels}`;
       }
-      try {
-        const check = await authApiFetch(`${API_ROUTES.WORK_ORDER}/check/${id}`);
-        if (check.count > 0) {
-          const labels = check.items
-            .map((w) => `WO ${w.financialYear}/${String(w.workOrderNo).padStart(6, "0")}`)
-            .join(", ");
-          woWarning = `This order already has ${check.count} work order(s): ${labels}`;
-        }
-      } catch (err) {
-        console.error("WO duplicate check failed", err);
-      }
+    } catch (err) {
+      console.error("WO duplicate check failed", err);
     }
   }
 
@@ -151,20 +146,6 @@
   }
 
   onMount(async () => {
-    loadingData = true;
-    try {
-      const data = await authApiFetch(API_ROUTES.ORDER);
-      orders = data;
-    } catch (err) {
-      errorMessage = "Failed to load order data.";
-    } finally {
-      setTimeout(() => {
-        loadingData = false;
-      }, 500);
-    }
-  });
-
-  onMount(async () => {
     const cached = get(companiesAllStore);
     if (cached && cached.length > 0) {
       companies = cached;
@@ -182,6 +163,35 @@
       setTimeout(() => {
         loadingData = false;
       }, 500);
+    }
+  });
+
+  // Pre-fill from Order if ?fromOrder=<id> is present
+  onMount(async () => {
+    const fromOrderId = $page.url.searchParams.get("fromOrder");
+    if (!fromOrderId) return;
+    try {
+      const order = await authApiFetch(`${API_ROUTES.ORDER}/${fromOrderId}`);
+      if (!order) return;
+      const pi = order.orderPayments?.[0];
+      if (order.company?.id) companyId = order.company.id;
+      orderId = order.id;
+      workOrderType = "order";
+      title = order.title ?? "";
+      poNumber = pi?.poNumber ?? "";
+      orderNo = pi?.invoiceNo ? String(pi.invoiceNo).padStart(6, "0") : "";
+      remarks = pi?.remarks ?? "";
+      if (pi?.items?.length) {
+        items = pi.items.map((i) => ({
+          item: i.item ?? "",
+          quantity: i.quantity ?? "0",
+          price: 0,
+          hsCode: "",
+          total: 0,
+        }));
+      }
+    } catch (err) {
+      console.error("Failed to prefill from order", err);
     }
   });
 
@@ -304,20 +314,14 @@
                 <label class="form-label" for="orderId">
                   Order <span class="text-danger">*</span>
                 </label>
-                <select
-                  name="orderId"
+                <OrderSearchSelect
                   id="orderId"
-                  class="select form-control"
-                  class:is-invalid={formErrors.orderId}
-                  on:change={(e) => orderValueChange(e)}
-                  bind:value={orderId}
-                  required
-                >
-                  <option value={null}>Select Order</option>
-                  {#each orders as order}
-                    <option value={order?.id}>{order?.title}</option>
-                  {/each}
-                </select>
+                  isInvalid={!!formErrors.orderId}
+                  on:change={(e) => {
+                    orderId = e.detail.id;
+                    orderValueChange(e.detail.id, e.detail.text);
+                  }}
+                />
                 {#if formErrors.orderId}
                   <ul class="text-danger mt-1 text-xs capitalize">
                     <li>{formErrors.orderId[0]}</li>
@@ -647,6 +651,7 @@
                     <thead class="table-light border-bottom bg-gray-100">
                       <tr>
                         <th class="p-2">Item</th>
+                        <th class="p-2">Quantity</th>
                         <th class="p-2"></th>
                       </tr>
                     </thead>
@@ -659,6 +664,15 @@
                                 type="text"
                                 class="form-control"
                                 bind:value={item.item}
+                              />
+                            </div>
+                          </td>
+                          <td class="p-2">
+                            <div>
+                              <input
+                                type="text"
+                                class="form-control"
+                                bind:value={item.quantity}
                               />
                             </div>
                           </td>

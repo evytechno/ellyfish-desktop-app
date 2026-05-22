@@ -18,60 +18,37 @@
     companiesAllStore,
     categoriesAllStore,
     usersAllStore,
-    getFromLocalStorage,
-    saveToLocalStorage,
   } from "$lib/stores/dataStores";
   import ChangeListVisiableStatus from "$lib/components/ChangeListVisiableStatus.svelte";
-  let currentUser = null;
-  onMount(() => {
-    currentUser = checkAuth();
-    if (currentUser?.role != "user") {
-      viewType = "list";
-    }
-  });
 
+  let currentUser = null;
   let loadingData = true;
 
-  let orders = [];
+  // List view state
+  let listOrders = [];
+  let listTotalItems = 0;
+  let listTotalPages = 1;
+  let listCurrentPage = 1;
+  let listRowsPerPage = 20;
+
+  // Grid refresh trigger
+  let gridRefreshKey = 0;
+
   let users = [];
   let companies = [];
   let categories = [];
-  let accordingToStatusOrders = {
-    NewLead: [],
-    Contacted: [],
-    FollowUp: [],
-    Qualified: [],
-    Unqualified: [],
-    NeedsAssessment: [],
-    QuotationSent: [],
-    NegotiationInProgress: [],
-    DealWon: [],
-    DealLost: [],
-  };
-
-  async function updateOrderStatus(orderId, newStatus) {
-    let n_order = orders.find((order) => order.id == orderId);
-
-    n_order.status = newStatus;
-    let updateStatus = await statusUpdate(n_order);
-    return updateStatus;
-  }
 
   let trashBin = false;
-
   let userId = null;
   let companyId = null;
   let filterStatus = null;
   let filterCategory = null;
   let searchTerm = "";
-  let currentPage = 1;
-  let rowsPerPage = 10;
   let selectedFilter = "last7days";
   let customStartDate = null;
   let customEndDate = null;
   let orderBy = "createdAt";
   let searchString = "";
-
   let viewType = "grid";
 
   // Form state
@@ -100,44 +77,132 @@
   let loading = false;
   let errorMessage = "";
 
-  async function setInOrder() {
-    const statuses = [
-      "New Lead",
-      "Contacted",
-      "Follow Up",
-      "Qualified",
-      "Unqualified",
-      "Needs Assessment",
-      "Quotation Sent",
-      "Negotiation In Progress",
-      "Deal Won",
-      "Deal Lost",
-    ];
-
-    statuses.forEach((status) => {
-      const statusKey = status.replace(/\s+/g, "");
-      const filteredOrders = orders.filter((order) => order.status === status);
-
-      const pinnedOrders = filteredOrders.filter(
-        (order) => order.pinStatus === "true",
-      );
-      const unpinnedOrders = filteredOrders.filter(
-        (order) => order.pinStatus !== "true",
-      );
-
-      accordingToStatusOrders[statusKey] = [...pinnedOrders, ...unpinnedOrders];
-    });
-  }
-
   let formErrors = {};
+  let firstLoad = false;
 
   import { orderFilterStore } from "$lib/stores/filterStore";
   import TypeableSelect from "$lib/components/TypeableSelect.svelte";
   import { get } from "svelte/store";
-  let firstLoad = false;
-  onMount(() => {
-    const filterState = $orderFilterStore;
 
+  // Compute date range from current filter selection (includes "yesterday")
+  function computeDateRange() {
+    const fmt = (d) => d.toLocaleDateString("en-CA");
+    if (selectedFilter === "last7days") {
+      const s = new Date(); s.setDate(s.getDate() - 7);
+      return { startDate: fmt(s), endDate: fmt(new Date()) };
+    }
+    if (selectedFilter === "last30days") {
+      const s = new Date(); s.setDate(s.getDate() - 30);
+      return { startDate: fmt(s), endDate: fmt(new Date()) };
+    }
+    if (selectedFilter === "today") {
+      return { startDate: fmt(new Date()), endDate: fmt(new Date()) };
+    }
+    if (selectedFilter === "yesterday") {
+      const y = new Date(); y.setDate(y.getDate() - 1);
+      return { startDate: fmt(y), endDate: fmt(y) };
+    }
+    if (selectedFilter === "custom" && customStartDate && customEndDate) {
+      return { startDate: customStartDate, endDate: customEndDate };
+    }
+    return {};
+  }
+
+  // Reactive filterParams for OrderDragula (grid view)
+  $: filterParams = (() => {
+    const fmt = (d) => d.toLocaleDateString("en-CA");
+    let dates = {};
+    if (selectedFilter === "last7days") {
+      const s = new Date(); s.setDate(s.getDate() - 7);
+      dates = { startDate: fmt(s), endDate: fmt(new Date()) };
+    } else if (selectedFilter === "last30days") {
+      const s = new Date(); s.setDate(s.getDate() - 30);
+      dates = { startDate: fmt(s), endDate: fmt(new Date()) };
+    } else if (selectedFilter === "today") {
+      dates = { startDate: fmt(new Date()), endDate: fmt(new Date()) };
+    } else if (selectedFilter === "yesterday") {
+      const y = new Date(); y.setDate(y.getDate() - 1);
+      dates = { startDate: fmt(y), endDate: fmt(y) };
+    } else if (selectedFilter === "custom" && customStartDate && customEndDate) {
+      dates = { startDate: customStartDate, endDate: customEndDate };
+    }
+    return {
+      search: searchTerm || "",
+      ...dates,
+      byUserId: userId,
+      byCompanyId: companyId,
+      orderBy: orderBy || "createdAt",
+      withDeleted: trashBin,
+      filterStatus,
+      filterCategory,
+      _refreshKey: gridRefreshKey,
+    };
+  })();
+
+  // Reactive searchString label for page header
+  $: {
+    const fd = (date) =>
+      new Date(date).toLocaleDateString("en-CA", { day: "2-digit", month: "short", year: "numeric" });
+    if (selectedFilter === "last7days") {
+      const s = new Date(); s.setDate(s.getDate() - 7);
+      searchString = `${fd(s)} to ${fd(new Date())}`;
+    } else if (selectedFilter === "last30days") {
+      const s = new Date(); s.setDate(s.getDate() - 30);
+      searchString = `${fd(s)} to ${fd(new Date())}`;
+    } else if (selectedFilter === "today") {
+      searchString = "Today";
+    } else if (selectedFilter === "yesterday") {
+      searchString = "Yesterday";
+    } else if (selectedFilter === "custom" && customStartDate && customEndDate) {
+      searchString = `${fd(customStartDate)} to ${fd(customEndDate)}`;
+    } else {
+      searchString = "All";
+    }
+  }
+
+  function buildListQuery() {
+    const dates = computeDateRange();
+    const query = new URLSearchParams();
+    if (searchTerm) query.set("search", searchTerm);
+    if (dates.startDate) query.set("startDate", dates.startDate);
+    if (dates.endDate) query.set("endDate", dates.endDate);
+    if (userId) query.set("byUserId", String(userId));
+    if (companyId) query.set("byCompanyId", String(companyId));
+    if (orderBy) query.set("orderBy", orderBy);
+    if (trashBin) query.set("withDeleted", "true");
+    if (filterStatus) query.set("status", filterStatus);
+    if (filterCategory) query.set("category", filterCategory);
+    query.set("page", String(listCurrentPage));
+    query.set("limit", String(listRowsPerPage));
+    return query;
+  }
+
+  async function fetchListOrders() {
+    loadingData = true;
+    updateFilterStore({ userId, companyId, filterStatus, filterCategory, searchTerm, selectedFilter, customStartDate, customEndDate, orderBy });
+    try {
+      const data = await authApiFetch(
+        `${API_ROUTES.ORDER}?${buildListQuery().toString()}`,
+        { method: "GET" },
+      );
+      listOrders = data.data;
+      listTotalItems = data.total;
+      listTotalPages = data.totalPages;
+    } catch (error) {
+      console.error("Fetch error:", error);
+      errorHandle(error);
+    } finally {
+      loadingData = false;
+    }
+  }
+
+  onMount(() => {
+    currentUser = checkAuth();
+    if (currentUser?.role != "user") {
+      viewType = "list";
+    }
+
+    const filterState = $orderFilterStore;
     userId = filterState.userId || null;
     companyId = filterState.companyId || null;
     filterStatus = filterState.filterStatus || null;
@@ -148,20 +213,18 @@
     customEndDate = filterState.customEndDate || null;
     orderBy = filterState.orderBy || "createdAt";
 
-    fetchOrders();
+    if (viewType === "list") fetchListOrders();
+    // Grid is handled by OrderDragula via filterParams reactive prop
+
     getAllUsers();
     getAllCompanies();
     getAllCategories();
 
-    setTimeout(() => {
-      firstLoad = true;
-    }, 500);
+    setTimeout(() => { firstLoad = true; }, 500);
   });
 
   const updateFilterStore = (newValues) => {
-    orderFilterStore.update((currentState) => {
-      return { ...currentState, ...newValues };
-    });
+    orderFilterStore.update((s) => ({ ...s, ...newValues }));
   };
 
   function closeOffcanvas() {
@@ -262,8 +325,6 @@
       designation = "";
       remark = "";
 
-      orders = [data.data, ...orders];
-      setInOrder();
       Swal.fire("Success!", data.message, "success");
       refreshPage();
       closeOffcanvas();
@@ -317,7 +378,7 @@
 
     const body = [
       headers,
-      ...orders.map((order) => {
+      ...listOrders.map((order) => {
         const assignedUsers = (order?.assignedUsers || [])
           .map((user) => `${user.name} (${user.email})`)
           .join(", ");
@@ -412,8 +473,7 @@
       "CreatedAt",
       "UpdatedAt",
     ];
-    // orders
-    const newList = orders.map((order) => {
+    const newList = listOrders.map((order) => {
       const assignedUsers = (order?.assignedUsers || [])
         .map((user) => `${user.name} (${user.email})`)
         .join(", ");
@@ -516,314 +576,120 @@
     a.remove();
   }
 
-  let refresh = false;
   let debounceRefreshTimeout;
   async function refreshPage() {
     if (debounceRefreshTimeout) clearTimeout(debounceRefreshTimeout);
     debounceRefreshTimeout = setTimeout(async () => {
-      refresh = true;
       try {
-        await Promise.all([
-          fetchOrders(),
-          getAllUsers(),
-          getAllCompanies(),
-          getAllCategories(),
-        ]);
+        if (viewType === "list") {
+          await fetchListOrders();
+        } else {
+          gridRefreshKey++;
+        }
+        await Promise.all([getAllUsers(), getAllCompanies(), getAllCategories()]);
       } catch (error) {
         console.error("Error refreshing data:", error);
-      } finally {
-        refresh = false;
       }
     }, 200);
   }
 
-  async function filterQuery() {
-    const query = new URLSearchParams({
-      search: searchTerm || "",
-      orderBy: orderBy,
-    });
-
-    let startDateFilter;
-    let endDateFilter = new Date();
-
-    const formatDisplayDate = (date) =>
-      date.toLocaleDateString("en-CA", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      });
-    searchString = "All";
-
-    if (selectedFilter === "last7days") {
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      startDateFilter = sevenDaysAgo;
-      searchString = `${formatDisplayDate(sevenDaysAgo)} to ${formatDisplayDate(new Date())}`;
-    } else if (selectedFilter === "last30days") {
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      startDateFilter = thirtyDaysAgo;
-      searchString = `${formatDisplayDate(thirtyDaysAgo)} to ${formatDisplayDate(new Date())}`;
-    } else if (selectedFilter === "today") {
-      startDateFilter = new Date();
-      startDateFilter.setHours(0, 0, 0, 0);
-      endDateFilter.setHours(23, 59, 59, 999);
-      searchString = "Today";
-    } else if (selectedFilter === "yesterday") {
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      startDateFilter = yesterday;
-      startDateFilter.setHours(0, 0, 0, 0);
-      endDateFilter.setHours(23, 59, 59, 999);
-      searchString = "Yesterday";
-    } else if (
-      selectedFilter === "custom" &&
-      customStartDate &&
-      customEndDate
-    ) {
-      query.append("startDate", customStartDate);
-      query.append("endDate", customEndDate);
-      searchString = `${formatDisplayDate(new Date(customStartDate))} to ${formatDisplayDate(new Date(customEndDate))}`;
-    }
-
-    if (startDateFilter && selectedFilter !== "custom") {
-      const formatLocalDate = (date) => date.toLocaleDateString("en-CA");
-      query.append("startDate", formatLocalDate(startDateFilter));
-      query.append("endDate", formatLocalDate(endDateFilter));
-    }
-
-    if (userId) {
-      query.append("byUserId", userId);
-    }
-    if (companyId) {
-      query.append("byCompanyId", companyId);
-    }
-    if (filterStatus) {
-      query.append("status", filterStatus);
-    }
-    if (filterCategory) {
-      query.append("category", filterCategory);
-    }
-    if (trashBin) {
-      query.append("withDeleted", trashBin);
-    }
-
-    updateFilterStore({
-      userId,
-      companyId,
-      filterStatus,
-      filterCategory,
-      searchTerm,
-      selectedFilter,
-      customStartDate,
-      customEndDate,
-      orderBy,
-    });
-    return { query };
-  }
-
-  async function fetchOrders() {
-    loadingData = true;
-    let { query } = await filterQuery();
-    try {
-      if (!refresh) {
-        const cachedData = getFromLocalStorage("orders_" + query.toString());
-        if (cachedData) {
-          orders = cachedData.orders;
-          setInOrder();
-          return;
-        }
-      }
-      const data = await authApiFetch(
-        `${API_ROUTES.ORDER}?${query.toString()}`,
-        { method: "GET" },
-      );
-      orders = data;
-
-      setInOrder();
-      saveToLocalStorage("orders_" + query.toString(), { orders });
-    } catch (error) {
-      console.error("Fetch error:", error);
-      loading = false;
-      const validationErrors = errorHandle(error);
-    } finally {
-      loading = false;
-      setTimeout(() => {
-        loadingData = false;
-      }, 500);
-    }
-  }
-
   async function getAllUsers() {
-    if (!refresh) {
-      const cached = get(usersAllStore);
-      if (cached && cached.length > 0) {
-        users = cached;
-        loadingData = false;
-        return;
-      }
-    }
-    loadingData = true;
+    const cached = get(usersAllStore);
+    if (cached && cached.length > 0) { users = cached; return; }
     try {
       const data = await authApiFetch(API_ROUTES.USER + "/all");
-      users = data;
-      usersAllStore.set(data);
-    } catch (err) {
-      errorMessage = "Failed to load user data.";
-    } finally {
-      setTimeout(() => {
-        loadingData = false;
-      }, 500);
-    }
+      users = data; usersAllStore.set(data);
+    } catch (err) { errorMessage = "Failed to load user data."; }
   }
 
   async function getAllCompanies() {
-    if (!refresh) {
-      const cached = get(companiesAllStore);
-      if (cached && cached.length > 0) {
-        companies = cached;
-        loadingData = false;
-        return;
-      }
-    }
-    loadingData = true;
+    const cached = get(companiesAllStore);
+    if (cached && cached.length > 0) { companies = cached; return; }
     try {
       const data = await authApiFetch(API_ROUTES.COMPANY + "/all");
-      companies = data;
-      companiesAllStore.set(data);
-    } catch (err) {
-      errorMessage = "Failed to load company data.";
-    } finally {
-      setTimeout(() => {
-        loadingData = false;
-      }, 500);
-    }
+      companies = data; companiesAllStore.set(data);
+    } catch (err) { errorMessage = "Failed to load company data."; }
   }
 
   async function getAllCategories() {
-    if (!refresh) {
-      const cached = get(categoriesAllStore);
-      // validate cached format is grouped (array of objects with label)
-      if (
-        cached &&
-        cached.length > 0 &&
-        typeof cached[0] === "object" &&
-        cached[0].label
-      ) {
-        categories = cached;
-        loadingData = false;
-        return;
-      }
+    const cached = get(categoriesAllStore);
+    if (cached && cached.length > 0 && typeof cached[0] === "object" && cached[0].label) {
+      categories = cached; return;
     }
-    loadingData = true;
     try {
       const data = await authApiFetch(API_ROUTES.CATEGORY + "/all");
       // data = [{id, name, children:[{id,name}]}] — root categories with children
       categories = data.map((parent) => ({
         label: parent.name,
-        options:
-          parent.children && parent.children.length > 0
-            ? parent.children.map((c) => c.name)
-            : [parent.name],
+        options: parent.children?.length > 0
+          ? parent.children.map((c) => c.name)
+          : [parent.name],
       }));
       categoriesAllStore.set(categories);
-    } catch (err) {
-      errorMessage = "Failed to load category data.";
-    } finally {
-      setTimeout(() => {
-        loadingData = false;
-      }, 500);
-    }
+    } catch (err) { errorMessage = "Failed to load category data."; }
   }
 
   let debounceTimeout;
   function handleSearchChange(value) {
     clearTimeout(debounceTimeout);
-    debounceTimeout = setTimeout(() => {
-      searchTerm = value;
-    }, 300);
+    debounceTimeout = setTimeout(() => { searchTerm = value; }, 300);
   }
   let debounce1Timeout;
   function handleCategoryChange(value) {
     clearTimeout(debounce1Timeout);
-    debounce1Timeout = setTimeout(() => {
-      filterCategory = value;
-    }, 300);
+    debounce1Timeout = setTimeout(() => { filterCategory = value; }, 300);
   }
 
-  $: [
-    searchTerm,
-    filterStatus,
-    filterCategory,
-    selectedFilter,
-    customStartDate,
-    customEndDate,
-    orderBy,
-    userId,
-    companyId,
-    trashBin,
-  ],
+  $: [searchTerm, filterStatus, filterCategory, selectedFilter, customStartDate, customEndDate, orderBy, userId, companyId, trashBin],
     checkFetchRecord();
 
   function checkFetchRecord() {
     if (firstLoad) {
-      if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) {
-        return;
+      if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) return;
+      if (viewType === "list") {
+        listCurrentPage = 1;
+        fetchListOrders();
       }
-      fetchOrders();
+      // Grid handled automatically via filterParams reactive prop → OrderDragula
     }
   }
 
-  async function statusUpdate(order) {
+  async function updateOrderStatus(order, newStatus) {
     errorMessage = "";
     formErrors = {};
-
     const updateOrder = {
       title: order.title,
-      status: order.status,
+      status: newStatus,
+      orderActivity: {
+        title: "Order Status Changed",
+        description: `The order status has been updated to '${
+          $statusNamesStore[newStatus]?.name || newStatus
+        } (${newStatus})'.`,
+      },
     };
-    let newActivity = {
-      title: "Order Status Changed",
-      description: `The order status has been updated to '${
-        $statusNamesStore[order?.status]?.name
-          ? $statusNamesStore[order?.status]?.name
-          : order?.status
-      } (${order.status})'.`,
-    };
-    updateOrder.orderActivity = newActivity;
     try {
-      const data = await authApiFetch(API_ROUTES.ORDER + "/" + order.id, {
+      await authApiFetch(API_ROUTES.ORDER + "/" + order.id, {
         method: "PUT",
         data: JSON.stringify(updateOrder),
       });
-      let { query } = await filterQuery();
-      const cachedData = getFromLocalStorage("orders_" + query.toString());
-      let orders = [];
-      if (cachedData) {
-        orders = cachedData.orders;
-        let u_order = orders.find((n_order) => n_order.id == order.id);
-        if (u_order) {
-          u_order.status = order.status;
-        }
-        saveToLocalStorage("orders_" + query.toString(), { orders });
-      }
       return true;
     } catch (error) {
       const validationErrors = errorHandle(error);
-
       if (validationErrors && typeof validationErrors === "object") {
         formErrors = validationErrors;
       } else {
         errorMessage = "An unexpected error occurred.";
       }
       return false;
-    } finally {
-      console.log("formErrors : ", formErrors);
     }
   }
 
   function changeViewType(type) {
     viewType = type;
+    if (type === "list") {
+      listCurrentPage = 1;
+      fetchListOrders();
+    }
   }
 
   let statusesColors = {
@@ -1226,29 +1092,24 @@
     </div>
     <!-- table header -->
     {#if viewType == "grid"}
-      <OrderDragula {accordingToStatusOrders} {updateOrderStatus} />
+      <OrderDragula {filterParams} {updateOrderStatus} />
     {:else}
       <!-- card start -->
       <div class="card border-0 rounded-0">
         <div class="card-body">
           <DynamicDataTable
+            serverMode={true}
+            search={null}
             loading={loadingData}
             {columns}
             {actions}
-            data={[...orders]}
-            {currentPage}
-            {rowsPerPage}
-            totalItems={orders?.length}
-            totalPages={Math.ceil(orders?.length / rowsPerPage)}
-            on:pageChange={(e) => (currentPage = e.detail)}
-            on:rowsPerPageChange={(e) => {
-              rowsPerPage = e.detail;
-              currentPage = 1;
-            }}
-            on:search={(e) => {
-              searchTerm = e.detail;
-              currentPage = 1;
-            }}
+            data={listOrders}
+            currentPage={listCurrentPage}
+            rowsPerPage={listRowsPerPage}
+            totalItems={listTotalItems}
+            totalPages={listTotalPages}
+            on:pageChange={(e) => { listCurrentPage = e.detail; fetchListOrders(); }}
+            on:rowsPerPageChange={(e) => { listRowsPerPage = e.detail; listCurrentPage = 1; fetchListOrders(); }}
           />
         </div>
       </div>

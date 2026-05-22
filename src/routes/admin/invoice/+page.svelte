@@ -6,10 +6,11 @@
   import { API_ROUTES } from "$lib/constants/apiRoutes";
   import Swal from "sweetalert2";
   import DynamicDataTable from "$lib/components/DynamicDataTable.svelte";
+  import OrderSearchSelect from "$lib/components/OrderSearchSelect.svelte";
   import { goto } from "$app/navigation";
+  import { page } from "$app/stores";
   import {
     settingStore,
-    ordersAllStore,
     companiesAllStore,
     usersAllStore,
     getFromLocalStorage,
@@ -25,8 +26,10 @@
   });
 
   let invoices = [];
-  let orders = [];
   let companies = [];
+  // Order search select state
+  let selectedOrderTitle = "";
+  let orderSelectKey = 0;
   let users = [];
 
   let trashBin = false;
@@ -124,7 +127,6 @@
           fetchOrderPayments(),
           fetchSetting(),
           fetchAllCompanies(),
-          fetchAllOrders(),
           fetchAllUsers(),
         ]);
       } catch (error) {
@@ -166,13 +168,9 @@
     }
   }
 
-  async function orderValueChange(e) {
-    const id = Number(e.target.value);
+  async function orderValueChange(id) {
     piWarning = null;
-    if (isNaN(id) || id <= 0) {
-      console.warn("Invalid order ID");
-      return;
-    }
+    if (!id || isNaN(id) || id <= 0) return;
     if (formType === "Create") {
       try {
         const check = await authApiFetch(`${API_ROUTES.ORDER_PAYMENT}/check/${id}`);
@@ -224,6 +222,8 @@
 
   function resetForm() {
     piWarning = null;
+    selectedOrderTitle = "";
+    orderSelectKey++;
     invoiceType = "order";
     title = "";
     items = [];
@@ -498,29 +498,6 @@
     }
   }
 
-  async function fetchAllOrders() {
-    if (!refresh) {
-      const cached = get(ordersAllStore);
-      if (cached && cached.length > 0) {
-        orders = cached;
-        loadingData = false;
-        return;
-      }
-    }
-    loadingData = true;
-    try {
-      const data = await authApiFetch(API_ROUTES.ORDER + "/all");
-      orders = data;
-      ordersAllStore.set(data);
-    } catch (err) {
-      errorMessage = "Failed to load order data.";
-    } finally {
-      setTimeout(() => {
-        loadingData = false;
-      }, 500);
-    }
-  }
-
   async function fetchAllCompanies() {
     if (!refresh) {
       const cached = get(companiesAllStore);
@@ -547,8 +524,19 @@
   onMount(() => {
     fetchSetting();
     fetchAllCompanies();
-    fetchAllOrders();
     fetchAllUsers();
+  });
+
+  onMount(async () => {
+    const fromOrderId = $page.url.searchParams.get("fromOrder");
+    if (!fromOrderId) return;
+    await tick();
+    formType = "Create";
+    invoiceType = "order";
+    orderId = Number(fromOrderId);
+    const $ = jQuery;
+    $("#offcanvas_add").offcanvas("show");
+    await orderValueChange(orderId);
   });
 
   async function fetchAllUsers() {
@@ -801,6 +789,12 @@
       onClick: (id) => viewRecord(id),
       color: "btn-soft-success",
     },
+    {
+      label: "Tax Invoice",
+      icon: "ti ti-file-invoice",
+      onClick: (id) => goto("/admin/invoice/tax/" + id),
+      color: "btn-soft-warning",
+    },
   ];
 
   function formatDateForInput(date) {
@@ -822,6 +816,8 @@
       updateInvoice = newInvoice;
       title = newInvoice?.title;
       orderId = newInvoice?.order ? newInvoice?.order?.id : null;
+      selectedOrderTitle = newInvoice?.order?.title ?? "";
+      orderSelectKey++;
       companyId = newInvoice?.company?.id;
       if (newInvoice?.invoiceDate) {
         invoiceDate = formatDateForInput(newInvoice?.invoiceDate);
@@ -1214,20 +1210,18 @@
             <label class="form-label" for="orderId">
               Order <span class="text-danger">*</span>
             </label>
-            <select
-              name="orderId"
-              id="orderId"
-              class="select form-control"
-              class:is-invalid={formErrors.orderId}
-              on:change={(e) => orderValueChange(e)}
-              bind:value={orderId}
-              required
-            >
-              <option value={null}>Select Order</option>
-              {#each orders as order}
-                <option value={order?.id}>{order?.title}</option>
-              {/each}
-            </select>
+            {#key orderSelectKey}
+              <OrderSearchSelect
+                id="orderId"
+                initialValue={orderId}
+                initialTitle={selectedOrderTitle}
+                isInvalid={!!formErrors.orderId}
+                on:change={(e) => {
+                  orderId = e.detail.id;
+                  if (e.detail.id) orderValueChange(e.detail.id);
+                }}
+              />
+            {/key}
             {#if formErrors.orderId}
               <ul class="text-danger mt-1 text-xs capitalize">
                 <li>{formErrors.orderId[0]}</li>

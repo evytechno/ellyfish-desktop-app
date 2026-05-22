@@ -1732,41 +1732,89 @@
                   </div>
                 </div>
 
-                {#if (order?.workOrders?.length > 0) || (order?.orderPayments?.length > 0)}
-                  <div class="border-top pt-3 mt-3">
-                    <h6 class="mb-3 fw-semibold">Linked Documents</h6>
+                <div class="border-top pt-3 mt-3">
+                  <h6 class="mb-3 fw-semibold">Linked Documents</h6>
 
-                    {#if order?.workOrders?.length > 0}
-                      <p class="mb-1 text-muted fs-12 fw-semibold">Work Orders</p>
-                      {#each order.workOrders as wo}
-                        <div class="mb-1">
-                          <a
-                            href="/admin/workorder/{wo.id}"
-                            class="text-primary fs-12 d-inline-flex align-items-center gap-1"
-                          >
-                            <i class="ti ti-file-description"></i>
-                            WO {wo.financialYear}/{String(wo.workOrderNo).padStart(6, "0")}
-                          </a>
-                        </div>
-                      {/each}
-                    {/if}
+                  <!-- PI -->
+                  <p class="mb-1 text-muted fs-12 fw-semibold">Proforma Invoice</p>
+                  {#if order?.orderPayments?.length > 0}
+                    {#each order.orderPayments as pi}
+                      <div class="mb-1">
+                        <a
+                          href="/admin/invoice/{pi.id}"
+                          class="text-primary fs-12 d-inline-flex align-items-center gap-1"
+                        >
+                          <i class="ti ti-receipt"></i>
+                          PI {pi.financialYear}/{String(pi.invoiceNo).padStart(6, "0")}
+                        </a>
+                      </div>
+                    {/each}
+                  {:else}
+                    <div class="mb-2">
+                      <a
+                        href="/admin/invoice?fromOrder={order?.id}"
+                        class="btn btn-xs btn-soft-primary fs-12"
+                      >
+                        <i class="ti ti-plus me-1"></i>Create PI
+                      </a>
+                    </div>
+                  {/if}
 
-                    {#if order?.orderPayments?.length > 0}
-                      <p class="mb-1 mt-2 text-muted fs-12 fw-semibold">Proforma Invoices</p>
-                      {#each order.orderPayments as pi}
-                        <div class="mb-1">
-                          <a
-                            href="/admin/invoice/{pi.id}"
-                            class="text-primary fs-12 d-inline-flex align-items-center gap-1"
-                          >
-                            <i class="ti ti-receipt"></i>
-                            PI {pi.financialYear}/{String(pi.invoiceNo).padStart(6, "0")}
-                          </a>
-                        </div>
-                      {/each}
-                    {/if}
-                  </div>
-                {/if}
+                  <!-- Work Order -->
+                  <p class="mb-1 mt-2 text-muted fs-12 fw-semibold">Work Order</p>
+                  {#if order?.workOrders?.length > 0}
+                    {#each order.workOrders as wo}
+                      <div class="mb-1">
+                        <a
+                          href="/admin/workorder/{wo.id}"
+                          class="text-primary fs-12 d-inline-flex align-items-center gap-1"
+                        >
+                          <i class="ti ti-file-description"></i>
+                          WO {wo.financialYear}/{String(wo.workOrderNo).padStart(6, "0")}
+                        </a>
+                      </div>
+                    {/each}
+                  {:else if order?.orderPayments?.length > 0}
+                    <div class="mb-2">
+                      <a
+                        href="/admin/workorder/add?fromOrder={order?.id}"
+                        class="btn btn-xs btn-soft-success fs-12"
+                      >
+                        <i class="ti ti-plus me-1"></i>Create Work Order
+                      </a>
+                    </div>
+                  {:else}
+                    <p class="text-muted fs-12">Create PI first</p>
+                  {/if}
+
+                  <!-- Tax Invoice -->
+                  <p class="mb-1 mt-2 text-muted fs-12 fw-semibold">Tax Invoice</p>
+                  {#if order?.invoices?.length > 0}
+                    {#each order.invoices as inv}
+                      <div class="mb-1">
+                        <a
+                          href="/admin/invoice/tax/{inv.id}"
+                          class="text-primary fs-12 d-inline-flex align-items-center gap-1"
+                        >
+                          <i class="ti ti-file-invoice"></i>
+                          INV {inv.financialYear}/{String(inv.invoiceNo).padStart(6, "0")}
+                          {#if inv.isLocked}<span class="badge bg-success ms-1 fs-10">Locked</span>{/if}
+                        </a>
+                      </div>
+                    {/each}
+                  {:else if order?.orderPayments?.length > 0 && order?.workOrders?.length > 0}
+                    <div class="mb-2">
+                      <a
+                        href="/admin/invoice/tax?fromOrder={order?.id}"
+                        class="btn btn-xs btn-soft-warning fs-12"
+                      >
+                        <i class="ti ti-plus me-1"></i>Create Invoice
+                      </a>
+                    </div>
+                  {:else}
+                    <p class="text-muted fs-12">Create PI & Work Order first</p>
+                  {/if}
+                </div>
 
               </div>
             </div>

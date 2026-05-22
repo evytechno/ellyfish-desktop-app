@@ -14,7 +14,19 @@
   import * as pdfFonts from "pdfmake/build/vfs_fonts";
 
   import Loader from "$lib/components/Loader.svelte";
+  import QueryHighlights from "$lib/components/QueryHighlights.svelte";
   let loadingData = true;
+
+  let highlights = { telecallers: [], techs: [] };
+  let highlightsLoading = false;
+
+  async function loadHighlights() {
+    highlightsLoading = true;
+    try {
+      highlights = await authApiFetch(`${API_ROUTES.QUERY}/highlights`);
+    } catch (_) {}
+    finally { highlightsLoading = false; }
+  }
 
   let currentUser;
   let techStats = {
@@ -82,6 +94,10 @@
       }
     } else {
       fetchOrders(), fetchActivity(), fetchOrdersStats();
+    }
+
+    if (currentUser?.role === "master") {
+      loadHighlights();
     }
 
     setTimeout(() => {
@@ -592,6 +608,10 @@
           <SummaryCards {dashboardData} />
         {/if}
 
+        {#if currentUser?.role === "master"}
+          <QueryHighlights {highlights} loading={highlightsLoading} />
+        {/if}
+
         <!-- start row -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div class="printDashboard">
@@ -606,9 +626,7 @@
                   <OrdersOverTimeChart {dashboardData} />
                 {/if}
               </div>
-              <!-- end card body -->
             </div>
-            <!-- end card -->
           </div>
           <div class="printDashboard">
             <div class="card flex-fill">
@@ -622,140 +640,8 @@
                   <OrdersByStatusChart {dashboardData} />
                 {/if}
               </div>
-              <!-- end card body -->
             </div>
-            <!-- end card -->
           </div>
-          <div>
-            <div class="card flex-fill">
-              <div
-                class="card-header flex items-center justify-between flex-wrap row-gap-3"
-              >
-                <h6 class="mb-0 py-2">Recently Orders</h6>
-              </div>
-              <div class="card-body">
-                <div class="table-responsive custom-table">
-                  <div class="dataTables_wrapper dt-bootstrap5 no-footer">
-                    <table class="table dataTable table-nowrap no-footer">
-                      <thead class="table-light">
-                        <tr>
-                          <th>Name</th>
-                          <th>Price (₹)</th>
-                          <th>Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {#if orders?.length}
-                          {#each orders as order, index}
-                            {#if index < 7}
-                              <tr id={index}>
-                                <td>
-                                  <a
-                                    href={`/admin/order/${order?.id}`}
-                                    class="fw-medium"
-                                  >
-                                    {order?.title}
-                                  </a>
-                                </td>
-                                <td>
-                                  {new Intl.NumberFormat("en-IN", {
-                                    style: "currency",
-                                    currency: order?.currency || "INR",
-                                  })
-                                    .format(order?.price || 0)
-                                    .replace("₹", "₹ ")}
-                                </td>
-                                <td>
-                                  <span
-                                    class={`badge badge-pill text-white ${statusesColors[order?.status] || "bg-gray"}`}
-                                    >{order?.status}</span
-                                  >
-                                </td>
-                              </tr>
-                            {/if}
-                          {/each}
-                        {:else}
-                          <tr>
-                            <td colspan="4" class="text-center"
-                              >No Records Found.
-                            </td>
-                          </tr>
-                        {/if}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-              <!-- end card body -->
-            </div>
-            <!-- end card -->
-          </div>
-          <div>
-            <div class="card flex-fill">
-              <div
-                class="card-header flex items-center justify-between flex-wrap row-gap-3"
-              >
-                <h6 class="mb-0 py-2">Recently Activity</h6>
-              </div>
-              <div class="card-body">
-                <div class="table-responsive custom-table">
-                  <div class="dataTables_wrapper dt-bootstrap5 no-footer">
-                    <table class="table dataTable table-nowrap no-footer">
-                      <thead class="table-light">
-                        <tr>
-                          <th>Order</th>
-                          <th>Title</th>
-                          <!-- <th>Description</th> -->
-                          <th>Date</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {#if activities?.length}
-                          {#each activities as activity}
-                            <tr>
-                              <td>
-                                <a
-                                  href={`/admin/order/${activity?.order?.id}`}
-                                  class="fw-medium"
-                                >
-                                  {activity?.order?.title}
-                                </a>
-                              </td>
-                              <td>{activity?.title}</td>
-                              <!-- <td>{activity?.description}</td> -->
-                              <td
-                                >{activity?.createdAt &&
-                                  new Date(activity.createdAt).toLocaleString(
-                                    "en-GB",
-                                    {
-                                      day: "2-digit",
-                                      month: "short",
-                                      year: "numeric",
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                      hour12: true,
-                                    },
-                                  )}</td
-                              >
-                            </tr>
-                          {/each}
-                        {:else}
-                          <tr>
-                            <td colspan="4" class="text-center"
-                              >No Records Found.
-                            </td>
-                          </tr>
-                        {/if}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-              <!-- end card body -->
-            </div>
-            <!-- end card -->
-          </div>
-          <!-- end col -->
         </div>
         <!-- end row -->
       </div>

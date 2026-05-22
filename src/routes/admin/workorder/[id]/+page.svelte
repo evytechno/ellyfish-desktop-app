@@ -170,15 +170,25 @@
                 </div>
                 <hr />
                 <div>
-                  <div class="font-semibold">Description :</div>
-                  <div class="space-y-2 mt-2">
-                    {#each workOrder?.items as item, index}
-                      <div class="flex items-start justify-start gap-2">
-                        <div>{index + 1}.</div>
-                        <div class="capitalize">{item?.item}</div>
-                      </div>
-                    {/each}
-                  </div>
+                  <div class="font-semibold mb-2">Description :</div>
+                  <table class="w-full border table-nowrap">
+                    <thead class="table-light border-bottom">
+                      <tr>
+                        <th class="p-2 text-center" style="width:44px;">Sr.</th>
+                        <th class="p-2 text-left">Item</th>
+                        <th class="p-2 text-center" style="width:70px;">Qty</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {#each workOrder?.items as item, index}
+                        <tr class="border-bottom">
+                          <td class="p-2 text-center">{index + 1}</td>
+                          <td class="p-2 capitalize">{item?.item}</td>
+                          <td class="p-2 text-center">{item?.quantity ?? "-"}</td>
+                        </tr>
+                      {/each}
+                    </tbody>
+                  </table>
                 </div>
                 <hr />
                 <div class="grid grid-cols-2 gap-2">
