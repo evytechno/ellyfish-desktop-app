@@ -23,6 +23,7 @@
 
   let currentUser = null;
   let loadingData = true;
+  let filterReady = false; // guard: only mount OrderDragula after onMount restores filter state
 
   // List view state
   let listOrders = [];
@@ -212,6 +213,9 @@
     customStartDate = filterState.customStartDate || null;
     customEndDate = filterState.customEndDate || null;
     orderBy = filterState.orderBy || "createdAt";
+
+    filterReady = true; // filter state is now fully restored — safe to mount OrderDragula
+    loadingData = false; // hide main loader; grid uses per-column loaders, list re-sets this in fetchListOrders
 
     if (viewType === "list") fetchListOrders();
     // Grid is handled by OrderDragula via filterParams reactive prop
@@ -1091,7 +1095,7 @@
       {/if}
     </div>
     <!-- table header -->
-    {#if viewType == "grid"}
+    {#if viewType == "grid" && filterReady}
       <OrderDragula {filterParams} {updateOrderStatus} />
     {:else}
       <!-- card start -->

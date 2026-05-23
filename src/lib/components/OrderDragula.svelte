@@ -4,7 +4,7 @@
   import OrderListTitle from "./OrderListTitle.svelte";
   import { authApiFetch } from "$lib/api/client";
   import { API_ROUTES } from "$lib/constants/apiRoutes";
-  import { statusNamesStore } from "../stores/statusNames";
+  import { statusNamesStore } from "$lib/stores/statusNames";
 
   export let filterParams = {};
   export let updateOrderStatus;
@@ -21,8 +21,6 @@
     "Negotiation In Progress",
     "Deal Won",
     "Deal Lost",
-    "Dispatched",
-    "Completed",
   ];
 
   function initColumn() {
@@ -67,7 +65,13 @@
         `${API_ROUTES.ORDER}?${buildColumnQuery(status, page).toString()}`,
         { method: "GET" },
       );
-      if (gen !== currentFetchGen) return; // stale response, discard
+      if (gen !== currentFetchGen) {
+        // Stale response — a newer fetch is in charge; just clear loading so the
+        // column is never left permanently stuck if the newer fetch also fails.
+        columnState[status] = { ...columnState[status], loading: false };
+        columnState = { ...columnState };
+        return;
+      }
       const newOrders = data.data || [];
       const totalLoaded = append
         ? columnState[status].orders.length + newOrders.length
@@ -80,7 +84,7 @@
         hasMore: totalLoaded < data.total,
       };
     } catch (e) {
-      if (gen !== currentFetchGen) return;
+      // Always clear loading on error, regardless of gen, so we never get stuck.
       columnState[status] = { ...columnState[status], loading: false };
     }
     columnState = { ...columnState };
@@ -94,7 +98,7 @@
   async function loadMore(status) {
     const col = columnState[status];
     if (!col.hasMore || col.loading) return;
-    const gen = currentFetchGen;
+    const gen = currentFetchGen; // load more uses current gen (not a new filter change)
     await fetchColumn(status, col.page + 1, true, gen);
   }
 
