@@ -184,8 +184,9 @@
     });
   }
 
-  $: maskTC   = (name) => (currentUser?.role === "master" && $queryPrivacy.telecaller && name) ? "Telecaller" : (name ?? "-");
-  $: maskTech = (name) => (currentUser?.role === "master" && $queryPrivacy.tech       && name) ? "Tech"        : (name ?? "-");
+  $: maskTC     = (name) => (currentUser?.role === "master" && $queryPrivacy.telecaller && name) ? "Telecaller" : (name ?? "-");
+  $: maskTech   = (name) => (currentUser?.role === "master" && $queryPrivacy.tech       && name) ? "Tech"        : (name ?? "-");
+  $: maskHelper = (name) => (currentUser?.role === "master" && $queryPrivacy.techHelper && name) ? "Helper"      : (name ?? "-");
 </script>
 
 <div class="page-wrapper">
@@ -259,6 +260,39 @@
             <div class="stat-icon"><i class="ti ti-flag-check"></i></div>
             <div class="stat-value">{dashboard.finalQuotationSent}</div>
             <div class="stat-label">Final Quot. Sent</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Sub-Query Stats (Tech Helpers) ── -->
+      <div class="section-label">Sub-Queries (Tech Helpers)</div>
+      <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+          <div class="stat-card stat-card--purple">
+            <div class="stat-icon"><i class="ti ti-subtask"></i></div>
+            <div class="stat-value">{dashboard.subOpen}</div>
+            <div class="stat-label">Open</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-card stat-card--warning">
+            <div class="stat-icon"><i class="ti ti-loader"></i></div>
+            <div class="stat-value">{dashboard.subInProgress}</div>
+            <div class="stat-label">In Progress</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-card stat-card--success">
+            <div class="stat-icon"><i class="ti ti-circle-check"></i></div>
+            <div class="stat-value">{dashboard.subResolvedToday}</div>
+            <div class="stat-label">Resolved Today</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-card stat-card--secondary">
+            <div class="stat-icon"><i class="ti ti-check"></i></div>
+            <div class="stat-value">{dashboard.subTotalResolved}</div>
+            <div class="stat-label">Total Resolved</div>
           </div>
         </div>
       </div>
@@ -395,13 +429,13 @@
       <div>
         <select class="form-select" bind:value={raisedById} on:change={onFilterChange}>
           <option value="">Raised By</option>
-          {#each allUsers as u}<option value={u.id}>{u.name}</option>{/each}
+          {#each allUsers as u}<option value={u.id}>{u.subRole === "telecaller" ? maskTC(u.name) : u.subRole === "tech_helper" ? maskHelper(u.name) : maskTech(u.name)}</option>{/each}
         </select>
       </div>
       <div>
         <select class="form-select" bind:value={assignedToId} on:change={onFilterChange}>
           <option value="">Assigned To</option>
-          {#each allUsers as u}<option value={u.id}>{u.name}</option>{/each}
+          {#each allUsers as u}<option value={u.id}>{u.subRole === "telecaller" ? maskTC(u.name) : u.subRole === "tech_helper" ? maskHelper(u.name) : maskTech(u.name)}</option>{/each}
         </select>
       </div>
       {#if hasFilters}
@@ -560,6 +594,8 @@
   .stat-card--secondary .stat-icon, .stat-card--secondary .stat-value { color: #6c757d; }
   .stat-card--teal      { border-top-color: #0ca678; }
   .stat-card--teal .stat-icon, .stat-card--teal .stat-value { color: #0ca678; }
+  .stat-card--purple    { border-top-color: #7950f2; }
+  .stat-card--purple .stat-icon, .stat-card--purple .stat-value { color: #7950f2; }
 
   /* Performance detail cards */
   .perf-card {

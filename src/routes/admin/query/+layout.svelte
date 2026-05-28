@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { checkAuth } from "$lib/utils/auth";
   import { queryPrivacy } from "$lib/stores/queryPrivacy";
+  import { loadUnreadCounts } from "$lib/stores/queryUnreadCounts";
 
   let isMaster = false;
   let drawerOpen = false;
@@ -9,6 +10,10 @@
   onMount(() => {
     const user = checkAuth();
     isMaster = user?.role === "master";
+    // Seed unread counts from DB for tech/telecaller users
+    if (user?.subRole === "tech" || user?.subRole === "telecaller") {
+      loadUnreadCounts();
+    }
   });
 
   function toggleDrawer() {
@@ -30,7 +35,7 @@
   <div class="pq-gear-wrap">
     <button
       class="pq-gear-btn"
-      class:pq-gear-btn--active={$queryPrivacy.telecaller || $queryPrivacy.tech}
+      class:pq-gear-btn--active={$queryPrivacy.telecaller || $queryPrivacy.tech || $queryPrivacy.techHelper}
       on:click|stopPropagation={toggleDrawer}
       aria-label="Privacy settings"
     >
@@ -51,6 +56,13 @@
           <span class="pq-tt-label">Tech</span>
           <span class="pq-tt-status" class:pq-tt-status--hidden={$queryPrivacy.tech}>
             {$queryPrivacy.tech ? "Hidden" : "Visible"}
+          </span>
+        </div>
+        <div class="pq-tt-row">
+          <i class="ti ti-subtask pq-tt-icon pq-tt-icon--helper"></i>
+          <span class="pq-tt-label">Tech Helper</span>
+          <span class="pq-tt-status" class:pq-tt-status--hidden={$queryPrivacy.techHelper}>
+            {$queryPrivacy.techHelper ? "Hidden" : "Visible"}
           </span>
         </div>
       </div>
@@ -111,7 +123,27 @@
           </button>
         </div>
 
-        {#if $queryPrivacy.telecaller || $queryPrivacy.tech}
+        <!-- Tech Helper toggle -->
+        <div class="pq-toggle-row">
+          <div class="pq-toggle-info">
+            <span class="pq-toggle-label">
+              <i class="ti ti-subtask" style="font-size:13px;margin-right:5px;color:#7950f2;"></i>
+              Tech Helper Names
+            </span>
+            <span class="pq-toggle-desc">Replace real names with "Helper"</span>
+          </div>
+          <button
+            class="pq-toggle-btn"
+            class:pq-toggle-btn--on={$queryPrivacy.techHelper}
+            on:click={queryPrivacy.toggleTechHelper}
+            aria-pressed={$queryPrivacy.techHelper}
+            title="{$queryPrivacy.techHelper ? 'Showing: Helper' : 'Showing: Real name'}"
+          >
+            <span class="pq-toggle-knob"></span>
+          </button>
+        </div>
+
+        {#if $queryPrivacy.telecaller || $queryPrivacy.tech || $queryPrivacy.techHelper}
           <div class="pq-active-notice">
             <i class="ti ti-eye-off" style="font-size:12px;"></i>
             Names are currently hidden
@@ -182,8 +214,9 @@
   }
   .pq-tt-row + .pq-tt-row { border-top: 1px solid #f1f3f5; margin-top: 4px; padding-top: 7px; }
   .pq-tt-icon { font-size: 13px; }
-  .pq-tt-icon--tc   { color: #f59f00; }
-  .pq-tt-icon--tech { color: #0ca678; }
+  .pq-tt-icon--tc     { color: #f59f00; }
+  .pq-tt-icon--tech   { color: #0ca678; }
+  .pq-tt-icon--helper { color: #7950f2; }
   .pq-tt-label { flex: 1; color: #495057; font-weight: 500; }
   .pq-tt-status {
     font-size: 10.5px; font-weight: 700;

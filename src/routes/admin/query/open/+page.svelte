@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { goto } from "$app/navigation";
   import { authApiFetch } from "$lib/api/client";
   import { API_ROUTES } from "$lib/constants/apiRoutes";
@@ -7,6 +7,7 @@
   import { errorHandle } from "$lib/utils/errorHandle";
   import Swal from "sweetalert2";
   import Pagination from "$lib/components/Pagination.svelte";
+  import { openQueryCount } from "$lib/stores/queryStore";
 
   let currentUser;
   let queries = [];
@@ -25,6 +26,10 @@
   let customStartDate = "";
   let customEndDate = "";
   let searchTimeout;
+
+  // ── auto-refresh ──────────────────────────────────────────────────────────
+  let refreshInterval;
+  let isFiltering = false; // true while user is actively changing filters
 
   const STATUS_COLORS = {
     open: "badge bg-primary text-white",
@@ -74,11 +79,47 @@
     return params;
   }
 
+  // Silent background refresh — no spinner, skipped when tab hidden or user is filtering
+  async function silentRefresh() {
+    if (isFiltering || document.hidden) return;
+    try {
+      const dateParams = buildDateParams();
+      const q = new URLSearchParams({ page: currentPage, limit: rowsPerPage });
+      if (search)        q.set("search",   search);
+      if (filterType)    q.set("type",     filterType);
+      if (filterPriority)q.set("priority", filterPriority);
+      if (dateParams.dateFrom) q.set("dateFrom", dateParams.dateFrom);
+      if (dateParams.dateTo)   q.set("dateTo",   dateParams.dateTo);
+      const [res, statsRes] = await Promise.all([
+        authApiFetch(`${API_ROUTES.QUERY}/open?${q}`),
+        authApiFetch(`${API_ROUTES.QUERY}/stats`),
+      ]);
+      queries    = res.data ?? [];
+      totalItems = res.total ?? 0;
+      totalPages = res.totalPages ?? 0;
+      stats      = statsRes;
+      openQueryCount.set(statsRes.open ?? 0);
+    } catch (_) {} // silent — never show an error toast on background refresh
+  }
+
+  function handleVisibilityChange() {
+    // Immediately re-sync when the user switches back to this tab
+    if (!document.hidden) silentRefresh();
+  }
+
   onMount(async () => {
     currentUser = checkAuth();
     if (!currentUser) { goto("/login"); return; }
     if (currentUser.subRole !== "tech") { goto("/admin/query"); return; }
     await Promise.all([loadData(), loadStats()]);
+
+    refreshInterval = setInterval(silentRefresh, 10000);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+  });
+
+  onDestroy(() => {
+    clearInterval(refreshInterval);
+    document.removeEventListener("visibilitychange", handleVisibilityChange);
   });
 
   async function loadData() {
@@ -108,20 +149,32 @@
     try {
       const res = await authApiFetch(`${API_ROUTES.QUERY}/stats`);
       stats = res;
+      // Keep sidebar badge in sync whenever stats are refreshed
+      openQueryCount.set(res.open ?? 0);
     } catch (_) {}
   }
 
   function onSearchInput() {
+    isFiltering = true;
     clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(() => { currentPage = 1; loadData(); }, 400);
+    searchTimeout = setTimeout(() => {
+      currentPage = 1;
+      loadData().finally(() => { isFiltering = false; });
+    }, 400);
   }
 
-  function onFilterChange() { currentPage = 1; loadData(); }
+  function onFilterChange() {
+    isFiltering = true;
+    currentPage = 1;
+    loadData().finally(() => { isFiltering = false; });
+  }
 
   function clearFilters() {
+    isFiltering = true;
     search = ""; filterType = ""; filterPriority = "";
     selectedFilter = "today"; customStartDate = ""; customEndDate = "";
-    currentPage = 1; loadData();
+    currentPage = 1;
+    loadData().finally(() => { isFiltering = false; });
   }
 
   $: hasFilters = search || filterType || filterPriority || selectedFilter !== "today";
@@ -129,6 +182,8 @@
   async function pickUp(queryId) {
     try {
       await authApiFetch(`${API_ROUTES.QUERY}/${queryId}/assign`, { method: "PATCH" });
+      // Optimistic decrement — sidebar badge drops immediately before navigation
+      openQueryCount.update((n) => Math.max(0, n - 1));
       await Swal.fire({ icon: "success", title: "Query assigned to you", timer: 1500, showConfirmButton: false });
       goto(`/admin/query/${queryId}`);
     } catch (e) {
@@ -277,12 +332,12 @@
                   <td>{(currentPage - 1) * rowsPerPage + i + 1}</td>
                   <td><a href="/admin/query/{q.id}" class="text-primary fw-semibold">{q.subject}</a></td>
                   <td>
-                    <span class="badge bg-light text-dark border">
+                    <span class="badge bg-light text-dark border" style="font-size:11px;">
                       {QUERY_TYPES.find(t => t.value === q.type)?.label ?? q.type ?? "-"}
                     </span>
                   </td>
                   <td>
-                    <span class={PRIORITY_COLORS[q.priority] ?? "badge bg-secondary"}>
+                    <span class={PRIORITY_COLORS[q.priority] ?? "badge bg-secondary"} style="font-size:11px;">
                       {q.priority ?? "-"}
                     </span>
                   </td>

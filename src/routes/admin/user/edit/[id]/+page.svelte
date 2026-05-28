@@ -21,6 +21,7 @@
   let orderAccess = true;
   let queryAccessTelecaller = true;
   let queryAccessTech = true;
+  let queryAccessTechHelper = true;
   let companyId = null;
   let loginStartTime = "";
   let loginEndTime = "";
@@ -61,6 +62,7 @@
       orderAccess = data.orderAccess ?? true;
       queryAccessTelecaller = data.queryAccessTelecaller ?? true;
       queryAccessTech = data.queryAccessTech ?? true;
+      queryAccessTechHelper = data.queryAccessTechHelper ?? true;
       companyId = data?.company?.id || null;
       loginStartTime = data.loginStartTime || "09:00";
       loginEndTime = data.loginEndTime || "18:10";
@@ -86,12 +88,12 @@
 
     const updatedUser = { name, email, mobile, whatsapp, role,
       subRole: role === "user" ? (subRole || null) : null,
-      orderAccess: (role === "user" && subRole === "tech") ? orderAccess : true,
+      orderAccess: (role === "user" && (subRole === "tech" || subRole === "tech_helper")) ? orderAccess : true,
       loginStartTime: loginStartTime || null,
       loginEndTime: loginEndTime || null,
       // query access toggles — only meaningful for admin/manager, master always has full access
       ...(["admin", "manager"].includes(role) && currentUser?.role === "master"
-        ? { queryAccessTelecaller, queryAccessTech }
+        ? { queryAccessTelecaller, queryAccessTech, queryAccessTechHelper }
         : {}),
     };
     if (companyId != null) {
@@ -306,8 +308,9 @@
                   <option value={null}>None</option>
                   <option value="telecaller">Telecaller</option>
                   <option value="tech">Tech</option>
+                  <option value="tech_helper">Tech Helper</option>
                 </select>
-                {#if subRole === "tech"}
+                {#if subRole === "tech" || subRole === "tech_helper"}
                   <div class="d-flex align-items-center gap-2 mt-2">
                     <div class="form-check form-switch mb-0">
                       <input
@@ -320,7 +323,7 @@
                         Order Access
                       </label>
                     </div>
-                    <span class="text-muted small">(allow this tech user to manage orders)</span>
+                    <span class="text-muted small">(allow this user to manage orders)</span>
                   </div>
                 {/if}
               </div>
@@ -352,6 +355,16 @@
                     <div class="form-check form-switch mb-0">
                       <input class="form-check-input" type="checkbox" id="qatech" bind:checked={queryAccessTech} />
                       <label class="form-check-label" for="qatech">{queryAccessTech ? "Allowed" : "Blocked"}</label>
+                    </div>
+                  </div>
+                  <div class="d-flex align-items-center justify-content-between gap-3 query-access-row">
+                    <div>
+                      <div class="fw-semibold" style="font-size:13px;">View Tech Helper Info</div>
+                      <div class="text-muted" style="font-size:11px;">Can see tech helper names in queries, chat &amp; stats</div>
+                    </div>
+                    <div class="form-check form-switch mb-0">
+                      <input class="form-check-input" type="checkbox" id="qatHelper" bind:checked={queryAccessTechHelper} />
+                      <label class="form-check-label" for="qatHelper">{queryAccessTechHelper ? "Allowed" : "Blocked"}</label>
                     </div>
                   </div>
                 </div>

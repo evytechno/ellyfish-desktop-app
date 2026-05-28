@@ -6,6 +6,7 @@
   import { checkAuth } from "$lib/utils/auth";
   import { errorHandle } from "$lib/utils/errorHandle";
   import Pagination from "$lib/components/Pagination.svelte";
+  import { queryUnreadCounts } from "$lib/stores/queryUnreadCounts";
 
   let currentUser;
   let queries = [];
@@ -86,7 +87,7 @@
   onMount(async () => {
     currentUser = checkAuth();
     if (!currentUser) { goto("/login"); return; }
-    if (currentUser.subRole !== "tech") { goto("/admin/query"); return; }
+    if (currentUser.subRole !== "tech" && currentUser.subRole !== "tech_helper") { goto("/admin/query"); return; }
     await Promise.all([loadData(), loadStats()]);
   });
 
@@ -135,6 +136,14 @@
   }
 
   $: hasFilters = search || filterStatus || filterType || filterPriority || selectedFilter !== "today";
+
+  // Unread-first sort: queries with unread messages bubble to top of the current page.
+  // Ties keep the backend's lastActivityAt order (already applied by the API).
+  $: sortedQueries = [...queries].sort((a, b) => {
+    const ua = $queryUnreadCounts[a.id] ?? 0;
+    const ub = $queryUnreadCounts[b.id] ?? 0;
+    return ub - ua;
+  });
 
   function formatDate(dateStr) {
     if (!dateStr) return "-";
@@ -263,14 +272,21 @@
                 <th>Priority</th>
                 <th>Status</th>
                 <th>Raised At</th>
+                <th>Last Activity</th>
                 <th>Action</th>
               </tr>
             </thead>
             <tbody>
-              {#each queries as q, i}
+              {#each sortedQueries as q, i}
+                {@const unread = $queryUnreadCounts[q.id] ?? 0}
                 <tr>
                   <td>{(currentPage - 1) * rowsPerPage + i + 1}</td>
-                  <td><a href="/admin/query/{q.id}" class="text-primary fw-semibold">{q.subject}</a></td>
+                  <td>
+                    <a href="/admin/query/{q.id}" class="text-primary fw-semibold">{q.subject}</a>
+                    {#if unread > 0}
+                      <span class="badge bg-danger rounded-pill ms-1" style="font-size:10px;">{unread > 99 ? "99+" : unread}</span>
+                    {/if}
+                  </td>
                   <td>
                     <span class="badge bg-light text-dark border">
                       {QUERY_TYPES.find(t => t.value === q.type)?.label ?? q.type ?? "-"}
@@ -287,6 +303,13 @@
                     </span>
                   </td>
                   <td>{formatDate(q.createdAt)}</td>
+                  <td>
+                    {#if q.lastActivityAt}
+                      <span class="text-muted small">{formatDate(q.lastActivityAt)}</span>
+                    {:else}
+                      <span class="text-muted small">—</span>
+                    {/if}
+                  </td>
                   <td>
                     <a href="/admin/query/{q.id}" class="btn btn-sm btn-outline-primary">
                       <i class="ti ti-eye"></i>

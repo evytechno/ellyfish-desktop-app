@@ -1,7 +1,7 @@
 import { writable } from "svelte/store";
 
 const KEY = "query_privacy_v1";
-const defaults = { telecaller: false, tech: false };
+const defaults = { telecaller: false, tech: false, techHelper: false };
 
 function readStorage() {
   if (typeof window === "undefined") return defaults;
@@ -30,6 +30,7 @@ function createStore() {
     subscribe,
     toggleTelecaller() { persist((v) => ({ ...v, telecaller: !v.telecaller })); },
     toggleTech()       { persist((v) => ({ ...v, tech: !v.tech })); },
+    toggleTechHelper() { persist((v) => ({ ...v, techHelper: !v.techHelper })); },
   };
 }
 

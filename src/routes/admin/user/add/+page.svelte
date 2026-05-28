@@ -61,7 +61,7 @@
 
     const newUser = { name, email, password, mobile, whatsapp, role,
       subRole: role === "user" ? (subRole || null) : null,
-      orderAccess: (role === "user" && subRole === "tech") ? orderAccess : true,
+      orderAccess: (role === "user" && (subRole === "tech" || subRole === "tech_helper")) ? orderAccess : true,
       loginStartTime: loginStartTime || null,
       loginEndTime: loginEndTime || null,
     };
@@ -280,8 +280,9 @@
                   <option value={null}>None</option>
                   <option value="telecaller">Telecaller</option>
                   <option value="tech">Tech</option>
+                  <option value="tech_helper">Tech Helper</option>
                 </select>
-                {#if subRole === "tech"}
+                {#if subRole === "tech" || subRole === "tech_helper"}
                   <div class="d-flex align-items-center gap-2 mt-2">
                     <div class="form-check form-switch mb-0">
                       <input
@@ -294,7 +295,7 @@
                         Order Access
                       </label>
                     </div>
-                    <span class="text-muted small">(allow this tech user to manage orders)</span>
+                    <span class="text-muted small">(allow this user to manage orders)</span>
                   </div>
                 {/if}
               </div>

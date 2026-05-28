@@ -8,7 +8,14 @@
   import { API_BASE_URL, ATTACHMENT_BASE_URL } from "$lib/constants/constants";
   import { checkAuth } from "$lib/utils/auth";
   import { errorHandle } from "$lib/utils/errorHandle";
-  import { queryUnreadCounts, clearUnread } from "$lib/stores/queryUnreadCounts";
+  import { queryUnreadCounts, clearUnread, incrementUnread, loadUnreadCounts } from "$lib/stores/queryUnreadCounts";
+
+  /** Mark all incoming (not-own) messages in a query as read in the DB, then clear local badge. */
+  async function markChatsRead(id) {
+    if (!currentUser || (!isTech(currentUser) && !isTelecaller(currentUser) && !isTechHelper(currentUser))) return;
+    clearUnread(Number(id));
+    return authApiFetch(`${API_ROUTES.QUERY}/${id}/chat/mark-read`, { method: "PATCH" });
+  }
   import { queryPrivacy } from "$lib/stores/queryPrivacy";
   import Swal from "sweetalert2";
   import LightBox from "$lib/components/LightBox.svelte";
@@ -81,6 +88,18 @@
   let inProgressPage = 1;
   let inProgressTotal = 0;
   const IN_PROGRESS_LIMIT = 15;
+  // Always show at least the number of items actually loaded — prevents stale count between reloads.
+  $: effectiveInProgressTotal = Math.max(inProgressTotal, inProgressList.length);
+
+  // Sidebar sort: queries with unread messages float to top; ties keep lastActivityAt order.
+  $: sortedInProgressList = [...inProgressList].sort((a, b) => {
+    const ua = $queryUnreadCounts[a.id] ?? 0;
+    const ub = $queryUnreadCounts[b.id] ?? 0;
+    if (ub !== ua) return ub - ua;                                              // unread first
+    const ta = a.lastActivityAt ? new Date(a.lastActivityAt).getTime() : 0;
+    const tb = b.lastActivityAt ? new Date(b.lastActivityAt).getTime() : 0;
+    return tb - ta;                                                             // then most recent
+  });
 
   async function loadInProgress(reset = true) {
     if (reset) {
@@ -93,7 +112,9 @@
     try {
       let res;
       const p = inProgressPage;
-      if (isTech(currentUser)) {
+      if (isTechHelper(currentUser)) {
+        res = await authApiFetch(`${API_ROUTES.QUERY}/assigned?status=in_progress&limit=${IN_PROGRESS_LIMIT}&page=${p}`);
+      } else if (isTech(currentUser)) {
         res = await authApiFetch(`${API_ROUTES.QUERY}/assigned?status=in_progress&limit=${IN_PROGRESS_LIMIT}&page=${p}`);
       } else if (isTelecaller(currentUser)) {
         res = await authApiFetch(`${API_ROUTES.QUERY}/my?status=in_progress&limit=${IN_PROGRESS_LIMIT}&page=${p}`);
@@ -117,7 +138,7 @@
   }
 
   async function loadMoreInProgress() {
-    if (inProgressLoadingMore || inProgressLoading || inProgressList.length >= inProgressTotal) return;
+    if (inProgressLoadingMore || inProgressLoading || inProgressList.length >= effectiveInProgressTotal) return;
     inProgressPage += 1;
     await loadInProgress(false);
   }
@@ -164,6 +185,21 @@
     typingQueries = new Set();
     query = null;
     chats = [];
+    subQueries = [];
+    if (sqIsTyping && viewingSubQueryId) {
+      socket?.emit("typing-stop", Number(viewingSubQueryId));
+    }
+    viewingSubQueryId = null;
+    sqViewQuery = null;
+    sqViewChats = [];
+    sqViewHasMore = false; sqHasMoreOlder = false;
+    sqChatMessage = ""; sqAttachedFiles = []; sqReplyTo = null;
+    sqOtherTyping = false; sqIsAtBottom = true; sqIsTyping = false;
+    sqExpandedMessages = new Set();
+    sqPendingFiles = []; sqPendingIndex = 0;
+    sqNewMsgCount = 0; sqShowNewMsgBanner = false;
+    sqEditingChatId = null; sqEditingChatText = "";
+    sqSettingFinalFlag = null;
     hasMoreOlderChats = false;
     loadingOlder = false;
     otherTyping = false;
@@ -181,7 +217,14 @@
     if (bannerTimer) clearTimeout(bannerTimer);
     clearUnread(Number(id));
     // queryId is already updated by the reactive block before this is called
-    loadQuery(id);
+    loadQuery(id).then(() => {
+      // tech users should never see a sub-query as a standalone page — redirect to parent + inline panel
+      if (query?.parentQueryId && isTech(currentUser)) {
+        goto(`/admin/query/${query.parentQueryId}?sq=${id}`, { replaceState: true });
+        return;
+      }
+      loadSubQueries(id);
+    });
     loadChats(id);
     connectSocket();
     loadInProgress();
@@ -190,7 +233,13 @@
 
   const isTelecaller = (u) => u?.subRole === "telecaller";
   const isTech = (u) => u?.subRole === "tech";
+  const isTechHelper = (u) => u?.subRole === "tech_helper";
   const isMasterView = (u) => u?.role !== "user";
+
+  // For tech users, "sub-query" is presented simply as "query"
+  $: sqWord        = isTech(currentUser) ? "Query"   : "Sub-Query";
+  $: sqWordLower   = isTech(currentUser) ? "query"   : "sub-query";
+  $: sqWordPlural  = isTech(currentUser) ? "Queries" : "Sub-Queries";
 
   /**
    * Derive a stable sender type used for avatar colour + bubble tint.
@@ -206,6 +255,7 @@
       if (senderSubRole === null)           return "admin";
       if (senderSubRole === "tech")         return "tech";
       if (senderSubRole === "telecaller")   return "telecaller";
+      if (senderSubRole === "tech_helper")  return "tech_helper";
     }
     // label-based fallback (non-master users, or old socket messages)
     if (senderLabel === "Admin")            return "admin";
@@ -220,7 +270,7 @@
   }
 
   function canSetFinalFlag() {
-    return currentUser?.subRole === 'telecaller' || currentUser?.subRole === 'tech';
+    return currentUser?.subRole === 'telecaller' || currentUser?.subRole === 'tech' || currentUser?.subRole === 'tech_helper';
   }
 
   function canEditChat(chat) {
@@ -316,9 +366,182 @@
     { value: "customer_complaint", label: "Customer Complaint" },
     { value: "access_issue", label: "Access Issue" },
     { value: "other", label: "Other" },
+    { value: "price_check", label: "Price Check" },
+    { value: "transport_check", label: "Transport Check" },
+    { value: "delivery_check", label: "Delivery Check" },
+    { value: "availability_check", label: "Availability Check" },
+    { value: "design_check", label: "Design Check" },
+    { value: "other_help", label: "Other Help" },
   ];
 
+  const SUB_QUERY_TYPES = [
+    { value: "price_check", label: "Price Check" },
+    { value: "transport_check", label: "Transport Check" },
+    { value: "delivery_check", label: "Delivery Check" },
+    { value: "availability_check", label: "Availability Check" },
+    { value: "design_check", label: "Design Check" },
+    { value: "other_help", label: "Other Help" },
+  ];
+
+  function subTypeLabel(type) {
+    const found = SUB_QUERY_TYPES.find(t => t.value === type);
+    return found ? found.label : (QUERY_TYPES.find(t => t.value === type)?.label ?? type ?? "Other");
+  }
+
+  // sub-query state
+  let subQueries = [];
+  let subQueriesLoading = false;
+  let showSubQueriesModal = false;
+  let showSubQueryModal = false;
+  let sqType = "price_check";
+  let sqSubject = "";
+
+  let sqPriority = "medium";
+  let sqSending = false;
+
+  // ── Inline sub-query chat panel ──────────────────────────────────────────
+  let viewingSubQueryId = null;
+  let sqViewQuery = null;
+  let sqViewChats = [];
+  let sqViewLoading = false;
+  let sqViewHasMore = false;
+  // interactive state
+  let sqChatMessage = "";
+  let sqAttachedFiles = [];
+  let sqSendingChat = false;
+  let sqReplyTo = null;
+  let sqIsTyping = false;
+  let sqTypingTimer = null;
+  let sqOtherTyping = false;
+  let sqIsAtBottom = true;
+  let sqHasMoreOlder = false;
+  let sqLoadingOlder = false;
+  let sqFileInputEl;
+  let sqExpandedMessages = new Set();
+  let sqIsDragOver = false;
+  let sqDragDepth = 0;
+  let sqPendingFiles = []; // staged from drop/paste — shown in preview modal before confirm
+  let sqPendingIndex = 0;  // active slide in the sq preview modal
+  let sqNewMsgCount = 0;
+  let sqShowNewMsgBanner = false;
+  let sqEditingChatId = null;
+  let sqEditingChatText = "";
+  let sqSavingEdit = false;
+  let sqSettingFinalFlag = null;
+  let sqActionLoading = false;
+
+  $: isSubQuery = query?.parentQueryId != null;
+  $: hasOpenSubQueries = subQueries.some(s => ["open", "in_progress", "reopened"].includes(s.status));
+
+  async function loadSubQueries(id = queryId) {
+    if (!query || isSubQuery) return;
+    subQueriesLoading = true;
+    try {
+      const res = await authApiFetch(`${API_ROUTES.QUERY}/${id}/sub-queries`);
+      subQueries = Array.isArray(res) ? res : (res?.data ?? []);
+    } catch (_) {
+      subQueries = [];
+    } finally {
+      subQueriesLoading = false;
+    }
+  }
+
+  async function openSubQueryInline(sq) {
+    showSubQueriesModal = false;
+    clearUnread(sq.id);
+    // mark chats read in DB then refresh store so parent row badge drops accurately
+    markChatsRead(sq.id).then(() => loadUnreadCounts()).catch(() => {});
+    // clear sub-query status notifications (pickup/resolve) from the bell
+    authApiFetch(`${API_ROUTES.QUERY}/${sq.id}/read-notifications`, { method: "PATCH" }).catch(() => {});
+    // reset interactive state for new panel
+    sqChatMessage = ""; sqAttachedFiles = []; sqReplyTo = null;
+    sqOtherTyping = false; sqIsAtBottom = true;
+    sqExpandedMessages = new Set();
+    sqNewMsgCount = 0; sqShowNewMsgBanner = false;
+    sqEditingChatId = null; sqEditingChatText = "";
+    sqSettingFinalFlag = null;
+    sqCancelPending();
+    if (sqIsTyping) { sqIsTyping = false; clearTimeout(sqTypingTimer); }
+
+    viewingSubQueryId = sq.id;
+    history.pushState({}, "", `/admin/query/${queryId}?sq=${sq.id}`);
+    sqViewQuery = sq;
+    sqViewChats = [];
+    sqViewHasMore = false;
+    sqHasMoreOlder = false;
+    sqViewLoading = true;
+
+    // join sub-query socket room for real-time messages
+    socket?.emit("join-query", sq.id);
+
+    try {
+      const [sqDetail, chatsRes] = await Promise.all([
+        authApiFetch(`${API_ROUTES.QUERY}/${sq.id}`).catch(() => null),
+        authApiFetch(`${API_ROUTES.QUERY}/${sq.id}/chat?limit=${CHAT_LIMIT}`).catch(() => ({ data: [], hasMore: false })),
+      ]);
+      sqViewQuery = sqDetail ?? sq;
+      sqViewChats = Array.isArray(chatsRes.data)
+        ? chatsRes.data.map(c => ({ ...c, senderType: deriveSenderType(c.isOwn, c.senderLabel, c.senderSubRole), isFinal: c.isFinal ?? false, finalSetById: c.finalSetById ?? null }))
+        : [];
+      sqViewHasMore = chatsRes.hasMore ?? false;
+      sqHasMoreOlder = chatsRes.hasMore ?? false;
+    } catch (_) {
+      sqViewChats = [];
+    } finally {
+      sqViewLoading = false;
+      await tick();
+      if (sqChatContainer) sqChatContainer.scrollTop = sqChatContainer.scrollHeight;
+    }
+  }
+
+  function closeSubQueryInline() {
+    if (sqIsTyping && viewingSubQueryId) {
+      sqIsTyping = false;
+      clearTimeout(sqTypingTimer);
+      socket?.emit("typing-stop", Number(viewingSubQueryId));
+    }
+    viewingSubQueryId = null;
+    history.replaceState({}, "", `/admin/query/${queryId}`);
+    sqViewQuery = null;
+    sqViewChats = [];
+    sqViewHasMore = false;
+    sqHasMoreOlder = false;
+    sqViewLoading = false;
+    sqChatMessage = ""; sqAttachedFiles = []; sqReplyTo = null;
+    sqOtherTyping = false; sqIsAtBottom = true;
+    sqExpandedMessages = new Set();
+    sqNewMsgCount = 0; sqShowNewMsgBanner = false;
+    sqEditingChatId = null; sqEditingChatText = "";
+    sqSettingFinalFlag = null;
+    sqCancelPending();
+  }
+
+  async function submitSubQuery() {
+    if (!sqSubject.trim()) return;
+    sqSending = true;
+    try {
+      await authApiFetch(`${API_ROUTES.QUERY}/${queryId}/sub-queries`, {
+        method: "POST",
+        data: JSON.stringify({ type: sqType, subject: sqSubject.trim(), priority: sqPriority }),
+      });
+      showSubQueryModal = false;
+      sqSubject = ""; sqType = "price_check"; sqPriority = "medium";
+      Swal.fire({ icon: "success", title: "Query raised!", text: "A tech helper will pick it up shortly.", timer: 1800, showConfirmButton: false });
+      await loadSubQueries();
+    } catch (e) {
+      Swal.fire({ icon: "error", title: "Error", text: e?.data?.message ?? "Could not raise query." });
+    } finally {
+      sqSending = false;
+    }
+  }
+
+  function canRaiseSubQuery() {
+    if (!query || isSubQuery) return false;
+    return isTech(currentUser) && query.status === "in_progress" && query.assignedToId === currentUser?.id;
+  }
+
   let chatContainer;
+  let sqChatContainer; // scroll container for the inline sub-query chat panel
   let shouldScroll = false;
   let isAtBottom = true;
   let newMsgCount = 0;
@@ -376,23 +599,55 @@
     if (currentUser.role === "user" && !currentUser.subRole) { goto("/admin/dashboard"); return; }
     clearUnread(Number(queryId));
     await loadQuery();
-    await loadChats();
+    // tech users should never see a sub-query as a standalone page — redirect to parent + inline panel
+    if (query?.parentQueryId && isTech(currentUser)) {
+      goto(`/admin/query/${query.parentQueryId}?sq=${queryId}`, { replaceState: true });
+      return;
+    }
+    await Promise.all([loadChats(), loadSubQueries()]);
+    markChatsRead(queryId).then(() => loadUnreadCounts()).catch(() => {});
     connectSocket();
     loadInProgress();
     // mark any existing notifications for this query as read
     authApiFetch(`${API_ROUTES.QUERY}/${queryId}/read-notifications`, { method: "PATCH" }).catch(() => {});
+    // auto-open sub-query panel if ?sq= is present in URL
+    const sqParam = $page.url.searchParams.get("sq");
+    if (sqParam) {
+      const sqId = Number(sqParam);
+      const sq = subQueries.find(s => s.id === sqId) ?? { id: sqId };
+      openSubQueryInline(sq);
+    }
+    window.addEventListener("popstate", handlePopState);
   });
 
   onDestroy(() => {
     disconnectSocket();
+    window.removeEventListener("popstate", handlePopState);
     if (bannerTimer) clearTimeout(bannerTimer);
   });
+
+  // Sync panel state with browser back/forward — if ?sq= disappears, close; if it appears, open.
+  function handlePopState() {
+    const sqParam = new URLSearchParams(window.location.search).get("sq");
+    if (sqParam) {
+      const sqId = Number(sqParam);
+      if (viewingSubQueryId !== sqId) {
+        const sq = subQueries.find(s => s.id === sqId) ?? { id: sqId };
+        openSubQueryInline(sq);
+      }
+    } else if (viewingSubQueryId) {
+      closeSubQueryInline();
+    }
+  }
 
   // Switch to a different query without a page navigation.
   // Fetches new data first, then swaps atomically — old content stays visible (no blink).
   async function selectQuery(newId) {
     newId = Number(newId);
     if (newId === Number(queryId)) return;
+
+    // close sub-query panel if open
+    if (viewingSubQueryId) closeSubQueryInline();
 
     // stop typing on the old query
     if (isTyping) {
@@ -447,6 +702,7 @@
     if (chatContainer) chatContainer.scrollTop = chatContainer.scrollHeight;
 
     authApiFetch(`${API_ROUTES.QUERY}/${newId}/read-notifications`, { method: "PATCH" }).catch(() => {});
+    markChatsRead(newId).then(() => loadUnreadCounts()).catch(() => {});
   }
 
   // Socket handlers deliberately reference `queryId` (the live let-binding),
@@ -462,20 +718,75 @@
 
     socket.on("connect", () => {
       socket.emit("join-query", Number(queryId));
+      // join all sub-query rooms so new-message events arrive for unread badge tracking
+      subQueries.forEach(sq => socket.emit("join-query", sq.id));
       // also watch other in-progress rooms for typing (list may already be loaded)
       joinInProgressRooms();
     });
 
     socket.on("new-message", (msg) => {
-      // handle messages for other in-progress queries — bubble to top of list
+      // ── sub-query inline panel: intercept messages for the open sub-query ──
+      if (viewingSubQueryId && msg.queryId === Number(viewingSubQueryId)) {
+        if (sqViewChats.find(c => c.id === msg.id)) return;
+        const isOwn = msg.senderId === currentUser?.id;
+        let senderLabel;
+        if (isOwn) senderLabel = "You";
+        else if (msg.senderSubRole === 'tech_helper') senderLabel = "Helper";
+        else if (msg.senderSubRole === 'tech') senderLabel = "Tech";
+        else senderLabel = msg.senderName ?? "Unknown";
+        const senderType = deriveSenderType(isOwn, senderLabel, msg.senderSubRole);
+        let msgReplyTo = null;
+        if (msg.replyToId) {
+          const ref = sqViewChats.find(c => c.id === msg.replyToId);
+          if (ref) msgReplyTo = { id: ref.id, senderLabel: ref.senderLabel, message: ref.message, senderType: ref.senderType };
+        }
+        sqViewChats = [...sqViewChats, {
+          id: msg.id, message: msg.message, attachments: msg.attachments ?? [],
+          createdAt: msg.createdAt, isOwn, senderLabel, senderType,
+          replyTo: msgReplyTo, isNew: true, isFinal: false, finalSetById: null,
+        }];
+        if (sqIsAtBottom) {
+          tick().then(() => { if (sqChatContainer) sqChatContainer.scrollTop = sqChatContainer.scrollHeight; });
+        } else if (!isOwn) {
+          sqNewMsgCount += 1;
+          sqShowNewMsgBanner = true;
+        }
+        if (!isOwn) markChatsRead(viewingSubQueryId);
+        // bump parent query's lastActivityAt + lastMessage so in-progress list re-sorts and preview updates
+        const _sqIpIdx = inProgressList.findIndex(q => q.id === Number(queryId));
+        if (_sqIpIdx !== -1) {
+          inProgressList[_sqIpIdx] = {
+            ...inProgressList[_sqIpIdx],
+            lastActivityAt: new Date().toISOString(),
+            lastMessage: msg.message || inProgressList[_sqIpIdx].lastMessage,
+          };
+          inProgressList = [...inProgressList];
+        }
+        return;
+      }
+
+      // message for a sub-query of this parent but inline panel is not showing it
+      if (subQueries.some(s => s.id === msg.queryId)) {
+        const isOwn = msg.senderId === currentUser?.id;
+        if (!isOwn) {
+          incrementUnread(msg.queryId);       // sub-query event card badge
+          incrementUnread(Number(queryId));   // parent query in-progress list badge
+        }
+        return;
+      }
+
+      // handle messages for other in-progress queries — bubble to top of list + track unread
       if (msg.queryId !== Number(queryId)) {
+        const isOwn = msg.senderId === currentUser?.id;
+        if (!isOwn) incrementUnread(msg.queryId);
         const idx = inProgressList.findIndex(q => q.id === msg.queryId);
+        const now = new Date().toISOString();
         if (idx === 0) {
-          // already at top — just refresh lastMessage preview
-          inProgressList[0] = { ...inProgressList[0], lastMessage: msg.message ?? inProgressList[0].lastMessage };
+          // already at top — refresh lastMessage + lastActivityAt
+          inProgressList[0] = { ...inProgressList[0], lastMessage: msg.message ?? inProgressList[0].lastMessage, lastActivityAt: now };
           inProgressList = [...inProgressList];
         } else if (idx > 0) {
-          const item = { ...inProgressList[idx], lastMessage: msg.message ?? inProgressList[idx].lastMessage };
+          const item = { ...inProgressList[idx], lastMessage: msg.message ?? inProgressList[idx].lastMessage, lastActivityAt: now };
           inProgressList = [item, ...inProgressList.filter((_, i) => i !== idx)];
         } else {
           // not in loaded pages yet — refresh from page 1
@@ -531,22 +842,41 @@
         newMsgCount += 1;
         showNewMsgBanner = true;
       }
+
+      // keep DB in sync — mark incoming messages read while actively viewing
+      if (!isOwn) markChatsRead(queryId);
+      // bump lastActivityAt + lastMessage on current query so in-progress list re-sorts and preview updates
+      const _ipIdx = inProgressList.findIndex(q => q.id === Number(queryId));
+      if (_ipIdx !== -1) {
+        inProgressList[_ipIdx] = {
+          ...inProgressList[_ipIdx],
+          lastActivityAt: new Date().toISOString(),
+          lastMessage: msg.message || inProgressList[_ipIdx].lastMessage,
+        };
+        inProgressList = [...inProgressList];
+      }
     });
 
     socket.on("user-typing", (data) => {
       const qid = data?.queryId;
+      if (viewingSubQueryId && qid === Number(viewingSubQueryId)) {
+        sqOtherTyping = true;
+        return;
+      }
       if (qid && qid !== Number(queryId)) {
-        // typing in a different in-progress query
         typingQueries.add(qid);
         typingQueries = typingQueries;
       } else {
-        // typing in the currently viewed query
         otherTyping = true;
       }
     });
 
     socket.on("typing-stopped", (data) => {
       const qid = data?.queryId;
+      if (viewingSubQueryId && qid === Number(viewingSubQueryId)) {
+        sqOtherTyping = false;
+        return;
+      }
       if (qid && qid !== Number(queryId)) {
         typingQueries.delete(qid);
         typingQueries = typingQueries;
@@ -561,6 +891,12 @@
     });
 
     socket.on("message-edited", (data) => {
+      if (viewingSubQueryId && data.queryId === Number(viewingSubQueryId)) {
+        sqViewChats = sqViewChats.map(c =>
+          c.id === data.chatId ? { ...c, message: data.message, editedAt: data.editedAt } : c
+        );
+        return;
+      }
       if (data.queryId !== Number(queryId)) return;
       chats = chats.map((c) =>
         c.id === data.chatId
@@ -569,20 +905,76 @@
       );
     });
 
+    socket.on("messages-read", (data) => {
+      // Recipient opened the chat — flip all our own messages to read (double-tick)
+      if (data.queryId === Number(queryId)) {
+        chats = chats.map(c => c.isOwn ? { ...c, read: true } : c);
+      }
+      if (data.queryId === Number(viewingSubQueryId)) {
+        sqViewChats = sqViewChats.map(c => c.isOwn ? { ...c, read: true } : c);
+      }
+    });
+
     socket.on("status-update", (data) => {
       // refresh in-progress list on any status change (query may enter or leave in_progress)
       loadInProgress();
-      if (!query || data.queryId !== Number(queryId)) return;
-      // patch query reactively — triggers all {#if query.status === ...} blocks
-      query = {
-        ...query,
-        status: data.status,
-        assignedToId: data.assignedToId ?? query.assignedToId,
-        assignedTo: data.assignedToName
-          ? { ...(query.assignedTo ?? {}), name: data.assignedToName }
-          : query.assignedTo,
-      };
-      showStatusBanner(data.status, data.assignedToName);
+      if (query && data.queryId === Number(queryId)) {
+        // patch main query reactively — triggers all {#if query.status === ...} blocks
+        query = {
+          ...query,
+          status: data.status,
+          assignedToId: data.assignedToId ?? query.assignedToId,
+          assignedTo: data.assignedToName
+            ? { ...(query.assignedTo ?? {}), name: data.assignedToName }
+            : query.assignedTo,
+        };
+        showStatusBanner(data.status, data.assignedToName);
+      }
+      // also patch the inline sub-query panel if the event is for that sub-query
+      // (tech joins the sub-query room on openSubQueryInline, so this event arrives here too)
+      if (viewingSubQueryId && data.queryId === Number(viewingSubQueryId) && sqViewQuery) {
+        sqViewQuery = {
+          ...sqViewQuery,
+          status: data.status,
+          assignedToId: data.assignedToId ?? sqViewQuery.assignedToId,
+        };
+      }
+    });
+
+    socket.on("sub-query-update", (data) => {
+      if (data.parentQueryId !== Number(queryId)) return;
+      // if this sub-query is currently open in the inline panel, patch its header live
+      if (viewingSubQueryId && data.subQueryId === Number(viewingSubQueryId) && sqViewQuery) {
+        sqViewQuery = { ...sqViewQuery, status: data.status, assignedToId: data.assignedToId ?? sqViewQuery.assignedToId };
+      }
+      // update local subQueries array (upsert by id)
+      const idx = subQueries.findIndex(s => s.id === data.subQueryId);
+      if (idx >= 0) {
+        subQueries[idx] = { ...subQueries[idx], status: data.status };
+        subQueries = [...subQueries];
+      } else if (data.eventType === 'created') {
+        subQueries = [...subQueries, { id: data.subQueryId, subject: data.subject, type: data.type, status: data.status }];
+      }
+      // append inline event card to chat (if payload carries it)
+      // Telecaller: only append 'created' events — status changes shown reactively on existing card
+      if (data.chatEventMsg) {
+        const skipForTelecaller = isTelecaller(currentUser) && data.eventType !== 'created';
+        if (!skipForTelecaller && !chats.find(c => c.id === data.chatEventMsg.id)) {
+          chats = [...chats, {
+            id: data.chatEventMsg.id,
+            message: null,
+            attachments: [],
+            createdAt: data.chatEventMsg.createdAt,
+            isOwn: false,
+            senderLabel: "System",
+            senderType: "system",
+            replyTo: null,
+            isFinal: false,
+            finalSetById: null,
+            subQueryEvent: data.chatEventMsg.subQueryEvent,
+          }];
+        }
+      }
     });
 
     socket.on("connect_error", (err) => {
@@ -684,6 +1076,26 @@
 
   function isImage(mime) { return mime?.startsWith("image/") ?? false; }
 
+  function timeAgo(dateStr) {
+    if (!dateStr) return "";
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const m = Math.floor(diff / 60000);
+    if (m < 1) return "just now";
+    if (m < 60) return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h ago`;
+    const d = Math.floor(h / 24);
+    return `${d}d ago`;
+  }
+
+  function formatDateTime(dateStr) {
+    if (!dateStr) return "";
+    return new Date(dateStr).toLocaleString("en-IN", {
+      day: "numeric", month: "short", year: "numeric",
+      hour: "2-digit", minute: "2-digit", hour12: true,
+    });
+  }
+
   async function sendChat() {
     if (!chatMessage.trim() && !attachedFiles.length) return;
     sendingChat = true;
@@ -728,11 +1140,22 @@
             senderType: "own",
             replyTo: msgReplyTo ? { id: msgReplyTo.id, senderLabel: msgReplyTo.senderLabel, message: msgReplyTo.message, senderType: msgReplyTo.senderType } : null,
             isNew: true,
+            read: false,
           },
         ];
       }
       await tick();
       if (chatContainer) chatContainer.scrollTop = chatContainer.scrollHeight;
+      // bump lastActivityAt + lastMessage on current query so in-progress list re-sorts and preview updates
+      const _ipIdx = inProgressList.findIndex(q => q.id === Number(queryId));
+      if (_ipIdx !== -1) {
+        inProgressList[_ipIdx] = {
+          ...inProgressList[_ipIdx],
+          lastActivityAt: new Date().toISOString(),
+          lastMessage: msgText || inProgressList[_ipIdx].lastMessage,
+        };
+        inProgressList = [...inProgressList];
+      }
       // revoke blob preview URLs created for chip thumbnails (files now uploaded)
       for (const f of msgFiles) {
         const url = previewCache.get(f);
@@ -865,26 +1288,33 @@
   function canSendChat() {
     if (!query) return false;
     if (isTelecaller(currentUser)) return query.status !== "closed" && query.status !== "resolved";
-    if (isTech(currentUser)) return query.status === "in_progress" && query.assignedToId === currentUser?.id;
+    if (isTech(currentUser)) {
+      if (isSubQuery) return query.status !== "closed";
+      return query.status === "in_progress" && query.assignedToId === currentUser?.id;
+    }
+    if (isTechHelper(currentUser)) return query.status === "in_progress" && query.assignedToId === currentUser?.id;
     if (isMasterView(currentUser)) return query.status !== "closed";
     return false;
   }
 
   function typingLabel() {
     if (isTelecaller(currentUser)) return "Support Team is typing…";
-    if (isTech(currentUser)) return "Requester is typing…";
+    if (isTech(currentUser)) return isSubQuery ? "Helper is typing…" : "Requester is typing…";
+    if (isTechHelper(currentUser)) return "Tech is typing…";
     return "Someone is typing…";
   }
 
   const ALLOWED_TYPES = "image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar";
 
   // ── Privacy masking (master-only) ────────────────────────────────────────
-  $: maskTC   = (name) => (currentUser?.role === "master" && $queryPrivacy.telecaller && name) ? "Telecaller" : (name ?? "-");
-  $: maskTech = (name) => (currentUser?.role === "master" && $queryPrivacy.tech       && name) ? "Tech"        : (name ?? "-");
+  $: maskTC     = (name) => (currentUser?.role === "master" && $queryPrivacy.telecaller && name) ? "Telecaller" : (name ?? "-");
+  $: maskTech   = (name) => (currentUser?.role === "master" && $queryPrivacy.tech       && name) ? "Tech"        : (name ?? "-");
+  $: maskHelper = (name) => (currentUser?.role === "master" && $queryPrivacy.techHelper && name) ? "Helper"      : (name ?? "-");
   $: maskChatSender = (chat) => {
     if (currentUser?.role !== "master") return chat.senderLabel;
     if ($queryPrivacy.telecaller && chat.senderType === "telecaller") return "Telecaller";
     if ($queryPrivacy.tech       && chat.senderType === "tech")       return "Tech";
+    if ($queryPrivacy.techHelper && chat.senderType === "tech_helper") return "Helper";
     return chat.senderLabel;
   };
 
@@ -988,6 +1418,301 @@
       if (file) pendingFiles = [...pendingFiles, file];
     });
   }
+
+  // ── Inline sub-query panel helpers ───────────────────────────────────────
+  function canSendSqChat() {
+    if (!sqViewQuery) return false;
+    if (isTelecaller(currentUser)) return false;
+    if (query?.status === 'closed') return false;
+    if (sqViewQuery.status === 'closed') return false;
+    if (sqViewQuery.status === 'resolved') return false;
+    if (isTech(currentUser)) return true;
+    if (isTechHelper(currentUser)) return sqViewQuery.status === 'in_progress' && sqViewQuery.assignedToId === currentUser?.id;
+    if (isMasterView(currentUser)) return true;
+    return false;
+  }
+
+  function sqTypingLabel() {
+    if (isTech(currentUser)) return "Helper is typing…";
+    if (isTechHelper(currentUser)) return "Tech is typing…";
+    return "Someone is typing…";
+  }
+
+  function handleSqTyping() {
+    if (!socket || !canSendSqChat()) return;
+    if (!sqIsTyping) {
+      sqIsTyping = true;
+      socket.emit("typing-start", Number(viewingSubQueryId));
+    }
+    clearTimeout(sqTypingTimer);
+    sqTypingTimer = setTimeout(() => {
+      sqIsTyping = false;
+      socket.emit("typing-stop", Number(viewingSubQueryId));
+    }, 2500);
+  }
+
+  function handleSqChatScroll() {
+    if (!sqChatContainer) return;
+    sqIsAtBottom = sqChatContainer.scrollHeight - sqChatContainer.scrollTop - sqChatContainer.clientHeight < 60;
+    if (sqIsAtBottom) {
+      sqNewMsgCount = 0;
+      sqShowNewMsgBanner = false;
+    }
+    if (sqChatContainer.scrollTop < 60 && sqHasMoreOlder && !sqLoadingOlder) {
+      loadOlderSqChats();
+    }
+  }
+
+  async function loadOlderSqChats() {
+    if (sqLoadingOlder || !sqHasMoreOlder || sqViewChats.length === 0) return;
+    sqLoadingOlder = true;
+    const oldestId = sqViewChats[0].id;
+    const prevScrollHeight = sqChatContainer?.scrollHeight ?? 0;
+    try {
+      const res = await authApiFetch(`${API_ROUTES.QUERY}/${viewingSubQueryId}/chat?limit=${CHAT_LIMIT}&before=${oldestId}`);
+      const older = Array.isArray(res.data)
+        ? res.data.map(c => ({ ...c, senderType: deriveSenderType(c.isOwn, c.senderLabel, c.senderSubRole), isFinal: c.isFinal ?? false, finalSetById: c.finalSetById ?? null }))
+        : [];
+      sqHasMoreOlder = res.hasMore ?? false;
+      sqViewChats = [...older, ...sqViewChats];
+      await tick();
+      if (sqChatContainer) sqChatContainer.scrollTop = sqChatContainer.scrollHeight - prevScrollHeight;
+    } catch (_) {} finally { sqLoadingOlder = false; }
+  }
+
+  async function sendSqChat() {
+    if (!sqChatMessage.trim() && !sqAttachedFiles.length) return;
+    sqSendingChat = true;
+    if (sqIsTyping) {
+      sqIsTyping = false;
+      clearTimeout(sqTypingTimer);
+      socket?.emit("typing-stop", Number(viewingSubQueryId));
+    }
+    const msgText = sqChatMessage.trim();
+    const msgFiles = [...sqAttachedFiles];
+    const msgReplyTo = sqReplyTo;
+    sqChatMessage = ""; sqAttachedFiles = []; sqReplyTo = null;
+    try {
+      const fd = new FormData();
+      if (msgText) fd.append("message", msgText);
+      for (const f of msgFiles) fd.append("files", f);
+      if (msgReplyTo) fd.append("replyToId", String(msgReplyTo.id));
+      const result = await authApiFetch(`${API_ROUTES.QUERY}/${viewingSubQueryId}/chat`, { method: "POST", data: fd });
+      const chat = result.data;
+      if (!sqViewChats.find(c => c.id === chat.id)) {
+        sqViewChats = [...sqViewChats, {
+          id: chat.id, message: chat.message, attachments: chat.attachments ?? [],
+          createdAt: chat.createdAt, isOwn: true, senderLabel: "You", senderType: "own",
+          replyTo: msgReplyTo ? { id: msgReplyTo.id, senderLabel: msgReplyTo.senderLabel, message: msgReplyTo.message, senderType: msgReplyTo.senderType } : null,
+          isNew: true, isFinal: false, finalSetById: null, read: false,
+        }];
+      }
+      await tick();
+      if (sqChatContainer) sqChatContainer.scrollTop = sqChatContainer.scrollHeight;
+      sqIsAtBottom = true;
+      // bump parent query's lastActivityAt + lastMessage so in-progress list re-sorts and preview updates
+      const _sqIpIdx = inProgressList.findIndex(q => q.id === Number(queryId));
+      if (_sqIpIdx !== -1) {
+        inProgressList[_sqIpIdx] = {
+          ...inProgressList[_sqIpIdx],
+          lastActivityAt: new Date().toISOString(),
+          lastMessage: msgText || inProgressList[_sqIpIdx].lastMessage,
+        };
+        inProgressList = [...inProgressList];
+      }
+    } catch (e) {
+      sqChatMessage = msgText; sqAttachedFiles = msgFiles; sqReplyTo = msgReplyTo;
+      Swal.fire({ icon: "error", title: "Failed to send", text: e?.data?.message ?? "Something went wrong." });
+    } finally { sqSendingChat = false; }
+  }
+
+  function handleSqDragEnter(e) {
+    if (!canSendSqChat()) return;
+    e.preventDefault(); sqDragDepth++; sqIsDragOver = true;
+  }
+  function handleSqDragLeave(e) {
+    if (!canSendSqChat()) return;
+    sqDragDepth--;
+    if (sqDragDepth <= 0) { sqDragDepth = 0; sqIsDragOver = false; }
+  }
+  function handleSqDragOver(e) {
+    if (!canSendSqChat()) return;
+    e.preventDefault(); e.dataTransfer.dropEffect = "copy";
+  }
+  function handleSqDrop(e) {
+    if (!canSendSqChat()) return;
+    e.preventDefault(); sqDragDepth = 0; sqIsDragOver = false;
+    const files = Array.from(e.dataTransfer?.files ?? []);
+    if (!files.length) return;
+    const capacity = 5 - sqAttachedFiles.length - sqPendingFiles.length;
+    if (capacity <= 0) return;
+    sqPendingFiles = [...sqPendingFiles, ...files.slice(0, capacity)];
+  }
+  function handleSqPaste(e) {
+    if (!canSendSqChat()) return;
+    const items = Array.from(e.clipboardData?.items ?? []);
+    const imageItems = items.filter(item => item.kind === "file" && item.type.startsWith("image/"));
+    if (!imageItems.length) return;
+    e.preventDefault();
+    const capacity = 5 - sqAttachedFiles.length - sqPendingFiles.length;
+    if (capacity <= 0) return;
+    imageItems.slice(0, capacity).forEach(item => {
+      const file = item.getAsFile();
+      if (file) sqPendingFiles = [...sqPendingFiles, file];
+    });
+  }
+
+  function scrollSqToMsg(msgId) {
+    const el = document.getElementById(`sq-msg-${msgId}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("chat-row--highlight");
+    setTimeout(() => el.classList.remove("chat-row--highlight"), 1500);
+  }
+
+  function sqScrollToBottom() {
+    if (!sqChatContainer) return;
+    sqChatContainer.scrollTop = sqChatContainer.scrollHeight;
+    sqNewMsgCount = 0;
+    sqShowNewMsgBanner = false;
+    sqIsAtBottom = true;
+  }
+
+  function previewSqAttachedFile(file) {
+    if (file.type.startsWith("image/")) {
+      const imgFiles = sqAttachedFiles.filter(f => f.type.startsWith("image/"));
+      const urls = imgFiles.map(f => URL.createObjectURL(f));
+      const idx = imgFiles.indexOf(file);
+      openImageLightbox(urls, idx < 0 ? 0 : idx);
+      setTimeout(() => urls.forEach(u => URL.revokeObjectURL(u)), 60_000);
+    } else {
+      const url = URL.createObjectURL(file);
+      window.open(url, "_blank", "noopener,noreferrer");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    }
+  }
+
+  function sqClearAttachment(i) {
+    const f = sqAttachedFiles[i];
+    const url = previewCache.get(f);
+    if (url) { URL.revokeObjectURL(url); previewCache.delete(f); }
+    sqAttachedFiles = sqAttachedFiles.filter((_, idx) => idx !== i);
+  }
+
+  function sqCanEditChat(chat) {
+    if (!chat.isOwn) return false;
+    const ageMs = Date.now() - new Date(chat.createdAt).getTime();
+    return ageMs <= 30 * 60 * 1000;
+  }
+
+  function sqStartEditChat(chat) {
+    sqEditingChatId = chat.id;
+    sqEditingChatText = chat.message ?? "";
+  }
+
+  function sqCancelEditChat() {
+    sqEditingChatId = null;
+    sqEditingChatText = "";
+  }
+
+  async function sqSaveEditChat(chatId) {
+    if (!sqEditingChatText.trim()) return;
+    sqSavingEdit = true;
+    try {
+      const result = await authApiFetch(`${API_ROUTES.QUERY}/${viewingSubQueryId}/chat/${chatId}`, {
+        method: "PATCH",
+        data: JSON.stringify({ message: sqEditingChatText.trim() }),
+      });
+      sqViewChats = sqViewChats.map(c =>
+        c.id === chatId
+          ? { ...c, message: result.data.message, editedAt: result.data.editedAt }
+          : c
+      );
+      sqEditingChatId = null;
+      sqEditingChatText = "";
+    } catch (e) {
+      Swal.fire({ icon: "error", title: "Cannot edit", text: e?.data?.message ?? "Failed to edit message." });
+    } finally {
+      sqSavingEdit = false;
+    }
+  }
+
+  async function sqAcceptSolution() {
+    if (!viewingSubQueryId || sqActionLoading) return;
+    sqActionLoading = true;
+    try {
+      await authApiFetch(`${API_ROUTES.QUERY}/${viewingSubQueryId}/accept`, { method: 'PATCH' });
+      sqViewQuery = { ...sqViewQuery, status: 'closed' };
+      subQueries = subQueries.map(s => s.id === Number(viewingSubQueryId) ? { ...s, status: 'closed' } : s);
+    } catch (e) {
+      Swal.fire({ icon: 'error', title: 'Error', text: e?.data?.message ?? 'Could not close sub-query.' });
+    } finally {
+      sqActionLoading = false;
+    }
+  }
+
+  async function sqReopenQuery() {
+    if (!viewingSubQueryId || sqActionLoading) return;
+    sqActionLoading = true;
+    try {
+      await authApiFetch(`${API_ROUTES.QUERY}/${viewingSubQueryId}/reopen`, { method: 'PATCH' });
+      sqViewQuery = { ...sqViewQuery, status: 'reopened' };
+      subQueries = subQueries.map(s => s.id === Number(viewingSubQueryId) ? { ...s, status: 'reopened' } : s);
+    } catch (e) {
+      Swal.fire({ icon: 'error', title: 'Error', text: e?.data?.message ?? 'Could not reopen sub-query.' });
+    } finally {
+      sqActionLoading = false;
+    }
+  }
+
+  async function sqToggleFinalFlag(chat) {
+    if (sqSettingFinalFlag === chat.id) return;
+    sqSettingFinalFlag = chat.id;
+    try {
+      const res = await authApiFetch(`${API_ROUTES.QUERY}/${viewingSubQueryId}/chat/${chat.id}/flag`, { method: 'PATCH' });
+      const isFinal = res?.data?.isFinal ?? false;
+      sqViewChats = sqViewChats.map(c => ({
+        ...c,
+        isFinal: c.id === chat.id ? isFinal : (isFinal ? false : c.isFinal),
+        finalSetById: c.id === chat.id ? (isFinal ? currentUser?.id : null) : (isFinal ? null : c.finalSetById),
+      }));
+    } catch (e) {
+      Swal.fire({ icon: 'error', title: 'Error', text: 'Could not update final flag.' });
+    } finally {
+      sqSettingFinalFlag = null;
+    }
+  }
+
+  // ── Sq pending files helpers ──────────────────────────────────────────────
+  function sqConfirmPendingFiles() {
+    const remaining = 5 - sqAttachedFiles.length;
+    if (remaining <= 0) { sqCancelPending(); return; }
+    sqAttachedFiles = [...sqAttachedFiles, ...sqPendingFiles.slice(0, remaining)];
+    sqPendingFiles = []; // URLs kept alive in previewCache — reused by chip thumbnails
+  }
+
+  function sqCancelPending() {
+    for (const f of sqPendingFiles) {
+      const url = previewCache.get(f);
+      if (url) { URL.revokeObjectURL(url); previewCache.delete(f); }
+    }
+    sqPendingFiles = [];
+    sqPendingIndex = 0;
+  }
+
+  function sqRemovePendingFile(i) {
+    const f = sqPendingFiles[i];
+    const url = previewCache.get(f);
+    if (url) { URL.revokeObjectURL(url); previewCache.delete(f); }
+    sqPendingFiles = sqPendingFiles.filter((_, idx) => idx !== i);
+    if (sqPendingIndex >= sqPendingFiles.length) {
+      sqPendingIndex = Math.max(0, sqPendingFiles.length - 1);
+    }
+  }
+
+  function sqPrevPending()  { if (sqPendingIndex > 0) sqPendingIndex--; }
+  function sqNextPending()  { if (sqPendingIndex < sqPendingFiles.length - 1) sqPendingIndex++; }
+  function sqJumpPending(i) { sqPendingIndex = i; }
 
   function formatDate(dateStr) {
     if (!dateStr) return "-";
@@ -1132,8 +1857,8 @@
 
       <div class="row g-4">
         <!-- Left: query info + actions -->
-        <div class="col-lg-4 query-left-col">
-          {#if !isTech(currentUser) && query.order}
+        <div class="{viewingSubQueryId ? 'col-lg-2 query-left-col' : 'col-lg-3 query-left-col'}">
+          {#if (!isTech(currentUser) || currentUser?.orderAccess) && query.order}
             <div class="card border-0 shadow-sm mb-3">
               <div class="card-header py-2 d-flex align-items-center gap-2">
                 <i class="ti ti-receipt text-primary"></i>
@@ -1187,9 +1912,6 @@
               </span>
             </div>
 
-            <!-- ── Description ── -->
-            <div class="qd-description">{query.description}</div>
-
             <!-- ── Reopened alert ── -->
             {#if isTelecaller(currentUser) && query.status === "reopened"}
               <div class="qd-alert">
@@ -1231,12 +1953,31 @@
             <!-- ── Actions ── -->
             {#if
               (isTech(currentUser) && (query.status === "open" || query.status === "reopened" || (query.status === "in_progress" && query.assignedToId === currentUser?.id))) ||
+              (isTechHelper(currentUser) && (query.status === "open" || (query.status === "in_progress" && query.assignedToId === currentUser?.id))) ||
               (isTelecaller(currentUser) && query.status === "resolved") ||
               (isMasterView(currentUser) && query.status !== "closed")
             }
               <div class="qd-actions">
                 {#if isTech(currentUser)}
                   {#if query.status === "open" || query.status === "reopened"}
+                    <button class="qd-btn qd-btn--warning" on:click={pickUp} disabled={actionLoading}>
+                      <i class="ti ti-hand-stop"></i> Pick Up Query
+                    </button>
+                  {/if}
+                  {#if query.status === "in_progress" && query.assignedToId === currentUser?.id}
+                    {#if hasOpenSubQueries && !isSubQuery}
+                      <div class="qd-sub-block-notice">
+                        <i class="ti ti-alert-triangle"></i>
+                        {subQueries.filter(s => ["open","in_progress","reopened"].includes(s.status)).length} quer{subQueries.filter(s => ["open","in_progress","reopened"].includes(s.status)).length === 1 ? 'y' : 'ies'} still open — resolve them first.
+                      </div>
+                    {/if}
+                    <button class="qd-btn qd-btn--success" on:click={markResolved} disabled={actionLoading || (hasOpenSubQueries && !isSubQuery)}>
+                      <i class="ti ti-circle-check"></i> Mark as Resolved
+                    </button>
+                  {/if}
+                {/if}
+                {#if isTechHelper(currentUser)}
+                  {#if query.status === "open"}
                     <button class="qd-btn qd-btn--warning" on:click={pickUp} disabled={actionLoading}>
                       <i class="ti ti-hand-stop"></i> Pick Up Query
                     </button>
@@ -1265,6 +2006,109 @@
 
           </div>
 
+          <!-- Sub-queries list modal -->
+          {#if showSubQueriesModal}
+            <div class="modal-backdrop-custom" on:click={() => showSubQueriesModal = false} role="dialog" aria-modal="true">
+              <div class="card shadow-lg p-4 position-relative" style="max-width:480px;width:100%;" on:click|stopPropagation>
+                <button class="modal-close-btn" on:click={() => showSubQueriesModal = false} aria-label="Close"><i class="ti ti-x"></i></button>
+                <h5 class="fw-bold mb-3">
+                  <i class="ti ti-subtask me-2 text-primary"></i>{sqWordPlural}
+                  {#if subQueries.length > 0}
+                    <span class="badge {hasOpenSubQueries ? 'bg-warning text-dark' : 'bg-success'} ms-1" style="font-size:12px;">{subQueries.length}</span>
+                  {/if}
+                </h5>
+                {#if subQueriesLoading}
+                  <div class="text-center py-3"><span class="spinner-border spinner-border-sm text-primary"></span></div>
+                {:else if subQueries.length === 0}
+                  <div class="text-center py-3 text-muted">
+                    <i class="ti ti-inbox fs-4 d-block mb-1"></i>No sub-queries yet.
+                  </div>
+                {:else}
+                  <table class="table table-hover align-middle mb-0 sq-modal-table">
+                    <thead class="table-light">
+                      <tr>
+                        <th class="sq-modal-th-sr">#</th>
+                        <th>Title</th>
+                        <th class="sq-modal-th-status">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {#each subQueries as sq, i}
+                        <tr>
+                          <td class="sq-modal-td-sr">{i + 1}</td>
+                          <td>
+                            {#if isTech(currentUser) || isMasterView(currentUser)}
+                              <button type="button" class="sq-modal-subject-btn" on:click={() => openSubQueryInline(sq)}>{sq.subject}</button>
+                            {:else}
+                              <span class="sq-modal-subject-plain">{sq.subject}</span>
+                            {/if}
+                            {#if ($queryUnreadCounts[sq.id] ?? 0) > 0}
+                              <span class="badge bg-danger ms-1" style="font-size:10px;vertical-align:middle;">{$queryUnreadCounts[sq.id]}</span>
+                            {/if}
+                            <div class="mt-1">
+                              <span class="badge bg-light text-dark border sq-modal-type">{subTypeLabel(sq.type)}</span>
+                            </div>
+                          </td>
+                          <td class="sq-modal-td-status">
+                            <span class="badge {sq.status === 'resolved' || sq.status === 'closed' ? 'bg-success' : sq.status === 'in_progress' ? 'bg-warning text-dark' : 'bg-primary'} sq-modal-status">
+                              {sq.status?.replace("_"," ")}
+                            </span>
+                          </td>
+                        </tr>
+                      {/each}
+                    </tbody>
+                  </table>
+                {/if}
+              </div>
+            </div>
+          {/if}
+
+          <!-- Sub-query creation modal -->
+          {#if showSubQueryModal}
+            <div class="modal-backdrop-custom" on:click={() => showSubQueryModal = false} role="dialog" aria-modal="true">
+              <div class="card shadow-lg p-4 position-relative" style="max-width:500px;width:100%;" on:click|stopPropagation role="document">
+                <button class="modal-close-btn" on:click={() => showSubQueryModal = false} aria-label="Close">
+                  <i class="ti ti-x"></i>
+                </button>
+                <h5 class="fw-bold mb-3"><i class="ti ti-subtask me-2 text-primary"></i>Raise Query</h5>
+                <div class="mb-3">
+                  <label class="form-label">Subject <span class="text-danger">*</span></label>
+                  <input class="form-control" type="text" placeholder="Brief subject…" bind:value={sqSubject} maxlength="120" />
+                </div>
+                <div class="mb-3">
+                  <label class="form-label">Type</label>
+                  <div class="d-flex flex-wrap gap-2">
+                    {#each SUB_QUERY_TYPES as t}
+                      <button type="button"
+                        class="badge-tab {sqType === t.value ? 'badge-tab--type-active' : ''}"
+                        on:click={() => sqType = t.value}
+                      >{t.label}</button>
+                    {/each}
+                  </div>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label">Priority</label>
+                  <div class="d-flex flex-wrap gap-2">
+                    {#each ['low','medium','high'] as p}
+                      <button type="button"
+                        class="badge-tab badge-tab--priority-{p} {sqPriority === p ? 'badge-tab--active' : ''}"
+                        on:click={() => sqPriority = p}
+                      >{p.charAt(0).toUpperCase() + p.slice(1)}</button>
+                    {/each}
+                  </div>
+                </div>
+                <div class="d-flex gap-2 justify-content-end">
+                  <button class="btn btn-secondary btn-sm" on:click={() => showSubQueryModal = false}>Cancel</button>
+                  <button class="btn btn-warning btn-sm" on:click={submitSubQuery} disabled={sqSending || !sqSubject.trim()}>
+                    {#if sqSending}<span class="spinner-border spinner-border-sm me-1" style="width:12px;height:12px;border-width:1.5px;"></span>{:else}<i class="ti ti-send me-1"></i>{/if}
+                    Raise Query
+                  </button>
+                </div>
+              </div>
+            </div>
+          {/if}
+
+
           <!-- In-progress list — inside left column, below detail card -->
           {#if inProgressLoading}
             <div class="card border-0 shadow-sm p-3 text-center">
@@ -1275,15 +2119,15 @@
               <div class="card-header py-2 px-3 d-flex align-items-center gap-2">
                 <i class="ti ti-loader text-warning"></i>
                 <span class="fw-semibold small">In Progress</span>
-                <span class="badge bg-warning text-dark ms-1">{inProgressTotal || inProgressList.length}</span>
-                {#if isTech(currentUser)}
+                <span class="badge bg-warning text-dark ms-1">{effectiveInProgressTotal || 0}</span>
+                {#if isTech(currentUser) || isTechHelper(currentUser)}
                   <a href="/admin/query/assigned" class="ms-auto small text-muted text-decoration-none">View all →</a>
                 {:else}
                   <a href="/admin/query" class="ms-auto small text-muted text-decoration-none">View all →</a>
                 {/if}
               </div>
               <div class="card-body p-0 ip-list-body" on:scroll={handleInProgressScroll}>
-                {#each inProgressList as q}
+                {#each sortedInProgressList as q}
                   {@const unread = $queryUnreadCounts[q.id] ?? 0}
                   {@const isTypingHere = typingQueries.has(q.id)}
                   {@const isCurrent = Number(queryId) === q.id}
@@ -1305,7 +2149,12 @@
 
                     <!-- subject + sub-line -->
                     <div class="ip-body">
-                      <span class="ip-subject">{q.subject}</span>
+                      <div class="ip-subject-row">
+                        <span class="ip-subject">{q.subject}</span>
+                        {#if q.lastActivityAt}
+                          <span class="ip-time" title="Last activity">{timeAgo(q.lastActivityAt)}</span>
+                        {/if}
+                      </div>
                       <span class="ip-sub {isTypingHere ? 'ip-sub--typing' : ''}">
                         {#if isTypingHere}
                           <i class="ti ti-pencil" style="font-size:10px;"></i> typing…
@@ -1315,6 +2164,11 @@
                           {typeLabel}
                         {/if}
                       </span>
+                      {#if q.createdAt}
+                        <span class="ip-raised">
+                          <i class="ti ti-calendar" style="font-size:9px;"></i> {formatDateTime(q.createdAt)}
+                        </span>
+                      {/if}
                       {#if isMasterView(currentUser)}
                         <span class="ip-meta">
                           {#if q.raisedBy?.name}<i class="ti ti-user" style="font-size:9px;"></i> {maskTC(q.raisedBy.name)}{/if}{#if q.assignedTo?.name}&nbsp;·&nbsp;<i class="ti ti-user-check" style="font-size:9px;"></i> {maskTech(q.assignedTo.name)}{/if}
@@ -1322,8 +2176,8 @@
                       {/if}
                     </div>
 
-                    <!-- unread count -->
-                    {#if unread > 0}
+                    <!-- unread count — tech and tech_helper users -->
+                    {#if (isTech(currentUser) || isTechHelper(currentUser)) && unread > 0}
                       <span class="in-progress-unread">{unread > 99 ? "99+" : unread}</span>
                     {/if}
                   </div>
@@ -1332,7 +2186,7 @@
                   <div class="ip-loading-more">
                     <span class="spinner-border spinner-border-sm text-warning" style="width:14px;height:14px;border-width:2px;"></span>
                   </div>
-                {:else if inProgressList.length > 0 && inProgressList.length >= inProgressTotal && inProgressTotal > IN_PROGRESS_LIMIT}
+                {:else if inProgressList.length > 0 && inProgressList.length >= effectiveInProgressTotal && effectiveInProgressTotal > IN_PROGRESS_LIMIT}
                   <div class="ip-all-loaded">All caught up</div>
                 {/if}
               </div>
@@ -1340,8 +2194,9 @@
           {/if}
         </div>
 
-        <!-- Right: chat -->
-        <div class="col-lg-8">
+        <!-- Right: chat (shrinks to col-4 when sub-query panel is open) -->
+        <div class="{viewingSubQueryId ? 'col-lg-5' : 'col-lg-9'}"
+          style="transition: all 0.2s ease;">
           <div class="chat-card d-flex flex-column">
             <!-- Switching shimmer bar (always rendered, animated when switching) -->
             <div class="switch-bar switch-bar--chat" class:switch-bar--active={switching}></div>
@@ -1364,7 +2219,25 @@
                   <div class="small text-muted">{chats.length} message{chats.length !== 1 ? "s" : ""}</div>
                 {/if}
               </div>
-              <span class="badge {query.status === 'resolved' ? 'bg-success' : query.status === 'closed' ? 'bg-secondary' : query.status === 'in_progress' ? 'bg-warning text-dark' : 'bg-primary'}">
+              {#if !isSubQuery && (isTech(currentUser) || isMasterView(currentUser))}
+                <button
+                  class="btn btn-sm btn-outline-secondary sq-list-btn"
+                  on:click={() => showSubQueriesModal = true}
+                >
+                  <i class="ti ti-layout-list me-1"></i>{sqWordPlural}
+                  {#if subQueriesLoading}
+                    <span class="spinner-border spinner-border-sm ms-1" style="width:10px;height:10px;border-width:1.5px;"></span>
+                  {:else if subQueries.length > 0}
+                    <span class="badge {hasOpenSubQueries ? 'bg-warning text-dark' : 'bg-success'} ms-1" style="font-size:10px;">{subQueries.length}</span>
+                  {/if}
+                </button>
+              {/if}
+              {#if canRaiseSubQuery()}
+                <button class="btn btn-sm btn-outline-warning" on:click={() => showSubQueryModal = true}>
+                  <i class="ti ti-plus me-1"></i>Query
+                </button>
+              {/if}
+              <span class="badge {query.status === 'resolved' ? 'bg-success' : query.status === 'closed' ? 'bg-secondary' : query.status === 'in_progress' ? 'bg-warning text-dark' : 'bg-primary'} chat-status-badge">
                 {query.status?.replace("_", " ")}
               </span>
             </div>
@@ -1419,6 +2292,80 @@
                 </div>
               {/if}
               {#each chats as chat}
+              {#if chat.subQueryEvent}
+                <!-- Query system event card -->
+                <!-- Telecaller + Tech: only 'created' event shown (single card, live status). Master: all events. -->
+                {#if (!isTelecaller(currentUser) && !isTech(currentUser)) || chat.subQueryEvent.eventType === 'created'}
+                {@const _sqClickable = !isTelecaller(currentUser) && chat.subQueryEvent.subQueryId > 0}
+
+                {#if (isTelecaller(currentUser) || isTech(currentUser)) && chat.subQueryEvent.subQueryId > 0}
+                  <!-- Single live card: icon/title/status all reflect current live status -->
+                  {@const liveSubQuery = subQueries.find(s => s.id === chat.subQueryEvent.subQueryId)}
+                  {@const liveStatus = liveSubQuery?.status ?? chat.subQueryEvent.status}
+                  <div
+                    class="sq-event-card {_sqClickable ? 'sq-event-card--clickable' : ''}"
+                    role={_sqClickable ? 'button' : undefined}
+                    tabindex={_sqClickable ? 0 : undefined}
+                    on:click={_sqClickable ? () => openSubQueryInline({ id: chat.subQueryEvent.subQueryId, type: chat.subQueryEvent.type, status: liveStatus }) : undefined}
+                    on:keydown={_sqClickable ? (e) => e.key === 'Enter' && openSubQueryInline({ id: chat.subQueryEvent.subQueryId, type: chat.subQueryEvent.type, status: liveStatus }) : undefined}
+                  >
+                    {#if ($queryUnreadCounts[chat.subQueryEvent.subQueryId] ?? 0) > 0}
+                      <span class="sq-event-unread">{$queryUnreadCounts[chat.subQueryEvent.subQueryId]}</span>
+                    {/if}
+                    <div class="sq-event-icon sq-event-icon--{liveStatus === 'in_progress' ? 'assigned' : liveStatus === 'resolved' ? 'resolved' : liveStatus === 'closed' ? 'closed' : 'created'}">
+                      {#if liveStatus === 'in_progress'}<i class="ti ti-user-check"></i>
+                      {:else if liveStatus === 'resolved'}<i class="ti ti-circle-check"></i>
+                      {:else if liveStatus === 'closed'}<i class="ti ti-lock"></i>
+                      {:else}<i class="ti ti-subtask"></i>{/if}
+                    </div>
+                    <div class="sq-event-body">
+                      <span class="sq-event-title">
+                        {#if isTelecaller(currentUser)}Query raised
+                        {:else if liveStatus === 'in_progress'}{sqWord} picked up
+                        {:else if liveStatus === 'resolved'}{sqWord} resolved
+                        {:else if liveStatus === 'closed'}{sqWord} closed
+                        {:else if liveStatus === 'reopened'}{sqWord} reopened
+                        {:else}{sqWord} raised{/if}
+                      </span>
+                      <span class="sq-event-link">
+                        {subTypeLabel(chat.subQueryEvent.type)} — <span class="sq-event-status sq-event-status--{liveStatus}">{liveStatus?.replace("_"," ")}</span>
+                      </span>
+                      <span class="sq-event-time">{formatDate(chat.createdAt)}</span>
+                    </div>
+                  </div>
+                {:else}
+                  <!-- Master (or no subQueryId): static card per event -->
+                  <div
+                    class="sq-event-card {_sqClickable ? 'sq-event-card--clickable' : ''}"
+                    role={_sqClickable ? 'button' : undefined}
+                    tabindex={_sqClickable ? 0 : undefined}
+                    on:click={_sqClickable ? () => openSubQueryInline({ id: chat.subQueryEvent.subQueryId, type: chat.subQueryEvent.type, status: chat.subQueryEvent.status }) : undefined}
+                    on:keydown={_sqClickable ? (e) => e.key === 'Enter' && openSubQueryInline({ id: chat.subQueryEvent.subQueryId, type: chat.subQueryEvent.type, status: chat.subQueryEvent.status }) : undefined}
+                  >
+                    <div class="sq-event-icon sq-event-icon--{chat.subQueryEvent.eventType}">
+                      {#if chat.subQueryEvent.eventType === 'created'}<i class="ti ti-subtask"></i>
+                      {:else if chat.subQueryEvent.eventType === 'assigned'}<i class="ti ti-user-check"></i>
+                      {:else if chat.subQueryEvent.eventType === 'resolved'}<i class="ti ti-circle-check"></i>
+                      {:else}<i class="ti ti-lock"></i>{/if}
+                    </div>
+                    <div class="sq-event-body">
+                      <span class="sq-event-title">
+                        {#if chat.subQueryEvent.eventType === 'created'}{sqWord} raised
+                        {:else if chat.subQueryEvent.eventType === 'assigned'}{sqWord} picked up
+                        {:else if chat.subQueryEvent.eventType === 'resolved'}{sqWord} resolved
+                        {:else}{sqWord} closed{/if}
+                      </span>
+                      {#if chat.subQueryEvent.subQueryId > 0}
+                        <span class="sq-event-link">
+                          {subTypeLabel(chat.subQueryEvent.type)} — <span class="sq-event-status sq-event-status--{chat.subQueryEvent.status}">{chat.subQueryEvent.status?.replace("_"," ")}</span>
+                        </span>
+                      {/if}
+                      <span class="sq-event-time">{formatDate(chat.createdAt)}</span>
+                    </div>
+                  </div>
+                {/if}
+                {/if}
+              {:else}
                 <div class="chat-row" class:chat-row--own={chat.isOwn} class:chat-row--new={chat.isNew} id="chat-msg-{chat.id}">
                   {#if !chat.isOwn}
                     <div class="chat-avatar chat-avatar--sm chat-avatar--{chat.senderType ?? 'other'}">
@@ -1530,6 +2477,11 @@
                       {#if chat.isFinal}
                         <span class="final-badge"><i class="ti ti-flag-check"></i> Final Quotation</span>
                       {/if}
+                      {#if chat.isOwn}
+                        <span class="chat-tick {chat.read ? 'chat-tick--read' : ''}" title="{chat.read ? 'Read' : 'Sent'}">
+                          {#if chat.read}✓✓{:else}✓{/if}
+                        </span>
+                      {/if}
                     </div>
                   </div>
                   </div>
@@ -1569,6 +2521,7 @@
                     {/if}
                   </div>
                 </div>
+              {/if}
               {/each}
             </div>
             {#if showNewMsgBanner}
@@ -1686,17 +2639,500 @@
                   <i class="ti ti-hand-stop me-1"></i> Pick up this query to send messages.
                 {:else if isTech(currentUser) && query.assignedToId !== currentUser?.id}
                   <i class="ti ti-hand-stop me-1"></i> Pick up this query to send messages.
+                {:else if isTechHelper(currentUser) && query.status === "open"}
+                  <i class="ti ti-hand-stop me-1"></i> Pick up this query to start helping.
+                {:else if isTechHelper(currentUser) && query.assignedToId !== currentUser?.id}
+                  <i class="ti ti-hand-stop me-1"></i> This query is handled by another helper.
+                {:else if isTechHelper(currentUser) && query.status === "resolved"}
+                  <i class="ti ti-circle-check me-1 text-success"></i> Query resolved.
                 {/if}
               </div>
             {/if}
           </div>
         </div>
+
+        <!-- Sub-query inline chat panel -->
+        {#if viewingSubQueryId}
+
+        <!-- ── Sq pending-files preview modal (slider) ───────────────────── -->
+        {#if sqPendingFiles.length > 0}
+          {@const sqTotalAllowed = Math.max(0, 5 - sqAttachedFiles.length)}
+          {@const sqCur = sqPendingFiles[sqPendingIndex]}
+          {@const sqCurAllowed = sqPendingIndex < sqTotalAllowed}
+          <div class="pf-backdrop" on:click={sqCancelPending} role="dialog" aria-modal="true" aria-label="Preview files">
+            <div class="pf-card" on:click|stopPropagation role="document">
+
+              <!-- header -->
+              <div class="pf-header">
+                <i class="ti ti-photo-check" style="color:#3b5bdb;font-size:15px;"></i>
+                <span>Preview Files</span>
+                <span class="pf-index">{sqPendingIndex + 1} / {sqPendingFiles.length}</span>
+                <button class="pf-close" on:click={sqCancelPending} title="Discard"><i class="ti ti-x"></i></button>
+              </div>
+
+              <!-- over-limit warning -->
+              {#if sqPendingFiles.length > sqTotalAllowed}
+                <div class="pf-warn">
+                  <i class="ti ti-alert-triangle"></i>
+                  Only {sqTotalAllowed} of {sqPendingFiles.length} file{sqPendingFiles.length !== 1 ? 's' : ''} can be added (5-file limit). Dimmed items will be skipped.
+                </div>
+              {/if}
+
+              <!-- main stage -->
+              <div class="pf-stage">
+                {#if sqPendingIndex > 0}
+                  <button class="pf-arrow pf-arrow--left" on:click={sqPrevPending} title="Previous">
+                    <i class="ti ti-chevron-left"></i>
+                  </button>
+                {/if}
+
+                <div class="pf-preview" class:pf-preview--overlimit={!sqCurAllowed}>
+                  {#if sqCur?.type.startsWith('image/')}
+                    <img src={getPreviewUrl(sqCur)} alt={sqCur.name} class="pf-stage-img" />
+                  {:else}
+                    <div
+                      class="pf-stage-file"
+                      role="button"
+                      tabindex="0"
+                      title="Click to open file"
+                      on:click={() => window.open(getPreviewUrl(sqCur), '_blank', 'noopener,noreferrer')}
+                      on:keydown={(e) => e.key === 'Enter' && window.open(getPreviewUrl(sqCur), '_blank', 'noopener,noreferrer')}
+                    >
+                      <i class="ti ti-file-description pf-stage-file-icon"></i>
+                      <span class="pf-stage-ext">.{sqCur?.name.split('.').pop()?.toLowerCase() ?? 'file'}</span>
+                      <span class="pf-stage-open-hint"><i class="ti ti-external-link"></i> Click to open</span>
+                    </div>
+                  {/if}
+
+                  {#if sqCurAllowed}
+                    <button class="pf-stage-remove" on:click={() => sqRemovePendingFile(sqPendingIndex)}>
+                      <i class="ti ti-trash"></i> Remove
+                    </button>
+                  {:else}
+                    <div class="pf-overlimit-badge"><i class="ti ti-ban"></i> Over limit</div>
+                  {/if}
+                </div>
+
+                {#if sqPendingIndex < sqPendingFiles.length - 1}
+                  <button class="pf-arrow pf-arrow--right" on:click={sqNextPending} title="Next">
+                    <i class="ti ti-chevron-right"></i>
+                  </button>
+                {/if}
+              </div>
+
+              <!-- filename -->
+              <div class="pf-stage-name" title={sqCur?.name}>{sqCur?.name}</div>
+
+              <!-- thumbnail strip -->
+              <div class="pf-strip">
+                {#each sqPendingFiles as file, i}
+                  <button
+                    class="pf-thumb"
+                    class:pf-thumb--active={i === sqPendingIndex}
+                    class:pf-thumb--overlimit={i >= sqTotalAllowed}
+                    on:click={() => sqJumpPending(i)}
+                    title={file.name}
+                  >
+                    {#if file.type.startsWith('image/')}
+                      <img src={getPreviewUrl(file)} alt={file.name} class="pf-thumb-img" />
+                    {:else}
+                      <i class="ti ti-file-description pf-thumb-icon"></i>
+                    {/if}
+                  </button>
+                {/each}
+              </div>
+
+              <!-- footer -->
+              <div class="pf-footer">
+                <button class="pf-btn-cancel" on:click={sqCancelPending}>Discard</button>
+                <button class="pf-btn-confirm" on:click={sqConfirmPendingFiles} disabled={sqAttachedFiles.length >= 5}>
+                  <i class="ti ti-check"></i>
+                  Add {Math.min(sqPendingFiles.length, sqTotalAllowed)} file{Math.min(sqPendingFiles.length, sqTotalAllowed) !== 1 ? 's' : ''}
+                </button>
+              </div>
+
+            </div>
+          </div>
+        {/if}
+
+        <div class="col-lg-5">
+          <div class="chat-card d-flex flex-column sq-inline-card">
+
+            <!-- Header -->
+            <div class="chat-header d-flex align-items-center gap-2 px-3 py-3">
+              <div class="chat-avatar chat-avatar--support" style="width:32px;height:32px;font-size:14px;">
+                <i class="ti ti-subtask"></i>
+              </div>
+              <div class="flex-grow-1 min-w-0">
+                <div class="fw-semibold text-truncate" style="font-size:13px;" title={sqViewQuery?.subject}>
+                  {sqViewQuery?.subject ?? sqWord}
+                </div>
+                {#if sqOtherTyping}
+                  <div class="typing-indicator" style="font-size:11px;">
+                    <span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>
+                    <span class="ms-1">{sqTypingLabel()}</span>
+                  </div>
+                {:else}
+                  <div class="text-muted" style="font-size:11px;">{subTypeLabel(sqViewQuery?.type)}</div>
+                {/if}
+              </div>
+              <span class="badge {STATUS_COLORS[sqViewQuery?.status] ?? 'bg-secondary'}" style="font-size:10px;">
+                {sqViewQuery?.status?.replace('_', ' ')}
+              </span>
+              <button class="btn btn-sm btn-outline-secondary sq-inline-icon-btn" on:click={closeSubQueryInline} title="Close">
+                <i class="ti ti-x"></i>
+              </button>
+            </div>
+
+            <!-- Policy notice -->
+            <div class="chat-policy-notice">
+              <i class="ti ti-shield-lock chat-policy-icon"></i>
+              <div class="chat-policy-marquee-wrap">
+                <span class="chat-policy-marquee-text">
+                  Sharing personal contact information (name, mobile, email, address, etc.) is not allowed in Query Chat. Violations may lead to account suspension or termination.
+                </span>
+              </div>
+            </div>
+
+            <!-- Messages -->
+            <div class="chat-messages-wrap"
+              on:dragenter={handleSqDragEnter}
+              on:dragleave={handleSqDragLeave}
+              on:dragover={handleSqDragOver}
+              on:drop={handleSqDrop}
+            >
+              {#if sqIsDragOver}
+                <div class="drag-overlay" aria-hidden="true">
+                  <div class="drag-overlay-content">
+                    <i class="ti ti-upload"></i>
+                    <span>Drop files here</span>
+                  </div>
+                </div>
+              {/if}
+              <div bind:this={sqChatContainer} class="chat-messages flex-grow-1 overflow-auto px-3 py-3"
+                style="flex:1 1 0;min-height:0;" on:scroll={handleSqChatScroll}>
+
+                <!-- Load older -->
+                {#if sqHasMoreOlder || sqLoadingOlder}
+                  <div class="text-center py-2">
+                    {#if sqLoadingOlder}
+                      <span class="text-xs text-muted"><i class="ti ti-loader animate-spin me-1"></i>Loading older…</span>
+                    {:else}
+                      <button class="btn btn-sm btn-outline-secondary px-3 py-1" style="font-size:11px;" on:click={loadOlderSqChats}>
+                        <i class="ti ti-chevron-up me-1"></i>Load older
+                      </button>
+                    {/if}
+                  </div>
+                {/if}
+
+                {#if sqViewLoading}
+                  <div class="text-center py-5">
+                    <span class="spinner-border spinner-border-sm text-primary"></span>
+                    <p class="mt-2 text-muted small">Loading…</p>
+                  </div>
+                {:else if sqViewChats.length === 0}
+                  <div class="chat-empty">
+                    <i class="ti ti-messages-off"></i>
+                    <p>No messages yet.</p>
+                  </div>
+                {:else}
+                  {#each sqViewChats as chat}
+                    {#if chat.subQueryEvent}
+                      <div class="sq-event-card">
+                        <div class="sq-event-icon sq-event-icon--{chat.subQueryEvent.eventType}">
+                          {#if chat.subQueryEvent.eventType === 'created'}<i class="ti ti-subtask"></i>
+                          {:else if chat.subQueryEvent.eventType === 'assigned'}<i class="ti ti-user-check"></i>
+                          {:else if chat.subQueryEvent.eventType === 'resolved'}<i class="ti ti-circle-check"></i>
+                          {:else}<i class="ti ti-lock"></i>{/if}
+                        </div>
+                        <div class="sq-event-body">
+                          <span class="sq-event-title">
+                            {#if chat.subQueryEvent.eventType === 'created'}{sqWord} raised
+                            {:else if chat.subQueryEvent.eventType === 'assigned'}Picked up
+                            {:else if chat.subQueryEvent.eventType === 'resolved'}Resolved
+                            {:else}Closed{/if}
+                          </span>
+                          <span class="sq-event-time">{formatDate(chat.createdAt)}</span>
+                        </div>
+                      </div>
+                    {:else}
+                      {@const sqIsLong = (chat.message?.length ?? 0) > CHAR_LIMIT}
+                      {@const sqExpanded = sqExpandedMessages.has(chat.id)}
+                      <div class="chat-row" class:chat-row--own={chat.isOwn} class:chat-row--new={chat.isNew} id="sq-msg-{chat.id}">
+                        {#if !chat.isOwn}
+                          <div class="chat-avatar chat-avatar--sm chat-avatar--{chat.senderType ?? 'other'}">
+                            {maskChatSender(chat).charAt(0).toUpperCase()}
+                          </div>
+                        {/if}
+                        <div class="chat-bubble-wrap">
+                          <div class="chat-bubble chat-bubble--{chat.senderType ?? (chat.isOwn ? 'own' : 'other')} {chat.isFinal ? 'chat-bubble--final' : ''} {chat.isNew ? 'chat-bubble--new' : ''}">
+                            <!-- reply quote -->
+                            {#if chat.replyTo}
+                              <div class="chat-reply-quote chat-reply-quote--{chat.senderType ?? 'other'}"
+                                role="button" tabindex="0"
+                                on:click={() => scrollSqToMsg(chat.replyTo.id)}
+                                on:keydown={(e) => e.key === 'Enter' && scrollSqToMsg(chat.replyTo.id)}
+                                title="Jump to original">
+                                <span class="chat-reply-quote-sender">{chat.replyTo.senderLabel}</span>
+                                <span class="chat-reply-quote-text">
+                                  {#if chat.replyTo.message}
+                                    {chat.replyTo.message.length > 70 ? chat.replyTo.message.slice(0, 70).trimEnd() + '…' : chat.replyTo.message}
+                                  {:else}📎 Attachment{/if}
+                                </span>
+                              </div>
+                            {/if}
+                            <div class="chat-sender">{maskChatSender(chat)}</div>
+                            {#if sqEditingChatId === chat.id}
+                              <textarea
+                                class="chat-edit-input"
+                                bind:value={sqEditingChatText}
+                                rows="2"
+                                on:keydown={(e) => {
+                                  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sqSaveEditChat(chat.id); }
+                                  if (e.key === "Escape") sqCancelEditChat();
+                                }}
+                              ></textarea>
+                              <div class="chat-edit-actions">
+                                <button class="chat-edit-save" on:click={() => sqSaveEditChat(chat.id)} disabled={sqSavingEdit || !sqEditingChatText.trim()}>
+                                  {sqSavingEdit ? "Saving…" : "Save"}
+                                </button>
+                                <button class="chat-edit-cancel" on:click={sqCancelEditChat}>Cancel</button>
+                              </div>
+                            {:else if chat.message}
+                              <div class="chat-text">
+                                {sqIsLong && !sqExpanded ? chat.message.slice(0, CHAR_LIMIT).trimEnd() + '…' : chat.message}
+                              </div>
+                              {#if sqIsLong}
+                                <button class="read-more-btn read-more-btn--{chat.senderType ?? (chat.isOwn ? 'own' : 'other')}"
+                                  on:click|stopPropagation={() => { if (sqExpandedMessages.has(chat.id)) sqExpandedMessages.delete(chat.id); else sqExpandedMessages.add(chat.id); sqExpandedMessages = sqExpandedMessages; }}>
+                                  {#if sqExpanded}<i class="ti ti-chevron-up"></i> Show less{:else}<i class="ti ti-chevron-down"></i> Read more{/if}
+                                </button>
+                              {/if}
+                            {/if}
+                            <!-- attachments -->
+                            {#if chat.attachments?.length}
+                              {@const imgs = chat.attachments.filter(a => isImage(a.mime))}
+                              {@const files = chat.attachments.filter(a => !isImage(a.mime))}
+                              {#if imgs.length}
+                                {@const imgUrls = imgs.map(a => ATTACHMENT_BASE_URL + a.url)}
+                                <div class="chat-attachments-grid" class:chat-attachments-grid--single={imgs.length === 1}>
+                                  {#each imgs as att, i}
+                                    <button class="chat-attachment-img-btn" on:click={() => openImageLightbox(imgUrls, i)} title="View {att.name}">
+                                      <img src="{ATTACHMENT_BASE_URL}{att.url}" alt={att.name} class="chat-attachment-img" />
+                                    </button>
+                                  {/each}
+                                </div>
+                              {/if}
+                              {#if files.length}
+                                <div class="chat-attachments-files">
+                                  {#each files as att}
+                                    <button class="chat-attachment-file {chat.senderType === 'own' ? 'chat-attachment-file--own' : ''}"
+                                      on:click={() => openAttachment(ATTACHMENT_BASE_URL + att.url, att.mime, att.name)}>
+                                      <i class="ti ti-file-download me-1"></i>{att.name}
+                                    </button>
+                                  {/each}
+                                </div>
+                              {/if}
+                            {/if}
+                            <div class="chat-time-row">
+                              <span class="chat-time">{formatDate(chat.createdAt)}</span>
+                              {#if chat.editedAt}
+                                <span class="chat-edited-badge">edited</span>
+                              {/if}
+                              {#if chat.isFinal}
+                                <span class="final-badge"><i class="ti ti-flag-check"></i> Final Quotation</span>
+                              {/if}
+                              {#if chat.isOwn}
+                                <span class="chat-tick {chat.read ? 'chat-tick--read' : ''}" title="{chat.read ? 'Read' : 'Sent'}">
+                                  {#if chat.read}✓✓{:else}✓{/if}
+                                </span>
+                              {/if}
+                            </div>
+                          </div>
+                        </div>
+                        <!-- action buttons: flag → edit → reply -->
+                        <div class="chat-action-btns">
+                          {#if canSetFinalFlag()}
+                            <button
+                              class="final-flag-btn {chat.isFinal ? 'final-flag-btn--active' : ''}"
+                              title="{chat.isFinal ? 'Remove final flag' : 'Mark as Final Quotation'}"
+                              disabled={sqSettingFinalFlag === chat.id}
+                              on:click={() => sqToggleFinalFlag(chat)}
+                            >
+                              {#if sqSettingFinalFlag === chat.id}
+                                <span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span>
+                              {:else}
+                                <i class="ti ti-flag"></i>
+                              {/if}
+                            </button>
+                          {/if}
+                          {#if sqCanEditChat(chat) && sqEditingChatId !== chat.id}
+                            <button class="chat-edit-btn" title="Edit message (within 30 min)" on:click={() => sqStartEditChat(chat)}>
+                              <i class="ti ti-pencil"></i>
+                            </button>
+                          {/if}
+                          {#if canSendSqChat()}
+                            <button class="chat-reply-btn" title="Reply"
+                              on:click={() => sqReplyTo = { id: chat.id, senderLabel: chat.senderLabel, message: chat.message, senderType: chat.senderType }}>
+                              <i class="ti ti-corner-up-left"></i>
+                            </button>
+                          {/if}
+                        </div>
+                      </div>
+                    {/if}
+                  {/each}
+                {/if}
+              </div>
+              {#if sqShowNewMsgBanner}
+                <button class="new-msg-banner" on:click={sqScrollToBottom}>
+                  <i class="ti ti-arrow-down"></i>
+                  {sqNewMsgCount > 1 ? `${sqNewMsgCount} new messages` : "New message"}
+                </button>
+              {:else if !sqIsAtBottom}
+                <button class="scroll-bottom-btn" title="Scroll to bottom" on:click={sqScrollToBottom}>
+                  <i class="ti ti-arrow-down"></i>
+                </button>
+              {/if}
+            </div>
+
+            <!-- Input bar or blocked notice -->
+            {#if canSendSqChat()}
+              <input type="file" class="d-none" accept={ALLOWED_TYPES} multiple={true}
+                bind:this={sqFileInputEl}
+                on:change={(e) => { const picked = Array.from(e.target.files ?? []); if (picked.length) sqAttachedFiles = [...sqAttachedFiles, ...picked].slice(0, 5); e.target.value = ""; }} />
+              <div class="chat-input-wrap">
+                {#if sqReplyTo}
+                  <div class="chat-reply-preview">
+                    <i class="ti ti-corner-up-left chat-reply-preview-icon"></i>
+                    <div class="chat-reply-preview-body">
+                      <span class="chat-reply-preview-sender">{sqReplyTo.senderLabel}</span>
+                      <span class="chat-reply-preview-text">
+                        {#if sqReplyTo.message}{sqReplyTo.message.length > 90 ? sqReplyTo.message.slice(0, 90).trimEnd() + '…' : sqReplyTo.message}{:else}📎 Attachment{/if}
+                      </span>
+                    </div>
+                    <button class="chat-reply-preview-close" on:click={() => sqReplyTo = null} title="Cancel"><i class="ti ti-x"></i></button>
+                  </div>
+                {/if}
+                {#if sqAttachedFiles.length > 0}
+                  <div class="chat-file-preview-row">
+                    {#each sqAttachedFiles as file, i}
+                      <div
+                        class="chat-file-chip"
+                        role="button"
+                        tabindex="0"
+                        title="Click to preview"
+                        on:click={() => previewSqAttachedFile(file)}
+                        on:keydown={(e) => e.key === "Enter" && previewSqAttachedFile(file)}
+                      >
+                        {#if file.type.startsWith('image/')}
+                          <img src={getPreviewUrl(file)} alt={file.name} class="chip-thumb" />
+                        {:else}
+                          <i class="ti ti-file-text"></i>
+                        {/if}
+                        <span class="chip-name">{file.name}</span>
+                        <button type="button" class="chip-remove" on:click|stopPropagation={() => sqClearAttachment(i)} title="Remove">
+                          <i class="ti ti-x"></i>
+                        </button>
+                      </div>
+                    {/each}
+                    {#if sqAttachedFiles.length >= 5}
+                      <span class="chip-limit-note">Max 5 files</span>
+                    {/if}
+                  </div>
+                {/if}
+                <div class="chat-input-bar">
+                  <button type="button" class="chat-attach-btn" title="Attach files" on:click={() => sqFileInputEl?.click()} disabled={sqAttachedFiles.length >= 5}>
+                    <i class="ti ti-paperclip"></i>
+                  </button>
+                  <div class="chat-input-grow-wrap">
+                    <textarea class="chat-input" rows="1"
+                      placeholder="Type a message… (Enter to send)"
+                      bind:value={sqChatMessage}
+                      on:input={(e) => { autoResize(e.target); handleSqTyping(); }}
+                      on:keydown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendSqChat(); } }}
+                      on:paste={handleSqPaste}
+                    ></textarea>
+                    {#if sqChatMessage.length > 100}
+                      <div class="chat-char-count">{sqChatMessage.length}</div>
+                    {/if}
+                  </div>
+                  <button class="chat-send-btn" on:click={sendSqChat}
+                    disabled={sqSendingChat || (!sqChatMessage.trim() && !sqAttachedFiles.length)}>
+                    {#if sqSendingChat}<span class="spinner-border spinner-border-sm"></span>{:else}<i class="ti ti-send"></i>{/if}
+                  </button>
+                </div>
+              </div>
+            {:else}
+              <div class="chat-blocked">
+                {#if query?.status === 'closed' || sqViewQuery?.status === 'closed'}
+                  <i class="ti ti-lock me-1"></i> This {sqWordLower} is closed.
+                {:else if isTelecaller(currentUser)}
+                  <i class="ti ti-eye me-1 text-muted"></i> Read-only view
+                {:else if isTechHelper(currentUser) && sqViewQuery?.status === 'open'}
+                  <i class="ti ti-hand-stop me-1"></i> Pick up to start helping.
+                {:else if sqViewQuery?.status === 'resolved' && isTech(currentUser)}
+                  <div class="d-flex flex-column align-items-center gap-2 w-100">
+                    <span class="small text-success"><i class="ti ti-circle-check me-1"></i>{sqWord} resolved — review and take action.</span>
+                    <div class="d-flex gap-2">
+                      <button class="qd-btn qd-btn--success" style="font-size:12px;padding:5px 14px;width:auto;" on:click={sqAcceptSolution} disabled={sqActionLoading}>
+                        {#if sqActionLoading}<span class="spinner-border spinner-border-sm me-1" style="width:11px;height:11px;border-width:1.5px;"></span>{:else}<i class="ti ti-thumb-up me-1"></i>{/if}
+                        Accept & Close
+                      </button>
+                      <button class="qd-btn qd-btn--danger-outline" style="font-size:12px;padding:5px 14px;width:auto;" on:click={sqReopenQuery} disabled={sqActionLoading}>
+                        {#if sqActionLoading}<span class="spinner-border spinner-border-sm me-1" style="width:11px;height:11px;border-width:1.5px;"></span>{:else}<i class="ti ti-refresh me-1"></i>{/if}
+                        Reopen
+                      </button>
+                    </div>
+                  </div>
+                {:else if sqViewQuery?.status === 'resolved'}
+                  <i class="ti ti-circle-check me-1 text-success"></i> {sqWord} resolved.
+                {:else if isTechHelper(currentUser) && sqViewQuery?.assignedToId !== currentUser?.id}
+                  <i class="ti ti-hand-stop me-1"></i> Handled by another helper.
+                {:else}
+                  <i class="ti ti-eye me-1 text-muted"></i> Read-only
+                {/if}
+              </div>
+            {/if}
+
+          </div>
+        </div>
+        {/if}
+
       </div>
     {/if}
   </div>
 </div>
 
 <style>
+  /* ── Badge tab selector ─────────────────────────────── */
+  .badge-tab {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    border: 1.5px solid #dee2e6;
+    background: transparent;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    color: #6c757d;
+    transition: all 0.15s ease;
+    line-height: 1.5;
+    white-space: nowrap;
+  }
+  .badge-tab:hover {
+    border-color: #adb5bd;
+    background: #f8f9fa;
+    color: #495057;
+  }
+  .badge-tab--type-active {
+    background: #2563eb;
+    color: #fff;
+    border-color: #2563eb;
+  }
+  .badge-tab--priority-low.badge-tab--active    { background: #198754; color: #fff; border-color: #198754; }
+  .badge-tab--priority-medium.badge-tab--active { background: #ffc107; color: #000; border-color: #ffc107; }
+  .badge-tab--priority-high.badge-tab--active   { background: #dc3545; color: #fff; border-color: #dc3545; }
+
   .chat-card {
     background: #fff;
     border-radius: 16px;
@@ -1996,7 +3432,7 @@
     display: flex; align-items: center; gap: 8px;
     margin-top: 5px; justify-content: flex-end; flex-wrap: wrap;
   }
-  .chat-row--own .chat-time-row { flex-direction: row-reverse; }
+  .chat-row--own .chat-time-row { flex-direction: row; }
   .chat-time { font-size: 10px; opacity: 0.6; }
   .final-badge {
     display: inline-flex; align-items: center; gap: 3px;
@@ -2091,7 +3527,7 @@
   .pf-backdrop {
     position: fixed; inset: 0;
     background: rgba(0,0,0,0.50);
-    z-index: 1200;
+    z-index: 9999;
     display: flex; align-items: center; justify-content: center;
     animation: pf-fade-in 0.15s ease;
   }
@@ -2156,6 +3592,8 @@
     width: 100%; height: 100%;
     display: flex; align-items: center; justify-content: center;
     position: relative;
+    padding: 10px 12px;
+    box-sizing: border-box;
   }
   .pf-preview--overlimit::after {
     content: '';
@@ -2167,6 +3605,9 @@
     max-width: 100%; max-height: 100%;
     object-fit: contain; display: block;
     user-select: none;
+    border: 1.5px solid #dee2e6;
+    border-radius: 6px;
+    margin: 3px 0;
   }
   .pf-stage-file {
     display: flex; flex-direction: column; align-items: center; gap: 10px;
@@ -2389,6 +3830,13 @@
     font-style: italic; letter-spacing: 0.2px;
   }
 
+  /* ── Read receipt ticks ──────────────────────────────────────────────────── */
+  .chat-tick {
+    font-size: 11px; color: #adb5bd; letter-spacing: -2px; line-height: 1;
+    flex-shrink: 0;
+  }
+  .chat-tick--read { color: #339af0; }
+
   /* ── Switch shimmer bar ─────────────────────────────────────────────────── */
   /* Always 3px tall so layout never shifts — only the animation turns on/off */
   .switch-bar {
@@ -2555,9 +4003,17 @@
     flex: 1; display: flex; flex-direction: column;
     overflow: hidden; gap: 1px;
   }
+  .ip-subject-row {
+    display: flex; align-items: baseline; gap: 4px;
+    overflow: hidden;
+  }
   .ip-subject {
     font-size: 13px; font-weight: 500; color: #e07b00;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    flex: 1;
+  }
+  .ip-time {
+    font-size: 10px; color: #adb5bd; white-space: nowrap; flex-shrink: 0;
   }
   .ip-sub {
     font-size: 11px; color: #3b5bdb;
@@ -2570,6 +4026,10 @@
   @keyframes typing-fade {
     0%, 100% { opacity: 0.45; }
     50%       { opacity: 1; }
+  }
+  .ip-raised {
+    font-size: 10px; color: #adb5bd;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
 
   /* left column — same height as chat card */
@@ -2678,4 +4138,125 @@
     0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
     30% { transform: translateY(-4px); opacity: 1; }
   }
+
+  /* ─── tech_helper chat avatar & bubble ──────────────────────────────────── */
+  .chat-avatar--tech_helper { background: #e7f5ff; color: #1971c2; }
+  .chat-bubble--tech_helper {
+    background: #e7f5ff; color: #0d3a6e;
+    border-bottom-left-radius: 4px;
+    border-left: 3px solid #339af0;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  }
+
+  /* ─── sub-query raise button ─────────────────────────────────────────────── */
+  .qd-btn--sub {
+    background: #fff3bf; color: #5c3700;
+    border: 1.5px solid #fcc419;
+  }
+  .qd-btn--sub:not(:disabled):hover { background: #ffec99; }
+
+  /* blocking notice when open sub-queries exist */
+  .qd-sub-block-notice {
+    display: flex; align-items: flex-start; gap: 8px;
+    background: #fff9db; border: 1px solid #fcc419; border-radius: 8px;
+    padding: 8px 12px; font-size: 12px; color: #7a4800;
+  }
+  .qd-sub-block-notice i { font-size: 14px; margin-top: 1px; flex-shrink: 0; color: #f08c00; }
+
+  /* ─── sub-query pinned panel ─────────────────────────────────────────────── */
+  /* ─── chat header — size-normalize buttons + status badge ── */
+  .sq-list-btn .badge { vertical-align: middle; font-size: 10px; }
+  .chat-status-badge {
+    font-size: 0.875rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 0.2rem;
+  }
+
+  /* ─── sub-queries list modal ─────────────────────────── */
+  .sq-modal-table { font-size: 13px; }
+  /* ── Inline sub-query chat panel ───────────────────────── */
+  .sq-inline-card { border: 1.5px solid #e0e7ff; }
+  .sq-inline-icon-btn { padding: 2px 6px; font-size: 12px; line-height: 1.4; }
+
+  /* sq-modal-subject-btn: button styled as a clickable link (replaces <a> for inline sub-query open) */
+  .sq-modal-subject-btn {
+    background: none; border: none; padding: 0; cursor: pointer;
+    font-weight: 500; color: #212529; text-decoration: none;
+    display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px;
+    text-align: left; font-size: inherit; line-height: inherit;
+  }
+  .sq-modal-subject-btn:hover { color: #2563eb; text-decoration: underline; }
+  .sq-modal-th-sr, .sq-modal-td-sr { width: 36px; text-align: center; color: #adb5bd; font-size: 12px; }
+  .sq-modal-th-status, .sq-modal-td-status { width: 100px; text-align: right; white-space: nowrap; }
+  .sq-modal-subject {
+    font-weight: 500; color: #212529;
+    text-decoration: none; display: block;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px;
+  }
+  .sq-modal-subject:hover { color: #2563eb; text-decoration: underline; }
+  .sq-modal-subject-plain {
+    font-weight: 500; color: #495057; display: block;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px;
+  }
+  .sq-modal-type   { font-size: 11px; }
+  .sq-modal-status { font-size: 11px; }
+
+  /* ─── sub-query creation modal (matches raise/edit query modal style) ───── */
+  .modal-backdrop-custom {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+    z-index: 1050; display: flex; align-items: flex-start;
+    justify-content: center; padding: 1rem;
+  }
+  .modal-close-btn {
+    position: absolute; top: 0.6rem; right: 0.75rem;
+    background: none; border: none; font-size: 1.25rem; line-height: 1;
+    color: #6c757d; cursor: pointer; padding: 0.25rem 0.4rem;
+    border-radius: 4px; transition: color 0.15s, background 0.15s; z-index: 10;
+  }
+  .modal-close-btn:hover { color: #dc3545; background: rgba(220,53,69,0.08); }
+
+  /* ─── inline sub-query event cards in chat ───────────────────────────────── */
+  .sq-event-card {
+    display: flex; align-items: center; gap: 10px;
+    margin: 10px auto; padding: 8px 16px;
+    background: #f8f9ff; border: 1px solid #dde3f8; border-radius: 20px;
+    max-width: 420px; width: fit-content;
+    font-size: 12.5px;
+    position: relative;
+  }
+  .sq-event-card--clickable {
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+  }
+  .sq-event-card--clickable:hover {
+    background: #eef2ff;
+    border-color: #c5cff9;
+    box-shadow: 0 2px 8px rgba(59, 91, 219, 0.12);
+  }
+  .sq-event-icon {
+    width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; flex-shrink: 0;
+  }
+  .sq-event-icon--created  { background: #e7f5ff; color: #1971c2; }
+  .sq-event-icon--assigned { background: #e6fcf5; color: #0b7a5e; }
+  .sq-event-icon--resolved { background: #ebfbee; color: #2b8a3e; }
+  .sq-event-icon--closed   { background: #f8f9fa; color: #868e96; }
+  .sq-event-body { display: flex; flex-direction: column; gap: 2px; }
+  .sq-event-title { font-weight: 600; color: #495057; }
+  .sq-event-unread {
+    position: absolute; top: -7px; right: -7px;
+    min-width: 18px; height: 18px; padding: 0 4px;
+    background: #dc3545; color: #fff;
+    border-radius: 9px; border: 2px solid #fff;
+    font-size: 10px; font-weight: 700; line-height: 14px;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .sq-event-link { font-size: 12px; }
+  .sq-event-status { text-transform: capitalize; font-weight: 500; }
+  .sq-event-status--open        { color: #1971c2; }
+  .sq-event-status--in_progress { color: #e67700; }
+  .sq-event-status--resolved    { color: #2b8a3e; }
+  .sq-event-status--closed      { color: #868e96; }
+  .sq-event-time { font-size: 11px; color: #adb5bd; }
 </style>

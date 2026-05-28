@@ -242,9 +242,10 @@
 
   function replyPct(count, total) { return total > 0 ? Math.round(count / total * 100) : 0; }
 
-  $: maskTC   = (name) => (currentUser?.role === "master" && $queryPrivacy.telecaller && name) ? "Telecaller" : (name ?? "-");
-  $: maskTech = (name) => (currentUser?.role === "master" && $queryPrivacy.tech       && name) ? "Tech"        : (name ?? "-");
-  $: maskedUserName     = user ? (isTelecaller(user) ? maskTC(user.name) : maskTech(user.name)) : "";
+  $: maskTC     = (name) => (currentUser?.role === "master" && $queryPrivacy.telecaller && name) ? "Telecaller" : (name ?? "-");
+  $: maskTech   = (name) => (currentUser?.role === "master" && $queryPrivacy.tech       && name) ? "Tech"        : (name ?? "-");
+  $: maskHelper = (name) => (currentUser?.role === "master" && $queryPrivacy.techHelper && name) ? "Helper"      : (name ?? "-");
+  $: maskedUserName     = user ? (user.subRole === "telecaller" ? maskTC(user.name) : user.subRole === "tech_helper" ? maskHelper(user.name) : maskTech(user.name)) : "";
   $: maskedUserInitials = maskedUserName ? initials(maskedUserName) : "?";
   $: replyTotal = detail
     ? detail.replyDistribution.under1min + detail.replyDistribution._1to5min +
@@ -855,7 +856,7 @@
                     <td>{(currentPage-1)*rowsPerPage+i+1}</td>
                     <td><a href="/admin/query/{q.id}" class="text-primary fw-semibold">{q.subject}</a></td>
                     {#if isTelecaller(user)}
-                      <td>{#if q.assignedTo?.name}{maskTech(q.assignedTo.name)}{:else}<span class="text-muted">Unassigned</span>{/if}</td>
+                      <td>{#if q.assignedTo?.name}{q.parentQueryId ? maskHelper(q.assignedTo.name) : maskTech(q.assignedTo.name)}{:else}<span class="text-muted">Unassigned</span>{/if}</td>
                     {:else}
                       <td>{maskTC(q.raisedBy?.name)}</td>
                     {/if}

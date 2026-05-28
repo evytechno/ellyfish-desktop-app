@@ -17,6 +17,10 @@
   // Field-specific error messages
   let formErrors = {};
 
+  // Tax invoice check
+  let taxInvoiceId = null;      // number = exists, null = not found, undefined = loading
+  let taxCheckDone = false;
+
   let invoiceId;
   $: invoiceId = $page.params.id;
 
@@ -33,6 +37,16 @@
       setTimeout(() => {
         loadingData = false;
       }, 500);
+    }
+
+    // Check if a Tax Invoice already exists for this PI
+    try {
+      const res = await authApiFetch(`${API_ROUTES.INVOICE}/by-pi/${invoiceId}`);
+      taxInvoiceId = res?.taxInvoiceId ?? null;
+    } catch {
+      taxInvoiceId = null;
+    } finally {
+      taxCheckDone = true;
     }
   });
 
@@ -399,6 +413,23 @@
                   >
                     <i class="ti ti-clipboard-plus me-1"></i>Create Work Order
                   </a>
+                  {#if taxCheckDone}
+                    {#if taxInvoiceId}
+                      <a
+                        href="/admin/invoice/tax/{taxInvoiceId}"
+                        class="btn btn-md btn-info d-flex align-items-center"
+                      >
+                        <i class="ti ti-file-invoice me-1"></i>View Tax Invoice
+                      </a>
+                    {:else if invoice?.order?.id}
+                      <a
+                        href="/admin/invoice/tax?fromOrder={invoice.order.id}"
+                        class="btn btn-md btn-warning d-flex align-items-center"
+                      >
+                        <i class="ti ti-file-plus me-1"></i>Create Tax Invoice
+                      </a>
+                    {/if}
+                  {/if}
                   <a
                     href="#print"
                     class="btn btn-md btn-primary d-flex align-items-center"

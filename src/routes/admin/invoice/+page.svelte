@@ -789,12 +789,6 @@
       onClick: (id) => viewRecord(id),
       color: "btn-soft-success",
     },
-    {
-      label: "Tax Invoice",
-      icon: "ti ti-file-invoice",
-      onClick: (id) => goto("/admin/invoice/tax/" + id),
-      color: "btn-soft-warning",
-    },
   ];
 
   function formatDateForInput(date) {

@@ -11,8 +11,9 @@
   let loading = true;
 
   // master always sees all; admin/manager filtered by their queryAccess flags
-  $: canViewTelecaller = currentUser?.role === "master" || (currentUser?.queryAccessTelecaller ?? true);
-  $: canViewTech       = currentUser?.role === "master" || (currentUser?.queryAccessTech ?? true);
+  $: canViewTelecaller  = currentUser?.role === "master" || (currentUser?.queryAccessTelecaller  ?? true);
+  $: canViewTech        = currentUser?.role === "master" || (currentUser?.queryAccessTech        ?? true);
+  $: canViewTechHelper  = currentUser?.role === "master" || (currentUser?.queryAccessTechHelper  ?? true);
 
   onMount(async () => {
     currentUser = checkAuth();
@@ -20,7 +21,7 @@
     if (currentUser.role === "user") { goto("/admin/dashboard"); return; }
     try {
       const all = await authApiFetch(`${API_ROUTES.USER}/all`);
-      users = (all ?? []).filter(u => u.subRole === "telecaller" || u.subRole === "tech");
+      users = (all ?? []).filter(u => u.subRole === "telecaller" || u.subRole === "tech" || u.subRole === "tech_helper");
     } catch (_) {}
     finally { loading = false; }
   });
@@ -30,8 +31,9 @@
     return name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
   }
 
-  $: maskTC   = (name) => (currentUser?.role === "master" && $queryPrivacy.telecaller && name) ? "Telecaller" : (name ?? "?");
-  $: maskTech = (name) => (currentUser?.role === "master" && $queryPrivacy.tech       && name) ? "Tech"        : (name ?? "?");
+  $: maskTC     = (name) => (currentUser?.role === "master" && $queryPrivacy.telecaller && name) ? "Telecaller" : (name ?? "?");
+  $: maskTech   = (name) => (currentUser?.role === "master" && $queryPrivacy.tech       && name) ? "Tech"        : (name ?? "?");
+  $: maskHelper = (name) => (currentUser?.role === "master" && $queryPrivacy.techHelper && name) ? "Helper"      : (name ?? "?");
 </script>
 
 <div class="page-wrapper">
@@ -51,8 +53,9 @@
       </div>
     {:else}
       <!-- Telecallers -->
-      {@const telecallers = users.filter(u => u.subRole === "telecaller")}
-      {@const techUsers   = users.filter(u => u.subRole === "tech")}
+      {@const telecallers   = users.filter(u => u.subRole === "telecaller")}
+      {@const techUsers     = users.filter(u => u.subRole === "tech")}
+      {@const techHelpers   = users.filter(u => u.subRole === "tech_helper")}
 
       {#if canViewTelecaller && telecallers.length}
         <div class="section-label">Telecallers</div>
@@ -99,6 +102,30 @@
           <i class="ti ti-lock me-2"></i>You don't have permission to view tech stats.
         </div>
       {/if}
+
+      <!-- Tech Helpers -->
+      {#if canViewTechHelper && techHelpers.length}
+        <div class="section-label mt-4">Tech Helpers</div>
+        <div class="row g-3">
+          {#each techHelpers as u}
+            <div class="col-6 col-md-3">
+              <a href="/admin/query/user/{u.id}" class="user-card user-card--helper">
+                <div class="uc-avatar uc-avatar--helper">{initials(maskHelper(u.name))}</div>
+                <div class="uc-name">{maskHelper(u.name)}</div>
+                <div class="uc-sub">Tech Helper</div>
+                <span class="uc-status {u.status === 'active' ? 'uc-status--active' : 'uc-status--inactive'}">
+                  {u.status ?? "active"}
+                </span>
+              </a>
+            </div>
+          {/each}
+        </div>
+      {:else if !canViewTechHelper && techHelpers.length}
+        <div class="section-label mt-4">Tech Helpers</div>
+        <div class="access-blocked">
+          <i class="ti ti-lock me-2"></i>You don't have permission to view tech helper stats.
+        </div>
+      {/if}
     {/if}
   </div>
 </div>
@@ -118,6 +145,7 @@
     cursor: pointer;
   }
   .user-card--tech   { border-top-color: #0ca678; }
+  .user-card--helper { border-top-color: #7950f2; }
   .user-card:hover   { box-shadow: 0 6px 20px rgba(0,0,0,0.12); transform: translateY(-2px); text-decoration: none; }
   .uc-avatar {
     width: 52px; height: 52px; border-radius: 50%;
@@ -125,7 +153,8 @@
     display: flex; align-items: center; justify-content: center;
     font-weight: 700; font-size: 18px; margin-bottom: 10px;
   }
-  .uc-avatar--tech { background: #0ca678; }
+  .uc-avatar--tech   { background: #0ca678; }
+  .uc-avatar--helper { background: #7950f2; }
   .uc-name { font-size: 14px; font-weight: 600; color: #212529; text-align: center; }
   .uc-sub  { font-size: 11.5px; color: #868e96; margin-top: 2px; }
   .uc-status {

@@ -17,7 +17,7 @@
   import QueryHighlights from "$lib/components/QueryHighlights.svelte";
   let loadingData = true;
 
-  let highlights = { telecallers: [], techs: [] };
+  let highlights = { telecallers: [], techs: [], techHelpers: [] };
   let highlightsLoading = false;
 
   async function loadHighlights() {
@@ -85,7 +85,7 @@
     customStartDate = filterState.customStartDate || null;
     customEndDate = filterState.customEndDate || null;
 
-    if (currentUser?.subRole === "tech") {
+    if (currentUser?.subRole === "tech" || currentUser?.subRole === "tech_helper") {
       loadTechDashboard();
       if (currentUser?.orderAccess) {
         fetchOrders();
@@ -347,7 +347,7 @@
   function checkFetchRecord() {
     if (
       firstLoad &&
-      (currentUser?.subRole !== "tech" || currentUser?.orderAccess)
+      ((currentUser?.subRole !== "tech" && currentUser?.subRole !== "tech_helper") || currentUser?.orderAccess)
     ) {
       if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) {
         return;
@@ -438,8 +438,8 @@
 {/if}
 <div class="page-wrapper">
   <div class="content pb-0">
-    {#if currentUser?.subRole === "tech"}
-      <!-- ── Tech Dashboard ── -->
+    {#if currentUser?.subRole === "tech" || currentUser?.subRole === "tech_helper"}
+      <!-- ── Tech / Tech Helper Dashboard ── -->
       <div>
         <div
           class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2"
@@ -458,8 +458,13 @@
           <div class="col-6 col-md-3">
             <div class="card border-0 shadow-sm text-center py-4">
               <div class="fs-2 fw-bold text-primary">{techStats.open}</div>
-              <div class="text-muted small mt-1">Open Queries</div>
-              <a href="/admin/query/open" class="stretched-link"></a>
+              <div class="text-muted small mt-1">
+                {currentUser?.subRole === "tech_helper" ? "Open Sub-Queries" : "Open Queries"}
+              </div>
+              <a
+                href={currentUser?.subRole === "tech_helper" ? "/admin/query/sub-queue" : "/admin/query/open"}
+                class="stretched-link"
+              ></a>
             </div>
           </div>
           <div class="col-6 col-md-3">
@@ -467,7 +472,9 @@
               <div class="fs-2 fw-bold text-warning">
                 {techStats.inProgress}
               </div>
-              <div class="text-muted small mt-1">In Progress (mine)</div>
+              <div class="text-muted small mt-1">
+                {currentUser?.subRole === "tech_helper" ? "In Progress (sub-queries)" : "In Progress (mine)"}
+              </div>
               <a href="/admin/query/assigned" class="stretched-link"></a>
             </div>
           </div>
@@ -476,7 +483,9 @@
               <div class="fs-2 fw-bold text-success">
                 {techStats.resolvedToday}
               </div>
-              <div class="text-muted small mt-1">Resolved Today</div>
+              <div class="text-muted small mt-1">
+                {currentUser?.subRole === "tech_helper" ? "Sub-Queries Resolved Today" : "Resolved Today"}
+              </div>
             </div>
           </div>
           <div class="col-6 col-md-3">
@@ -484,7 +493,9 @@
               <div class="fs-2 fw-bold text-secondary">
                 {techStats.totalResolved}
               </div>
-              <div class="text-muted small mt-1">Total Resolved</div>
+              <div class="text-muted small mt-1">
+                {currentUser?.subRole === "tech_helper" ? "Total Sub-Queries Resolved" : "Total Resolved"}
+              </div>
             </div>
           </div>
         </div>
@@ -493,7 +504,7 @@
         <div class="row g-3 mb-4">
           <div class="col-md-6">
             <a
-              href="/admin/query/open"
+              href={currentUser?.subRole === "tech_helper" ? "/admin/query/sub-queue" : "/admin/query/open"}
               class="card border-0 shadow-sm p-3 d-flex flex-row align-items-center gap-3 text-decoration-none"
             >
               <div class="rounded-circle bg-primary bg-opacity-10 p-3">
@@ -526,7 +537,7 @@
         </div>
       </div>
     {/if}
-    {#if currentUser?.subRole !== "tech" || currentUser?.orderAccess}
+    {#if (currentUser?.subRole !== "tech" && currentUser?.subRole !== "tech_helper") || currentUser?.orderAccess}
       <div>
         <!-- ── Order Dashboard ── -->
         <!-- Page Header -->

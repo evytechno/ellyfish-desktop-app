@@ -1,5 +1,5 @@
 <script>
-  export let highlights = { telecallers: [], techs: [] };
+  export let highlights = { telecallers: [], techs: [], techHelpers: [] };
   export let loading = false;
 
   let activeTab = 'telecallers';
@@ -22,9 +22,10 @@
     reopened: '#dc3545', resolved: '#198754', closed: '#6c757d',
   };
 
-  $: totalFlags = highlights.telecallers.length + highlights.techs.length;
-  $: tcCount    = highlights.telecallers.length;
-  $: techCount  = highlights.techs.length;
+  $: tcCount      = highlights.telecallers.length;
+  $: techCount    = highlights.techs.length;
+  $: helperCount  = highlights.techHelpers?.length ?? 0;
+  $: totalFlags   = tcCount + techCount + helperCount;
 
   function toggleUser(userId) {
     if (expandedUsers.has(userId)) expandedUsers.delete(userId);
@@ -105,6 +106,16 @@
           Tech
           {#if techCount > 0}
             <span class="badge ms-1 {activeTab === 'techs' ? 'bg-white text-primary' : 'bg-danger text-white'}">{techCount}</span>
+          {/if}
+        </button>
+        <button
+          type="button"
+          class="btn btn-sm px-3 {activeTab === 'helpers' ? 'btn-primary' : 'btn-outline-secondary'}"
+          on:click={() => switchTab('helpers')}
+        >
+          Tech Helpers
+          {#if helperCount > 0}
+            <span class="badge ms-1 {activeTab === 'helpers' ? 'bg-white text-primary' : 'bg-danger text-white'}">{helperCount}</span>
           {/if}
         </button>
       </div>
@@ -331,6 +342,109 @@
                       class="btn btn-sm btn-outline-primary w-100 mt-1"
                       style="font-size:0.8rem;">
                       View All Queries &nbsp;<i class="ti ti-arrow-right"></i>
+                    </a>
+                  </div>
+                {/if}
+
+              </div>
+            {/each}
+          </div>
+        {/if}
+      {/if}
+
+      <!-- ── Tech Helpers tab ────────────────────────────────────────────────── -->
+      {#if activeTab === 'helpers'}
+        {#if helperCount === 0}
+          <p class="text-muted text-center small py-3">All tech helpers performing well</p>
+        {:else}
+          <div class="d-flex flex-column gap-2" style="max-height:520px; overflow-y:auto; overflow-x:hidden;">
+            {#each highlights.techHelpers as user}
+              {@const expanded = expandedUsers.has(user.userId)}
+              <div class="border rounded">
+
+                <!-- Row header -->
+                <button
+                  type="button"
+                  class="w-100 d-flex align-items-start justify-content-between p-2 text-start border-0"
+                  style="background:{expanded ? '#f3eeff' : '#fafafa'}; cursor:pointer; transition:background 0.15s;"
+                  on:click={() => toggleUser(user.userId)}
+                >
+                  <div class="flex-grow-1 me-2">
+                    <div class="fw-semibold" style="font-size:0.875rem">{user.name}</div>
+                    <div class="d-flex flex-wrap gap-1 mt-1">
+                      {#each user.tags as tag}
+                        {@const cfg = tagConfig[tag]}
+                        <span class="badge" style="font-size:0.68rem; background:{cfg?.bg}; color:{cfg?.text};">
+                          {cfg?.label ?? tag}
+                        </span>
+                      {/each}
+                    </div>
+                    <div class="text-muted mt-1" style="font-size:0.72rem;">
+                      {user.total} sub-queries &nbsp;·&nbsp; {user.resolutionRate}% resolved &nbsp;·&nbsp; {user.missedReplies} missed &nbsp;·&nbsp; {user.stuck} stuck
+                    </div>
+                  </div>
+                  <i class="ti {expanded ? 'ti-chevron-down' : 'ti-chevron-right'} text-muted mt-1 flex-shrink-0"></i>
+                </button>
+
+                <!-- Expanded detail panel -->
+                {#if expanded}
+                  <div class="border-top p-2" style="background:#f8f9fa;">
+
+                    <!-- Missed replies -->
+                    {#if user.flaggedQueries?.missed?.length}
+                      <div class="mb-2">
+                        <div class="d-flex align-items-center gap-1 mb-1">
+                          <i class="ti ti-message-off" style="font-size:0.78rem; color:#dc3545;"></i>
+                          <span class="fw-semibold" style="font-size:0.74rem; color:#dc3545;">Missed Replies</span>
+                        </div>
+                        {#each user.flaggedQueries.missed as q}
+                          <a href="/admin/query/{q.id}"
+                            class="d-flex align-items-center justify-content-between p-2 rounded mb-1 text-decoration-none text-dark"
+                            style="background:#fff; border:1px solid #dee2e6;">
+                            <div>
+                              <div style="font-size:0.8rem; font-weight:500; line-height:1.3;">{q.subject}</div>
+                              <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
+                                <span class="badge" style="font-size:0.63rem; background:{priorityColor[q.priority] ?? '#6c757d'}; color:#fff;">{q.priority}</span>
+                                {#if q.waitingMins}
+                                  <span class="fw-semibold" style="font-size:0.7rem; color:#dc3545;">{fmtWait(q.waitingMins)}</span>
+                                {/if}
+                              </div>
+                            </div>
+                            <i class="ti ti-external-link text-muted flex-shrink-0 ms-2" style="font-size:0.85rem;"></i>
+                          </a>
+                        {/each}
+                      </div>
+                    {/if}
+
+                    <!-- Stuck / backlog -->
+                    {#if user.flaggedQueries?.stuck?.length}
+                      <div class="mb-2">
+                        <div class="d-flex align-items-center gap-1 mb-1">
+                          <i class="ti ti-clock" style="font-size:0.78rem; color:#7950f2;"></i>
+                          <span class="fw-semibold" style="font-size:0.74rem; color:#7950f2;">Stuck / Backlog</span>
+                        </div>
+                        {#each user.flaggedQueries.stuck as q}
+                          <a href="/admin/query/{q.id}"
+                            class="d-flex align-items-center justify-content-between p-2 rounded mb-1 text-decoration-none text-dark"
+                            style="background:#fff; border:1px solid #dee2e6;">
+                            <div>
+                              <div style="font-size:0.8rem; font-weight:500; line-height:1.3;">{q.subject}</div>
+                              <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
+                                <span class="badge" style="font-size:0.63rem; background:{priorityColor[q.priority] ?? '#6c757d'}; color:#fff;">{q.priority}</span>
+                                <span class="badge" style="font-size:0.63rem; background:{statusColor[q.status] ?? '#6c757d'}; color:#fff;">{q.status?.replace('_',' ')}</span>
+                                <span class="text-muted" style="font-size:0.7rem;">{fmtDays(q.daysSince)}</span>
+                              </div>
+                            </div>
+                            <i class="ti ti-external-link text-muted flex-shrink-0 ms-2" style="font-size:0.85rem;"></i>
+                          </a>
+                        {/each}
+                      </div>
+                    {/if}
+
+                    <a href="/admin/query?assignedToId={user.userId}"
+                      class="btn btn-sm w-100 mt-1"
+                      style="font-size:0.8rem; background:#7950f2; color:#fff; border:none;">
+                      View Sub-Queries &nbsp;<i class="ti ti-arrow-right"></i>
                     </a>
                   </div>
                 {/if}

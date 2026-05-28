@@ -8,6 +8,7 @@
   import Swal from "sweetalert2";
   import Pagination from "$lib/components/Pagination.svelte";
   import { queryPrivacy } from "$lib/stores/queryPrivacy";
+  import { queryUnreadCounts } from "$lib/stores/queryUnreadCounts";
 
   let currentUser;
   let queries = [];
@@ -26,6 +27,7 @@
   let selectedFilter = "last7days";
   let customStartDate = "";
   let customEndDate = "";
+  let dateField = "createdAt"; // createdAt | updatedAt | lastActivityAt
   let raisedById = "";
   let assignedToId = "";
   let allUsers = [];
@@ -75,7 +77,7 @@
   let showRaiseForm = false;
   let raising = false;
   let raiseSubject = "";
-  let raiseDescription = "";
+
   let raiseType = "other";
   let raisePriority = "medium";
   let raiseOrderId = null;
@@ -87,7 +89,7 @@
   let editingQuery = null;
   let editing = false;
   let editSubject = "";
-  let editDescription = "";
+
   let editType = "other";
   let editPriority = "medium";
   let editOrderId = null;
@@ -145,7 +147,7 @@
   function openEditForm(q) {
     editingQuery = q;
     editSubject = q.subject ?? "";
-    editDescription = q.description ?? "";
+
     editType = q.type ?? "other";
     editPriority = q.priority ?? "medium";
     // pre-fill linked order if any
@@ -166,15 +168,15 @@
 
   async function submitEditQuery() {
     editError = "";
-    if (!editSubject.trim() || !editDescription.trim()) {
-      editError = "Subject and description are required.";
+    if (!editSubject.trim()) {
+      editError = "Subject is required.";
       return;
     }
     editing = true;
     try {
       const payload = {
         subject: editSubject,
-        description: editDescription,
+
         type: editType,
         priority: editPriority,
         orderId: editOrderId ?? null,
@@ -241,7 +243,7 @@
     showOrderDropdown = false;
     // Auto-fill subject/description with order title if the field is still empty
     if (!raiseSubject.trim())     raiseSubject     = order.title ?? "";
-    if (!raiseDescription.trim()) raiseDescription = order.title ?? "";
+
   }
 
   function clearOrder() {
@@ -301,6 +303,10 @@
       goto("/admin/query/open");
       return;
     }
+    if (currentUser?.subRole === "tech_helper") {
+      goto("/admin/query/sub-queue");
+      return;
+    }
     if (isMasterView(currentUser)) {
       await Promise.all([loadData(), loadStats(), loadUsers()]);
     } else {
@@ -332,9 +338,13 @@
       let res;
       if (isTelecaller(currentUser)) {
         res = await authApiFetch(`${API_ROUTES.QUERY}/my?${q}`);
+      } else if (currentUser?.subRole === "tech_helper") {
+        // tech_helper can only see assigned queries — master-only list endpoint is forbidden
+        res = await authApiFetch(`${API_ROUTES.QUERY}/assigned?${q}`);
       } else {
         if (raisedById) q.set("raisedById", raisedById);
         if (assignedToId) q.set("assignedToId", assignedToId);
+        if (dateField !== "createdAt") q.set("dateField", dateField);
         res = await authApiFetch(`${API_ROUTES.QUERY}?${q}`);
       }
       queries = res.data ?? [];
@@ -382,6 +392,7 @@
     selectedFilter = "last7days";
     customStartDate = "";
     customEndDate = "";
+    dateField = "createdAt";
     raisedById = "";
     assignedToId = "";
     currentPage = 1;
@@ -394,13 +405,14 @@
     filterType ||
     filterPriority ||
     selectedFilter !== "today" ||
+    dateField !== "createdAt" ||
     raisedById ||
     assignedToId;
 
   async function submitRaiseQuery() {
     raiseError = "";
-    if (!raiseSubject.trim() || !raiseDescription.trim()) {
-      raiseError = "Subject and description are required.";
+    if (!raiseSubject.trim()) {
+      raiseError = "Subject is required.";
       return;
     }
     raising = true;
@@ -409,7 +421,7 @@
         method: "POST",
         data: JSON.stringify({
           subject: raiseSubject,
-          description: raiseDescription,
+
           type: raiseType,
           priority: raisePriority,
           orderId: raiseOrderId ?? null,
@@ -417,7 +429,7 @@
       });
       showRaiseForm = false;
       raiseSubject = "";
-      raiseDescription = "";
+
       raiseType = "other";
       raisePriority = "medium";
       clearOrder();
@@ -452,8 +464,9 @@
     });
   }
 
-  $: maskTC   = (name) => (currentUser?.role === "master" && $queryPrivacy.telecaller && name) ? "Telecaller" : (name ?? "-");
-  $: maskTech = (name) => (currentUser?.role === "master" && $queryPrivacy.tech       && name) ? "Tech"        : (name ?? "-");
+  $: maskTC     = (name) => (currentUser?.role === "master" && $queryPrivacy.telecaller && name) ? "Telecaller" : (name ?? "-");
+  $: maskTech   = (name) => (currentUser?.role === "master" && $queryPrivacy.tech       && name) ? "Tech"        : (name ?? "-");
+  $: maskHelper = (name) => (currentUser?.role === "master" && $queryPrivacy.techHelper && name) ? "Helper"      : (name ?? "-");
 </script>
 
 <div class="page-wrapper">
@@ -527,6 +540,20 @@
           />
         </div>
       </div>
+      {#if isMasterView(currentUser)}
+        <div>
+          <select
+            class="form-select"
+            style="width: auto"
+            bind:value={dateField}
+            on:change={onFilterChange}
+          >
+            <option value="createdAt">Sort: Raised</option>
+            <option value="updatedAt">Sort: Updated</option>
+            <option value="lastActivityAt">Sort: Activity</option>
+          </select>
+        </div>
+      {/if}
       <div>
         <select
           class="form-select"
@@ -602,7 +629,7 @@
           >
             <option value="">Raised By</option>
             {#each allUsers as u}
-              <option value={u.id}>{u.name}</option>
+              <option value={u.id}>{u.subRole === "telecaller" ? maskTC(u.name) : u.subRole === "tech_helper" ? maskHelper(u.name) : maskTech(u.name)}</option>
             {/each}
           </select>
         </div>
@@ -614,7 +641,7 @@
           >
             <option value="">Assigned To</option>
             {#each allUsers as u}
-              <option value={u.id}>{u.name}</option>
+              <option value={u.id}>{u.subRole === "telecaller" ? maskTC(u.name) : u.subRole === "tech_helper" ? maskHelper(u.name) : maskTech(u.name)}</option>
             {/each}
           </select>
         </div>
@@ -658,32 +685,25 @@
             />
           </div>
           <div class="mb-3">
-            <label class="form-label"
-              >Description <span class="text-danger">*</span></label
-            >
-            <textarea
-              class="form-control"
-              rows="4"
-              bind:value={raiseDescription}
-              placeholder="Describe the issue in detail..."
-            ></textarea>
-          </div>
-          <div class="row g-2 mb-3">
-            <div class="col-6">
-              <label class="form-label">Type</label>
-              <select class="form-select" bind:value={raiseType}>
-                {#each QUERY_TYPES.slice(1) as t}
-                  <option value={t.value}>{t.label}</option>
-                {/each}
-              </select>
+            <label class="form-label">Type</label>
+            <div class="d-flex flex-wrap gap-2">
+              {#each QUERY_TYPES.slice(1) as t}
+                <button type="button"
+                  class="badge-tab {raiseType === t.value ? 'badge-tab--type-active' : ''}"
+                  on:click={() => raiseType = t.value}
+                >{t.label}</button>
+              {/each}
             </div>
-            <div class="col-6">
-              <label class="form-label">Priority</label>
-              <select class="form-select" bind:value={raisePriority}>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-              </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Priority</label>
+            <div class="d-flex flex-wrap gap-2">
+              {#each ['low','medium','high'] as p}
+                <button type="button"
+                  class="badge-tab badge-tab--priority-{p} {raisePriority === p ? 'badge-tab--active' : ''}"
+                  on:click={() => raisePriority = p}
+                >{p.charAt(0).toUpperCase() + p.slice(1)}</button>
+              {/each}
             </div>
           </div>
           <div class="mb-3">
@@ -796,30 +816,25 @@
             />
           </div>
           <div class="mb-3">
-            <label class="form-label">Description <span class="text-danger">*</span></label>
-            <textarea
-              class="form-control"
-              rows="4"
-              bind:value={editDescription}
-              placeholder="Describe the issue..."
-            ></textarea>
-          </div>
-          <div class="row g-2 mb-3">
-            <div class="col-6">
-              <label class="form-label">Type</label>
-              <select class="form-select" bind:value={editType}>
-                {#each QUERY_TYPES.slice(1) as t}
-                  <option value={t.value}>{t.label}</option>
-                {/each}
-              </select>
+            <label class="form-label">Type</label>
+            <div class="d-flex flex-wrap gap-2">
+              {#each QUERY_TYPES.slice(1) as t}
+                <button type="button"
+                  class="badge-tab {editType === t.value ? 'badge-tab--type-active' : ''}"
+                  on:click={() => editType = t.value}
+                >{t.label}</button>
+              {/each}
             </div>
-            <div class="col-6">
-              <label class="form-label">Priority</label>
-              <select class="form-select" bind:value={editPriority}>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-              </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Priority</label>
+            <div class="d-flex flex-wrap gap-2">
+              {#each ['low','medium','high'] as p}
+                <button type="button"
+                  class="badge-tab badge-tab--priority-{p} {editPriority === p ? 'badge-tab--active' : ''}"
+                  on:click={() => editPriority = p}
+                >{p.charAt(0).toUpperCase() + p.slice(1)}</button>
+              {/each}
             </div>
           </div>
           <div class="mb-3">
@@ -922,6 +937,7 @@
               </thead>
               <tbody>
                 {#each queries as q, i}
+                  {@const unread = $queryUnreadCounts[q.id] ?? 0}
                   <tr>
                     <td>{(currentPage - 1) * rowsPerPage + i + 1}</td>
                     <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
@@ -929,7 +945,7 @@
                         href="/admin/query/{q.id}"
                         class="text-primary fw-semibold"
                         title={q.subject}>{q.subject}</a
-                      >
+                      >{#if unread > 0}<span class="badge bg-danger rounded-pill ms-1" style="font-size:10px;">{unread > 99 ? "99+" : unread}</span>{/if}
                     </td>
                     {#if isMasterView(currentUser)}
                       <td>
@@ -942,7 +958,7 @@
                       <td>
                         {#if q.assignedTo}
                           <a href="/admin/query/user/{q.assignedTo.id}" class="text-body text-decoration-none user-link">
-                            {maskTech(q.assignedTo.name)}
+                            {q.parentQueryId ? maskHelper(q.assignedTo.name) : maskTech(q.assignedTo.name)}
                           </a>
                         {:else}<span class="text-muted">Unassigned</span>{/if}
                       </td>
@@ -1054,6 +1070,35 @@
 
 <style>
   .user-link:hover { text-decoration: underline !important; color: #3b5bdb !important; }
+
+  /* ── Badge tab selector ─────────────────────────────── */
+  .badge-tab {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    border: 1.5px solid #dee2e6;
+    background: transparent;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    color: #6c757d;
+    transition: all 0.15s ease;
+    line-height: 1.5;
+    white-space: nowrap;
+  }
+  .badge-tab:hover {
+    border-color: #adb5bd;
+    background: #f8f9fa;
+    color: #495057;
+  }
+  .badge-tab--type-active {
+    background: #2563eb;
+    color: #fff;
+    border-color: #2563eb;
+  }
+  .badge-tab--priority-low.badge-tab--active    { background: #198754; color: #fff; border-color: #198754; }
+  .badge-tab--priority-medium.badge-tab--active { background: #ffc107; color: #000; border-color: #ffc107; }
+  .badge-tab--priority-high.badge-tab--active   { background: #dc3545; color: #fff; border-color: #dc3545; }
 
   .modal-backdrop-custom {
     position: fixed;

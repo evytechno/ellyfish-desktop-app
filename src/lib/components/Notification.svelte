@@ -12,11 +12,48 @@
   import { invoke } from "@tauri-apps/api/tauri";
   import { openQueryCount } from "$lib/stores/queryStore";
   import { incrementUnread } from "$lib/stores/queryUnreadCounts";
+  import {
+    isPermissionGranted,
+    requestPermission,
+    sendNotification,
+  } from "@tauri-apps/api/notification";
 
   let currentUser = null;
-  onMount(() => {
+  let osNotifEnabled = false;
+
+  onMount(async () => {
     currentUser = checkAuth();
+    // Request OS notification permission once on startup
+    if (window.__TAURI__) {
+      try {
+        let granted = await isPermissionGranted();
+        if (!granted) {
+          const perm = await requestPermission();
+          granted = perm === "granted";
+        }
+        osNotifEnabled = granted;
+      } catch (_) {}
+    }
   });
+
+  // Send an OS-level notification only when the window is not focused
+  // (minimized, hidden, or in background). When focused, the in-app toast is enough.
+  function maybeOsNotify(notification) {
+    if (!window.__TAURI__ || !osNotifEnabled) return;
+    if (document.hasFocus()) return; // app is in foreground — skip
+
+    const titles = {
+      OrderReminder: "⏰ Order Reminder",
+      query_open: "🎫 New Query",
+      query: "💬 Query Reply",
+      sub_query: "🔧 Sub-Query Update",
+    };
+
+    sendNotification({
+      title: titles[notification.type] || "🔔 Notification",
+      body: notification.message ?? "",
+    });
+  }
 
   // ── sound ─────────────────────────────────────────────────────────────────
   // #10 — Different sound per notification type
@@ -51,6 +88,19 @@
           osc.start(ctx.currentTime + delay);
           osc.stop(ctx.currentTime + delay + 0.55);
         });
+      } else if (type === "sub_query") {
+        // Two-note ascending chime for sub-query status updates
+        [[660, 0], [820, 0.2]].forEach(([freq, delay]) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.connect(gain); gain.connect(ctx.destination);
+          osc.type = "sine";
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0.18, ctx.currentTime + delay);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.38);
+          osc.start(ctx.currentTime + delay);
+          osc.stop(ctx.currentTime + delay + 0.38);
+        });
       } else {
         // Soft single-note for chat replies / other
         const osc = ctx.createOscillator();
@@ -83,11 +133,21 @@
   async function clickToast(toast) {
     removeToast(toast.id);
     await readNotification(toast.notification.id);
-    const { type, queryId, order } = toast.notification;
+    const { type, queryId, parentQueryId, order } = toast.notification;
     if (type === "OrderReminder" && order?.id) {
       goto(`/admin/order/${order.id}`);
     } else if (type === "query_open") {
-      goto("/admin/query/open");
+      // tech_helpers get query_open for sub-queries → sub-queue page
+      // tech/others get query_open for main queries → open queue page
+      goto(currentUser?.subRole === "tech_helper" ? "/admin/query/sub-queue" : "/admin/query/open");
+    } else if (type === "sub_query" && parentQueryId && queryId) {
+      // tech_helpers work on sub-queries as standalone pages
+      // everyone else (tech) uses the parent query + inline panel
+      if (currentUser?.subRole === "tech_helper") {
+        goto(`/admin/query/${queryId}`);
+      } else {
+        goto(`/admin/query/${parentQueryId}?sq=${queryId}`);
+      }
     } else if (queryId) {
       goto(`/admin/query/${queryId}`);
     } else {
@@ -100,6 +160,7 @@
     if (type === "OrderReminder") return "⏰";
     if (type === "query_open") return "🎫";
     if (type === "query") return "💬";
+    if (type === "sub_query") return "🔧";
     return "🔔";
   }
 
@@ -107,6 +168,7 @@
     if (type === "OrderReminder") return "#fd7e14";
     if (type === "query_open") return "#dc3545";
     if (type === "query") return "#0d6efd";
+    if (type === "sub_query") return "#0dcaf0";
     return "#6c757d";
   }
 
@@ -115,6 +177,7 @@
     if (type === "OrderReminder") return "ti-clock";
     if (type === "query_open") return "ti-ticket";
     if (type === "query") return "ti-message-circle";
+    if (type === "sub_query") return "ti-subtask";
     return "ti-bell";
   }
 
@@ -122,6 +185,7 @@
     if (type === "OrderReminder") return "#fd7e14";
     if (type === "query_open") return "#dc3545";
     if (type === "query") return "#0d6efd";
+    if (type === "sub_query") return "#0dcaf0";
     return "#6c757d";
   }
 
@@ -129,6 +193,7 @@
     if (type === "OrderReminder") return "Order";
     if (type === "query_open") return "New Query";
     if (type === "query") return "Chat Reply";
+    if (type === "sub_query") return "Sub-Query";
     return "Notification";
   }
 
@@ -136,6 +201,7 @@
     if (type === "OrderReminder") return "bg-warning text-dark";
     if (type === "query_open") return "bg-danger text-white";
     if (type === "query") return "bg-primary text-white";
+    if (type === "sub_query") return "bg-info text-dark";
     return "bg-secondary text-white";
   }
 
@@ -194,15 +260,31 @@
           logoutUser().finally(() => goto("/login"));
           return;
         }
-        // Don't show toast if user is already viewing this exact query
-        const alreadyOnQuery =
-          data.data.queryId &&
-          $page.params?.id === String(data.data.queryId);
+        // Don't show toast if user is already viewing this query
+        // For sub_query: only suppress if inline panel is open for that exact sub-query
+        // For others: suppress if on the query's own page
+        let alreadyOnQuery = false;
+        if (data.data.type === "sub_query" && data.data.parentQueryId && data.data.queryId) {
+          if (currentUser?.subRole === "tech_helper") {
+            // tech_helper views sub-query as a standalone page
+            alreadyOnQuery = $page.params?.id === String(data.data.queryId);
+          } else {
+            // tech views sub-query via parent query + inline panel
+            const openSqParam = $page.url.searchParams.get("sq");
+            alreadyOnQuery =
+              $page.params?.id === String(data.data.parentQueryId) &&
+              openSqParam === String(data.data.queryId);
+          }
+        } else if (data.data.queryId) {
+          alreadyOnQuery = $page.params?.id === String(data.data.queryId);
+        }
 
         if (!alreadyOnQuery) {
           // #10 — play different sound per type
           playNotificationSound(data.data.type);
           addToast(data.data);
+          // OS notification when app is minimized / in background
+          maybeOsNotify(data.data);
         }
         notifications = [data.data, ...notifications];
         // #4 — increment live open count for query_open events
@@ -212,6 +294,10 @@
         // increment unread count for chat message notifications
         if (data.data.type === "query" && data.data.queryId) {
           incrementUnread(data.data.queryId);
+        }
+        // for sub-query notifications, track against the parent query's unread count
+        if (data.data.type === "sub_query") {
+          incrementUnread(data.data.parentQueryId ?? data.data.queryId);
         }
       }
     };

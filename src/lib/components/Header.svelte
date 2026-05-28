@@ -440,50 +440,54 @@
         <i class="ti ti-arrow-bar-to-right"></i>
       </button>
 
-      <!-- Search -->
-      <div class="me-auto flex items-center header-search d-lg-flex d-none">
-        <!-- Search -->
-        <div class="input-icon relative me-2">
-          <input
-            type="text"
-            value={searchTerm}
-            on:input={(e) => handleSearchChange(e.target.value)}
-            class="form-control"
-            placeholder="Search Keyword"
-          />
-          <button class="input-icon-addon d-inline-flex p-0 header-search-icon">
-            <i class="ti ti-command"></i>
-          </button>
-        </div>
+      <!-- Search — visible to telecaller and master only -->
+      {#if currentUser?.subRole === "telecaller" || currentUser?.role === "master"}
+        <div class="me-auto flex items-center header-search d-lg-flex d-none">
+          <!-- Search -->
+          <div class="input-icon relative me-2">
+            <input
+              type="text"
+              value={searchTerm}
+              on:input={(e) => handleSearchChange(e.target.value)}
+              class="form-control"
+              placeholder="Search Keyword"
+            />
+            <button class="input-icon-addon d-inline-flex p-0 header-search-icon">
+              <i class="ti ti-command"></i>
+            </button>
+          </div>
 
-        <button
-          href="#order_lists"
-          data-bs-toggle="modal"
-          data-bs-target="#order_lists"
-          class="fw-medium bg-primary text-white p-1.5 px-2 rounded"
-          on:click={() => fetchOrders()}
-        >
-          <i class="ti ti-search"></i>
-        </button>
-        <!-- /Search -->
-        <div class="text-primary pl-2">
-          {timerText}
+          <button
+            href="#order_lists"
+            data-bs-toggle="modal"
+            data-bs-target="#order_lists"
+            class="fw-medium bg-primary text-white p-1.5 px-2 rounded"
+            on:click={() => fetchOrders()}
+          >
+            <i class="ti ti-search"></i>
+          </button>
+          <!-- /Search -->
+          <div class="text-primary pl-2">
+            {timerText}
+          </div>
         </div>
-      </div>
+      {/if}
     </div>
 
     <div class="flex items-center">
-      <!-- Search for Mobile -->
-      <div class="header-item flex d-lg-none me-2">
-        <button
-          class="topbar-link btn"
-          data-bs-toggle="modal"
-          data-bs-target="#searchModal"
-          type="button"
-        >
-          <i class="ti ti-search fs-16"></i>
-        </button>
-      </div>
+      <!-- Search for Mobile — visible to telecaller and master only -->
+      {#if currentUser?.subRole === "telecaller" || currentUser?.role === "master"}
+        <div class="header-item flex d-lg-none me-2">
+          <button
+            class="topbar-link btn"
+            data-bs-toggle="modal"
+            data-bs-target="#searchModal"
+            type="button"
+          >
+            <i class="ti ti-search fs-16"></i>
+          </button>
+        </div>
+      {/if}
 
       <!-- Minimize -->
       <div class="header-item">
