@@ -628,8 +628,8 @@
             on:change={onFilterChange}
           >
             <option value="">Raised By</option>
-            {#each allUsers as u}
-              <option value={u.id}>{u.subRole === "telecaller" ? maskTC(u.name) : u.subRole === "tech_helper" ? maskHelper(u.name) : maskTech(u.name)}</option>
+            {#each allUsers.filter(u => u.subRole === "telecaller" || u.subRole === "tech") as u}
+              <option value={u.id}>{u.subRole === "telecaller" ? maskTC(u.name) : maskTech(u.name)}</option>
             {/each}
           </select>
         </div>
@@ -640,8 +640,8 @@
             on:change={onFilterChange}
           >
             <option value="">Assigned To</option>
-            {#each allUsers as u}
-              <option value={u.id}>{u.subRole === "telecaller" ? maskTC(u.name) : u.subRole === "tech_helper" ? maskHelper(u.name) : maskTech(u.name)}</option>
+            {#each allUsers.filter(u => u.subRole === "tech" || u.subRole === "tech_helper") as u}
+              <option value={u.id}>{u.subRole === "tech_helper" ? maskHelper(u.name) : maskTech(u.name)}</option>
             {/each}
           </select>
         </div>

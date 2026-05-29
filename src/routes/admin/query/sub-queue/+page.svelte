@@ -112,6 +112,17 @@
     return new Date(d).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
   }
 
+  function getWaitingMins(createdAt) {
+    if (!createdAt) return 0;
+    return Math.floor((Date.now() - new Date(createdAt).getTime()) / 60000);
+  }
+
+  function urgencyBadge(mins) {
+    if (mins >= 30) return { label: "Critical", cls: "od-badge od-badge--critical" };
+    if (mins >= 5)  return { label: "Overdue",  cls: "od-badge od-badge--overdue"  };
+    return null;
+  }
+
   function typeLabel(type) {
     return SUB_QUERY_TYPES.find(t => t.value === type)?.label ?? type ?? "Other";
   }
@@ -186,12 +197,17 @@
             </thead>
             <tbody>
               {#each queries as q, i}
-                <tr>
+                {@const waitMins = getWaitingMins(q.createdAt)}
+                {@const badge    = urgencyBadge(waitMins)}
+                <tr style="{badge?.cls?.includes('critical') ? 'background:#fff5f5;' : badge ? 'background:#fff9f0;' : ''}">
                   <td>{(currentPage - 1) * rowsPerPage + i + 1}</td>
                   <td>
                     <a href="/admin/query/{q.id}" class="text-primary fw-semibold">
                       {q.subject}
                     </a>
+                    {#if badge}
+                      <span class="{badge.cls} ms-1">{badge.label}</span>
+                    {/if}
                     {#if q.description}
                       <div class="small text-muted text-truncate" style="max-width:280px">{q.description}</div>
                     {/if}
@@ -199,7 +215,14 @@
                   <td><span class="badge bg-light text-dark border" style="font-size:11px;">{typeLabel(q.type)}</span></td>
                   <td><span class={PRIORITY_COLORS[q.priority ?? "medium"]} style="font-size:11px;">{q.priority ?? "medium"}</span></td>
                   <td><span class={STATUS_COLORS[q.status] ?? "badge bg-secondary"}>{q.status?.replace("_", " ")}</span></td>
-                  <td>{formatDate(q.createdAt)}</td>
+                  <td>
+                    {formatDate(q.createdAt)}
+                    {#if waitMins >= 5}
+                      <div class="od-wait" style="color:{waitMins >= 30 ? '#c92a2a' : '#d9480f'};">
+                        <i class="ti ti-clock" style="font-size:10px;"></i> {waitMins}m waiting
+                      </div>
+                    {/if}
+                  </td>
                   <td>
                     <button
                       class="btn btn-sm btn-warning"
@@ -231,3 +254,24 @@
     {/if}
   </div>
 </div>
+
+<style>
+  .od-badge {
+    font-size: 0.62rem;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 10px;
+    vertical-align: middle;
+  }
+  .od-badge--overdue  { background: #fd7e14; color: #fff; }
+  .od-badge--critical { background: #dc3545; color: #fff; animation: od-pulse 1s ease-in-out infinite; }
+  @keyframes od-pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.5; }
+  }
+  .od-wait {
+    font-size: 0.7rem;
+    font-weight: 600;
+    margin-top: 2px;
+  }
+</style>

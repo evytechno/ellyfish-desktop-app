@@ -8,6 +8,7 @@
   import UpdateNotification from "$lib/components/UpdateNotification.svelte";
   import { openQueryCount } from "$lib/stores/queryStore";
   import { queryUnreadCounts } from "$lib/stores/queryUnreadCounts";
+  import { totalGroupUnread } from "$lib/stores/groupChatStore";
 
   // Total unread chat messages across all assigned queries (tech only)
   $: totalAssignedUnread = Object.values($queryUnreadCounts).reduce(
@@ -445,6 +446,23 @@
                           </a>
                         </li>
                       {/if}
+
+                      <!-- Group Chat — visible to all authenticated users -->
+                      <li
+                        class:active={currentPath.startsWith("/admin/group-chat")}
+                      >
+                        <a
+                          href="/admin/group-chat"
+                          class:active={currentPath.startsWith("/admin/group-chat")}
+                        >
+                          <i class="ti ti-messages"></i><span>Group Chat</span>
+                          {#if $totalGroupUnread > 0}
+                            <span class="open-queue-badge"
+                              >{$totalGroupUnread > 99 ? "99+" : $totalGroupUnread}</span
+                            >
+                          {/if}
+                        </a>
+                      </li>
 
                       <!-- Orders — hidden from tech/tech_helper unless orderAccess is true -->
                       {#if (currentUser?.subRole !== "tech" && currentUser?.subRole !== "tech_helper") || currentUser?.orderAccess}

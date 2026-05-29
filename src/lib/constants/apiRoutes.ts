@@ -18,4 +18,5 @@ export const API_ROUTES = {
   AUTH_ACTIVITY: `auth-activity`,
   QUERY: `queries`,
   INVOICE: `invoices`,
+  GROUP_CHAT: `group-chat`,
 };

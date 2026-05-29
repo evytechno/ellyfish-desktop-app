@@ -12,14 +12,24 @@
   import ServerOffline from "$lib/components/ServerOffline.svelte";
   import InactivityWarning from "$lib/components/InactivityWarning.svelte";
   import { startInactivityTimer, stopInactivityTimer } from "$lib/utils/inactivityTimer";
-  import { logoutUser } from "$lib/utils/auth";
+  import { logoutUser, checkAuth } from "$lib/utils/auth";
   import { onDestroy } from "svelte";
+  import { io } from "socket.io-client";
+  import {
+    groupUnreadStore, groupListStore,
+    incrementGroupUnread, loadGroupList, loadGroupUnread, sortedByActivity,
+  } from "$lib/stores/groupChatStore";
+  import { pushGcToast } from "$lib/stores/groupChatToastStore";
+  import GroupChatToast from "$lib/components/GroupChatToast.svelte";
+
+  let gcSocket = null;
 
   let showWarning  = false;
   let warningSeconds = 120;
   import { settingStore } from "$lib/stores/dataStores";
   let loadingData = true;
-  import { ATTACHMENT_BASE_URL } from "$lib/constants/constants";
+  import { ATTACHMENT_BASE_URL, API_BASE_URL } from "$lib/constants/constants";
+  import { page } from "$app/stores";
 
   let setting = null;
   let errorMessage = "";
@@ -181,9 +191,99 @@
     setTimeout(() => {
       jQuery("body").css({ overflow: "", paddingRight: "" });
     }, 1000);
+
+    // ── Global group-chat notification socket ──────────────────────────────
+    (async () => {
+    const u = checkAuth();
+    const token = localStorage.getItem("access_token");
+    if (u && token) {
+      await Promise.all([loadGroupList(), loadGroupUnread()]);
+
+      gcSocket = io(`${API_BASE_URL}/group-chat`, {
+        auth: { token },
+        transports: ["websocket"],
+      });
+
+      gcSocket.on("new-message", (msg) => {
+        const me = checkAuth();
+        if (!me || msg.senderId === me.id) return;
+
+        // Are we currently viewing the exact group this message belongs to?
+        const viewingThisGroup = get(page).url.pathname === `/admin/group-chat/${msg.groupId}`;
+
+        if (!viewingThisGroup) {
+          incrementGroupUnread(msg.groupId);
+        }
+
+        // Keep sidebar last-message preview up to date
+        function gcRoleLabel(subRole, role) {
+          if (subRole === "telecaller")  return "Telecaller";
+          if (subRole === "tech")        return "Tech";
+          if (subRole === "tech_helper") return "Sr. Tech";
+          if (role === "admin")          return "Admin";
+          if (role === "master")         return "Master";
+          return "Member";
+        }
+        const isPrivileged = me.role === "master" || me.role === "admin";
+        let senderLabel;
+        if (isPrivileged) {
+          senderLabel = msg.senderRole === "master"
+            ? "Master"
+            : `${msg.senderNameReal} (${gcRoleLabel(msg.senderSubRole, msg.senderRole)})`;
+        } else {
+          senderLabel = msg.senderRole === "master"
+            ? "Admin"
+            : gcRoleLabel(msg.senderSubRole, msg.senderRole);
+        }
+
+        groupListStore.update((groups) =>
+          sortedByActivity(
+            groups.map((g) =>
+              g.id === msg.groupId
+                ? { ...g, lastMessage: { message: msg.message, senderName: senderLabel, createdAt: msg.createdAt } }
+                : g
+            )
+          )
+        );
+
+        // Show toast only when NOT already looking at that group
+        if (!viewingThisGroup) {
+          const groups = get(groupListStore);
+          const grp = groups.find((g) => g.id === msg.groupId);
+          const preview = msg.message
+            ? (msg.message.length > 70 ? msg.message.slice(0, 70) + "…" : msg.message)
+            : "📎 Attachment";
+
+          pushGcToast({
+            groupId:     msg.groupId,
+            groupName:   grp?.name ?? "Group Chat",
+            avatarColor: grp?.avatarColor ?? "#3b5bdb",
+            senderLabel,
+            preview,
+            createdAt:   msg.createdAt,
+          });
+        }
+      });
+
+      gcSocket.on("added-to-group", () => loadGroupList());
+
+      gcSocket.on("group-updated", (data) => {
+        groupListStore.update((groups) =>
+          groups.map((g) =>
+            g.id === data.groupId
+              ? { ...g, name: data.name, description: data.description, avatarColor: data.avatarColor }
+              : g
+          )
+        );
+      });
+    }
+    })(); // end IIFE
   });
 
-  onDestroy(() => stopInactivityTimer());
+  onDestroy(() => {
+    stopInactivityTimer();
+    if (gcSocket) { gcSocket.disconnect(); gcSocket = null; }
+  });
 
   async function fetchSetting() {
     const cached = get(settingStore);
@@ -228,6 +328,7 @@
 {/if}
 <ServerOffline />
 <InactivityWarning bind:show={showWarning} secondsLeft={warningSeconds} />
+<GroupChatToast />
 <main class="main-wrapper min-h-screen bg-gray-50">
   <Header />
   <Sidebar {setting} />

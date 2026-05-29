@@ -1,11 +1,35 @@
 <script>
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { checkAuth } from "$lib/utils/auth";
   import { queryPrivacy } from "$lib/stores/queryPrivacy";
   import { loadUnreadCounts } from "$lib/stores/queryUnreadCounts";
+  import { io } from "socket.io-client";
+  import Swal from "sweetalert2";
+
+  const API_BASE_URL = import.meta.env.VITE_PUBLIC_API_URL;
 
   let isMaster = false;
   let drawerOpen = false;
+  let socket = null;
+
+  // ── Overdue-query toast ───────────────────────────────────────────────────
+  function showOverdueToast(alerts) {
+    const count    = alerts.length;
+    const critical = alerts.filter(a => a.waitingMins >= 30).length;
+    const label    = count === 1 ? "1 query" : `${count} queries`;
+    const extra    = critical > 0 ? ` (${critical} critical)` : "";
+
+    Swal.fire({
+      toast: true,
+      position: "top-end",
+      icon: critical > 0 ? "error" : "warning",
+      title: `${label} waiting${extra}`,
+      text: `Unassigned for more than 5 minutes — please pick up soon.`,
+      showConfirmButton: false,
+      timer: 8000,
+      timerProgressBar: true,
+    });
+  }
 
   onMount(() => {
     const user = checkAuth();
@@ -13,6 +37,26 @@
     // Seed unread counts from DB for tech/telecaller users
     if (user?.subRole === "tech" || user?.subRole === "telecaller") {
       loadUnreadCounts();
+    }
+
+    // Connect to query-chat socket for overdue alerts (tech & tech_helper only)
+    if (user?.subRole === "tech" || user?.subRole === "tech_helper") {
+      const token = localStorage.getItem("access_token");
+      if (token) {
+        socket = io(`${API_BASE_URL}/query-chat`, { auth: { token }, transports: ["websocket"] });
+        socket.on("overdue-queries", (alerts) => {
+          if (Array.isArray(alerts) && alerts.length > 0) {
+            showOverdueToast(alerts);
+          }
+        });
+      }
+    }
+  });
+
+  onDestroy(() => {
+    if (socket) {
+      socket.disconnect();
+      socket = null;
     }
   });
 

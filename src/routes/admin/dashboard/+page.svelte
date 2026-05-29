@@ -17,7 +17,7 @@
   import QueryHighlights from "$lib/components/QueryHighlights.svelte";
   let loadingData = true;
 
-  let highlights = { telecallers: [], techs: [], techHelpers: [] };
+  let highlights = { telecallers: [], techs: [], techHelpers: [], overdueQueries: [] };
   let highlightsLoading = false;
 
   async function loadHighlights() {
@@ -620,6 +620,33 @@
         {/if}
 
         {#if currentUser?.role === "master"}
+          {#if (highlights.overdueQueries?.length ?? 0) > 0}
+            {@const overdueCount = highlights.overdueQueries.length}
+            {@const criticalCount = highlights.overdueQueries.filter(q => q.waitingMins >= 30).length}
+            <div
+              class="d-flex align-items-center justify-content-between flex-wrap gap-2 px-3 py-2 mb-3 rounded"
+              style="background:{criticalCount > 0 ? '#fff5f5' : '#fff9f0'}; border:1.5px solid {criticalCount > 0 ? '#ffa8a8' : '#ffcc88'};"
+              role="alert"
+            >
+              <div class="d-flex align-items-center gap-2">
+                <i class="ti ti-alert-triangle fs-5" style="color:{criticalCount > 0 ? '#c92a2a' : '#d9480f'};"></i>
+                <span class="fw-semibold" style="font-size:0.9rem; color:{criticalCount > 0 ? '#c92a2a' : '#d9480f'};">
+                  {overdueCount} {overdueCount === 1 ? 'query' : 'queries'} waiting &gt; 5 min without being picked up
+                  {#if criticalCount > 0}
+                    &nbsp;·&nbsp; {criticalCount} critical (&gt;30 min)
+                  {/if}
+                </span>
+              </div>
+              <div class="d-flex gap-2">
+                <a href="/admin/query/open" class="btn btn-sm" style="font-size:0.78rem; background:{criticalCount > 0 ? '#c92a2a' : '#d9480f'}; color:#fff; border:none;">
+                  <i class="ti ti-inbox me-1"></i>Open Queue
+                </a>
+                <a href="/admin/query/sub-queue" class="btn btn-sm btn-outline-secondary" style="font-size:0.78rem;">
+                  <i class="ti ti-subtask me-1"></i>Sub Queue
+                </a>
+              </div>
+            </div>
+          {/if}
           <QueryHighlights {highlights} loading={highlightsLoading} />
         {/if}
 

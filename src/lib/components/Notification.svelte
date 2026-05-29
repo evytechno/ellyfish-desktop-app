@@ -12,6 +12,7 @@
   import { invoke } from "@tauri-apps/api/tauri";
   import { openQueryCount } from "$lib/stores/queryStore";
   import { incrementUnread } from "$lib/stores/queryUnreadCounts";
+  import { uiToasts, dismissToast } from "$lib/stores/uiToast";
   import {
     isPermissionGranted,
     requestPermission,
@@ -443,6 +444,31 @@
 
 <!-- ── Toast Stack ────────────────────────────────────────────────────────── -->
 <div class="ntf-stack">
+  <!-- UI toasts (showToast) -->
+  {#each $uiToasts as t (t.id)}
+    <div
+      class="ntf-card"
+      style="--accent: {t.accent}"
+      in:fly={{ x: 380, duration: 380, opacity: 0 }}
+      out:fly={{ x: 380, duration: 280, opacity: 0 }}
+      role="alert"
+    >
+      <button
+        class="ntf-close"
+        on:click={() => dismissToast(t.id)}
+        aria-label="Dismiss"
+      >&#x2715;</button>
+      <div class="ntf-body">
+        <span class="ntf-ui-icon" style="background: {t.accent}22; color: {t.accent};">{t.icon}</span>
+        <div class="ntf-content">
+          <p class="ntf-msg">{t.message}</p>
+        </div>
+      </div>
+      <div class="ntf-line"></div>
+    </div>
+  {/each}
+
+  <!-- Query / notification toasts -->
   {#each toasts as toast (toast.id)}
     <div
       class="ntf-card"
@@ -666,4 +692,19 @@
     letter-spacing: 0.3px;
     padding: 2px 6px;
   }
+
+  /* ── UI Toast icon (showToast) ───────────────────────────────────────────── */
+  .ntf-ui-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    font-weight: 700;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
 </style>

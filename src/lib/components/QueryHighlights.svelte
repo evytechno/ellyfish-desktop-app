@@ -1,5 +1,5 @@
 <script>
-  export let highlights = { telecallers: [], techs: [], techHelpers: [] };
+  export let highlights = { telecallers: [], techs: [], techHelpers: [], overdueQueries: [] };
   export let loading = false;
 
   let activeTab = 'telecallers';
@@ -22,10 +22,11 @@
     reopened: '#dc3545', resolved: '#198754', closed: '#6c757d',
   };
 
-  $: tcCount      = highlights.telecallers.length;
-  $: techCount    = highlights.techs.length;
-  $: helperCount  = highlights.techHelpers?.length ?? 0;
-  $: totalFlags   = tcCount + techCount + helperCount;
+  $: tcCount       = highlights.telecallers.length;
+  $: techCount     = highlights.techs.length;
+  $: helperCount   = highlights.techHelpers?.length ?? 0;
+  $: overdueCount  = highlights.overdueQueries?.length ?? 0;
+  $: totalFlags    = tcCount + techCount + helperCount;
 
   function toggleUser(userId) {
     if (expandedUsers.has(userId)) expandedUsers.delete(userId);
@@ -116,6 +117,16 @@
           Tech Helpers
           {#if helperCount > 0}
             <span class="badge ms-1 {activeTab === 'helpers' ? 'bg-white text-primary' : 'bg-danger text-white'}">{helperCount}</span>
+          {/if}
+        </button>
+        <button
+          type="button"
+          class="btn btn-sm px-3 {activeTab === 'overdue' ? 'btn-danger' : 'btn-outline-danger'}"
+          on:click={() => switchTab('overdue')}
+        >
+          Overdue
+          {#if overdueCount > 0}
+            <span class="badge ms-1 {activeTab === 'overdue' ? 'bg-white text-danger' : 'bg-danger text-white'}">{overdueCount}</span>
           {/if}
         </button>
       </div>
@@ -352,6 +363,55 @@
         {/if}
       {/if}
 
+      <!-- ── Overdue tab ──────────────────────────────────────────────────────── -->
+      {#if activeTab === 'overdue'}
+        {#if overdueCount === 0}
+          <div class="text-center py-4">
+            <i class="ti ti-circle-check fs-1 text-success d-block mb-2"></i>
+            <p class="text-muted mb-0 small">No overdue queries — all picked up within 5 min</p>
+          </div>
+        {:else}
+          <div class="d-flex flex-column gap-2" style="max-height:520px; overflow-y:auto; overflow-x:hidden;">
+            {#each highlights.overdueQueries as q}
+              {@const isHigh = q.priority === 'high'}
+              {@const isCritical = q.waitingMins >= 30}
+              <a
+                href="/admin/query/{q.id}"
+                class="d-flex align-items-center justify-content-between p-2 rounded text-decoration-none text-dark border"
+                style="background:{isCritical ? '#fff5f5' : '#fff9f0'}; border-color:{isCritical ? '#ffc9c9' : '#ffd8a8'} !important;"
+              >
+                <div class="flex-grow-1 me-2">
+                  <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+                    {#if isCritical}
+                      <span class="badge bg-danger" style="font-size:0.65rem; animation:od-pulse 1s infinite;">Critical</span>
+                    {:else}
+                      <span class="badge bg-warning text-dark" style="font-size:0.65rem;">Overdue</span>
+                    {/if}
+                    {#if q.isSubQuery}
+                      <span class="badge" style="font-size:0.63rem; background:#7950f2; color:#fff;">Sub-query</span>
+                    {/if}
+                    <span class="badge" style="font-size:0.63rem; background:{priorityColor[q.priority] ?? '#6c757d'}; color:#fff;">{q.priority}</span>
+                  </div>
+                  <div class="fw-semibold" style="font-size:0.82rem; line-height:1.3;">{q.subject}</div>
+                  <div class="fw-semibold mt-1" style="font-size:0.75rem; color:{isCritical ? '#c92a2a' : '#d9480f'};">
+                    <i class="ti ti-clock me-1"></i>{fmtWait(q.waitingMins)}
+                  </div>
+                </div>
+                <i class="ti ti-external-link text-muted flex-shrink-0 ms-2" style="font-size:0.85rem;"></i>
+              </a>
+            {/each}
+          </div>
+          <div class="mt-2 d-flex gap-2">
+            <a href="/admin/query/open" class="btn btn-sm btn-outline-danger flex-fill" style="font-size:0.8rem;">
+              <i class="ti ti-inbox me-1"></i>Open Queue
+            </a>
+            <a href="/admin/query/sub-queue" class="btn btn-sm btn-outline-danger flex-fill" style="font-size:0.8rem;">
+              <i class="ti ti-subtask me-1"></i>Sub Queue
+            </a>
+          </div>
+        {/if}
+      {/if}
+
       <!-- ── Tech Helpers tab ────────────────────────────────────────────────── -->
       {#if activeTab === 'helpers'}
         {#if helperCount === 0}
@@ -458,3 +518,10 @@
     {/if}
   </div>
 </div>
+
+<style>
+  @keyframes od-pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.55; }
+  }
+</style>
