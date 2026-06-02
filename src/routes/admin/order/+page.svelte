@@ -50,7 +50,14 @@
   let customEndDate = null;
   let orderBy = "createdAt";
   let searchString = "";
-  let viewType = "grid";
+  function getDefaultViewType() {
+    // admin/master default → list, user default → grid
+    try {
+      const u = checkAuth();
+      return (u?.role === "master" || u?.role === "admin") ? "list" : "grid";
+    } catch { return "grid"; }
+  }
+  let viewType = (typeof localStorage !== "undefined" && localStorage.getItem("orderViewType")) || getDefaultViewType();
 
   // Form state
   let title = "";
@@ -74,6 +81,62 @@
   let alternateMobile = "";
   let designation = "";
   let remark = "";
+
+  // ── Client search/select state ─────────────────────────────────────────────
+  let clientSearchQuery = "";
+  let clientSearchResults = [];
+  let clientSearchLoading = false;
+  let selectedClient = null;       // existing client object
+  let showCreateClient = false;    // show new client form
+  let showClientDropdown = false;
+  let selectedContacts = [];       // contacts selected from existing client
+  // New client form fields
+  let newClientName = "";
+  let newClientGst = "";
+  let newClientAddress = "";
+  let newClientEmail = "";
+  let newClientMobile = "";
+
+  let clientSearchTimer = null;
+  async function searchClients(q) {
+    if (!q || q.trim().length < 1) { clientSearchResults = []; showClientDropdown = false; return; }
+    clientSearchLoading = true;
+    try {
+      const res = await authApiFetch(`${API_ROUTES.CLIENT}/search?q=${encodeURIComponent(q)}`, { method: "GET" });
+      clientSearchResults = res.data || [];
+      showClientDropdown = true;
+    } catch(e) { clientSearchResults = []; }
+    clientSearchLoading = false;
+  }
+
+  function onClientSearchInput() {
+    clearTimeout(clientSearchTimer);
+    selectedClient = null; showCreateClient = false;
+    clientSearchTimer = setTimeout(() => searchClients(clientSearchQuery), 300);
+  }
+
+  function selectClient(client) {
+    selectedClient = client;
+    clientSearchQuery = client.name;
+    showClientDropdown = false;
+    showCreateClient = false;
+    selectedContacts = [];
+    // Copy company/gst from client to order fields
+    company = client.name;
+    gstNumber = client.gstNumber || "";
+  }
+
+  function toggleContact(contact) {
+    const idx = selectedContacts.findIndex(c => c.id === contact.id);
+    if (idx >= 0) selectedContacts = selectedContacts.filter(c => c.id !== contact.id);
+    else selectedContacts = [...selectedContacts, contact];
+  }
+
+  function clearClientSelection() {
+    selectedClient = null; clientSearchQuery = ""; showCreateClient = false;
+    selectedContacts = []; clientSearchResults = []; showClientDropdown = false;
+    company = ""; gstNumber = "";
+  }
 
   let loading = false;
   let errorMessage = "";
@@ -199,8 +262,9 @@
 
   onMount(() => {
     currentUser = checkAuth();
-    if (currentUser?.role != "user") {
-      viewType = "list";
+    // Only apply role-based default if user hasn't saved a preference
+    if (!localStorage.getItem("orderViewType")) {
+      viewType = (currentUser?.role !== "user") ? "list" : "grid";
     }
 
     const filterState = $orderFilterStore;
@@ -272,18 +336,30 @@
       newOrder.price = Number(price);
     }
 
-    const newClient = {
-      name,
-      mobile,
-      email,
-      whatsapp,
-      address,
-      alternateMobile,
-      designation,
-      remark,
-    };
-    email ? (newClient.email = email) : "";
-    newOrder.orderClients = [newClient];
+    // ── Client handling ───────────────────────────────────────────────────────
+    if (selectedClient) {
+      // Existing client selected
+      newOrder.clientId = selectedClient.id;
+      if (selectedContacts.length > 0) {
+        newOrder.orderClients = selectedContacts.map(c => ({
+          name: c.name, mobile: c.mobile, email: c.email,
+          designation: c.designation, whatsapp: c.whatsapp,
+          alternateMobile: c.alternateMobile, address: c.address,
+        }));
+      }
+    } else if (showCreateClient && newClientName) {
+      // New client to be created — pass via orderClients; backend auto-creates client
+      newOrder.company = newClientName;
+      newOrder.gstNumber = newClientGst || gstNumber;
+      newOrder.orderClients = [{
+        name: newClientName, mobile: newClientMobile, email: newClientEmail,
+        address: newClientAddress, designation: "", whatsapp: "",
+      }];
+    } else {
+      // Fallback: old inline client form
+      const newClient = { name, mobile, email, whatsapp, address, alternateMobile, designation, remark };
+      newOrder.orderClients = [newClient];
+    }
     let newActivity = {
       title: "Order Created",
       description: "A new order has been created.",
@@ -294,8 +370,13 @@
       loading = false;
       return;
     }
-    if (name == "") {
+    if (!selectedClient && !showCreateClient && name == "") {
       formErrors.name = ["Name is required."];
+      loading = false;
+      return;
+    }
+    if (showCreateClient && !newClientName) {
+      formErrors.newClientName = ["Client name is required."];
       loading = false;
       return;
     }
@@ -328,6 +409,10 @@
       address = "";
       designation = "";
       remark = "";
+      // Reset client state
+      clearClientSelection();
+      newClientName = ""; newClientGst = ""; newClientAddress = "";
+      newClientEmail = ""; newClientMobile = "";
 
       Swal.fire("Success!", data.message, "success");
       refreshPage();
@@ -690,6 +775,7 @@
 
   function changeViewType(type) {
     viewType = type;
+    localStorage.setItem("orderViewType", type);
     if (type === "list") {
       listCurrentPage = 1;
       fetchListOrders();
@@ -825,7 +911,7 @@
     try {
       Swal.fire({
         title: "Delete Confirmation",
-        text: "Are you sure you want to delete this record.",
+        text: "Are you sure you want to delete this record?",
         icon: "warning",
         showCancelButton: true,
         confirmButtonText: "Yes, delete it!",
@@ -1382,133 +1468,172 @@
         {/if}
       </div>
       <hr />
-      <h6>Client Details</h6>
-      <div class="grid grid-cols-2 gap-4">
-        <div>
-          <label class="form-label" for="name">
-            Name <span class="text-danger">*</span>
-          </label>
-          <input
-            type="text"
-            name="name"
-            class="form-control"
-            class:is-invalid={formErrors.name}
-            bind:value={name}
-            required
-            id="name"
-            placeholder="Name"
-          />
-          {#if formErrors.name}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.name[0]}</li>
-            </ul>
+      <h6>Client</h6>
+
+      <!-- Client Search -->
+      {#if !selectedClient && !showCreateClient}
+        <div class="position-relative mb-3">
+          <label class="form-label">Search Client</label>
+          <div class="input-group">
+            <input
+              type="text"
+              class="form-control"
+              placeholder="Search by name, mobile, email..."
+              bind:value={clientSearchQuery}
+              on:input={onClientSearchInput}
+              autocomplete="off"
+            />
+            {#if clientSearchLoading}
+              <span class="input-group-text"><span class="spinner-border spinner-border-sm"></span></span>
+            {/if}
+          </div>
+          {#if showClientDropdown && clientSearchResults.length > 0}
+            <div class="border rounded bg-white position-absolute w-100 shadow-sm" style="z-index:9999;max-height:220px;overflow-y:auto;">
+              {#each clientSearchResults as client}
+                <button type="button" class="d-block w-100 text-start px-3 py-2 border-bottom hover:bg-gray-50"
+                  on:click={() => selectClient(client)}>
+                  <div class="fw-semibold">{client.name}</div>
+                  {#if client.contacts?.length > 0}
+                    <div class="text-muted small">{client.contacts.map(c => c.name).join(", ")}</div>
+                  {/if}
+                </button>
+              {/each}
+            </div>
+          {/if}
+          {#if showClientDropdown && clientSearchResults.length === 0 && clientSearchQuery.length > 1}
+            <div class="border rounded bg-white position-absolute w-100 shadow-sm px-3 py-2" style="z-index:9999;">
+              <div class="text-muted small mb-2">No client found</div>
+              <button type="button" class="btn btn-sm btn-outline-primary"
+                on:click={() => { showCreateClient = true; newClientName = clientSearchQuery; showClientDropdown = false; }}>
+                + Create New Client
+              </button>
+            </div>
           {/if}
         </div>
-        <div>
-          <label class="form-label" for="designation"> Designation </label>
-          <input
-            type="text"
-            name="designation"
-            class="form-control"
-            class:is-invalid={formErrors.designation}
-            bind:value={designation}
-            id="designation"
-            placeholder="Designation"
-          />
-          {#if formErrors.designation}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.designation[0]}</li>
-            </ul>
+        <div class="text-center text-muted small mb-3">— or —</div>
+        <button type="button" class="btn btn-sm btn-outline-secondary mb-3"
+          on:click={() => { showCreateClient = true; showClientDropdown = false; }}>
+          + Create New Client
+        </button>
+      {/if}
+
+      <!-- Selected existing client -->
+      {#if selectedClient}
+        <div class="border rounded p-3 mb-3 bg-light">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <div class="fw-bold"><i class="ti ti-building-store me-1"></i>{selectedClient.name}</div>
+              {#if selectedClient.gstNumber}<div class="text-muted small">GST: {selectedClient.gstNumber}</div>{/if}
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-danger" on:click={clearClientSelection}>
+              <i class="ti ti-x"></i>
+            </button>
+          </div>
+          {#if selectedClient.contacts?.length > 0}
+            <div class="mt-2">
+              <div class="small text-muted mb-1">Select contacts for this order:</div>
+              {#each selectedClient.contacts as contact}
+                <label class="d-flex align-items-center gap-2 py-1 cursor-pointer">
+                  <input type="checkbox"
+                    checked={selectedContacts.some(c => c.id === contact.id)}
+                    on:change={() => toggleContact(contact)} />
+                  <span class="small"><strong>{contact.name}</strong>
+                    {#if contact.designation}<span class="text-muted"> · {contact.designation}</span>{/if}
+                    {#if contact.mobile}<span class="text-muted"> · {contact.mobile}</span>{/if}
+                  </span>
+                </label>
+              {/each}
+            </div>
           {/if}
         </div>
-        <div>
-          <label class="form-label" for="email"> Email </label>
-          <input
-            type="email"
-            name="email"
-            class="form-control"
-            class:is-invalid={formErrors.email}
-            bind:value={email}
-            id="email"
-            placeholder="Email"
-          />
-          {#if formErrors.email}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.email[0]}</li>
-            </ul>
-          {/if}
+      {/if}
+
+      <!-- Create new client form -->
+      {#if showCreateClient}
+        <div class="border rounded p-3 mb-3 bg-light">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="mb-0">New Client</h6>
+            <button type="button" class="btn btn-sm btn-outline-secondary"
+              on:click={() => { showCreateClient = false; newClientName = ""; }}>
+              <i class="ti ti-x"></i>
+            </button>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="form-label">Company Name <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" class:is-invalid={formErrors.newClientName}
+                bind:value={newClientName} placeholder="Company name" />
+              {#if formErrors.newClientName}
+                <ul class="text-danger mt-1 text-xs"><li>{formErrors.newClientName[0]}</li></ul>
+              {/if}
+            </div>
+            <div>
+              <label class="form-label">GST Number</label>
+              <input type="text" class="form-control" bind:value={newClientGst} placeholder="GST number" />
+            </div>
+            <div>
+              <label class="form-label">Contact Name <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" bind:value={name} placeholder="Contact person name" />
+            </div>
+            <div>
+              <label class="form-label">Mobile</label>
+              <input type="text" class="form-control" bind:value={newClientMobile} placeholder="Mobile" />
+            </div>
+            <div>
+              <label class="form-label">Email</label>
+              <input type="email" class="form-control" bind:value={newClientEmail} placeholder="Email" />
+            </div>
+            <div>
+              <label class="form-label">Address</label>
+              <input type="text" class="form-control" bind:value={newClientAddress} placeholder="Address" />
+            </div>
+          </div>
         </div>
-        <div>
-          <label class="form-label" for="mobile"> Mobile </label>
-          <input
-            type="text"
-            name="mobile"
-            class="form-control"
-            class:is-invalid={formErrors.mobile}
-            bind:value={mobile}
-            id="mobile"
-            placeholder="Mobile"
-          />
-          {#if formErrors.mobile}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.mobile[0]}</li>
-            </ul>
-          {/if}
+      {/if}
+
+      <!-- Fallback: old client form (when neither search nor create is used) -->
+      {#if !selectedClient && !showCreateClient}
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="form-label" for="name">Contact Name <span class="text-danger">*</span></label>
+            <input type="text" name="name" class="form-control" class:is-invalid={formErrors.name}
+              bind:value={name} id="name" placeholder="Name" />
+            {#if formErrors.name}
+              <ul class="text-danger mt-1 text-xs capitalize"><li>{formErrors.name[0]}</li></ul>
+            {/if}
+          </div>
+          <div>
+            <label class="form-label" for="designation">Designation</label>
+            <input type="text" name="designation" class="form-control" bind:value={designation}
+              id="designation" placeholder="Designation" />
+          </div>
+          <div>
+            <label class="form-label" for="email">Email</label>
+            <input type="email" name="email" class="form-control" bind:value={email}
+              id="email" placeholder="Email" />
+          </div>
+          <div>
+            <label class="form-label" for="mobile">Mobile</label>
+            <input type="text" name="mobile" class="form-control" bind:value={mobile}
+              id="mobile" placeholder="Mobile" />
+          </div>
+          <div>
+            <label class="form-label" for="alternateMobile">Alternate Mobile</label>
+            <input type="text" name="alternateMobile" class="form-control" bind:value={alternateMobile}
+              id="alternateMobile" placeholder="Alternate Mobile" />
+          </div>
+          <div>
+            <label class="form-label" for="whatsapp">Whatsapp</label>
+            <input type="text" name="whatsapp" class="form-control" bind:value={whatsapp}
+              id="whatsapp" placeholder="Whatsapp" />
+          </div>
+          <div>
+            <label class="form-label" for="address">Address</label>
+            <input type="text" name="address" class="form-control" bind:value={address}
+              id="address" placeholder="Address" />
+          </div>
         </div>
-        <div>
-          <label class="form-label" for="alternateMobile">
-            Alternate Mobile
-          </label>
-          <input
-            type="text"
-            name="alternateMobile"
-            class="form-control"
-            class:is-invalid={formErrors.alternateMobile}
-            bind:value={alternateMobile}
-            id="alternateMobile"
-            placeholder="Alternate Mobile"
-          />
-          {#if formErrors.alternateMobile}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.alternateMobile[0]}</li>
-            </ul>
-          {/if}
-        </div>
-        <div>
-          <label class="form-label" for="whatsapp"> Whatsapp </label>
-          <input
-            type="text"
-            name="whatsapp"
-            class="form-control"
-            class:is-invalid={formErrors.whatsapp}
-            bind:value={whatsapp}
-            id="whatsapp"
-            placeholder="Whatsapp"
-          />
-          {#if formErrors.whatsapp}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.whatsapp[0]}</li>
-            </ul>
-          {/if}
-        </div>
-        <div>
-          <label class="form-label" for="address"> Address </label>
-          <input
-            type="text"
-            name="address"
-            class="form-control"
-            class:is-invalid={formErrors.address}
-            bind:value={address}
-            id="address"
-            placeholder="Address"
-          />
-          {#if formErrors.address}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.address[0]}</li>
-            </ul>
-          {/if}
-        </div>
-      </div>
+      {/if}
       <div class="d-flex align-items-center justify-content-end mt-4">
         <button
           type="button"

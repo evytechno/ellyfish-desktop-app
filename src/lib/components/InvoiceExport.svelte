@@ -1066,6 +1066,6 @@
   }
 </script>
 
-<button class="btn btn-primary" on:click={generateInvoiceExcel}>
-  Tax Invoice Excel
+<button class="btn btn-primary btn-sm" on:click={generateInvoiceExcel}>
+  <i class="ti ti-file-spreadsheet me-1"></i>Tax Invoice Excel
 </button>

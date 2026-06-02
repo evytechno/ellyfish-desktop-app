@@ -560,6 +560,22 @@
                             >
                           </a>
                         </li>
+                        {#if currentUser?.role === "master"}
+                          <li
+                            class:active={currentPath.startsWith(
+                              "/admin/client",
+                            )}
+                          >
+                            <a
+                              href="/admin/client"
+                              class:active={currentPath.startsWith(
+                                "/admin/client",
+                              )}
+                            >
+                              <i class="ti ti-building-store"></i><span>Clients</span>
+                            </a>
+                          </li>
+                        {/if}
                         <li
                           class:active={currentPath.startsWith(
                             "/admin/workorder",

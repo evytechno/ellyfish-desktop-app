@@ -8,6 +8,9 @@
   import Loader from "$lib/components/Loader.svelte";
   import { onMount } from "svelte";
   import { checkAuth } from "$lib/utils/auth";
+
+  let selectedUserIds = new Set();
+  let sendingWarning = false;
   let loadingData = true;
 
   let firstLoad = false;
@@ -31,6 +34,16 @@
     setTimeout(() => {
       firstLoad = true;
     }, 500);
+    document.addEventListener("change", (e) => {
+      const cb = e.target.closest(".warn-check");
+      if (cb) {
+        const id = Number(cb.dataset.id);
+        if (cb.checked) selectedUserIds.add(id);
+        else selectedUserIds.delete(id);
+        selectedUserIds = new Set(selectedUserIds); // trigger reactivity
+      }
+    });
+
     document.addEventListener("click", (e) => {
       const target = e.target.closest(".updateStatus");
       if (target) {
@@ -55,6 +68,14 @@
   let totalItems = 0;
   let searchTerm = "";
   $: columns = [
+    {
+      key: "id",
+      label: "",
+      render: (val, row) => {
+        const checked = selectedUserIds.has(row.id) ? "checked" : "";
+        return `<input type="checkbox" class="form-check-input warn-check" data-id="${row.id}" ${checked} style="width:18px;height:18px;cursor:pointer;" />`;
+      },
+    },
     {
       key: "name",
       label: "Name",
@@ -198,7 +219,7 @@
   async function deleteRecord(id) {
     Swal.fire({
       title: "Delete Confirmation",
-      text: "Are you sure you want to delete this record.",
+      text: "Are you sure you want to delete this record?",
       icon: "warning",
       showCancelButton: true,
       confirmButtonText: "Yes, delete it!",
@@ -330,6 +351,92 @@
       fetchUsers();
     }
   }
+
+  async function sendWarning() {
+    if (selectedUserIds.size === 0) {
+      Swal.fire({ icon: "warning", title: "No users selected", text: "Please select at least one user to send a warning." });
+      return;
+    }
+
+    const { value: formValues, isConfirmed } = await Swal.fire({
+      title: `<span style="font-size:1.1rem;font-weight:700;">⚠️ Send Warning</span>`,
+      html: `
+        <div style="text-align:left;">
+          <div style="margin-bottom:14px;">
+            <label style="font-weight:600;font-size:0.85rem;color:#374151;display:block;margin-bottom:5px;">
+              📝 Message
+            </label>
+            <textarea id="swal-warn-msg" rows="3"
+              style="width:100%;padding:8px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:0.92rem;resize:vertical;outline:none;"
+            >Reminder: Mobile usage during work hours is not permitted. Please focus on your tasks.</textarea>
+          </div>
+
+          <div style="margin-bottom:14px;">
+            <label style="font-weight:600;font-size:0.85rem;color:#374151;display:block;margin-bottom:5px;">
+              ⏱️ Auto-close Duration
+            </label>
+            <select id="swal-warn-duration"
+              style="width:100%;padding:8px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:0.92rem;outline:none;">
+              <option value="10">10 seconds</option>
+              <option value="20">20 seconds</option>
+              <option value="30">30 seconds</option>
+              <option value="60">60 seconds</option>
+            </select>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f9fafb;border-radius:8px;border:1.5px solid #e5e7eb;">
+            <input type="checkbox" id="swal-warn-sound" checked
+              style="width:18px;height:18px;cursor:pointer;accent-color:#ef4444;" />
+            <label for="swal-warn-sound" style="font-weight:600;font-size:0.88rem;color:#374151;cursor:pointer;margin:0;">
+              🔔 Play alert sound on user screen
+            </label>
+          </div>
+
+          <div style="margin-top:12px;padding:8px 12px;background:#fef2f2;border-radius:8px;border-left:3px solid #ef4444;">
+            <p style="margin:0;font-size:0.8rem;color:#991b1b;">
+              Sending to <strong>${selectedUserIds.size}</strong> selected user(s)
+            </p>
+          </div>
+        </div>
+      `,
+      showCancelButton: true,
+      confirmButtonText: "🚀 Send Warning",
+      cancelButtonText: "Cancel",
+      confirmButtonColor: "#ef4444",
+      width: 480,
+      focusConfirm: false,
+      preConfirm: () => {
+        const msg = document.getElementById("swal-warn-msg").value.trim();
+        if (!msg) { Swal.showValidationMessage("Message cannot be empty."); return false; }
+        return {
+          message:  msg,
+          duration: Number(document.getElementById("swal-warn-duration").value),
+          sound:    document.getElementById("swal-warn-sound").checked,
+        };
+      },
+    });
+
+    if (!isConfirmed || !formValues) return;
+
+    sendingWarning = true;
+    try {
+      await authApiFetch(`${API_ROUTES.WARNING}/send`, {
+        method: "POST",
+        data: JSON.stringify({
+          userIds:  [...selectedUserIds],
+          message:  formValues.message,
+          duration: formValues.duration,
+          sound:    formValues.sound,
+        }),
+      });
+      selectedUserIds = new Set();
+      Swal.fire({ icon: "success", title: "Warning Sent!", timer: 1500, showConfirmButton: false });
+    } catch (err) {
+      Swal.fire({ icon: "error", title: "Failed", text: errorHandle(err) });
+    } finally {
+      sendingWarning = false;
+    }
+  }
 </script>
 
 {#if loadingData}
@@ -400,6 +507,20 @@
                   <i class="ti ti-trash"></i>
                 </button>
               </div>
+            {/if}
+            {#if currentUser?.role === "master" || currentUser?.role === "admin"}
+              <button
+                class="btn btn-danger"
+                on:click={sendWarning}
+                disabled={sendingWarning || selectedUserIds.size === 0}
+              >
+                {#if sendingWarning}
+                  <span class="spinner-border spinner-border-sm me-1"></span>
+                {:else}
+                  <i class="ti ti-alert-triangle me-1"></i>
+                {/if}
+                Send Warning{selectedUserIds.size > 0 ? ` (${selectedUserIds.size})` : ""}
+              </button>
             {/if}
             <a href="/admin/user/add" class="btn btn-primary">
               <i class="ti ti-square-rounded-plus-filled me-1"></i>Add User

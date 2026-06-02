@@ -11,6 +11,7 @@
   let errorMessage = "";
   let invoice = null;
   let locking = false;
+  let piCompany = null;
 
   let invoiceId;
   $: invoiceId = $page.params.id;
@@ -20,6 +21,18 @@
     try {
       const data = await authApiFetch(`${API_ROUTES.INVOICE}/${invoiceId}`);
       invoice = data;
+
+      // If companySnapshot is empty, fetch PI directly to get company data
+      const snap = data?.companySnapshot;
+      const snapEmpty = !snap || !snap.name;
+      if (snapEmpty && data?.pi?.id) {
+        try {
+          const pi = await authApiFetch(`${API_ROUTES.ORDER_PAYMENT}/${data.pi.id}`);
+          piCompany = pi?.company ?? null;
+        } catch {
+          piCompany = null;
+        }
+      }
     } catch (err) {
       errorMessage = "Failed to load invoice data.";
     } finally {
@@ -50,9 +63,14 @@
     return name.trim().split(" ")[0].toUpperCase();
   }
 
+  // Use companySnapshot if it has data, else fall back to PI's company relation
+  $: displayCompany = invoice?.companySnapshot?.name
+    ? invoice.companySnapshot
+    : (piCompany ?? invoice?.company ?? null);
+
   $: pageTitle =
-    invoice && invoice.companySnapshot && invoice.invoiceNo
-      ? `${getShortName(invoice.companySnapshot.name)}_INV_${invoice.invoiceNo.toString().padStart(6, "0")}`
+    invoice && displayCompany && invoice.invoiceNo
+      ? `${getShortName(displayCompany.name)}_INV_${invoice.invoiceNo.toString().padStart(6, "0")}`
       : "Loading...";
 
   async function lockInvoice() {
@@ -87,17 +105,37 @@
 {/if}
 <div class="page-wrapper">
   <div class="content pb-0">
-    <div class="pageHeader d-flex align-items-center justify-content-between gap-2 mb-4 flex-wrap no-print">
-      <div class="no-print">
-        <h4 class="mb-1">Tax Invoice</h4>
-        <nav aria-label="breadcrumb">
-          <ol class="breadcrumb mb-0 p-0">
-            <li class="breadcrumb-item"><a href="/admin/dashboard">Home</a></li>
-            <li class="breadcrumb-item"><a href="/admin/invoice/tax">Tax Invoices</a></li>
-            <li class="breadcrumb-item active" aria-current="page">Tax Invoice</li>
-          </ol>
-        </nav>
+    <div class="d-flex align-items-center justify-content-between gap-2 mb-3 flex-wrap no-print">
+      <div class="d-flex align-items-center gap-3">
+        <button class="btn btn-outline-secondary btn-sm" on:click={() => window.history.back()}>
+          <i class="ti ti-arrow-left me-1"></i>Back
+        </button>
+        <div>
+          <div class="d-flex align-items-center gap-2">
+            <h4 class="mb-0">Tax Invoice</h4>
+            {#if invoice?.invoiceNo}
+              <span class="text-muted fw-normal fs-5">#{String(invoice.invoiceNo).padStart(6, "0")}</span>
+            {/if}
+            {#if invoice}
+              <span class="badge {invoice.isLocked ? 'bg-success' : 'bg-warning text-dark'}">
+                {invoice.isLocked ? 'Locked' : 'Draft'}
+              </span>
+            {/if}
+          </div>
+          <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0 p-0">
+              <li class="breadcrumb-item"><a href="/admin/dashboard">Home</a></li>
+              <li class="breadcrumb-item"><a href="/admin/invoice/tax">Tax Invoices</a></li>
+              <li class="breadcrumb-item active">Detail</li>
+            </ol>
+          </nav>
+        </div>
       </div>
+      {#if invoice && !invoice.isLocked}
+        <a href="/admin/invoice/tax/{invoiceId}/edit" class="btn btn-primary btn-sm no-print">
+          <i class="ti ti-edit me-1"></i>Edit Invoice
+        </a>
+      {/if}
     </div>
 
     {#if invoice}
@@ -108,21 +146,27 @@
               <div class="space-y-4">
                 <div class="grid grid-cols-2 gap-4">
                   <div class="space-y-2">
-                    <div>
-                      GST NO. <span class="font-semibold">{invoice?.companySnapshot?.gstNumber}</span>
-                    </div>
-                    <div>
-                      <img
-                        src={invoice?.companySnapshot?.logo}
-                        alt={invoice?.companySnapshot?.name}
-                        width="200px"
-                      />
-                    </div>
+                    {#if displayCompany?.gstNumber}
+                      <div>GST NO. <span class="font-semibold">{displayCompany.gstNumber}</span></div>
+                    {/if}
+                    {#if displayCompany?.logo}
+                      <div>
+                        <img src={displayCompany.logo} alt={displayCompany.name} width="200px" />
+                      </div>
+                    {/if}
                     <div class="space-y-1">
-                      <div class="font-semibold text-lg">{invoice?.companySnapshot?.name}</div>
-                      <div>{invoice?.companySnapshot?.address}</div>
-                      <div>Contact No. : {invoice?.companySnapshot?.mobile}</div>
-                      <div>Email : {invoice?.companySnapshot?.email}</div>
+                      {#if displayCompany?.name}
+                        <div class="font-semibold text-lg">{displayCompany.name}</div>
+                      {/if}
+                      {#if displayCompany?.address}
+                        <div>{displayCompany.address}</div>
+                      {/if}
+                      {#if displayCompany?.mobile}
+                        <div>Contact No. : {displayCompany.mobile}</div>
+                      {/if}
+                      {#if displayCompany?.email}
+                        <div>Email : {displayCompany.email}</div>
+                      {/if}
                     </div>
                   </div>
                   <div class="flex flex-col space-y-2">
@@ -191,6 +235,7 @@
                           <th class="border p-2 text-white text-center">No.</th>
                           <th class="border p-2 text-white">Name</th>
                           <th class="border p-2 text-white text-center">Qty</th>
+                          <th class="border p-2 text-white text-center">Unit</th>
                           <th class="border p-2 text-white text-center">Unit Price</th>
                           <th class="border p-2 text-white text-center">HS Code</th>
                           <th class="border p-2 text-white text-center">Total</th>
@@ -202,14 +247,15 @@
                             <td class="border p-2 text-center">{index + 1}.</td>
                             <td class="border p-2 capitalize">{item?.item}</td>
                             <td class="border p-2 text-center">{item?.quantity}</td>
+                            <td class="border p-2 text-center">{item?.unit || "Pcs"}</td>
                             <td class="border p-2 text-center">
                               {currencies.find((c) => c.code === invoice?.currency)?.symbol}
-                              {item?.price?.toFixed(2)}/-
+                              {(item?.price ?? item?.unitPrice ?? 0).toFixed(2)}/-
                             </td>
                             <td class="border p-2 text-center">{item.hsCode ? item.hsCode : "-"}</td>
                             <td class="border p-2 text-center">
                               {currencies.find((c) => c.code === invoice?.currency)?.symbol}
-                              {(item?.total)?.toFixed(2)}/-
+                              {((item?.total && item.total > 0) ? item.total : ((parseFloat(item?.quantity) || 0) * (parseFloat(item?.price ?? item?.unitPrice) || 0))).toFixed(2)}/-
                             </td>
                           </tr>
                         {/each}
@@ -232,7 +278,7 @@
                   <div class="space-y-2">
                     <div class="font-semibold">Bank Details :</div>
                     <div class="space-y-1">
-                      {#each [invoice?.bankSnapshot] as b}
+                      {#each [invoice?.bankSnapshot ?? piCompany ?? displayCompany] as b}
                         {#if b?.accountHolderName}<div>Account Holder Name : {b.accountHolderName}</div>{/if}
                         {#if b?.bankName}<div>Bank Name : {b.bankName}</div>{/if}
                         {#if b?.accountNumber}<div>Account Number : {b.accountNumber}</div>{/if}
@@ -286,48 +332,30 @@
                   Declaration: We declare that this Invoice shows the actual price of goods described and that all particulars are true and correct.
                 </div>
                 {#if invoice?.termsConditions}
-                  <div class="text-left text-xs">{invoice?.termsConditions}</div>
+                  <div class="text-left text-xs">
+                    <span class="font-semibold">Terms & Conditions: </span>{invoice?.termsConditions}
+                  </div>
                 {/if}
                 {#if invoice?.remarks}
-                  <div class="text-left text-xs">{invoice?.remarks}</div>
+                  <div class="text-left text-xs">
+                    <span class="font-semibold">Remarks: </span>{invoice?.remarks}
+                  </div>
                 {/if}
               </div>
 
-              <div class="no-print">
-                <div class="text-center d-flex align-items-center justify-content-end gap-4 mt-4 border-top pt-4">
-                  {#if !invoice?.isLocked}
-                    <a
-                      href="/admin/invoice/tax?editId={invoiceId}"
-                      class="btn btn-md btn-soft-info d-flex align-items-center"
-                    >
-                      <i class="ti ti-edit me-1"></i>Edit
-                    </a>
-                    <a
-                      href="/admin/invoice/tax?syncId={invoiceId}"
-                      class="btn btn-md btn-soft-success d-flex align-items-center"
-                    >
-                      <i class="ti ti-refresh me-1"></i>Sync from PI
-                    </a>
-                    <button
-                      class="btn btn-md btn-warning d-flex align-items-center"
-                      on:click={lockInvoice}
-                      disabled={locking}
-                    >
-                      <i class="ti ti-lock me-1"></i>{locking ? "Locking..." : "Lock Invoice"}
-                    </button>
-                  {:else}
-                    <span class="badge bg-success fs-14 p-2">
-                      <i class="ti ti-lock me-1"></i>Locked
-                    </span>
-                  {/if}
-                  <a
-                    href="#print"
-                    class="btn btn-md btn-primary d-flex align-items-center"
-                    on:click={() => window.print()}
-                  >
-                    <i class="ti ti-printer me-1"></i>Print Invoice
+              <!-- Bottom Action Bar -->
+              <div class="no-print d-flex align-items-center justify-content-end gap-2 flex-wrap mt-4 pt-4 border-top">
+                {#if !invoice?.isLocked}
+                  <a href="/admin/invoice/tax/{invoiceId}/edit?sync=1" class="btn btn-success btn-sm">
+                    <i class="ti ti-refresh me-1"></i>Sync from PI
                   </a>
-                </div>
+                  <button class="btn btn-warning btn-sm" on:click={lockInvoice} disabled={locking}>
+                    <i class="ti ti-lock me-1"></i>{locking ? "Locking..." : "Lock Invoice"}
+                  </button>
+                {/if}
+                <button class="btn btn-primary btn-sm" on:click={() => window.print()}>
+                  <i class="ti ti-printer me-1"></i>Print Invoice
+                </button>
               </div>
             </div>
           </div>

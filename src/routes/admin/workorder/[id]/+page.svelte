@@ -9,11 +9,10 @@
 
   let errorMessage = "";
   let workOrder = null;
-
   let loading = false;
-
-  // Field-specific error messages
   let formErrors = {};
+  let taxInvoiceId = null;
+  let taxCheckDone = false;
 
   let workOrderId;
   $: workOrderId = $page.params.id;
@@ -21,16 +20,28 @@
   onMount(async () => {
     loadingData = true;
     try {
-      const data = await authApiFetch(
-        `${API_ROUTES.WORK_ORDER}/${workOrderId}`
-      );
+      const data = await authApiFetch(`${API_ROUTES.WORK_ORDER}/${workOrderId}`);
       workOrder = data;
     } catch (err) {
       errorMessage = "Failed to load workOrder data.";
     } finally {
-      setTimeout(() => {
-        loadingData = false;
-      }, 500);
+      setTimeout(() => { loadingData = false; }, 500);
+    }
+
+    // Check if tax invoice already exists for this order
+    try {
+      if (workOrder?.order?.id) {
+        const piList = await authApiFetch(`${API_ROUTES.ORDER_PAYMENT}/check/${workOrder.order.id}`);
+        if (piList?.count > 0) {
+          const piId = piList.items[0].id;
+          const res = await authApiFetch(`${API_ROUTES.INVOICE}/by-pi/${piId}`);
+          taxInvoiceId = res?.taxInvoiceId ?? null;
+        }
+      }
+    } catch {
+      taxInvoiceId = null;
+    } finally {
+      taxCheckDone = true;
     }
   });
 </script>
@@ -42,23 +53,30 @@
   <!-- Start Content -->
   <div class="content pb-0">
     <!-- Page Header -->
-    <div
-      class="pageHeader d-flex align-items-center justify-content-between gap-2 mb-4 flex-wrap no-print"
-    >
-      <div class="no-print">
-        <h4 class="mb-1">Work Order</h4>
-        <nav aria-label="breadcrumb">
-          <ol class="breadcrumb mb-0 p-0">
-            <li class="breadcrumb-item"><a href="/admin/dashboard">Home</a></li>
-            <li class="breadcrumb-item">
-              <a href="/admin/workorder">Work Orders</a>
-            </li>
-            <li class="breadcrumb-item active" aria-current="page">
-              Work Order
-            </li>
-          </ol>
-        </nav>
+    <div class="d-flex align-items-center justify-content-between gap-2 mb-3 flex-wrap no-print">
+      <div class="d-flex align-items-center gap-3">
+        <button class="btn btn-outline-secondary btn-sm" on:click={() => window.history.back()}>
+          <i class="ti ti-arrow-left me-1"></i>Back
+        </button>
+        <div>
+          <div class="d-flex align-items-center gap-2">
+            <h4 class="mb-0">Work Order</h4>
+            {#if workOrder?.workOrderNo}
+              <span class="text-muted fw-normal fs-5">#{String(workOrder.workOrderNo).padStart(6, "0")}</span>
+            {/if}
+          </div>
+          <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0 p-0">
+              <li class="breadcrumb-item"><a href="/admin/dashboard">Home</a></li>
+              <li class="breadcrumb-item"><a href="/admin/workorder">Work Orders</a></li>
+              <li class="breadcrumb-item active">WO Detail</li>
+            </ol>
+          </nav>
+        </div>
       </div>
+      <a href="/admin/workorder/edit/{workOrderId}" class="btn btn-primary btn-sm">
+        <i class="ti ti-edit me-1"></i>Edit Work Order
+      </a>
     </div>
     <!-- End Page Header -->
     {#if workOrder}
@@ -184,7 +202,7 @@
                         <tr class="border-bottom">
                           <td class="p-2 text-center">{index + 1}</td>
                           <td class="p-2 capitalize">{item?.item}</td>
-                          <td class="p-2 text-center">{item?.quantity ?? "-"}</td>
+                          <td class="p-2 text-center">{item?.quantity ?? "-"} {item?.unit}</td>
                         </tr>
                       {/each}
                     </tbody>
@@ -216,19 +234,21 @@
                 {/if}
               </div>
 
-              <div class="no-print">
-                <div
-                  class="text-center d-flex align-items-center justify-content-end mt-4 border-top pt-4"
-                >
-                  <a
-                    href="#print"
-                    class="btn btn-md btn-primary d-flex align-items-center"
-                    on:click={() => window.print()}
-                  >
-                    <!-- on:click={() => printPDF()} -->
-                    <i class="ti ti-printer me-1"></i>Print Work Order</a
-                  >
-                </div>
+              <div class="no-print d-flex align-items-center justify-content-end gap-2 flex-wrap mt-4 pt-4 border-top">
+                {#if workOrder?.order?.id && taxCheckDone}
+                  {#if taxInvoiceId}
+                    <a href="/admin/invoice/tax/{taxInvoiceId}" class="btn btn-info btn-sm">
+                      <i class="ti ti-file-invoice me-1"></i>View Tax Invoice
+                    </a>
+                  {:else}
+                    <a href="/admin/invoice/create?fromOrder={workOrder.order.id}" class="btn btn-warning btn-sm">
+                      <i class="ti ti-file-plus me-1"></i>Create Tax Invoice
+                    </a>
+                  {/if}
+                {/if}
+                <button class="btn btn-primary btn-sm" on:click={() => window.print()}>
+                  <i class="ti ti-printer me-1"></i>Print Work Order
+                </button>
               </div>
             </div>
           </div>

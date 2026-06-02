@@ -249,7 +249,7 @@
     status = "Unpaid";
     remarks = "";
 
-    shipToSameAsBillTo = null;
+    shipToSameAsBillTo = false;
 
     billToName = "";
     billToAddress = "";
@@ -346,7 +346,7 @@
       return;
     }
     if (items.length == 0) {
-      Swal.fire("Warning!", "Please atleast one item add in items.", "warning");
+      Swal.fire("Warning!", "Please add at least one line item.", "warning");
       loading = false;
       return;
     }
@@ -449,7 +449,7 @@
       return;
     }
     if (items.length == 0) {
-      Swal.fire("Warning!", "Please atleast one item add in items.", "warning");
+      Swal.fire("Warning!", "Please add at least one line item.", "warning");
       loading = false;
       return;
     }
@@ -530,13 +530,7 @@
   onMount(async () => {
     const fromOrderId = $page.url.searchParams.get("fromOrder");
     if (!fromOrderId) return;
-    await tick();
-    formType = "Create";
-    invoiceType = "order";
-    orderId = Number(fromOrderId);
-    const $ = jQuery;
-    $("#offcanvas_add").offcanvas("show");
-    await orderValueChange(orderId);
+    goto(`/admin/invoice/add?fromOrder=${fromOrderId}`);
   });
 
   async function fetchAllUsers() {
@@ -738,7 +732,11 @@
       key: "order",
       label: "Order",
       render: (val, row) => {
-        return `<div class="max-w-[300px] truncate">${row?.order ? row?.order?.title : row?.title ? row?.title : "-"}</div>`;
+        if (row?.order?.id) {
+          const label = row.order.title || `Order #${row.order.id}`;
+          return `<a href="/admin/order/${row.order.id}" class="text-primary text-truncate d-block" style="max-width:280px" title="${label}">${label}</a>`;
+        }
+        return `<span class="text-muted">${row?.title || "-"}</span>`;
       },
     },
     { key: "status", label: "Status" },
@@ -875,19 +873,7 @@
   }
 
   const editRecord = async (id) => {
-    const $ = jQuery;
-
-    // Open offcanvas
-    $(".offcanvas-backdrop").remove();
-
-    // Create and insert a new backdrop
-    const overlay = $('<div class="offcanvas-backdrop fade show"></div>');
-    overlay.insertBefore(".main-wrapper");
-
-    $("#offcanvas_add").addClass("show");
-    $("body").css({ overflow: "hidden", paddingRight: "15px" });
-    formType = "Edit";
-    fillDataOnForm(id);
+    goto("/admin/invoice/edit/" + id);
   };
 
   const viewRecord = async (id) => {
@@ -897,7 +883,7 @@
   async function deleteRecord(id) {
     Swal.fire({
       title: "Delete Confirmation",
-      text: "Are you sure you want to delete this record.",
+      text: "Are you sure you want to delete this record?",
       icon: "warning",
       showCancelButton: true,
       confirmButtonText: "Yes, delete it!",
@@ -948,6 +934,13 @@
     { code: "INR", symbol: "₹" },
     { code: "USD", symbol: "$" },
   ];
+
+  $: currencySymbol = currencies.find((c) => c.code === currency)?.symbol ?? "₹";
+  $: itemsGrossTotal = items.reduce((sum, item) => sum + (parseFloat(item.total) || 0), 0);
+
+  function fieldError(name) {
+    return formErrors[name]?.[0] ?? null;
+  }
 
   // Derive available bank accounts from selected company (companies/all now returns bankAccounts)
   $: selectedCompanyData = companies.find((c) => c.id === companyId) ?? null;
@@ -1108,12 +1101,7 @@
               </button>
             </div>
           {/if}
-          <a
-            href="#offcanvas_add"
-            class="btn btn-primary"
-            data-bs-toggle="offcanvas"
-            data-bs-target="#offcanvas_add"
-          >
+          <a href="/admin/invoice/add" class="btn btn-primary">
             <i class="ti ti-square-rounded-plus-filled me-1"></i>Add New Invoice
           </a>
         </div>
@@ -1158,7 +1146,9 @@
   id="offcanvas_add"
 >
   <div class="offcanvas-header border-bottom">
-    <h5 class="mb-0">{formType == "Create" ? "Add New" : "Update"} Invoice</h5>
+    <h5 class="mb-0">
+      {formType === "Create" ? "Create Proforma Invoice" : "Update Proforma Invoice"}
+    </h5>
     <button
       type="button"
       class="btn-close custom-btn-close border p-1 me-0 d-flex align-items-center justify-content-center rounded-circle"
@@ -1169,881 +1159,803 @@
   </div>
   <div class="offcanvas-body">
     <form
-      on:submit={formType == "Create" ? handleSubmit : handleUpdateSubmit}
-      class="needs-validation space-y-4"
+      on:submit={formType === "Create" ? handleSubmit : handleUpdateSubmit}
+      class="needs-validation"
       novalidate
     >
-      <div class="grid grid-cols-2 gap-3">
-        <div class="col-span-2">
-          <label class="form-label" for="invoiceType">
-            Invoice Type <span class="text-danger">*</span>
-          </label>
-          <div class="flex items-center gap-2">
-            <input
-              type="radio"
-              id="order"
-              name="invoiceType"
-              value="order"
-              bind:group={invoiceType}
-            />
-            <label for="order">Order</label>
-
-            <input
-              type="radio"
-              id="self"
-              name="invoiceType"
-              value="self"
-              bind:group={invoiceType}
-            />
-            <label for="self">Self</label>
-          </div>
-        </div>
-
-        {#if invoiceType == "order"}
-          <div class="col-span-1">
-            <label class="form-label" for="orderId">
-              Order <span class="text-danger">*</span>
+      <!-- Invoice setup -->
+      <div class="invoice-form-section">
+        <h6 class="invoice-form-section-title">
+          <i class="ti ti-settings me-2"></i>Invoice Setup
+        </h6>
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label d-block" for="invoiceTypeOrder">
+              Invoice Type <span class="text-danger">*</span>
             </label>
-            {#key orderSelectKey}
-              <OrderSearchSelect
-                id="orderId"
-                initialValue={orderId}
-                initialTitle={selectedOrderTitle}
-                isInvalid={!!formErrors.orderId}
-                on:change={(e) => {
-                  orderId = e.detail.id;
-                  if (e.detail.id) orderValueChange(e.detail.id);
-                }}
-              />
-            {/key}
-            {#if formErrors.orderId}
-              <ul class="text-danger mt-1 text-xs capitalize">
-                <li>{formErrors.orderId[0]}</li>
-              </ul>
-            {/if}
-            {#if piWarning}
-              <div class="mt-1 text-xs" style="color: #b45309;">&#9888; {piWarning}</div>
-            {/if}
-          </div>
-        {:else}
-          <div class="col-span-1">
-            <label class="form-label" for="title"
-              >Title <span class="text-danger">*</span></label
-            >
-            <input
-              type="text"
-              name="title"
-              class="form-control"
-              class:is-invalid={formErrors.title}
-              bind:value={title}
-              id="title"
-              placeholder="Title"
-            />
-            {#if formErrors.title}
-              <ul class="text-danger mt-1 text-xs capitalize">
-                <li>{formErrors.title[0]}</li>
-              </ul>
-            {/if}
-          </div>
-        {/if}
-
-        <div>
-          <label class="form-label" for="companyId">
-            Company <span class="text-danger">*</span>
-          </label>
-          <select
-            name="companyId"
-            id="companyId"
-            class="select form-control"
-            class:is-invalid={formErrors.companyId}
-            bind:value={companyId}
-            required
-          >
-            <option value={null}>Select Company</option>
-            {#each companies as order}
-              <option value={order?.id}>{order?.name}</option>
-            {/each}
-          </select>
-          {#if formErrors.companyId}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.companyId[0]}</li>
-            </ul>
-          {/if}
-        </div>
-
-        {#if availableBankAccounts.length > 0}
-          <div>
-            <label class="form-label" for="bankAccountSelect">Bank Account</label>
-            <select
-              id="bankAccountSelect"
-              class="select form-control"
-              bind:value={selectedBankAccount}
-            >
-              <option value={null}>-- Select Bank Account --</option>
-              {#each availableBankAccounts as bank, i}
-                <option value={bank}>
-                  {bank.label ? bank.label + " — " : ""}{bank.bankName || "Bank " + (i + 1)}{bank.accountNumber ? " (" + bank.accountNumber + ")" : ""}
-                </option>
-              {/each}
-            </select>
-          </div>
-        {/if}
-
-        <div>
-          <label class="form-label" for="invoiceDate">Invoice Date</label>
-          <input
-            type="date"
-            name="invoiceDate"
-            class="form-control"
-            class:is-invalid={formErrors.invoiceDate}
-            bind:value={invoiceDate}
-            id="invoiceDate"
-            placeholder="Invoice Date"
-          />
-          {#if formErrors.invoiceDate}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.invoiceDate[0]}</li>
-            </ul>
-          {/if}
-        </div>
-        <div>
-          <label class="form-label" for="paymentMethod">Payment Method</label>
-          <select
-            name="paymentMethod"
-            id="paymentMethod"
-            class="select form-control"
-            class:is-invalid={formErrors.paymentMethod}
-            bind:value={paymentMethod}
-            required
-          >
-            <option value="">Select Payment Method</option>
-            <option value="Credit Card">Credit Card</option>
-            <option value="Debit Card">Debit Card</option>
-            <option value="Cash">Cash</option>
-            <option value="RTGS">RTGS</option>
-            <option value="NEFT">NEFT</option>
-            <option value="UPI">UPI</option>
-            <option value="IMPS">IMPS</option>
-            <option value="Other">Other</option>
-          </select>
-          {#if formErrors.paymentMethod}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.paymentMethod[0]}</li>
-            </ul>
-          {/if}
-        </div>
-        <div>
-          <label class="form-label" for="status">Status</label>
-          <select
-            name="status"
-            id="status"
-            class="select form-control"
-            class:is-invalid={formErrors.status}
-            bind:value={status}
-            required
-          >
-            <option value="">Select Status</option>
-            <option value="Paid">Paid</option>
-            <option value="Unpaid">Unpaid</option>
-          </select>
-          {#if formErrors.status}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.status[0]}</li>
-            </ul>
-          {/if}
-        </div>
-        <div>
-          <label class="form-label" for="priceTerms">Price Terms</label>
-          <input
-            type="text"
-            name="priceTerms"
-            class="form-control"
-            class:is-invalid={formErrors.priceTerms}
-            bind:value={priceTerms}
-            id="priceTerms"
-            placeholder="Price Terms"
-          />
-          {#if formErrors.priceTerms}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.priceTerms[0]}</li>
-            </ul>
-          {/if}
-        </div>
-
-        <div>
-          <label class="form-label" for="currency">Currency</label>
-          <select
-            name="currency"
-            id="currency"
-            class="select form-control"
-            class:is-invalid={formErrors.currency}
-            bind:value={currency}
-            required
-          >
-            {#each currencies as currency}
-              <option value={currency.code}>{currency.code}</option>
-            {/each}
-          </select>
-          {#if formErrors.currency}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.currency[0]}</li>
-            </ul>
-          {/if}
-        </div>
-        <div>
-          <label class="form-label" for="swiftCode">Swift Code</label>
-          <input
-            type="text"
-            name="swiftCode"
-            class="form-control"
-            class:is-invalid={formErrors.swiftCode}
-            bind:value={swiftCode}
-            id="swiftCode"
-            placeholder="Swift Code"
-          />
-          {#if formErrors.swiftCode}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.swiftCode[0]}</li>
-            </ul>
-          {/if}
-        </div>
-        <div>
-          <label class="form-label" for="poNumber">PO Number</label>
-          <input
-            type="text"
-            name="poNumber"
-            class="form-control"
-            class:is-invalid={formErrors.poNumber}
-            bind:value={poNumber}
-            id="poNumber"
-            placeholder="PO Number"
-          />
-          {#if formErrors.poNumber}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.poNumber[0]}</li>
-            </ul>
-          {/if}
-        </div>
-        <div>
-          <label class="form-label" for="poDate">PO Date</label>
-          <input
-            type="date"
-            name="poDate"
-            class="form-control"
-            class:is-invalid={formErrors.poDate}
-            bind:value={poDate}
-            id="poDate"
-            placeholder="PO Date"
-          />
-          {#if formErrors.poDate}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.poDate[0]}</li>
-            </ul>
-          {/if}
-        </div>
-        <div class="col-span-2 border-top pt-2">
-          <h6 class="m-0">Bill To</h6>
-        </div>
-        <div>
-          <label class="form-label" for="billToName">Name</label>
-          <input
-            type="text"
-            name="billToName"
-            class="form-control"
-            class:is-invalid={formErrors.billToName}
-            bind:value={billToName}
-            id="billToName"
-            placeholder="Name"
-          />
-          {#if formErrors.billToName}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.billToName[0]}</li>
-            </ul>
-          {/if}
-        </div>
-
-        <div>
-          <label class="form-label" for="billToEmail">Email</label>
-          <input
-            type="text"
-            name="billToEmail"
-            class="form-control"
-            class:is-invalid={formErrors.billToEmail}
-            bind:value={billToEmail}
-            id="billToEmail"
-            placeholder="Email"
-          />
-          {#if formErrors.billToEmail}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.billToEmail[0]}</li>
-            </ul>
-          {/if}
-        </div>
-
-        <div>
-          <label class="form-label" for="billToMobile">Mobile</label>
-          <input
-            type="text"
-            name="billToMobile"
-            class="form-control"
-            class:is-invalid={formErrors.billToMobile}
-            bind:value={billToMobile}
-            id="billToMobile"
-            placeholder="Mobile"
-          />
-          {#if formErrors.billToMobile}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.billToMobile[0]}</li>
-            </ul>
-          {/if}
-        </div>
-
-        <div>
-          <label class="form-label" for="billToGSTNumber">GST Number</label>
-          <input
-            type="text"
-            name="billToGSTNumber"
-            class="form-control"
-            class:is-invalid={formErrors.billToGSTNumber}
-            bind:value={billToGSTNumber}
-            id="billToGSTNumber"
-            placeholder="GST Number"
-          />
-          {#if formErrors.billToGSTNumber}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.billToGSTNumber[0]}</li>
-            </ul>
-          {/if}
-        </div>
-        <div class="col-span-2">
-          <label class="form-label" for="billToAddress">Address</label>
-          <textarea
-            name="billToAddress"
-            id="billToAddress"
-            class="form-control"
-            class:is-invalid={formErrors.billToAddress}
-            bind:value={billToAddress}
-            required
-            placeholder="Address"
-          ></textarea>
-
-          {#if formErrors.billToAddress}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.billToAddress[0]}</li>
-            </ul>
-          {/if}
-        </div>
-        <div class="col-span-2">
-          <div class="flex items-center gap-2">
-            <input
-              type="checkbox"
-              name="shipToSameAsBillTo"
-              bind:checked={shipToSameAsBillTo}
-              id="shipToSameAsBillTo"
-              placeholder="shipToSameAsBillTo"
-              on:change={(e) => shipToChange(e)}
-            />
-            <label class="form-label" for="shipToSameAsBillTo">
-              Ship To same as Bill To
-            </label>
-          </div>
-        </div>
-        <div class="col-span-2 border-top pt-2">
-          <h6 class="m-0">Ship To</h6>
-        </div>
-        <div>
-          <label class="form-label" for="shipToName">Name</label>
-          <input
-            type="text"
-            name="shipToName"
-            class="form-control"
-            class:is-invalid={formErrors.shipToName}
-            bind:value={shipToName}
-            id="shipToName"
-            placeholder="Name"
-          />
-          {#if formErrors.shipToName}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.shipToName[0]}</li>
-            </ul>
-          {/if}
-        </div>
-
-        <div>
-          <label class="form-label" for="shipToEmail">Email</label>
-          <input
-            type="text"
-            name="shipToEmail"
-            class="form-control"
-            class:is-invalid={formErrors.shipToEmail}
-            bind:value={shipToEmail}
-            id="shipToEmail"
-            placeholder="Email"
-          />
-          {#if formErrors.shipToEmail}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.shipToEmail[0]}</li>
-            </ul>
-          {/if}
-        </div>
-
-        <div>
-          <label class="form-label" for="shipToMobile">Mobile</label>
-          <input
-            type="text"
-            name="shipToMobile"
-            class="form-control"
-            class:is-invalid={formErrors.shipToMobile}
-            bind:value={shipToMobile}
-            id="shipToMobile"
-            placeholder="Mobile"
-          />
-          {#if formErrors.shipToMobile}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.shipToMobile[0]}</li>
-            </ul>
-          {/if}
-        </div>
-
-        <div>
-          <label class="form-label" for="shipToGSTNumber">GST Number</label>
-          <input
-            type="text"
-            name="shipToGSTNumber"
-            class="form-control"
-            class:is-invalid={formErrors.shipToGSTNumber}
-            bind:value={shipToGSTNumber}
-            id="shipToGSTNumber"
-            placeholder="GST Number"
-          />
-          {#if formErrors.shipToGSTNumber}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.shipToGSTNumber[0]}</li>
-            </ul>
-          {/if}
-        </div>
-        <div class="col-span-2">
-          <label class="form-label" for="shipToAddress">Address</label>
-          <textarea
-            name="shipToAddress"
-            id="shipToAddress"
-            class="form-control"
-            class:is-invalid={formErrors.shipToAddress}
-            bind:value={shipToAddress}
-            required
-            placeholder="Address"
-          ></textarea>
-
-          {#if formErrors.shipToAddress}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.shipToAddress[0]}</li>
-            </ul>
-          {/if}
-        </div>
-
-        <div class="col-span-2 border-top"></div>
-
-        <div class="col-span-2">
-          <div class="font-semibold text-black mb-2">Items :</div>
-          <div>
-            <div class="table-responsive mb-3">
-              <table class="w-full border table-nowrap">
-                <thead class="table-light border-bottom bg-gray-100">
-                  <tr>
-                    <th class="p-2">Item</th>
-                    <th class="p-2">Quantity</th>
-                    <th class="p-2">Unit Price</th>
-                    <th class="p-2">HS Code</th>
-                    <th class="p-2">Total</th>
-                    <th class="p-2"></th>
-                  </tr>
-                </thead>
-                <tbody class="invoices-list-two">
-                  {#each items as item, index}
-                    <tr>
-                      <td class="p-2">
-                        <div class="input-table input-table-descripition">
-                          <input
-                            type="text"
-                            class="form-control"
-                            bind:value={item.item}
-                          />
-                        </div>
-                      </td>
-                      <td class="p-2">
-                        <div>
-                          <input
-                            type="text"
-                            class="form-control"
-                            bind:value={item.quantity}
-                          />
-                        </div>
-                      </td>
-                      <td class="p-2">
-                        <div>
-                          <input
-                            type="number"
-                            class="form-control"
-                            bind:value={item.price}
-                          />
-                        </div>
-                      </td>
-                      <td class="p-2">
-                        <div>
-                          <input
-                            type="text"
-                            class="form-control"
-                            bind:value={item.hsCode}
-                          />
-                        </div>
-                      </td>
-                      <td class="p-2">
-                        <div>
-                          <input
-                            type="number"
-                            class="form-control"
-                            bind:value={item.total}
-                          />
-                        </div>
-                      </td>
-                      <td class="p-2">
-                        <button
-                          type="button"
-                          on:click={() => removeItem(index)}
-                          class="btn btn-icon btn-sm text-danger"
-                        >
-                          <i class="ti ti-xbox-x"></i>
-                        </button>
-                      </td>
-                    </tr>
-                  {/each}
-                </tbody>
-              </table>
-            </div>
-
-            <!-- Add New -->
-            <button
-              type="button"
-              on:click={() => addItem()}
-              class="text-primary"
-              style="cursor: pointer;"
-            >
-              <i class="ti ti-plus me-1"></i>Add New
-            </button>
-          </div>
-        </div>
-
-        <div class="col-span-2">
-          <div class="font-semibold text-black mb-2">Extra Items :</div>
-          <div>
-            <div class="table-responsive mb-3">
-              <table class="w-full border table-nowrap">
-                <thead class="table-light border-bottom bg-gray-100">
-                  <tr>
-                    <th class="p-2">Name</th>
-                    <th class="p-2">Total Price</th>
-                    <th class="p-2"></th>
-                  </tr>
-                </thead>
-                <tbody class="invoices-list-two">
-                  {#each extraItems as item1, index1}
-                    <tr>
-                      <td class="p-2">
-                        <div class="input-table input-table-descripition">
-                          <input
-                            type="text"
-                            class="form-control"
-                            bind:value={item1.item}
-                          />
-                        </div>
-                      </td>
-                      <td class="p-2">
-                        <div>
-                          <input
-                            type="number"
-                            class="form-control"
-                            bind:value={item1.total}
-                          />
-                        </div>
-                      </td>
-                      <td class="p-2">
-                        <button
-                          type="button"
-                          on:click={() => removeExtraItem(index1)}
-                          class="btn btn-icon btn-sm text-danger"
-                        >
-                          <i class="ti ti-xbox-x"></i>
-                        </button>
-                      </td>
-                    </tr>
-                  {/each}
-                </tbody>
-              </table>
-            </div>
-
-            <!-- Add New -->
-            <button
-              type="button"
-              on:click={() => addExtraItem()}
-              class="text-primary"
-              style="cursor: pointer;"
-            >
-              <i class="ti ti-plus me-1"></i>Add New
-            </button>
-          </div>
-        </div>
-
-        <div class="col-span-2">
-          <div class="font-semibold text-black mb-2">Tax Items :</div>
-          <div>
-            <div class="table-responsive mb-3">
-              <table class="w-full border table-nowrap">
-                <thead class="table-light border-bottom bg-gray-100">
-                  <tr>
-                    <th class="p-2">Name</th>
-                    <th class="p-2">Percentage (%)</th>
-                    <th class="p-2">Total Price</th>
-                    <th class="p-2"></th>
-                  </tr>
-                </thead>
-                <tbody class="invoices-list-two">
-                  {#each taxItems as item2, index2}
-                    <tr>
-                      <td class="p-2">
-                        <div class="input-table input-table-descripition">
-                          <input
-                            type="text"
-                            class="form-control"
-                            bind:value={item2.item}
-                          />
-                        </div>
-                      </td>
-                      <td class="p-2">
-                        <div>
-                          <input
-                            type="number"
-                            disabled
-                            class="form-control"
-                            on:change={(taxItems[index2].total =
-                              (item2.percentage / 100) * subtotal)}
-                            bind:value={item2.percentage}
-                          />
-                        </div>
-                      </td>
-                      <td class="p-2">
-                        <div>
-                          <input
-                            type="number"
-                            class="form-control"
-                            disabled
-                            value={item2?.total.toFixed(2)}
-                          />
-                        </div>
-                      </td>
-                      <td class="p-2">
-                        <button
-                          type="button"
-                          on:click={() => removeTaxItem(index2)}
-                          class="btn btn-icon btn-sm text-danger"
-                        >
-                          <i class="ti ti-xbox-x"></i>
-                        </button>
-                      </td>
-                    </tr>
-                  {/each}
-                </tbody>
-              </table>
-            </div>
-
-            <!-- Add New -->
-            <button
-              type="button"
-              on:click={() => addTaxItem()}
-              class="text-primary"
-              style="cursor: pointer;"
-            >
-              <i class="ti ti-plus me-1"></i>Add New
-            </button>
-          </div>
-        </div>
-
-        <div class="col-span-2">
-          <label class="form-label" for="discount">Discount</label>
-          <input
-            type="number"
-            min="0"
-            max={subtotal}
-            name="discount"
-            class="form-control"
-            class:is-invalid={formErrors.discount}
-            bind:value={discount}
-            id="discount"
-            placeholder="Discount"
-          />
-          {#if formErrors.discount}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.discount[0]}</li>
-            </ul>
-          {/if}
-        </div>
-
-        <div>
-          <label class="form-label" for="totalAmountTitle"
-            >Total Amount Title</label
-          >
-          <input
-            type="text"
-            name="totalAmountTitle"
-            class="form-control"
-            class:is-invalid={formErrors.totalAmountTitle}
-            bind:value={totalAmountTitle}
-            id="totalAmountTitle"
-            placeholder="Total Amount Title"
-          />
-          {#if formErrors.totalAmountTitle}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.totalAmountTitle[0]}</li>
-            </ul>
-          {/if}
-        </div>
-
-        <div>
-          <label class="form-label" for="totalAmountValue"
-            >Total Amount Value</label
-          >
-          <input
-            type="number"
-            name="totalAmountValue"
-            class="form-control"
-            min="0"
-            class:is-invalid={formErrors.totalAmountValue}
-            bind:value={totalAmountValue}
-            id="totalAmountValue"
-            placeholder="Total Amount Value"
-          />
-          {#if formErrors.totalAmountValue}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.totalAmountValue[0]}</li>
-            </ul>
-          {/if}
-        </div>
-        <div class="col-span-2">
-          <div class="border rounded p-3">
-            <div class="d-flex align-items-center justify-content-between mb-3">
-              <h6 class="fs-14 fw-semibold mb-0">Subtotal</h6>
-              <h6 class="fs-14 fw-semibold mb-0">
-                {currencies.find((c) => c.code === currency)?.symbol}
-                {subplustotal.toLocaleString("en-IN", {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
-              </h6>
-            </div>
-            {#if typeof discount === "number" && !isNaN(discount) && discount !== 0}
-              <div
-                class="d-flex align-items-center justify-content-between mb-3"
-              >
-                <h6 class="fs-14 fw-semibold mb-0">Discount</h6>
-                <h6 class="fs-14 fw-semibold mb-0">
-                  {currencies.find((c) => c.code === currency)?.symbol}
-                  {discount.toLocaleString("en-IN", {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}
-                </h6>
+            <div class="d-flex flex-wrap gap-3">
+              <div class="form-check">
+                <input
+                  type="radio"
+                  class="form-check-input"
+                  id="invoiceTypeOrder"
+                  name="invoiceType"
+                  value="order"
+                  bind:group={invoiceType}
+                />
+                <label class="form-check-label" for="invoiceTypeOrder">Linked to Order</label>
               </div>
-            {/if}
-            {#each taxItems as item, index}
-              {#if item.item}
-                <div
-                  class="d-flex align-items-center justify-content-between mb-3"
-                >
-                  <h6 class="fs-14 fw-semibold mb-0">
-                    {item.item}
-                    {#if item.percentage != 0}
-                      ({item.percentage}%)
-                    {/if}
-                  </h6>
-                  <h6 class="fs-14 fw-semibold mb-0">
-                    {currencies.find((c) => c.code === currency)?.symbol}
-                    {item.total.toLocaleString("en-IN", {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
-                  </h6>
+              <div class="form-check">
+                <input
+                  type="radio"
+                  class="form-check-input"
+                  id="invoiceTypeSelf"
+                  name="invoiceType"
+                  value="self"
+                  bind:group={invoiceType}
+                />
+                <label class="form-check-label" for="invoiceTypeSelf">Standalone</label>
+              </div>
+            </div>
+          </div>
+
+          {#if invoiceType === "order"}
+            <div class="col-md-6">
+              <label class="form-label" for="orderId">
+                Order <span class="text-danger">*</span>
+              </label>
+              {#key orderSelectKey}
+                <OrderSearchSelect
+                  id="orderId"
+                  initialValue={orderId}
+                  initialTitle={selectedOrderTitle}
+                  isInvalid={!!formErrors.orderId}
+                  on:change={(e) => {
+                    orderId = e.detail.id;
+                    if (e.detail.id) orderValueChange(e.detail.id);
+                  }}
+                />
+              {/key}
+              {#if fieldError("orderId")}
+                <div class="text-danger mt-1 small">{fieldError("orderId")}</div>
+              {/if}
+              {#if piWarning}
+                <div class="alert alert-warning py-2 px-2 mt-2 mb-0 small">
+                  <i class="ti ti-alert-triangle me-1"></i>{piWarning}
                 </div>
               {/if}
-            {/each}
-            <div class="d-flex align-items-center justify-content-between">
-              <h6 class="fs-14 fw-semibold mb-0">Total</h6>
-              <h6 class="fs-14 fw-semibold mb-0">
-                {currencies.find((c) => c.code === currency)?.symbol}
-                {total.toLocaleString("en-IN", {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
-              </h6>
             </div>
-          </div>
-        </div>
-
-        <div class="col-span-2">
-          <label class="form-label" for="termsConditions">
-            Terms & Conditions
-          </label>
-          <textarea
-            name="termsConditions"
-            id="termsConditions"
-            class="form-control"
-            class:is-invalid={formErrors.termsConditions}
-            bind:value={termsConditions}
-            required
-            placeholder="Terms & Conditions"
-          ></textarea>
-
-          {#if formErrors.termsConditions}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.termsConditions[0]}</li>
-            </ul>
+          {:else}
+            <div class="col-md-6">
+              <label class="form-label" for="title">
+                Title <span class="text-danger">*</span>
+              </label>
+              <input
+                type="text"
+                name="title"
+                class="form-control"
+                class:is-invalid={fieldError("title")}
+                bind:value={title}
+                id="title"
+                placeholder="Invoice title"
+              />
+              {#if fieldError("title")}
+                <div class="invalid-feedback d-block">{fieldError("title")}</div>
+              {/if}
+            </div>
           {/if}
-        </div>
-        <div class="col-span-2">
-          <label class="form-label" for="remarks">Remarks</label>
-          <textarea
-            name="remarks"
-            id="remarks"
-            class="form-control"
-            class:is-invalid={formErrors.remarks}
-            bind:value={remarks}
-            required
-            placeholder="Remarks"
-          ></textarea>
 
-          {#if formErrors.remarks}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.remarks[0]}</li>
-            </ul>
+          <div class="col-md-6">
+            <label class="form-label" for="companyId">
+              Company <span class="text-danger">*</span>
+            </label>
+            <select
+              name="companyId"
+              id="companyId"
+              class="select form-control"
+              class:is-invalid={fieldError("companyId")}
+              bind:value={companyId}
+              required
+            >
+              <option value={null}>Select company</option>
+              {#each companies as co}
+                <option value={co?.id}>{co?.name}</option>
+              {/each}
+            </select>
+            {#if fieldError("companyId")}
+              <div class="invalid-feedback d-block">{fieldError("companyId")}</div>
+            {/if}
+          </div>
+
+          {#if availableBankAccounts.length > 0}
+            <div class="col-md-6">
+              <label class="form-label" for="bankAccountSelect">Bank Account</label>
+              <select
+                id="bankAccountSelect"
+                class="select form-control"
+                bind:value={selectedBankAccount}
+              >
+                <option value={null}>Select bank account</option>
+                {#each availableBankAccounts as bank, i}
+                  <option value={bank}>
+                    {bank.label ? bank.label + " — " : ""}{bank.bankName || "Bank " + (i + 1)}{bank.accountNumber ? " (" + bank.accountNumber + ")" : ""}
+                  </option>
+                {/each}
+              </select>
+            </div>
           {/if}
         </div>
       </div>
-      <div class="d-flex align-items-center justify-content-end mt-4">
-        <button
-          type="button"
-          data-bs-dismiss="offcanvas"
-          class="btn btn-light me-2">Cancel</button
-        >
 
+      <!-- Invoice information -->
+      <div class="invoice-form-section">
+        <h6 class="invoice-form-section-title">
+          <i class="ti ti-file-invoice me-2"></i>Invoice Information
+        </h6>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label" for="invoiceDate">Invoice Date</label>
+            <input
+              type="date"
+              name="invoiceDate"
+              class="form-control"
+              class:is-invalid={fieldError("invoiceDate")}
+              bind:value={invoiceDate}
+              id="invoiceDate"
+            />
+            {#if fieldError("invoiceDate")}
+              <div class="invalid-feedback d-block">{fieldError("invoiceDate")}</div>
+            {/if}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="poDate">PO Date</label>
+            <input
+              type="date"
+              name="poDate"
+              class="form-control"
+              class:is-invalid={fieldError("poDate")}
+              bind:value={poDate}
+              id="poDate"
+            />
+            {#if fieldError("poDate")}
+              <div class="invalid-feedback d-block">{fieldError("poDate")}</div>
+            {/if}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="poNumber">PO Number</label>
+            <input
+              type="text"
+              name="poNumber"
+              class="form-control"
+              class:is-invalid={fieldError("poNumber")}
+              bind:value={poNumber}
+              id="poNumber"
+              placeholder="Purchase order number"
+            />
+            {#if fieldError("poNumber")}
+              <div class="invalid-feedback d-block">{fieldError("poNumber")}</div>
+            {/if}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="currency">Currency</label>
+            <select
+              name="currency"
+              id="currency"
+              class="select form-control"
+              class:is-invalid={fieldError("currency")}
+              bind:value={currency}
+              required
+            >
+              {#each currencies as c}
+                <option value={c.code}>{c.code}</option>
+              {/each}
+            </select>
+            {#if fieldError("currency")}
+              <div class="invalid-feedback d-block">{fieldError("currency")}</div>
+            {/if}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="paymentMethod">Payment Method</label>
+            <select
+              name="paymentMethod"
+              id="paymentMethod"
+              class="select form-control"
+              class:is-invalid={fieldError("paymentMethod")}
+              bind:value={paymentMethod}
+              required
+            >
+              <option value="">Select payment method</option>
+              <option value="Credit Card">Credit Card</option>
+              <option value="Debit Card">Debit Card</option>
+              <option value="Cash">Cash</option>
+              <option value="RTGS">RTGS</option>
+              <option value="NEFT">NEFT</option>
+              <option value="UPI">UPI</option>
+              <option value="IMPS">IMPS</option>
+              <option value="Other">Other</option>
+            </select>
+            {#if fieldError("paymentMethod")}
+              <div class="invalid-feedback d-block">{fieldError("paymentMethod")}</div>
+            {/if}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="status">Payment Status</label>
+            <select
+              name="status"
+              id="status"
+              class="select form-control"
+              class:is-invalid={fieldError("status")}
+              bind:value={status}
+              required
+            >
+              <option value="">Select status</option>
+              <option value="Paid">Paid</option>
+              <option value="Unpaid">Unpaid</option>
+            </select>
+            {#if fieldError("status")}
+              <div class="invalid-feedback d-block">{fieldError("status")}</div>
+            {/if}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="priceTerms">Price Terms</label>
+            <input
+              type="text"
+              name="priceTerms"
+              class="form-control"
+              class:is-invalid={fieldError("priceTerms")}
+              bind:value={priceTerms}
+              id="priceTerms"
+              placeholder="e.g. FOB, CIF"
+            />
+            {#if fieldError("priceTerms")}
+              <div class="invalid-feedback d-block">{fieldError("priceTerms")}</div>
+            {/if}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="swiftCode">SWIFT Code</label>
+            <input
+              type="text"
+              name="swiftCode"
+              class="form-control"
+              class:is-invalid={fieldError("swiftCode")}
+              bind:value={swiftCode}
+              id="swiftCode"
+              placeholder="SWIFT / BIC code"
+            />
+            {#if fieldError("swiftCode")}
+              <div class="invalid-feedback d-block">{fieldError("swiftCode")}</div>
+            {/if}
+          </div>
+        </div>
+      </div>
+
+      <!-- Bill To -->
+      <div class="invoice-form-section">
+        <h6 class="invoice-form-section-title">
+          <i class="ti ti-receipt me-2"></i>Bill To
+        </h6>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label" for="billToName">Name</label>
+            <input
+              type="text"
+              name="billToName"
+              class="form-control"
+              class:is-invalid={fieldError("billToName")}
+              bind:value={billToName}
+              id="billToName"
+              placeholder="Name"
+            />
+            {#if fieldError("billToName")}
+              <div class="invalid-feedback d-block">{fieldError("billToName")}</div>
+            {/if}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="billToEmail">Email</label>
+            <input
+              type="email"
+              name="billToEmail"
+              class="form-control"
+              class:is-invalid={fieldError("billToEmail")}
+              bind:value={billToEmail}
+              id="billToEmail"
+              placeholder="Email"
+            />
+            {#if fieldError("billToEmail")}
+              <div class="invalid-feedback d-block">{fieldError("billToEmail")}</div>
+            {/if}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="billToMobile">Mobile</label>
+            <input
+              type="text"
+              name="billToMobile"
+              class="form-control"
+              class:is-invalid={fieldError("billToMobile")}
+              bind:value={billToMobile}
+              id="billToMobile"
+              placeholder="Mobile"
+            />
+            {#if fieldError("billToMobile")}
+              <div class="invalid-feedback d-block">{fieldError("billToMobile")}</div>
+            {/if}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="billToGSTNumber">GST Number</label>
+            <input
+              type="text"
+              name="billToGSTNumber"
+              class="form-control"
+              class:is-invalid={fieldError("billToGSTNumber")}
+              bind:value={billToGSTNumber}
+              id="billToGSTNumber"
+              placeholder="GSTIN"
+            />
+            {#if fieldError("billToGSTNumber")}
+              <div class="invalid-feedback d-block">{fieldError("billToGSTNumber")}</div>
+            {/if}
+          </div>
+          <div class="col-12">
+            <label class="form-label" for="billToAddress">Address</label>
+            <textarea
+              name="billToAddress"
+              id="billToAddress"
+              class="form-control"
+              class:is-invalid={fieldError("billToAddress")}
+              bind:value={billToAddress}
+              required
+              rows="2"
+              placeholder="Billing address"
+            ></textarea>
+            {#if fieldError("billToAddress")}
+              <div class="invalid-feedback d-block">{fieldError("billToAddress")}</div>
+            {/if}
+          </div>
+        </div>
+      </div>
+
+      <!-- Ship To -->
+      <div class="invoice-form-section">
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+          <h6 class="invoice-form-section-title mb-0">
+            <i class="ti ti-truck-delivery me-2"></i>Ship To
+          </h6>
+          <div class="form-check mb-0">
+            <input
+              type="checkbox"
+              class="form-check-input"
+              name="shipToSameAsBillTo"
+              bind:checked={shipToSameAsBillTo}
+              id="shipToSameAsBillTo"
+              on:change={shipToChange}
+            />
+            <label class="form-check-label" for="shipToSameAsBillTo">
+              Same as Bill To
+            </label>
+          </div>
+        </div>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label" for="shipToName">Name</label>
+            <input
+              type="text"
+              name="shipToName"
+              class="form-control"
+              class:is-invalid={fieldError("shipToName")}
+              bind:value={shipToName}
+              id="shipToName"
+              placeholder="Name"
+              disabled={shipToSameAsBillTo}
+            />
+            {#if fieldError("shipToName")}
+              <div class="invalid-feedback d-block">{fieldError("shipToName")}</div>
+            {/if}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="shipToEmail">Email</label>
+            <input
+              type="email"
+              name="shipToEmail"
+              class="form-control"
+              class:is-invalid={fieldError("shipToEmail")}
+              bind:value={shipToEmail}
+              id="shipToEmail"
+              placeholder="Email"
+              disabled={shipToSameAsBillTo}
+            />
+            {#if fieldError("shipToEmail")}
+              <div class="invalid-feedback d-block">{fieldError("shipToEmail")}</div>
+            {/if}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="shipToMobile">Mobile</label>
+            <input
+              type="text"
+              name="shipToMobile"
+              class="form-control"
+              class:is-invalid={fieldError("shipToMobile")}
+              bind:value={shipToMobile}
+              id="shipToMobile"
+              placeholder="Mobile"
+              disabled={shipToSameAsBillTo}
+            />
+            {#if fieldError("shipToMobile")}
+              <div class="invalid-feedback d-block">{fieldError("shipToMobile")}</div>
+            {/if}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="shipToGSTNumber">GST Number</label>
+            <input
+              type="text"
+              name="shipToGSTNumber"
+              class="form-control"
+              class:is-invalid={fieldError("shipToGSTNumber")}
+              bind:value={shipToGSTNumber}
+              id="shipToGSTNumber"
+              placeholder="GSTIN"
+              disabled={shipToSameAsBillTo}
+            />
+            {#if fieldError("shipToGSTNumber")}
+              <div class="invalid-feedback d-block">{fieldError("shipToGSTNumber")}</div>
+            {/if}
+          </div>
+          <div class="col-12">
+            <label class="form-label" for="shipToAddress">Address</label>
+            <textarea
+              name="shipToAddress"
+              id="shipToAddress"
+              class="form-control"
+              class:is-invalid={fieldError("shipToAddress")}
+              bind:value={shipToAddress}
+              required
+              rows="2"
+              placeholder="Shipping address"
+              disabled={shipToSameAsBillTo}
+            ></textarea>
+            {#if fieldError("shipToAddress")}
+              <div class="invalid-feedback d-block">{fieldError("shipToAddress")}</div>
+            {/if}
+          </div>
+        </div>
+      </div>
+
+      <!-- Line Items -->
+      <div class="invoice-form-section">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+          <h6 class="invoice-form-section-title mb-0">
+            <i class="ti ti-list-details me-2"></i>Line Items
+          </h6>
+          <span class="badge bg-light text-dark border">{items.length} item(s)</span>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-bordered table-nowrap align-middle mb-2">
+            <thead class="table-light">
+              <tr>
+                <th>Item</th>
+                <th style="width:90px">Qty</th>
+                <th style="width:110px">Unit Price</th>
+                <th style="width:100px">HS Code</th>
+                <th style="width:110px">Total</th>
+                <th style="width:44px"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each items as item, index}
+                <tr>
+                  <td>
+                    <input type="text" class="form-control form-control-sm" bind:value={item.item} />
+                  </td>
+                  <td>
+                    <input type="text" class="form-control form-control-sm" bind:value={item.quantity} />
+                  </td>
+                  <td>
+                    <input type="number" step="any" class="form-control form-control-sm" bind:value={item.price} />
+                  </td>
+                  <td>
+                    <input type="text" class="form-control form-control-sm" bind:value={item.hsCode} />
+                  </td>
+                  <td>
+                    <input type="number" step="any" class="form-control form-control-sm" bind:value={item.total} />
+                  </td>
+                  <td>
+                    <button type="button" on:click={() => removeItem(index)} class="btn btn-icon btn-sm text-danger" title="Remove">
+                      <i class="ti ti-x"></i>
+                    </button>
+                  </td>
+                </tr>
+              {:else}
+                <tr>
+                  <td colspan="6" class="text-center text-muted py-3">No line items</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+        <button type="button" on:click={addItem} class="btn btn-sm btn-outline-primary">
+          <i class="ti ti-plus me-1"></i>Add Item
+        </button>
+      </div>
+
+      <!-- Extra Items -->
+      <div class="invoice-form-section">
+        <h6 class="invoice-form-section-title">
+          <i class="ti ti-square-rounded-plus me-2"></i>Extra Items
+        </h6>
+        <div class="table-responsive">
+          <table class="table table-bordered table-nowrap align-middle mb-2">
+            <thead class="table-light">
+              <tr>
+                <th>Name</th>
+                <th style="width:140px">Amount</th>
+                <th style="width:44px"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each extraItems as item1, index1}
+                <tr>
+                  <td>
+                    <input type="text" class="form-control form-control-sm" bind:value={item1.item} />
+                  </td>
+                  <td>
+                    <input type="number" step="any" class="form-control form-control-sm" bind:value={item1.total} />
+                  </td>
+                  <td>
+                    <button type="button" on:click={() => removeExtraItem(index1)} class="btn btn-icon btn-sm text-danger" title="Remove">
+                      <i class="ti ti-x"></i>
+                    </button>
+                  </td>
+                </tr>
+              {:else}
+                <tr>
+                  <td colspan="3" class="text-center text-muted py-3">No extra items</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+        <button type="button" on:click={addExtraItem} class="btn btn-sm btn-outline-primary">
+          <i class="ti ti-plus me-1"></i>Add Extra Item
+        </button>
+      </div>
+
+      <!-- Tax -->
+      <div class="invoice-form-section">
+        <h6 class="invoice-form-section-title">
+          <i class="ti ti-receipt-tax me-2"></i>Tax
+        </h6>
+        <div class="table-responsive">
+          <table class="table table-bordered table-nowrap align-middle mb-2">
+            <thead class="table-light">
+              <tr>
+                <th>Name</th>
+                <th style="width:120px">Percentage (%)</th>
+                <th style="width:120px" class="text-end">Amount</th>
+                <th style="width:44px"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each taxItems as item2, index2}
+                <tr>
+                  <td>
+                    <input type="text" class="form-control form-control-sm" bind:value={item2.item} />
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      step="any"
+                      class="form-control form-control-sm"
+                      bind:value={item2.percentage}
+                    />
+                  </td>
+                  <td class="text-end fw-medium">
+                    {currencySymbol} {(item2?.total ?? 0).toFixed(2)}
+                  </td>
+                  <td>
+                    <button type="button" on:click={() => removeTaxItem(index2)} class="btn btn-icon btn-sm text-danger" title="Remove">
+                      <i class="ti ti-x"></i>
+                    </button>
+                  </td>
+                </tr>
+              {:else}
+                <tr>
+                  <td colspan="4" class="text-center text-muted py-3">No tax rows</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+        <button type="button" on:click={addTaxItem} class="btn btn-sm btn-outline-primary">
+          <i class="ti ti-plus me-1"></i>Add Tax
+        </button>
+      </div>
+
+      <!-- Amount & summary -->
+      <div class="invoice-form-section">
+        <h6 class="invoice-form-section-title">
+          <i class="ti ti-calculator me-2"></i>Amount &amp; Summary
+        </h6>
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label" for="discount">Discount</label>
+            <input
+              type="number"
+              min="0"
+              name="discount"
+              class="form-control"
+              class:is-invalid={fieldError("discount")}
+              bind:value={discount}
+              id="discount"
+              placeholder="0"
+            />
+            {#if fieldError("discount")}
+              <div class="invalid-feedback d-block">{fieldError("discount")}</div>
+            {/if}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label" for="totalAmountTitle">Total Label</label>
+            <input
+              type="text"
+              name="totalAmountTitle"
+              class="form-control"
+              class:is-invalid={fieldError("totalAmountTitle")}
+              bind:value={totalAmountTitle}
+              id="totalAmountTitle"
+              placeholder="Total Amount"
+            />
+            {#if fieldError("totalAmountTitle")}
+              <div class="invalid-feedback d-block">{fieldError("totalAmountTitle")}</div>
+            {/if}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label" for="totalAmountValue">Total Override</label>
+            <input
+              type="number"
+              name="totalAmountValue"
+              class="form-control"
+              min="0"
+              class:is-invalid={fieldError("totalAmountValue")}
+              bind:value={totalAmountValue}
+              id="totalAmountValue"
+              placeholder="Leave 0 to use calculated"
+            />
+            {#if fieldError("totalAmountValue")}
+              <div class="invalid-feedback d-block">{fieldError("totalAmountValue")}</div>
+            {/if}
+          </div>
+          <div class="col-12">
+            <div class="border rounded p-3 bg-light">
+              <div class="d-flex justify-content-between mb-2">
+                <span class="text-muted">Line items</span>
+                <span class="fw-medium">
+                  {currencySymbol}
+                  {itemsGrossTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+              {#if extratotal > 0}
+                <div class="d-flex justify-content-between mb-2">
+                  <span class="text-muted">Extra items</span>
+                  <span>
+                    {currencySymbol}
+                    {extratotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              {/if}
+              {#if typeof discount === "number" && !isNaN(discount) && discount !== 0}
+                <div class="d-flex justify-content-between mb-2">
+                  <span class="text-muted">Discount</span>
+                  <span>
+                    − {currencySymbol}
+                    {Number(discount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              {/if}
+              {#each taxItems as item}
+                {#if item.item}
+                  <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted">
+                      {item.item}{item.percentage ? ` (${item.percentage}%)` : ""}
+                    </span>
+                    <span>
+                      {currencySymbol}
+                      {(item.total ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                {/if}
+              {/each}
+              <div class="d-flex justify-content-between border-top pt-2 mt-2">
+                <span class="fw-semibold">{totalAmountTitle || "Total"}</span>
+                <span class="fw-semibold fs-16 text-primary">
+                  {currencySymbol}
+                  {total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Terms & remarks -->
+      <div class="invoice-form-section">
+        <h6 class="invoice-form-section-title">
+          <i class="ti ti-notes me-2"></i>Terms &amp; Remarks
+        </h6>
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label" for="termsConditions">Terms &amp; Conditions</label>
+            <textarea
+              name="termsConditions"
+              id="termsConditions"
+              class="form-control"
+              class:is-invalid={fieldError("termsConditions")}
+              bind:value={termsConditions}
+              required
+              rows="3"
+              placeholder="Terms and conditions"
+            ></textarea>
+            {#if fieldError("termsConditions")}
+              <div class="invalid-feedback d-block">{fieldError("termsConditions")}</div>
+            {/if}
+          </div>
+          <div class="col-12">
+            <label class="form-label" for="remarks">Remarks</label>
+            <textarea
+              name="remarks"
+              id="remarks"
+              class="form-control"
+              class:is-invalid={fieldError("remarks")}
+              bind:value={remarks}
+              required
+              rows="2"
+              placeholder="Additional remarks"
+            ></textarea>
+            {#if fieldError("remarks")}
+              <div class="invalid-feedback d-block">{fieldError("remarks")}</div>
+            {/if}
+          </div>
+        </div>
+      </div>
+
+      <div class="d-flex align-items-center justify-content-end gap-2 mt-4 pt-3 border-top">
+        <button type="button" data-bs-dismiss="offcanvas" class="btn btn-outline-secondary">
+          Cancel
+        </button>
         <button class="btn btn-primary" type="submit" disabled={loading}>
-          {formType == "Create"
-            ? loading
-              ? "Creating..."
-              : "Create New"
-            : loading
-              ? "Updating..."
-              : "Update"}
+          {#if loading}
+            <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+            {formType === "Create" ? "Creating…" : "Saving…"}
+          {:else}
+            <i class="ti ti-check me-1"></i>
+            {formType === "Create" ? "Create Invoice" : "Save Changes"}
+          {/if}
         </button>
       </div>
     </form>
   </div>
 </div>
 <!-- /Add Canvas -->
+
+<style>
+  .invoice-form-section {
+    margin-bottom: 1.25rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid #eef1f4;
+  }
+
+  .invoice-form-section:last-of-type {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+
+  .invoice-form-section-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #344767;
+    margin-bottom: 0;
+    display: flex;
+    align-items: center;
+  }
+
+  .invoice-form-section-title i {
+    color: var(--bs-primary, #3554d1);
+  }
+</style>

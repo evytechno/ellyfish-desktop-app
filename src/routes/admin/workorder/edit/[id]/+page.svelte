@@ -14,6 +14,8 @@
 
   let companies = [];
   let selectedOrderTitle = "";
+  let activeTab = 1;
+  const unitOptions = ["Pcs", "Kg", "g", "L", "mL", "m", "cm", "Set", "Box", "Nos"];
 
   // Form state
   let workOrderType = "order";
@@ -43,36 +45,112 @@
   let workOrderId;
   $: workOrderId = $page.params.id;
 
+  const inCotermsArray = ["In India", "Outside India"];
+  const inCotermsInArray = ["Ex", "Door Delivery", "Godown"];
+  const inCotermsOutsideArray = ["Ex", "FOB", "CIF"];
+  const paymentMethodArray = ["To Pay", "Paid"];
+
+  $: [packingType], changeState();
+  function changeState() {
+    if (packingType != "Wooden Packing") packingCharges = null;
+  }
+
+  function formatDateForInput(date) {
+    if (!date) return "";
+    return new Date(date).toISOString().split("T")[0];
+  }
+
+  function scrollToId(id) {
+    setTimeout(() => {
+      const el = document.getElementById(id);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 50);
+  }
+
+  function goToStep2() {
+    formErrors = {};
+    if (workOrderType === "order" && !orderId) {
+      formErrors.orderId = ["Order is required."];
+      scrollToId("field-order");
+      return;
+    }
+    if (!companyId) {
+      formErrors.companyId = ["Company is required."];
+      scrollToId("field-company");
+      return;
+    }
+    activeTab = 2;
+  }
+
+  function orderValueChange(id, text) {
+    if (id) title = text || "";
+  }
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    errorMessage = "";
+    loading = true;
+    formErrors = {};
+
+    const newWorkOrder = {
+      title, items, remarks, orderNo, poNumber, dispatchAddress,
+      installationEngineer, dispatchPincode, packingType, packingCharges,
+      inCoterms, inCotermsBy, transporterName, paymentMethod,
+    };
+    if (workOrderDate) newWorkOrder.workOrderDate = workOrderDate;
+    if (installationDate) newWorkOrder.installationDate = installationDate;
+    newWorkOrder.companyId = companyId;
+    if (workOrderType == "order") {
+      newWorkOrder.orderId = orderId;
+      if (orderId == null) { formErrors.orderId = ["Order is required."]; loading = false; return; }
+    } else {
+      newWorkOrder.orderId = null;
+    }
+    if (companyId == null) { formErrors.companyId = ["Company is required."]; loading = false; return; }
+    if (items.length == 0) { Swal.fire("Warning!", "Please add at least one item.", "warning"); loading = false; return; }
+
+    try {
+      const data = await authApiFetch(API_ROUTES.WORK_ORDER + "/" + workOrderId, {
+        method: "PUT",
+        data: JSON.stringify(newWorkOrder),
+      });
+      Swal.fire("Success!", data.message, "success");
+      goto("/admin/workorder/" + workOrderId);
+    } catch (error) {
+      loading = false;
+      const validationErrors = errorHandle(error);
+      if (validationErrors && typeof validationErrors === "object") formErrors = validationErrors;
+      else errorMessage = "An unexpected error occurred.";
+    } finally {
+      loading = false;
+    }
+  }
+
+  function addItem() {
+    items = [...items, { item: "", quantity: "0", unit: "Pcs", price: 0, hsCode: "", total: 0 }];
+  }
+
+  function removeItem(index) {
+    items = items.filter((_, i) => i !== index);
+  }
+
   onMount(async () => {
     loadingData = true;
     try {
-      const data = await authApiFetch(
-        `${API_ROUTES.WORK_ORDER}/${workOrderId}`
-      );
-
-      if (data?.order) {
-        workOrderType = "order";
-      } else {
-        workOrderType = "self";
-      }
+      const data = await authApiFetch(`${API_ROUTES.WORK_ORDER}/${workOrderId}`);
+      workOrderType = data?.order ? "order" : "self";
       title = data?.title;
       orderId = data?.order?.id ?? null;
       selectedOrderTitle = data?.order?.title ?? "";
       companyId = data?.company?.id;
-      if (data?.workOrderDate) {
-        workOrderDate = formatDateForInput(data?.workOrderDate);
-      }
-      if (data?.installationDate) {
-        installationDate = formatDateForInput(data?.installationDate);
-      }
-
+      if (data?.workOrderDate) workOrderDate = formatDateForInput(data.workOrderDate);
+      if (data?.installationDate) installationDate = formatDateForInput(data.installationDate);
       dispatchAddress = data?.dispatchAddress;
       installationEngineer = data?.installationEngineer;
       poNumber = data?.poNumber;
       orderNo = data?.orderNo;
-      items = data?.items || [];
+      items = (data?.items || []).map(i => ({ ...i, unit: i.unit || "Pcs" }));
       remarks = data?.remarks;
-
       dispatchPincode = data?.dispatchPincode;
       packingType = data?.packingType;
       packingCharges = data?.packingCharges;
@@ -82,625 +160,318 @@
       paymentMethod = data?.paymentMethod;
     } catch (error) {
       errorMessage = "Failed to load workorder data.";
-      console.error("Fetch error:", error);
-      loading = false;
-      const validationErrors = errorHandle(error);
     } finally {
-      loading = false;
-      setTimeout(() => {
-        loadingData = false;
-      }, 500);
+      setTimeout(() => { loadingData = false; }, 500);
     }
   });
 
-  function formatDateForInput(date) {
-    if (!date) return "";
-    const d = new Date(date);
-    return d.toISOString().split("T")[0]; // Returns YYYY-MM-DD
-  }
-
-  function orderValueChange(id, text) {
-    if (id) title = text || "";
-  }
-  async function handleSubmit(event) {
-    event.preventDefault();
-    errorMessage = "";
-    loading = true;
-    formErrors = {}; // Reset previous errors
-
-    const newWorkOrder = {
-      title,
-      items,
-      remarks,
-      orderNo,
-      poNumber,
-      dispatchAddress,
-      installationEngineer,
-      dispatchPincode,
-      packingType,
-      packingCharges,
-      inCoterms,
-      inCotermsBy,
-      transporterName,
-      paymentMethod,
-    };
-    if (workOrderDate) {
-      newWorkOrder.workOrderDate = workOrderDate;
-    }
-    if (installationDate) {
-      newWorkOrder.installationDate = installationDate;
-    }
-    newWorkOrder.companyId = companyId;
-    if (workOrderType == "order") {
-      newWorkOrder.orderId = orderId;
-      if (orderId == null) {
-        formErrors.orderId = ["Order is required."];
-        loading = false;
-        return;
-      }
-    } else {
-      newWorkOrder.orderId = null;
-    }
-    if (companyId == null) {
-      formErrors.companyId = ["Company is required."];
-      loading = false;
-      return;
-    }
-    if (items.length == 0) {
-      Swal.fire("Warning!", "Please atleast one item add in items.", "warning");
-      loading = false;
-      return;
-    }
-    try {
-      const data = await authApiFetch(
-        API_ROUTES.WORK_ORDER + "/" + workOrderId,
-        {
-          method: "PUT",
-          data: JSON.stringify(newWorkOrder),
-        }
-      );
-
-      Swal.fire("Success!", data.message, "success");
-      goto("/admin/workorder");
-    } catch (error) {
-      loading = false;
-      const validationErrors = errorHandle(error);
-
-      if (validationErrors && typeof validationErrors === "object") {
-        formErrors = validationErrors;
-      } else {
-        errorMessage = "An unexpected error occurred.";
-      }
-    } finally {
-      loading = false;
-    }
-  }
-
-  function addItem() {
-    items = [
-      ...items,
-      { item: "", quantity: "0", price: 0, hsCode: "", total: 0 },
-    ];
-  }
-
-  function removeItem(index) {
-    items = items.filter((_, i) => i !== index);
-  }
-
   onMount(async () => {
     const cached = get(companiesAllStore);
-    if (cached && cached.length > 0) {
-      companies = cached;
-      loadingData = false;
-      return;
-    }
-    loadingData = true;
+    if (cached && cached.length > 0) { companies = cached; return; }
     try {
       const data = await authApiFetch(API_ROUTES.COMPANY + "/all");
       companies = data;
       companiesAllStore.set(data);
     } catch (err) {
       errorMessage = "Failed to load company data.";
-    } finally {
-      setTimeout(() => {
-        loadingData = false;
-      }, 500);
     }
   });
-
-  let inCotermsArray = ["In India", "Outside India"];
-  let inCotermsInArray = ["Ex", "Door Delivery", "Godown"];
-  let inCotermsOutsideArray = ["Ex", "FOB", "CIF"];
-  let paymentMethodArray = ["To Pay", "Paid"];
-
-  $: [packingType], changeState();
-  function changeState() {
-    if (packingType != "Wooden Packing") {
-      packingCharges = null;
-    }
-  }
 </script>
 
-{#if loadingData}
-  <Loader />
-{/if}
+{#if loadingData}<Loader />{/if}
+
 <div class="page-wrapper">
   <div class="content pb-0">
-    <div class="mb-4">
-      <h4 class="mb-1">Edit Work Order</h4>
-      <nav aria-label="breadcrumb">
-        <ol class="breadcrumb mb-0 p-0">
-          <li class="breadcrumb-item"><a href="/admin/dashboard">Home</a></li>
-          <li class="breadcrumb-item">
-            <a href="/admin/workorder">Work Orders</a>
-          </li>
-          <li class="breadcrumb-item active" aria-current="page">
-            Edit Work Order
-          </li>
-        </ol>
-      </nav>
+
+    <!-- Page Header -->
+    <div class="d-flex align-items-center justify-content-between gap-2 mb-4 flex-wrap">
+      <div class="d-flex align-items-center gap-3">
+        <button type="button" class="btn btn-outline-secondary btn-sm" on:click={() => window.history.back()}>
+          <i class="ti ti-arrow-left me-1"></i>Back
+        </button>
+        <div>
+          <h4 class="mb-0">Edit Work Order</h4>
+          <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0 p-0">
+              <li class="breadcrumb-item"><a href="/admin/dashboard">Home</a></li>
+              <li class="breadcrumb-item"><a href="/admin/workorder">Work Orders</a></li>
+              <li class="breadcrumb-item active">Edit</li>
+            </ol>
+          </nav>
+        </div>
+      </div>
+      <a href="/admin/workorder/{workOrderId}" class="btn btn-primary btn-sm">
+        <i class="ti ti-eye me-1"></i>View WO
+      </a>
     </div>
 
-    <div class="card border-0 rounded-0">
-      <div class="card-header flex items-center justify-between">
-        <h5>Edit Work Order</h5>
-        <a href="/admin/workorder" class="btn btn-primary">
-          <i class="ti ti-square-rounded-plus-filled me-1"></i>Work Order List
-        </a>
+    <!-- Step Indicator -->
+    <div class="card border mb-3">
+      <div class="card-body py-2">
+        <div class="d-flex align-items-center" style="gap:0;">
+          <button type="button" on:click={() => (activeTab = 1)}
+            class="d-flex align-items-center gap-2 border-0 bg-transparent py-1 flex-shrink-0"
+            style="cursor:pointer;padding-left:0;">
+            <span class="d-flex align-items-center justify-content-center rounded-circle fw-bold"
+              style="width:28px;height:28px;font-size:13px;flex-shrink:0;
+                     background:{activeTab === 1 ? 'var(--bs-primary)' : '#dee2e6'};
+                     color:{activeTab === 1 ? '#fff' : '#6c757d'};">1</span>
+            <span class="fw-semibold" style="color:{activeTab === 1 ? 'var(--bs-primary)' : '#6c757d'};white-space:nowrap;">
+              Basic Info & Logistics
+            </span>
+          </button>
+          <div style="flex:1;height:2px;background:{activeTab === 2 ? 'var(--bs-primary)' : '#dee2e6'};margin:0 12px;"></div>
+          <button type="button" on:click={goToStep2}
+            class="d-flex align-items-center gap-2 border-0 bg-transparent py-1 flex-shrink-0"
+            style="cursor:pointer;padding-right:0;">
+            <span class="d-flex align-items-center justify-content-center rounded-circle fw-bold"
+              style="width:28px;height:28px;font-size:13px;flex-shrink:0;
+                     background:{activeTab === 2 ? 'var(--bs-primary)' : '#dee2e6'};
+                     color:{activeTab === 2 ? '#fff' : '#6c757d'};">2</span>
+            <span class="fw-semibold" style="color:{activeTab === 2 ? 'var(--bs-primary)' : '#6c757d'};white-space:nowrap;">
+              Items & Remarks
+            </span>
+          </button>
+        </div>
       </div>
+    </div>
 
-      <div class="card-body">
-        <form
-          on:submit={handleSubmit}
-          class="needs-validation space-y-4"
-          novalidate
-        >
-          <div class="grid grid-cols-3 gap-3">
-            <div class="col-span-3">
-              <label class="form-label" for="workOrderType">
-                Work Order Type <span class="text-danger">*</span>
+    <form on:submit={handleSubmit} class="needs-validation" novalidate>
+
+      <!-- ══ TAB 1 ══ -->
+      {#if activeTab === 1}
+
+        <!-- Basic Information -->
+        <div class="card border mb-3">
+          <div class="card-header py-2 bg-white">
+            <h6 class="mb-0 fw-semibold"><i class="ti ti-info-circle me-2 text-primary"></i>Basic Information</h6>
+          </div>
+          <div class="card-body">
+            <div class="mb-3 p-3 bg-light rounded d-flex gap-4 align-items-center">
+              <span class="fw-semibold small text-muted">Work Order Type:</span>
+              <label class="d-flex align-items-center gap-2 cursor-pointer mb-0">
+                <input type="radio" id="order" name="workOrderType" value="order" bind:group={workOrderType} />
+                <span>Linked to Order</span>
               </label>
-              <div class="flex items-center gap-2">
-                <input
-                  type="radio"
-                  id="order"
-                  name="workOrderType"
-                  value="order"
-                  bind:group={workOrderType}
-                />
-                <label for="order">Order</label>
-
-                <input
-                  type="radio"
-                  id="self"
-                  name="workOrderType"
-                  value="self"
-                  bind:group={workOrderType}
-                />
-                <label for="self">Self</label>
-              </div>
-            </div>
-
-            {#if workOrderType == "order"}
-              <div class="col-span-2">
-                <label class="form-label" for="orderId">
-                  Order <span class="text-danger">*</span>
-                </label>
-                {#if !loadingData}
-                  <OrderSearchSelect
-                    id="orderId"
-                    initialValue={orderId}
-                    initialTitle={selectedOrderTitle}
-                    isInvalid={!!formErrors.orderId}
-                    on:change={(e) => {
-                      orderId = e.detail.id;
-                      orderValueChange(e.detail.id, e.detail.text);
-                    }}
-                  />
-                {/if}
-                {#if formErrors.orderId}
-                  <ul class="text-danger mt-1 text-xs capitalize">
-                    <li>{formErrors.orderId[0]}</li>
-                  </ul>
-                {/if}
-              </div>
-            {:else}
-              <div class="col-span-2">
-                <label class="form-label" for="title"
-                  >Title <span class="text-danger">*</span></label
-                >
-                <input
-                  type="text"
-                  name="title"
-                  class="form-control"
-                  class:is-invalid={formErrors.title}
-                  bind:value={title}
-                  id="title"
-                  placeholder="Title"
-                />
-                {#if formErrors.title}
-                  <ul class="text-danger mt-1 text-xs capitalize">
-                    <li>{formErrors.title[0]}</li>
-                  </ul>
-                {/if}
-              </div>
-            {/if}
-
-            <div>
-              <label class="form-label" for="companyId">
-                Company <span class="text-danger">*</span>
+              <label class="d-flex align-items-center gap-2 cursor-pointer mb-0">
+                <input type="radio" id="self" name="workOrderType" value="self" bind:group={workOrderType} />
+                <span>Standalone</span>
               </label>
-              <select
-                name="companyId"
-                id="companyId"
-                class="select form-control"
-                class:is-invalid={formErrors.companyId}
-                bind:value={companyId}
-                required
-              >
-                <option value={null}>Select Company</option>
-                {#each companies as order}
-                  <option value={order?.id}>{order?.name}</option>
-                {/each}
-              </select>
-              {#if formErrors.companyId}
-                <ul class="text-danger mt-1 text-xs capitalize">
-                  <li>{formErrors.companyId[0]}</li>
-                </ul>
-              {/if}
-            </div>
-            <div>
-              <label class="form-label" for="orderNo"
-                >Work Order Number <span class="text-danger">*</span></label
-              >
-              <input
-                type="text"
-                name="orderNo"
-                class="form-control"
-                class:is-invalid={formErrors.orderNo}
-                bind:value={orderNo}
-                id="orderNo"
-                placeholder="Work Order Number"
-              />
-              {#if formErrors.orderNo}
-                <ul class="text-danger mt-1 text-xs capitalize">
-                  <li>{formErrors.orderNo[0]}</li>
-                </ul>
-              {/if}
-            </div>
-            <div>
-              <label class="form-label" for="workOrderDate">
-                Work Order Date
-              </label>
-              <input
-                type="date"
-                name="workOrderDate"
-                class="form-control"
-                class:is-invalid={formErrors.workOrderDate}
-                bind:value={workOrderDate}
-                id="workOrderDate"
-                placeholder="Work Order Date"
-              />
-              {#if formErrors.workOrderDate}
-                <ul class="text-danger mt-1 text-xs capitalize">
-                  <li>{formErrors.workOrderDate[0]}</li>
-                </ul>
-              {/if}
-            </div>
-            <div>
-              <label class="form-label" for="poNumber">PO Number</label>
-              <input
-                type="text"
-                name="poNumber"
-                class="form-control"
-                class:is-invalid={formErrors.poNumber}
-                bind:value={poNumber}
-                id="poNumber"
-                placeholder="PO Number"
-              />
-              {#if formErrors.poNumber}
-                <ul class="text-danger mt-1 text-xs capitalize">
-                  <li>{formErrors.poNumber[0]}</li>
-                </ul>
-              {/if}
             </div>
 
-            <div>
-              <label class="form-label" for="dispatchAddress">
-                Dispatch Address
-              </label>
-              <input
-                type="text"
-                name="dispatchAddress"
-                class="form-control"
-                class:is-invalid={formErrors.dispatchAddress}
-                bind:value={dispatchAddress}
-                id="dispatchAddress"
-                placeholder="Dispatch Address"
-              />
-              {#if formErrors.dispatchAddress}
-                <ul class="text-danger mt-1 text-xs capitalize">
-                  <li>{formErrors.dispatchAddress[0]}</li>
-                </ul>
-              {/if}
-            </div>
-            <div>
-              <label class="form-label" for="dispatchPincode">
-                Dispatch Pincode
-              </label>
-              <input
-                type="text"
-                name="dispatchPincode"
-                class="form-control"
-                class:is-invalid={formErrors.dispatchPincode}
-                bind:value={dispatchPincode}
-                id="dispatchPincode"
-                placeholder="Dispatch Pincode"
-              />
-              {#if formErrors.dispatchPincode}
-                <ul class="text-danger mt-1 text-xs capitalize">
-                  <li>{formErrors.dispatchPincode[0]}</li>
-                </ul>
-              {/if}
-            </div>
-            <div>
-              <label class="form-label" for="transporterName">
-                Transporter Name
-              </label>
-              <input
-                type="text"
-                name="transporterName"
-                class="form-control"
-                class:is-invalid={formErrors.transporterName}
-                bind:value={transporterName}
-                id="transporterName"
-                placeholder="Transporter Name"
-              />
-              {#if formErrors.transporterName}
-                <ul class="text-danger mt-1 text-xs capitalize">
-                  <li>{formErrors.transporterName[0]}</li>
-                </ul>
-              {/if}
-            </div>
-
-            <div>
-              <label class="form-label" for="installationEngineer">
-                Installation Engineer
-              </label>
-              <input
-                type="text"
-                name="installationEngineer"
-                class="form-control"
-                class:is-invalid={formErrors.installationEngineer}
-                bind:value={installationEngineer}
-                id="installationEngineer"
-                placeholder="Installation Engineer"
-              />
-              {#if formErrors.installationEngineer}
-                <ul class="text-danger mt-1 text-xs capitalize">
-                  <li>{formErrors.installationEngineer[0]}</li>
-                </ul>
-              {/if}
-            </div>
-            <div>
-              <label class="form-label" for="installationDate">
-                Installation Date
-              </label>
-              <input
-                type="date"
-                name="installationDate"
-                class="form-control"
-                class:is-invalid={formErrors.installationDate}
-                bind:value={installationDate}
-                id="installationDate"
-                placeholder="Installation Date"
-              />
-              {#if formErrors.installationDate}
-                <ul class="text-danger mt-1 text-xs capitalize">
-                  <li>{formErrors.installationDate[0]}</li>
-                </ul>
-              {/if}
-            </div>
-            <div>
-              <label class="form-label" for="packingType">Packing Type</label>
-              <select
-                name="packingType"
-                id="packingType"
-                class="select form-control"
-                class:is-invalid={formErrors.packingType}
-                bind:value={packingType}
-              >
-                <option value={null}>Select Packing Type</option>
-                <option value="Bubble Wrap">Bubble Wrap</option>
-                <option value="Wooden Packing">Wooden Packing</option>
-              </select>
-              {#if formErrors.packingType}
-                <ul class="text-danger mt-1 text-xs capitalize">
-                  <li>{formErrors.packingType[0]}</li>
-                </ul>
-              {/if}
-            </div>
-
-            {#if packingType === "Wooden Packing"}
-              <div>
-                <label class="form-label" for="packingCharges">
-                  Packing Charges
-                </label>
-                <select
-                  name="packingCharges"
-                  id="packingCharges"
-                  class="select form-control"
-                  class:is-invalid={formErrors.packingCharges}
-                  bind:value={packingCharges}
-                >
-                  <option value={null}>Select Packing Charges</option>
-                  <option value="Paid">Paid</option>
-                  <option value="Unpaid">Unpaid</option>
-                </select>
-                {#if formErrors.packingCharges}
-                  <ul class="text-danger mt-1 text-xs capitalize">
-                    <li>{formErrors.packingCharges[0]}</li>
-                  </ul>
-                {/if}
-              </div>
-            {/if}
-            <div>
-              <label class="form-label" for="inCoterms">In COTERMS</label>
-              <select
-                name="inCoterms"
-                id="inCoterms"
-                class="select form-control"
-                class:is-invalid={formErrors.inCoterms}
-                bind:value={inCoterms}
-              >
-                <option value={null}>Select In COTERMS</option>
-                {#each inCotermsArray as inCoterm}
-                  <option value={inCoterm}>{inCoterm}</option>
-                {/each}
-              </select>
-              {#if formErrors.inCoterms}
-                <ul class="text-danger mt-1 text-xs capitalize">
-                  <li>{formErrors.inCoterms[0]}</li>
-                </ul>
-              {/if}
-            </div>
-            <div>
-              <label class="form-label" for="inCotermsBy">In COTERMS By</label>
-              <select
-                name="inCotermsBy"
-                id="inCotermsBy"
-                class="select form-control"
-                class:is-invalid={formErrors.inCotermsBy}
-                bind:value={inCotermsBy}
-              >
-                <option value={null}>Select In COTERMS By</option>
-                {#if inCoterms === "Outside India"}
-                  {#each inCotermsOutsideArray as inCoterm}
-                    <option value={inCoterm}>{inCoterm}</option>
-                  {/each}
-                {:else}
-                  {#each inCotermsInArray as inCoterm}
-                    <option value={inCoterm}>{inCoterm}</option>
-                  {/each}
-                {/if}
-              </select>
-              {#if formErrors.inCotermsBy}
-                <ul class="text-danger mt-1 text-xs capitalize">
-                  <li>{formErrors.inCotermsBy[0]}</li>
-                </ul>
-              {/if}
-            </div>
-            <div>
-              <label class="form-label" for="paymentMethod"
-                >Payment Method</label
-              >
-              <select
-                name="paymentMethod"
-                id="paymentMethod"
-                class="select form-control"
-                class:is-invalid={formErrors.paymentMethod}
-                bind:value={paymentMethod}
-              >
-                <option value={null}>Select Payment Method</option>
-                {#each paymentMethodArray as paymentMethod}
-                  <option value={paymentMethod}>{paymentMethod}</option>
-                {/each}
-              </select>
-              {#if formErrors.paymentMethod}
-                <ul class="text-danger mt-1 text-xs capitalize">
-                  <li>{formErrors.paymentMethod[0]}</li>
-                </ul>
-              {/if}
-            </div>
-
-            <div class="col-span-3 border-top"></div>
-
-            <div class="col-span-3">
-              <div class="font-semibold text-black mb-2">Items :</div>
-              <div>
-                <div class="table-responsive mb-3">
-                  <table class="w-full border table-nowrap">
-                    <thead class="table-light border-bottom bg-gray-100">
-                      <tr>
-                        <th class="p-2">Item</th>
-                        <th class="p-2">Quantity</th>
-                        <th class="p-2"></th>
-                      </tr>
-                    </thead>
-                    <tbody class="workorders-list-two">
-                      {#each items as item, index}
-                        <tr>
-                          <td class="p-2">
-                            <div class="input-table input-table-descripition">
-                              <input
-                                type="text"
-                                class="form-control"
-                                bind:value={item.item}
-                              />
-                            </div>
-                          </td>
-                          <td class="p-2">
-                            <div>
-                              <input
-                                type="text"
-                                class="form-control"
-                                bind:value={item.quantity}
-                              />
-                            </div>
-                          </td>
-                          <td class="p-2">
-                            <button
-                              type="button"
-                              on:click={() => removeItem(index)}
-                              class="btn btn-icon btn-sm text-danger"
-                            >
-                              <i class="ti ti-xbox-x"></i>
-                            </button>
-                          </td>
-                        </tr>
-                      {/each}
-                    </tbody>
-                  </table>
+            <div class="grid grid-cols-3 gap-2">
+              {#if workOrderType == "order"}
+                <div class="col-span-2" id="field-order">
+                  <label class="form-label">Order <span class="text-danger">*</span></label>
+                  {#if !loadingData}
+                    <OrderSearchSelect id="orderId" initialValue={orderId} initialTitle={selectedOrderTitle}
+                      isInvalid={!!formErrors.orderId}
+                      on:change={(e) => { orderId = e.detail.id; orderValueChange(e.detail.id, e.detail.text); }} />
+                  {/if}
+                  {#if formErrors.orderId}<ul class="text-danger mt-1 text-xs"><li>{formErrors.orderId[0]}</li></ul>{/if}
                 </div>
-
-                <!-- Add New -->
-                <button
-                  type="button"
-                  on:click={() => addItem()}
-                  class="text-primary"
-                  style="cursor: pointer;"
-                >
-                  <i class="ti ti-plus me-1"></i>Add New
-                </button>
-              </div>
-            </div>
-
-            <div class="col-span-3">
-              <label class="form-label" for="remarks">Remarks</label>
-              <textarea
-                name="remarks"
-                id="remarks"
-                class="form-control"
-                class:is-invalid={formErrors.remarks}
-                bind:value={remarks}
-                required
-                placeholder="Remarks"
-              ></textarea>
-
-              {#if formErrors.remarks}
-                <ul class="text-danger mt-1 text-xs capitalize">
-                  <li>{formErrors.remarks[0]}</li>
-                </ul>
+              {:else}
+                <div class="col-span-2">
+                  <label class="form-label">Title <span class="text-danger">*</span></label>
+                  <input type="text" class="form-control" class:is-invalid={formErrors.title} bind:value={title} placeholder="Title" />
+                  {#if formErrors.title}<ul class="text-danger mt-1 text-xs"><li>{formErrors.title[0]}</li></ul>{/if}
+                </div>
               {/if}
+
+              <div id="field-company">
+                <label class="form-label">Company <span class="text-danger">*</span></label>
+                <select class="form-control" class:is-invalid={formErrors.companyId} bind:value={companyId}>
+                  <option value={null}>Select Company</option>
+                  {#each companies as c}<option value={c.id}>{c.name}</option>{/each}
+                </select>
+                {#if formErrors.companyId}<ul class="text-danger mt-1 text-xs"><li>{formErrors.companyId[0]}</li></ul>{/if}
+              </div>
+
+              <div>
+                <label class="form-label">Work Order Number</label>
+                <input type="text" class="form-control" class:is-invalid={formErrors.orderNo} bind:value={orderNo} placeholder="Work Order Number" />
+                {#if formErrors.orderNo}<ul class="text-danger mt-1 text-xs"><li>{formErrors.orderNo[0]}</li></ul>{/if}
+              </div>
+              <div>
+                <label class="form-label">Work Order Date</label>
+                <input type="date" class="form-control" bind:value={workOrderDate} />
+              </div>
+              <div>
+                <label class="form-label">PO Number</label>
+                <input type="text" class="form-control" bind:value={poNumber} placeholder="PO Number" />
+              </div>
             </div>
           </div>
-          <div class="d-flex align-items-center justify-content-end mt-4">
-            <button class="btn btn-primary" type="submit" disabled={loading}>
-              {loading ? "Updating..." : "Update Now"}
+        </div>
+
+        <!-- Dispatch & Logistics -->
+        <div class="card border mb-3">
+          <div class="card-header py-2 bg-white">
+            <h6 class="mb-0 fw-semibold"><i class="ti ti-truck me-2 text-primary"></i>Dispatch & Logistics</h6>
+          </div>
+          <div class="card-body">
+            <div class="grid grid-cols-3 gap-2">
+              <div>
+                <label class="form-label">Dispatch Address</label>
+                <input type="text" class="form-control" bind:value={dispatchAddress} placeholder="Dispatch Address" />
+              </div>
+              <div>
+                <label class="form-label">Dispatch Pincode</label>
+                <input type="text" class="form-control" bind:value={dispatchPincode} placeholder="Dispatch Pincode" />
+              </div>
+              <div>
+                <label class="form-label">Transporter Name</label>
+                <input type="text" class="form-control" bind:value={transporterName} placeholder="Transporter Name" />
+              </div>
+              <div>
+                <label class="form-label">Packing Type</label>
+                <select class="form-control" bind:value={packingType}>
+                  <option value={null}>Select Packing Type</option>
+                  <option value="Bubble Wrap">Bubble Wrap</option>
+                  <option value="Wooden Packing">Wooden Packing</option>
+                </select>
+              </div>
+              {#if packingType === "Wooden Packing"}
+                <div>
+                  <label class="form-label">Packing Charges</label>
+                  <select class="form-control" bind:value={packingCharges}>
+                    <option value={null}>Select Packing Charges</option>
+                    <option value="Paid">Paid</option>
+                    <option value="Unpaid">Unpaid</option>
+                  </select>
+                </div>
+              {/if}
+              <div>
+                <label class="form-label">In COTERMS</label>
+                <select class="form-control" bind:value={inCoterms}>
+                  <option value={null}>Select In COTERMS</option>
+                  {#each inCotermsArray as c}<option value={c}>{c}</option>{/each}
+                </select>
+              </div>
+              <div>
+                <label class="form-label">In COTERMS By</label>
+                <select class="form-control" bind:value={inCotermsBy}>
+                  <option value={null}>Select In COTERMS By</option>
+                  {#if inCoterms === "Outside India"}
+                    {#each inCotermsOutsideArray as c}<option value={c}>{c}</option>{/each}
+                  {:else}
+                    {#each inCotermsInArray as c}<option value={c}>{c}</option>{/each}
+                  {/if}
+                </select>
+              </div>
+              <div>
+                <label class="form-label">Payment Method</label>
+                <select class="form-control" bind:value={paymentMethod}>
+                  <option value={null}>Select Payment Method</option>
+                  {#each paymentMethodArray as m}<option value={m}>{m}</option>{/each}
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Installation -->
+        <div class="card border mb-3">
+          <div class="card-header py-2 bg-white">
+            <h6 class="mb-0 fw-semibold"><i class="ti ti-tools me-2 text-primary"></i>Installation</h6>
+          </div>
+          <div class="card-body">
+            <div class="grid grid-cols-3 gap-2">
+              <div>
+                <label class="form-label">Installation Engineer</label>
+                <input type="text" class="form-control" bind:value={installationEngineer} placeholder="Installation Engineer" />
+              </div>
+              <div>
+                <label class="form-label">Installation Date</label>
+                <input type="date" class="form-control" bind:value={installationDate} />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="d-flex justify-content-end mt-3">
+          <button type="button" class="btn btn-primary" on:click={goToStep2}>
+            Next: Items & Remarks <i class="ti ti-arrow-right ms-1"></i>
+          </button>
+        </div>
+
+      {/if}
+
+      <!-- ══ TAB 2 ══ -->
+      {#if activeTab === 2}
+
+        <!-- Items -->
+        <div class="card border mb-3">
+          <div class="card-header py-2 bg-white d-flex align-items-center justify-content-between">
+            <h6 class="mb-0 fw-semibold"><i class="ti ti-list-details me-2 text-primary"></i>Items <span class="badge bg-primary ms-2">{items.length}</span></h6>
+            <button type="button" class="btn btn-sm btn-primary" on:click={addItem}>
+              <i class="ti ti-plus me-1"></i>Add Item
             </button>
           </div>
-        </form>
-      </div>
-    </div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-bordered mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th class="px-3 py-2 text-center" style="width:45px">S.No</th>
+                    <th class="px-3 py-2">Item Description</th>
+                    <th class="px-3 py-2 text-center" style="width:80px">Qty</th>
+                    <th class="px-3 py-2 text-center" style="width:100px">Unit</th>
+                    <th class="px-3 py-2 text-center" style="width:46px"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each items as item, index}
+                    <tr>
+                      <td class="px-3 py-2 text-center text-muted small align-middle">{index + 1}</td>
+                      <td class="px-2 py-1">
+                        <input type="text" class="form-control form-control-sm border-0 shadow-none" bind:value={item.item} placeholder="Item description" />
+                      </td>
+                      <td class="px-2 py-1">
+                        <input type="text" class="form-control form-control-sm border-0 shadow-none text-center" bind:value={item.quantity} />
+                      </td>
+                      <td class="px-2 py-1">
+                        <select class="form-select form-select-sm border-0 shadow-none" bind:value={item.unit}>
+                          {#each unitOptions as u}<option value={u}>{u}</option>{/each}
+                        </select>
+                      </td>
+                      <td class="px-2 py-2 text-center align-middle">
+                        <button type="button" class="btn btn-sm btn-icon btn-soft-danger rounded-pill" on:click={() => removeItem(index)}>
+                          <i class="ti ti-trash"></i>
+                        </button>
+                      </td>
+                    </tr>
+                  {:else}
+                    <tr><td colspan="5" class="text-center text-muted py-3">No items added</td></tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Remarks -->
+        <div class="card border mb-3">
+          <div class="card-header py-2 bg-white">
+            <h6 class="mb-0 fw-semibold"><i class="ti ti-notes me-2 text-primary"></i>Remarks</h6>
+          </div>
+          <div class="card-body">
+            <textarea class="form-control" rows="3" bind:value={remarks} placeholder="Remarks"></textarea>
+          </div>
+        </div>
+
+        <div class="d-flex align-items-center justify-content-end gap-2 mt-3">
+          <button type="button" class="btn btn-outline-secondary" on:click={() => (activeTab = 1)}>
+            <i class="ti ti-arrow-left me-1"></i>Back to Info
+          </button>
+          <button type="button" class="btn btn-light" on:click={() => window.history.back()}>Cancel</button>
+          <button class="btn btn-primary" type="submit" disabled={loading}>
+            {loading ? "Updating..." : "Update Work Order"}
+          </button>
+        </div>
+
+      {/if}
+
+    </form>
   </div>
 </div>

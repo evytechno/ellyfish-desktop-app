@@ -249,6 +249,7 @@
   let loadingData = true;
   let loading = false;
   let searchTerm = "";
+  let headerInput = ""; // separate — only committed on Enter / button click
   let currentPage = 1;
   let rowsPerPage = 10;
   let totalItems = 0;
@@ -258,9 +259,38 @@
     setTimeout(() => {
       firstLoad = true;
     }, 500);
+
+    const modalEl = document.getElementById("order_lists");
+    if (modalEl) {
+      // Restore scroll when modal closes normally
+      modalEl.addEventListener("hidden.bs.modal", () => {
+        document.body.style.overflow = "";
+        document.body.style.paddingRight = "";
+        document.body.classList.remove("modal-open");
+      });
+
+      // Intercept order link clicks — close modal first, then navigate
+      modalEl.addEventListener("click", (e) => {
+        const link = e.target.closest("a[data-order-href]");
+        if (!link) return;
+        e.preventDefault();
+        const href = link.getAttribute("data-order-href");
+        // click the existing close button to let Bootstrap close properly
+        const closeBtn = modalEl.querySelector("[data-bs-dismiss='modal']");
+        if (closeBtn) closeBtn.click();
+        // after animation completes, navigate
+        setTimeout(() => {
+          document.body.style.overflow = "";
+          document.body.style.paddingRight = "";
+          document.body.classList.remove("modal-open");
+          goto(href);
+        }, 300);
+      });
+    }
   });
 
   let debounceTimeout;
+  // Used only by the modal input — auto-fetch on type
   function handleSearchChange(value) {
     clearTimeout(debounceTimeout);
     debounceTimeout = setTimeout(() => {
@@ -303,8 +333,30 @@
       }, 500);
     }
   }
-  $: [searchTerm, currentPage, rowsPerPage], firstLoad && fetchOrders();
-  $: if (firstLoad && openModal) fetchOrders();
+  // Only auto-fetch when modal is open (searchTerm changed by modal input typing)
+  $: if (firstLoad && openModal) [searchTerm, currentPage, rowsPerPage], fetchOrders();
+
+  function commitAndSearch() {
+    // shared logic for both Enter key and button click
+    searchTerm = headerInput;
+    currentPage = 1;
+    fetchOrders();
+    setTimeout(() => {
+      const input = document.getElementById("modal-search-input");
+      if (input) {
+        input.focus();
+        input.value = searchTerm;
+      }
+    }, 350);
+  }
+
+  function handleSearchKeydown(e) {
+    if (e.key === "Enter") {
+      searchTerm = headerInput;
+      currentPage = 1;
+      document.getElementById("header-search-btn")?.click();
+    }
+  }
 
   let statusesColors = {
     "New Lead": "bg-blue",
@@ -323,6 +375,15 @@
     {
       key: "title",
       label: "Title",
+      render: (val, row) => {
+        const isMaster = currentUser?.role === "master";
+        const isOwnOrder = currentUser?.subRole === "telecaller" &&
+          row.assignedUsers?.some((u) => u.id === currentUser?.id);
+        if (isMaster || isOwnOrder) {
+          return `<a data-order-href="/admin/order/${row.id}" title="Open Order" style="color:#3b5998;cursor:pointer;" class="d-inline-flex align-items-center gap-1"><i class="ti ti-external-link fs-16"></i>${val ?? "-"}</a>`;
+        }
+        return val ?? "-";
+      },
     },
     {
       key: "status",
@@ -447,8 +508,8 @@
           <div class="input-icon relative me-2">
             <input
               type="text"
-              value={searchTerm}
-              on:input={(e) => handleSearchChange(e.target.value)}
+              bind:value={headerInput}
+              on:keydown={handleSearchKeydown}
               class="form-control"
               placeholder="Search Keyword"
             />
@@ -458,11 +519,12 @@
           </div>
 
           <button
+            id="header-search-btn"
             href="#order_lists"
             data-bs-toggle="modal"
             data-bs-target="#order_lists"
             class="fw-medium bg-primary text-white p-1.5 px-2 rounded"
-            on:click={() => fetchOrders()}
+            on:click={commitAndSearch}
           >
             <i class="ti ti-search"></i>
           </button>
@@ -597,9 +659,11 @@
       <div class="modal-header gap-4 justify-between">
         <h5 class="modal-title">Orders</h5>
         <input
+          id="modal-search-input"
           type="text"
           value={searchTerm}
           on:input={(e) => handleSearchChange(e.target.value)}
+          on:keydown={(e) => { if (e.key === "Enter") fetchOrders(); }}
           class="form-control max-w-[300px]"
           placeholder="Search Keyword"
         />
@@ -608,7 +672,7 @@
           class="btn-close custom-btn-close border p-1 me-0 text-dark"
           data-bs-dismiss="modal"
           aria-label="Close"
-          on:click={() => (openModal = false)}
+          on:click={() => { openModal = false; headerInput = searchTerm; }}
         >
         </button>
       </div>

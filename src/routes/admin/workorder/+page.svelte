@@ -331,7 +331,11 @@
       key: "order",
       label: "Order",
       render: (val, row) => {
-        return `<div class="max-w-[300px] truncate">${row?.order ? row?.order?.title : row?.title ? row?.title : "-"}</div>`;
+        if (row?.order?.id) {
+          const label = row.order.title || `Order #${row.order.id}`;
+          return `<a href="/admin/order/${row.order.id}" class="text-primary text-truncate d-block" style="max-width:280px" title="${label}">${label}</a>`;
+        }
+        return `<span class="text-muted">${row?.title || "-"}</span>`;
       },
     },
     {
@@ -420,7 +424,7 @@
   async function deleteRecord(id) {
     Swal.fire({
       title: "Delete Confirmation",
-      text: "Are you sure you want to delete this record.",
+      text: "Are you sure you want to delete this record?",
       icon: "warning",
       showCancelButton: true,
       confirmButtonText: "Yes, delete it!",

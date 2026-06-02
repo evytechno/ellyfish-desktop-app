@@ -132,7 +132,7 @@
   async function deleteRecord(id) {
     Swal.fire({
       title: "Delete Confirmation",
-      text: "Are you sure you want to delete this record.",
+      text: "Are you sure you want to delete this record?",
       icon: "warning",
       showCancelButton: true,
       confirmButtonText: "Yes, delete it!",

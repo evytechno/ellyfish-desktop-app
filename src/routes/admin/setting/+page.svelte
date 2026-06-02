@@ -704,7 +704,7 @@
 
           <div class="flex justify-end mt-4">
             <button class="btn btn-primary" type="submit" disabled={loading}>
-              {loading ? "Submiting..." : "Submit"}
+              {loading ? "Submitting..." : "Submit"}
             </button>
           </div>
         </form>

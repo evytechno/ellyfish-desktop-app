@@ -19,4 +19,8 @@ export const API_ROUTES = {
   QUERY: `queries`,
   INVOICE: `invoices`,
   GROUP_CHAT: `group-chat`,
+  CLIENT: `clients`,
+  CLIENT_CONTACT: `client-contacts`,
+  ORDER_CONTACT: `order-contacts`,
+  WARNING: `warnings`,
 };

@@ -1,5 +1,7 @@
 <script>
   import { onDestroy, onMount } from "svelte";
+  import { afterNavigate } from "$app/navigation";
+  import { slide } from "svelte/transition";
   import { goto } from "$app/navigation";
   import jQuery from "jquery";
   import { page } from "$app/stores";
@@ -230,7 +232,12 @@
 
   async function getAllCategories() {
     const cached = get(categoriesAllStore);
-    if (cached && cached.length > 0 && typeof cached[0] === "object" && cached[0].label) {
+    if (
+      cached &&
+      cached.length > 0 &&
+      typeof cached[0] === "object" &&
+      cached[0].label
+    ) {
       categories = cached;
       loadingData = false;
       return;
@@ -284,7 +291,7 @@
   let queryError = "";
 
   function openQueryModal() {
-    if (!querySubject.trim())     querySubject     = order?.title ?? "";
+    if (!querySubject.trim()) querySubject = order?.title ?? "";
     if (!queryDescription.trim()) queryDescription = order?.title ?? "";
     showQueryModal = true;
   }
@@ -308,14 +315,21 @@
       showQueryModal = false;
       querySubject = "";
       queryDescription = "";
-      Swal.fire({ icon: "success", title: "Query raised successfully", timer: 1500, showConfirmButton: false });
+      Swal.fire({
+        icon: "success",
+        title: "Query raised successfully",
+        timer: 1500,
+        showConfirmButton: false,
+      });
       loadOrderQueries();
     } catch (e) {
       const msg = e?.data?.message;
       if (typeof msg === "string") {
         queryError = msg;
       } else if (Array.isArray(msg)) {
-        queryError = msg.flatMap((m) => Object.values(m.constraints ?? {})).join(" • ");
+        queryError = msg
+          .flatMap((m) => Object.values(m.constraints ?? {}))
+          .join(" • ");
       } else {
         queryError = "Failed to raise query.";
       }
@@ -324,11 +338,12 @@
     }
   }
 
-  onMount(async () => {
-    let loginUser = checkAuth();
-    currentUser = loginUser;
-
+  async function loadOrder() {
+    if (!orderId) return;
     loadingData = true;
+    order = null;
+    orderQueries = [];
+    selectedUsers = [];
     try {
       const data = await authApiFetch(`${API_ROUTES.ORDER}/${orderId}`);
       order = data;
@@ -370,7 +385,7 @@
 
       data?.assignedUsers.map((user) => {
         if (user?.role == "user") {
-          seletedUsers.push(user?.id);
+          selectedUsers.push(user?.id);
         }
       });
     } catch (err) {
@@ -382,6 +397,16 @@
     }
     getAllCategories();
     loadOrderQueries();
+  }
+
+  onMount(async () => {
+    currentUser = checkAuth();
+    await loadOrder();
+  });
+
+  afterNavigate(async () => {
+    currentUser = checkAuth();
+    await loadOrder();
   });
 
   onMount(async () => {
@@ -511,7 +536,7 @@
   async function deleteAttachment(id) {
     Swal.fire({
       title: "Delete Confirmation",
-      text: "Are you sure you want to delete this record.",
+      text: "Are you sure you want to delete this record?",
       icon: "warning",
       showCancelButton: true,
       confirmButtonText: "Yes, delete it!",
@@ -609,7 +634,7 @@
   async function deleteChat(id) {
     Swal.fire({
       title: "Delete Confirmation",
-      text: "Are you sure you want to delete this record.",
+      text: "Are you sure you want to delete this record?",
       icon: "warning",
       showCancelButton: true,
       confirmButtonText: "Yes, delete it!",
@@ -702,7 +727,7 @@
   async function deleteReminder(id) {
     Swal.fire({
       title: "Delete Confirmation",
-      text: "Are you sure you want to delete this record.",
+      text: "Are you sure you want to delete this record?",
       icon: "warning",
       showCancelButton: true,
       confirmButtonText: "Yes, delete it!",
@@ -813,7 +838,7 @@
   async function deleteClient(id) {
     Swal.fire({
       title: "Delete Confirmation",
-      text: "Are you sure you want to delete this record.",
+      text: "Are you sure you want to delete this record?",
       icon: "warning",
       showCancelButton: true,
       confirmButtonText: "Yes, delete it!",
@@ -850,6 +875,536 @@
         }
       }
     });
+  }
+
+  let orderInfoExpanded = false;
+
+  // ── Change Client ────────────────────────────────────────────────────────────
+  let showChangeClientModal = false;
+  let changeClientQuery = "";
+  let changeClientResults = [];
+  let changeClientLoading = false;
+  let changeClientTimer = null;
+  let changeClientDropdown = false;
+
+  // Legacy contacts checkboxes (shown only when no clientId + orderClients exist)
+  let legacyChecked = []; // array of checked orderClient ids
+  $: legacyContacts =
+    !order?.clientId && order?.orderClients?.length > 0
+      ? order.orderClients.filter((oc) => !oc.deletedAt)
+      : [];
+
+  // Init all checked when modal opens
+  function initLegacyChecked() {
+    legacyChecked = legacyContacts.map((oc) => oc.id);
+  }
+
+  function toggleLegacy(id) {
+    if (legacyChecked.includes(id))
+      legacyChecked = legacyChecked.filter((i) => i !== id);
+    else legacyChecked = [...legacyChecked, id];
+  }
+
+  // Helper — after linking client, also migrate checked legacy contacts
+  async function migrateLegacyContacts(resolvedClient) {
+    const toMigrate = legacyContacts.filter((oc) =>
+      legacyChecked.includes(oc.id),
+    );
+    for (const oc of toMigrate) {
+      try {
+        // Create ClientContact under the linked client
+        let contact = null;
+        const contactRes = await authApiFetch(API_ROUTES.CLIENT_CONTACT, {
+          method: "POST",
+          data: JSON.stringify({
+            clientId: resolvedClient.id,
+            name: oc.name,
+            mobile: oc.mobile || undefined,
+            email: oc.email || undefined,
+            designation: oc.designation || undefined,
+            whatsapp: oc.whatsapp || undefined,
+            alternateMobile: oc.alternateMobile || undefined,
+            address: oc.address || undefined,
+          }),
+        });
+        contact = contactRes.data;
+
+        // Create OrderContact link
+        const ocRes = await authApiFetch(API_ROUTES.ORDER_CONTACT, {
+          method: "POST",
+          data: JSON.stringify({
+            orderId: order.id,
+            clientContactId: contact.id,
+          }),
+        });
+
+        // Update local order state
+        if (!order.orderContacts) order.orderContacts = [];
+        order.orderContacts = [...order.orderContacts, ocRes.data];
+        if (!resolvedClient.contacts) resolvedClient.contacts = [];
+        resolvedClient.contacts = [...resolvedClient.contacts, contact];
+      } catch (e) {
+        console.error("Failed to migrate contact:", oc.name, e);
+      }
+    }
+  }
+
+  // Inline create new client inside Change/Link Client modal
+  let ccSelectedExisting = null; // existing client selected from search results
+  let ccInlineCreate = false;
+  let ccNewName = "";
+  let ccNewGst = "";
+  let ccNewMobile = "";
+  let ccNewEmail = "";
+  let ccNewAddress = "";
+  let ccCreateLoading = false;
+  let ccCreateErrors = {};
+
+  function ccOpenInlineCreate() {
+    ccInlineCreate = true;
+    ccNewName = changeClientQuery; // pre-fill with searched text
+    ccNewGst = "";
+    ccNewMobile = "";
+    ccNewEmail = "";
+    ccNewAddress = "";
+    ccCreateErrors = {};
+  }
+
+  function ccCancelInlineCreate() {
+    ccInlineCreate = false;
+    ccNewName = "";
+    ccNewGst = "";
+    ccNewMobile = "";
+    ccNewEmail = "";
+    ccNewAddress = "";
+    ccCreateErrors = {};
+  }
+
+  async function ccCreateAndLink() {
+    ccCreateErrors = {};
+    if (!ccNewName.trim()) {
+      ccCreateErrors.name = "Company name is required.";
+      return;
+    }
+    ccCreateLoading = true;
+    try {
+      // Create new client
+      const clientRes = await authApiFetch(API_ROUTES.CLIENT, {
+        method: "POST",
+        data: JSON.stringify({
+          name: ccNewName.trim(),
+          gstNumber: ccNewGst || undefined,
+          mobile: ccNewMobile || undefined,
+          email: ccNewEmail || undefined,
+          address: ccNewAddress || undefined,
+        }),
+      });
+      const newClient = clientRes.data;
+
+      // Link to order (confirmChangeClient handles legacy migration too)
+      await confirmChangeClient(newClient);
+
+      ccCancelInlineCreate();
+    } catch (error) {
+      const errs = errorHandle(error);
+      if (errs && typeof errs === "object") ccCreateErrors = errs;
+      else Swal.fire("Error!", "Failed to create client.", "error");
+    } finally {
+      ccCreateLoading = false;
+    }
+  }
+
+  async function searchChangeClient(q) {
+    if (!q || q.trim().length < 1) {
+      changeClientResults = [];
+      changeClientDropdown = false;
+      return;
+    }
+    changeClientLoading = true;
+    try {
+      const res = await authApiFetch(
+        `${API_ROUTES.CLIENT}/search?q=${encodeURIComponent(q)}`,
+        { method: "GET" },
+      );
+      changeClientResults = res.data || [];
+      changeClientDropdown = true;
+    } catch (e) {
+      changeClientResults = [];
+    }
+    changeClientLoading = false;
+  }
+
+  function onChangeClientInput() {
+    clearTimeout(changeClientTimer);
+    changeClientTimer = setTimeout(
+      () => searchChangeClient(changeClientQuery),
+      300,
+    );
+  }
+
+  async function confirmChangeClient(newClient) {
+    try {
+      const isFirstLink = !order.clientId; // first time linking
+
+      const res = await authApiFetch(
+        `${API_ROUTES.ORDER}/${order.id}/change-client`,
+        {
+          method: "PUT",
+          data: JSON.stringify({ clientId: newClient.id }),
+        },
+      );
+
+      order.client = newClient;
+      order.clientId = newClient.id;
+      order.orderContacts = [];
+
+      // If first time linking and legacy contacts are checked — migrate them
+      if (isFirstLink && legacyChecked.length > 0) {
+        await migrateLegacyContacts(newClient);
+      }
+
+      showChangeClientModal = false;
+      changeClientQuery = "";
+      changeClientResults = [];
+      changeClientDropdown = false;
+
+      const desc = isFirstLink
+        ? `Client "${newClient.name}" linked with ${legacyChecked.length} contact(s).`
+        : `Client changed to "${newClient.name}".`;
+
+      let newActivity = {
+        title: isFirstLink ? "Client Linked" : "Client Changed",
+        description: desc,
+        createdAt: new Date().toISOString(),
+      };
+      order.groupedActivities = addActivityToGroupedActivities(newActivity);
+      Swal.fire("Success!", res.message || desc, "success");
+    } catch (error) {
+      Swal.fire("Error!", "Failed to link client.", "error");
+    }
+  }
+
+  // ── Link existing contact to this order ──────────────────────────────────────
+  async function linkContact(contact) {
+    try {
+      const res = await authApiFetch(API_ROUTES.ORDER_CONTACT, {
+        method: "POST",
+        data: JSON.stringify({
+          orderId: order.id,
+          clientContactId: contact.id,
+        }),
+      });
+      if (!order.orderContacts) order.orderContacts = [];
+      order.orderContacts = [...order.orderContacts, res.data];
+      let newActivity = {
+        title: "Contact Added",
+        description: `${contact.name} linked to order.`,
+        createdAt: new Date().toISOString(),
+      };
+      order.groupedActivities = addActivityToGroupedActivities(newActivity);
+      Swal.fire("Success!", "Contact linked.", "success");
+    } catch (e) {
+      Swal.fire("Error!", "Failed to link contact.", "error");
+    }
+  }
+
+  async function unlinkContact(orderContactId, contactName) {
+    Swal.fire({
+      title: "Remove Contact?",
+      text: `Remove ${contactName} from this order?`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Yes, remove",
+    }).then(async (result) => {
+      if (result.isConfirmed) {
+        try {
+          await authApiFetch(`${API_ROUTES.ORDER_CONTACT}/${orderContactId}`, {
+            method: "DELETE",
+          });
+          order.orderContacts = order.orderContacts.filter(
+            (oc) => oc.id !== orderContactId,
+          );
+          let newActivity = {
+            title: "Contact Removed",
+            description: `${contactName} removed from order.`,
+            createdAt: new Date().toISOString(),
+          };
+          order.groupedActivities = addActivityToGroupedActivities(newActivity);
+          Swal.fire("Removed!", "Contact unlinked.", "success");
+        } catch (e) {
+          Swal.fire("Error!", "Failed to remove contact.", "error");
+        }
+      }
+    });
+  }
+
+  // ── New Client + Contact Modal (for unlinked orders) ─────────────────────────
+  let showNewClientModal = false;
+  let newClientStep = 1; // 1 = search/create client, 2 = add contact
+
+  // Step 1 — client search
+  let ncSearchQuery = "";
+  let ncSearchResults = [];
+  let ncSearchLoading = false;
+  let ncSearchTimer = null;
+  let ncSearchDropdown = false;
+  let ncSelectedClient = null; // existing client selected from search
+  let ncCreateMode = false; // true = fill new client form
+
+  // Step 1 — new client form fields
+  let ncClientName = "";
+  let ncClientGst = "";
+  let ncClientMobile = "";
+  let ncClientEmail = "";
+  let ncClientAddress = "";
+
+  // Step 2 — contact fields
+  let ncContactName = "";
+  let ncContactDesignation = "";
+  let ncContactMobile = "";
+  let ncContactEmail = "";
+  let ncContactWhatsapp = "";
+  let ncContactAltMobile = "";
+  let ncSubmitLoading = false;
+  let ncFormErrors = {};
+
+  function openNewClientModal() {
+    showNewClientModal = true;
+    newClientStep = 1;
+    ncSearchQuery = "";
+    ncSearchResults = [];
+    ncSearchDropdown = false;
+    ncSelectedClient = null;
+    ncCreateMode = false;
+    ncClientName = "";
+    ncClientGst = "";
+    ncClientMobile = "";
+    ncClientEmail = "";
+    ncClientAddress = "";
+    ncContactName = "";
+    ncContactDesignation = "";
+    ncContactMobile = "";
+    ncContactEmail = "";
+    ncContactWhatsapp = "";
+    ncContactAltMobile = "";
+    ncFormErrors = {};
+  }
+
+  async function ncSearchClients(q) {
+    if (!q || q.trim().length < 1) {
+      ncSearchResults = [];
+      ncSearchDropdown = false;
+      return;
+    }
+    ncSearchLoading = true;
+    try {
+      const res = await authApiFetch(
+        `${API_ROUTES.CLIENT}/search?q=${encodeURIComponent(q)}`,
+        { method: "GET" },
+      );
+      ncSearchResults = res.data || [];
+      ncSearchDropdown = true;
+    } catch (e) {
+      ncSearchResults = [];
+    }
+    ncSearchLoading = false;
+  }
+
+  function ncOnSearchInput() {
+    clearTimeout(ncSearchTimer);
+    ncSelectedClient = null;
+    ncCreateMode = false;
+    ncSearchTimer = setTimeout(() => ncSearchClients(ncSearchQuery), 300);
+  }
+
+  function ncSelectClient(client) {
+    ncSelectedClient = client;
+    ncSearchQuery = client.name;
+    ncSearchDropdown = false;
+    ncCreateMode = false;
+  }
+
+  function ncGoToStep2() {
+    ncFormErrors = {};
+    if (!ncSelectedClient && !ncCreateMode) {
+      ncFormErrors.step1 =
+        "Please select an existing client or create a new one.";
+      return;
+    }
+    if (ncCreateMode && !ncClientName.trim()) {
+      ncFormErrors.ncClientName = "Company name is required.";
+      return;
+    }
+    newClientStep = 2;
+  }
+
+  async function ncSubmit() {
+    ncFormErrors = {};
+    if (!ncContactName.trim()) {
+      ncFormErrors.ncContactName = "Contact name is required.";
+      return;
+    }
+    ncSubmitLoading = true;
+
+    try {
+      let resolvedClient = ncSelectedClient;
+
+      // If creating new client
+      if (!resolvedClient) {
+        const clientRes = await authApiFetch(API_ROUTES.CLIENT, {
+          method: "POST",
+          data: JSON.stringify({
+            name: ncClientName.trim(),
+            gstNumber: ncClientGst || undefined,
+            mobile: ncClientMobile || undefined,
+            email: ncClientEmail || undefined,
+            address: ncClientAddress || undefined,
+          }),
+        });
+        resolvedClient = clientRes.data;
+      }
+
+      // Create contact under client
+      const contactRes = await authApiFetch(API_ROUTES.CLIENT_CONTACT, {
+        method: "POST",
+        data: JSON.stringify({
+          clientId: resolvedClient.id,
+          name: ncContactName.trim(),
+          designation: ncContactDesignation || undefined,
+          mobile: ncContactMobile || undefined,
+          email: ncContactEmail || undefined,
+          whatsapp: ncContactWhatsapp || undefined,
+          alternateMobile: ncContactAltMobile || undefined,
+        }),
+      });
+      const newContact = contactRes.data;
+
+      // Link order to client
+      await authApiFetch(`${API_ROUTES.ORDER}/${order.id}/change-client`, {
+        method: "PUT",
+        data: JSON.stringify({ clientId: resolvedClient.id }),
+      });
+
+      // Create OrderContact link
+      const ocRes = await authApiFetch(API_ROUTES.ORDER_CONTACT, {
+        method: "POST",
+        data: JSON.stringify({
+          orderId: order.id,
+          clientContactId: newContact.id,
+        }),
+      });
+
+      // Update local order state
+      order.client = resolvedClient;
+      order.clientId = resolvedClient.id;
+      order.orderContacts = [ocRes.data];
+      if (!order.client.contacts) order.client.contacts = [];
+      order.client.contacts = [...order.client.contacts, newContact];
+
+      // Activity log
+      let newActivity = {
+        title: "Client Linked",
+        description: `Client "${resolvedClient.name}" linked with contact "${newContact.name}".`,
+        createdAt: new Date().toISOString(),
+      };
+      order.groupedActivities = addActivityToGroupedActivities(newActivity);
+
+      showNewClientModal = false;
+      Swal.fire(
+        "Success!",
+        `Client "${resolvedClient.name}" linked to this order.`,
+        "success",
+      );
+    } catch (error) {
+      const errs = errorHandle(error);
+      if (errs && typeof errs === "object") ncFormErrors = errs;
+      else Swal.fire("Error!", "Failed to link client.", "error");
+    } finally {
+      ncSubmitLoading = false;
+    }
+  }
+
+  // ── Scenario 2: Add Contact to already-linked client ─────────────────────────
+  let showAddContactModal = false;
+  let acName = "";
+  let acDesignation = "";
+  let acMobile = "";
+  let acEmail = "";
+  let acWhatsapp = "";
+  let acAltMobile = "";
+  let acAddress = "";
+  let acLoading = false;
+  let acFormErrors = {};
+
+  function openAddContactModal() {
+    acName = "";
+    acDesignation = "";
+    acMobile = "";
+    acEmail = "";
+    acWhatsapp = "";
+    acAltMobile = "";
+    acAddress = "";
+    acFormErrors = {};
+    acLoading = false;
+    showAddContactModal = true;
+  }
+
+  async function submitAddContact() {
+    acFormErrors = {};
+    if (!acName.trim()) {
+      acFormErrors.acName = "Name is required.";
+      return;
+    }
+    acLoading = true;
+    try {
+      // 1. Create ClientContact under existing linked client
+      const contactRes = await authApiFetch(API_ROUTES.CLIENT_CONTACT, {
+        method: "POST",
+        data: JSON.stringify({
+          clientId: order.client.id,
+          name: acName.trim(),
+          designation: acDesignation || undefined,
+          mobile: acMobile || undefined,
+          email: acEmail || undefined,
+          whatsapp: acWhatsapp || undefined,
+          alternateMobile: acAltMobile || undefined,
+          address: acAddress || undefined,
+        }),
+      });
+      const newContact = contactRes.data;
+
+      // 2. Create OrderContact link
+      const ocRes = await authApiFetch(API_ROUTES.ORDER_CONTACT, {
+        method: "POST",
+        data: JSON.stringify({
+          orderId: order.id,
+          clientContactId: newContact.id,
+        }),
+      });
+
+      // 3. Update local state
+      if (!order.orderContacts) order.orderContacts = [];
+      order.orderContacts = [...order.orderContacts, ocRes.data];
+      if (!order.client.contacts) order.client.contacts = [];
+      order.client.contacts = [...order.client.contacts, newContact];
+
+      // 4. Activity log
+      let newActivity = {
+        title: "Contact Added",
+        description: `Contact "${newContact.name}" added to order.`,
+        createdAt: new Date().toISOString(),
+      };
+      order.groupedActivities = addActivityToGroupedActivities(newActivity);
+
+      showAddContactModal = false;
+      Swal.fire("Success!", `Contact "${newContact.name}" added.`, "success");
+    } catch (error) {
+      const errs = errorHandle(error);
+      if (errs && typeof errs === "object") acFormErrors = errs;
+      else Swal.fire("Error!", "Failed to add contact.", "error");
+    } finally {
+      acLoading = false;
+    }
   }
 
   async function editComponent(e) {
@@ -914,7 +1469,7 @@
   async function deleteComponent(id) {
     Swal.fire({
       title: "Delete Confirmation",
-      text: "Are you sure you want to delete this record.",
+      text: "Are you sure you want to delete this record?",
       icon: "warning",
       showCancelButton: true,
       confirmButtonText: "Yes, delete it!",
@@ -974,16 +1529,22 @@
     const prevUserIds = order.assignedUsers
       .filter((u) => u.role === "user")
       .map((u) => u.id);
-    const addedUsers = newAssignedUsers.filter((u) => !prevUserIds.includes(u.id));
+    const addedUsers = newAssignedUsers.filter(
+      (u) => !prevUserIds.includes(u.id),
+    );
     const removedUsers = order.assignedUsers.filter(
       (u) => u.role === "user" && !selectedUsers.includes(u.id),
     );
     const parts = [];
-    if (addedUsers.length) parts.push(`Assigned: ${addedUsers.map((u) => u.name).join(", ")}`);
-    if (removedUsers.length) parts.push(`Removed: ${removedUsers.map((u) => u.name).join(", ")}`);
+    if (addedUsers.length)
+      parts.push(`Assigned: ${addedUsers.map((u) => u.name).join(", ")}`);
+    if (removedUsers.length)
+      parts.push(`Removed: ${removedUsers.map((u) => u.name).join(", ")}`);
     let newActivity = {
       title: "Assigned Users Updated",
-      description: parts.length ? parts.join(". ") + "." : "Assigned users updated.",
+      description: parts.length
+        ? parts.join(". ") + "."
+        : "Assigned users updated.",
     };
     updateOrder.orderActivity = newActivity;
 
@@ -1205,7 +1766,7 @@
     }
     Swal.fire({
       title: "Change Pin Status",
-      text: "Are you sure you want to chnage pin status this record.",
+      text: "Are you sure you want to change the pin status of this record?",
       icon: "warning",
       showCancelButton: true,
       confirmButtonText: "Yes, change it!",
@@ -1227,6 +1788,45 @@
         }
       }
     });
+  }
+
+  async function changeOrderStatus(newStatus) {
+    if (order.status === newStatus) return;
+    const prevStatus = order.status;
+
+    const result = await Swal.fire({
+      title: "Change Status?",
+      text: `Change status from "${prevStatus}" to "${newStatus}"?`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Yes, change it!",
+    });
+
+    if (!result.isConfirmed) return;
+
+    order.status = newStatus; // optimistic update
+    try {
+      await authApiFetch(`${API_ROUTES.ORDER}/${order.id}`, {
+        method: "PUT",
+        data: JSON.stringify({
+          status: newStatus,
+          orderActivity: {
+            title: "Status Changed",
+            description: `Status changed from "${prevStatus}" to "${newStatus}".`,
+          },
+        }),
+      });
+      let newActivity = {
+        title: "Status Changed",
+        description: `Status changed from "${prevStatus}" to "${newStatus}".`,
+        createdAt: new Date().toISOString(),
+      };
+      order.groupedActivities = addActivityToGroupedActivities(newActivity);
+      Swal.fire("Success!", `Status changed to "${newStatus}".`, "success");
+    } catch (error) {
+      order.status = prevStatus; // revert on error
+      Swal.fire("Error!", "Failed to change status.", "error");
+    }
   }
 
   async function setOrderPinStatus(status) {
@@ -1293,9 +1893,17 @@
       return { icon: "ti-file-type-pdf", bg: "bg-danger" };
     if (m.includes("word") || /\.(doc|docx)$/.test(n))
       return { icon: "ti-file-type-doc", bg: "bg-primary" };
-    if (m.includes("excel") || m.includes("spreadsheet") || /\.(xls|xlsx|csv)$/.test(n))
+    if (
+      m.includes("excel") ||
+      m.includes("spreadsheet") ||
+      /\.(xls|xlsx|csv)$/.test(n)
+    )
       return { icon: "ti-file-spreadsheet", bg: "bg-success" };
-    if (m.includes("zip") || m.includes("rar") || /\.(zip|rar|7z|tar|gz)$/.test(n))
+    if (
+      m.includes("zip") ||
+      m.includes("rar") ||
+      /\.(zip|rar|7z|tar|gz)$/.test(n)
+    )
       return { icon: "ti-file-zip", bg: "bg-warning" };
     return { icon: "ti-file", bg: "bg-secondary" };
   }
@@ -1330,7 +1938,10 @@
           <div class="col-md-12">
             <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
               <div>
-                <button on:click={() => history.length > 2 ? history.back() : goto('/admin/order')}>
+                <button
+                  on:click={() =>
+                    history.length > 2 ? history.back() : goto("/admin/order")}
+                >
                   <i class="ti ti-arrow-narrow-left me-1"></i>Back to Orders
                 </button>
               </div>
@@ -1351,10 +1962,7 @@
                   Order
                 </a>
                 {#if currentUser?.subRole === "telecaller" || (currentUser?.role === "user" && !currentUser?.subRole)}
-                  <button
-                    class="btn btn-warning"
-                    on:click={openQueryModal}
-                  >
+                  <button class="btn btn-warning" on:click={openQueryModal}>
                     <i class="ti ti-help-circle me-1"></i>Raise Query
                   </button>
                 {/if}
@@ -1367,22 +1975,47 @@
                 style="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1055;display:flex;align-items:center;justify-content:center;padding:1rem;"
                 on:click|self={() => (showQueryModal = false)}
               >
-                <div class="card shadow-lg p-4" style="max-width:520px;width:100%;">
+                <div
+                  class="card shadow-lg p-4"
+                  style="max-width:520px;width:100%;"
+                >
                   <h5 class="fw-bold mb-3">Raise Query for This Order</h5>
                   {#if queryError}
                     <div class="alert alert-danger py-2">{queryError}</div>
                   {/if}
                   <div class="mb-3">
-                    <label class="form-label">Subject <span class="text-danger">*</span></label>
-                    <input type="text" class="form-control" bind:value={querySubject} placeholder="Brief subject..." maxlength="150" />
+                    <label class="form-label"
+                      >Subject <span class="text-danger">*</span></label
+                    >
+                    <input
+                      type="text"
+                      class="form-control"
+                      bind:value={querySubject}
+                      placeholder="Brief subject..."
+                      maxlength="150"
+                    />
                   </div>
                   <div class="mb-3">
-                    <label class="form-label">Description <span class="text-danger">*</span></label>
-                    <textarea class="form-control" rows="4" bind:value={queryDescription} placeholder="Describe the issue in detail..."></textarea>
+                    <label class="form-label"
+                      >Description <span class="text-danger">*</span></label
+                    >
+                    <textarea
+                      class="form-control"
+                      rows="4"
+                      bind:value={queryDescription}
+                      placeholder="Describe the issue in detail..."
+                    ></textarea>
                   </div>
                   <div class="d-flex gap-2 justify-content-end">
-                    <button class="btn btn-secondary btn-sm" on:click={() => (showQueryModal = false)}>Cancel</button>
-                    <button class="btn btn-primary btn-sm" on:click={submitOrderQuery} disabled={raisingQuery}>
+                    <button
+                      class="btn btn-secondary btn-sm"
+                      on:click={() => (showQueryModal = false)}>Cancel</button
+                    >
+                    <button
+                      class="btn btn-primary btn-sm"
+                      on:click={submitOrderQuery}
+                      disabled={raisingQuery}
+                    >
                       {raisingQuery ? "Submitting..." : "Submit Query"}
                     </button>
                   </div>
@@ -1390,36 +2023,52 @@
               </div>
             {/if}
 
-
-            <div class="card">
-              <div class="card-body pb-2">
-                <div
-                  class="d-flex align-items-center justify-content-between flex-wrap"
-                >
-                  <div class="d-flex align-items-center mb-2">
+            <div class="card order-header-card">
+              <div class="card-body">
+                <div class="order-header-top">
+                  <div class="order-header-identity">
                     <div
-                      class="avatar avatar-xxl avatar-rounded border border-warning bg-soft-warning me-3 flex-shrink-0"
+                      class="order-header-avatar avatar avatar-xxl avatar-rounded border border-warning bg-soft-warning flex-shrink-0"
                     >
                       <h6 class="mb-0 text-warning">
                         {getAvatarText(order?.title)}
                       </h6>
                     </div>
-                    <div>
-                      <h5 class="mb-1 capitalize">
+                    <div class="min-w-0">
+                      <h5 class="order-header-title capitalize mb-2">
                         {order?.title}
-                        <i class="ti ti-star-filled text-warning"></i>
                       </h5>
-                      <p class="mb-1 capitalize">
-                        <i class="ti ti-layout-grid me-1"></i>{order?.category}
-                      </p>
-                      <p class="mb-0 capitalize">
-                        <i class="ti ti-mailbox me-1"></i>{order?.source}
-                      </p>
+                      <div class="order-header-meta">
+                        <span class="order-header-chip">
+                          <i class="ti ti-hash"></i>
+                          {order?.financialYear}/{order?.pId
+                            ?.toString()
+                            .padStart(6, "0")}
+                        </span>
+                        {#if order?.workOrderNumber}
+                          <span class="order-header-chip">
+                            <i class="ti ti-file-description"></i>
+                            {order.workOrderNumber}
+                          </span>
+                        {/if}
+                        {#if order?.category}
+                          <span class="order-header-chip">
+                            <i class="ti ti-layout-grid"></i>{order.category}
+                          </span>
+                        {/if}
+                        {#if order?.source}
+                          <span class="order-header-chip capitalize">
+                            <i class="ti ti-mailbox"></i>{order.source}
+                          </span>
+                        {/if}
+                      </div>
                     </div>
                   </div>
-                  <div class="d-flex align-items-center flex-wrap gap-2">
+
+                  <div class="order-header-actions">
                     <button
-                      class="py-1 px-2 fs-12 bg-soft-danger rounded text-danger fw-medium"
+                      type="button"
+                      class="py-1 px-2 fs-12 bg-soft-danger rounded text-danger fw-medium border-0"
                       on:click={() => togglePin(order?.id)}
                     >
                       {#if order?.pinStatus === "true"}
@@ -1443,11 +2092,121 @@
                       </a>
                       <div class="dropdown-menu dropdown-menu-right">
                         {#each statuses as status}
-                          <a class="dropdown-item" href={`#${status}`}
-                            ><span>{status}</span></a
+                          <a
+                            class="dropdown-item"
+                            class:active={order.status === status}
+                            href={`#${status}`}
+                            on:click|preventDefault={() =>
+                              changeOrderStatus(status)}
                           >
+                            <span>{status}</span>
+                          </a>
                         {/each}
                       </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="order-header-docs">
+                  <div class="order-header-docs-label">
+                    <i class="ti ti-files"></i>Linked Documents
+                  </div>
+                  <div class="order-header-docs-row">
+                    <div class="order-header-doc-item">
+                      <span class="order-header-doc-type">PI</span>
+                      {#if order?.orderPayments?.length > 0}
+                        <a
+                          href="/admin/invoice/{order.orderPayments[0].id}"
+                          class="order-header-doc-link order-header-doc-link--success"
+                        >
+                          <i class="ti ti-receipt"></i>
+                          {order.orderPayments[0].financialYear}/{String(
+                            order.orderPayments[0].invoiceNo,
+                          ).padStart(6, "0")}
+                          {#if order.orderPayments.length > 1}
+                            <span class="badge bg-success ms-1 order-header-doc-badge"
+                              >+{order.orderPayments.length - 1}</span
+                            >
+                          {/if}
+                        </a>
+                      {:else}
+                        <a
+                          href="/admin/invoice?fromOrder={order?.id}"
+                          class="order-header-doc-action"
+                        >
+                          <i class="ti ti-plus me-1"></i>Create
+                        </a>
+                      {/if}
+                    </div>
+
+                    <span class="order-header-doc-sep" aria-hidden="true"></span>
+
+                    <div class="order-header-doc-item">
+                      <span class="order-header-doc-type">WO</span>
+                      {#if order?.workOrders?.length > 0}
+                        <a
+                          href="/admin/workorder/{order.workOrders[0].id}"
+                          class="order-header-doc-link order-header-doc-link--success"
+                        >
+                          <i class="ti ti-file-description"></i>
+                          {order.workOrders[0].financialYear}/{String(
+                            order.workOrders[0].workOrderNo,
+                          ).padStart(6, "0")}
+                          {#if order.workOrders.length > 1}
+                            <span class="badge bg-success ms-1 order-header-doc-badge"
+                              >+{order.workOrders.length - 1}</span
+                            >
+                          {/if}
+                        </a>
+                      {:else if order?.orderPayments?.length > 0}
+                        <a
+                          href="/admin/workorder/add?fromOrder={order?.id}"
+                          class="order-header-doc-action"
+                        >
+                          <i class="ti ti-plus me-1"></i>Create
+                        </a>
+                      {:else}
+                        <span class="order-header-doc-muted">
+                          <i class="ti ti-lock me-1"></i>Needs PI
+                        </span>
+                      {/if}
+                    </div>
+
+                    <span class="order-header-doc-sep" aria-hidden="true"></span>
+
+                    <div class="order-header-doc-item">
+                      <span class="order-header-doc-type">TI</span>
+                      {#if order?.invoices?.length > 0}
+                        <a
+                          href="/admin/invoice/tax/{order.invoices[0].id}"
+                          class="order-header-doc-link order-header-doc-link--warning"
+                        >
+                          <i class="ti ti-file-invoice"></i>
+                          {order.invoices[0].financialYear}/{String(
+                            order.invoices[0].invoiceNo,
+                          ).padStart(6, "0")}
+                          {#if order.invoices[0].isLocked}
+                            <span class="badge bg-success ms-1 order-header-doc-badge"
+                              >Locked</span
+                            >
+                          {:else}
+                            <span class="badge bg-warning text-dark ms-1 order-header-doc-badge"
+                              >Draft</span
+                            >
+                          {/if}
+                        </a>
+                      {:else if order?.orderPayments?.length > 0 && order?.workOrders?.length > 0}
+                        <a
+                          href="/admin/invoice/tax?fromOrder={order?.id}"
+                          class="order-header-doc-action order-header-doc-action--warning"
+                        >
+                          <i class="ti ti-plus me-1"></i>Create
+                        </a>
+                      {:else}
+                        <span class="order-header-doc-muted">
+                          <i class="ti ti-lock me-1"></i>Needs PI &amp; WO
+                        </span>
+                      {/if}
                     </div>
                   </div>
                 </div>
@@ -1458,362 +2217,459 @@
 
           <!-- Contact Sidebar -->
           <div class="col-xl-4">
-            <div class="card !sticky top-[75px]">
-              <div class="card-body p-3">
-                <h6 class="mb-3 fw-semibold">Order Information</h6>
-                <div class="border-bottom mb-3 pb-3">
-                  <div
-                    class="d-flex align-items-center justify-content-between mb-2"
-                  >
-                    <p class="mb-0">Order ID</p>
-                    <p class="mb-0 text-dark">
-                      {order?.financialYear}/{order?.pId
-                        ?.toString()
-                        .padStart(6, "0")}
-                    </p>
+            <div class="card order-sidebar !sticky top-[75px]">
+              <div class="card-body p-0">
+                <!-- Order Information -->
+                <div class="order-sidebar-section">
+                  <div class="order-sidebar-section-head">
+                    <i class="ti ti-info-circle"></i>
+                    <span>Order Information</span>
                   </div>
-                  {#if order?.workOrderNumber}
-                    <div
-                      class="d-flex align-items-center justify-content-between mb-2"
-                    >
-                      <p class="mb-0">Work Order Number</p>
-                      <p class="mb-0 text-dark">
-                        {order?.workOrderNumber}
-                      </p>
+                  <div class="order-sidebar-meta-list">
+                    <div class="order-sidebar-row">
+                      <span class="order-sidebar-label"
+                        ><i class="ti ti-hash"></i>Order ID</span
+                      >
+                      <span class="order-sidebar-value fw-semibold font-mono">
+                        {order?.financialYear}/{order?.pId
+                          ?.toString()
+                          .padStart(6, "0")}
+                      </span>
                     </div>
-                  {/if}
-                  {#if order?.inqCode}
-                    <div
-                      class="d-flex align-items-center justify-content-between mb-2"
-                    >
-                      <p class="mb-0">Inq. Code</p>
-                      <p class="mb-0 text-dark font-mono">
-                        {order?.inqCode}
-                      </p>
+                    {#if order?.workOrderNumber}
+                      <div class="order-sidebar-row">
+                        <span class="order-sidebar-label"
+                          ><i class="ti ti-file-description"></i>Work Order</span
+                        >
+                        <span class="order-sidebar-value">{order.workOrderNumber}</span>
+                      </div>
+                    {/if}
+                    {#if order?.inqCode}
+                      <div class="order-sidebar-row">
+                        <span class="order-sidebar-label"
+                          ><i class="ti ti-barcode"></i>Inq. Code</span
+                        >
+                        <span class="order-sidebar-value font-mono"
+                          >{order.inqCode}</span
+                        >
+                      </div>
+                    {/if}
+                    <div class="order-sidebar-row">
+                      <span class="order-sidebar-label"
+                        ><i class="ti ti-calendar-event"></i>Order Date</span
+                      >
+                      <span class="order-sidebar-value">
+                        {order?.orderDate &&
+                          convertDate(order?.orderDate, {
+                            timeZone: "Asia/Kolkata",
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                          })}
+                      </span>
                     </div>
-                  {/if}
-                  <div
-                    class="d-flex align-items-center justify-content-between mb-2"
-                  >
-                    <p class="mb-0">Order Date</p>
-                    <p class="mb-0 text-dark">
-                      {order?.orderDate &&
-                        convertDate(order?.orderDate, {
-                          timeZone: "Asia/Kolkata",
-                          day: "2-digit",
-                          month: "short",
-                          year: "numeric",
-                        })}
-                    </p>
-                  </div>
-                  <div
-                    class="d-flex align-items-center justify-content-between mb-2"
-                  >
-                    <p class="mb-0">Created Date</p>
-                    <p class="mb-0 text-dark">
-                      {order?.createdAt &&
-                        convertDate(order?.createdAt, {
-                          timeZone: "Asia/Kolkata",
-                          day: "2-digit",
-                          month: "short",
-                          year: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          hour12: true,
-                        })}
-                    </p>
-                  </div>
-                  <div
-                    class="d-flex align-items-center justify-content-between mb-2"
-                  >
-                    <p class="mb-0 min-w-[30%]">Price Terms</p>
-                    <p class="mb-0 text-dark text-right">{order?.priceTerms}</p>
-                  </div>
-                  <div
-                    class="d-flex align-items-center justify-content-between mb-2"
-                  >
-                    <p class="mb-0">Price</p>
-                    <p class="mb-0 text-dark">
-                      {new Intl.NumberFormat("en-IN", {
-                        style: "currency",
-                        currency: order?.currency || "INR",
-                      })
-                        .format(order?.price || 0)
-                        .replace("₹", "₹ ")
-                        .replace("$", "$ ")}
-                    </p>
-                  </div>
-                  <div
-                    class="d-flex align-items-center justify-content-between mb-2"
-                  >
-                    <p class="mb-0">Start Date</p>
-                    <p class="mb-0 text-dark">
-                      {order?.startDate &&
-                        convertDate(order?.startDate, {
-                          timeZone: "Asia/Kolkata",
-                          day: "2-digit",
-                          month: "short",
-                          year: "numeric",
-                        })}
-                    </p>
-                  </div>
-                  <div
-                    class="d-flex align-items-center justify-content-between mb-2"
-                  >
-                    <p class="mb-0">Deadline Date</p>
-                    <p class="mb-0 text-dark">
-                      {order?.deadlineDate &&
-                        convertDate(order?.deadlineDate, {
-                          timeZone: "Asia/Kolkata",
-                          day: "2-digit",
-                          month: "short",
-                          year: "numeric",
-                        })}
-                    </p>
-                  </div>
-                  <div
-                    class="d-flex align-items-center justify-content-between mb-2"
-                  >
-                    <p class="mb-0">Source</p>
-                    <p class="mb-0 text-dark capitalize">{order?.source}</p>
-                  </div>
-                </div>
-                <div
-                  class="d-flex align-items-center justify-content-between flex-wrap"
-                >
-                  <h6 class="mb-3 fw-semibold">Order Owner</h6>
-                  <a
-                    href="#tag"
-                    class="link-primary mb-3"
-                    data-bs-toggle="modal"
-                    data-bs-target="#create_client"
-                  >
-                    <i class="ti ti-plus me-1"></i>Add New
-                  </a>
-                </div>
-                <div class="border-bottom pb-3 mb-3">
-                  {#each order.orderClients as orderClient, index}
-                    {#if orderClient?.deletedAt == null}
-                      <div class="mb-3">
-                        <div class="d-flex align-items-center justify-between">
-                          <div class="d-flex align-items-center">
-                            <span class="avatar avatar-xs rounded-circle me-2">
-                              <img
-                                src="/assets/img/profiles/user.png"
-                                alt="Img"
-                                class="img-fluid rounded-circle w-auto h-auto"
-                              />
-                            </span>
-                            <div>
-                              <p
-                                class="mb-0 divide-x-2 space-x-1 divide-slate-300"
-                              >
-                                <span class="capitalize">
-                                  <span>{orderClient?.name}</span>
-                                  {#if orderClient?.designation}
-                                    <span class="fs-10"
-                                      >({orderClient?.designation})</span
-                                    >
-                                  {/if}
-                                </span>
-
-                                {#if visibilityMap[index]}
-                                  {#if orderClient?.email}
-                                    <span class="fs-12 pl-2"
-                                      >{orderClient?.email}</span
-                                    >
-                                  {/if}
-                                  {#if orderClient?.mobile}
-                                    <span class="fs-12 pl-2"
-                                      >{orderClient?.mobile}</span
-                                    >
-                                  {/if}
-                                {/if}
-                              </p>
-                            </div>
-                          </div>
-
-                          <button
-                            on:click={() => toggleVisibility(index)}
-                            class="btn btn-sm"
+                    <div class="order-sidebar-row">
+                      <span class="order-sidebar-label"
+                        ><i class="ti ti-clock"></i>Created</span
+                      >
+                      <span class="order-sidebar-value">
+                        {order?.createdAt &&
+                          convertDate(order?.createdAt, {
+                            timeZone: "Asia/Kolkata",
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            hour12: true,
+                          })}
+                      </span>
+                    </div>
+                    {#if orderInfoExpanded}
+                      <div transition:slide={{ duration: 250 }} style="overflow:hidden;margin:0;padding:0;">
+                        <div class="order-sidebar-row">
+                          <span class="order-sidebar-label"
+                            ><i class="ti ti-file-text"></i>Price Terms</span
                           >
-                            {#if visibilityMap[index]}
-                              <i class="ti ti-eye-off me-1"></i>
-                            {:else}
-                              <i class="ti ti-eye me-1"></i>
-                            {/if}
-                          </button>
+                          <span class="order-sidebar-value"
+                            >{order?.priceTerms || "—"}</span
+                          >
+                        </div>
+                        <div class="order-sidebar-row">
+                          <span class="order-sidebar-label"
+                            ><i class="ti ti-currency-rupee"></i>Price</span
+                          >
+                          <span class="order-sidebar-value fw-semibold text-success">
+                            {new Intl.NumberFormat("en-IN", {
+                              style: "currency",
+                              currency: order?.currency || "INR",
+                            })
+                              .format(order?.price || 0)
+                              .replace("₹", "₹ ")
+                              .replace("$", "$ ")}
+                          </span>
+                        </div>
+                        <div class="order-sidebar-row">
+                          <span class="order-sidebar-label"
+                            ><i class="ti ti-player-play"></i>Start Date</span
+                          >
+                          <span class="order-sidebar-value">
+                            {order?.startDate
+                              ? convertDate(order?.startDate, {
+                                  timeZone: "Asia/Kolkata",
+                                  day: "2-digit",
+                                  month: "short",
+                                  year: "numeric",
+                                })
+                              : "—"}
+                          </span>
+                        </div>
+                        <div class="order-sidebar-row">
+                          <span class="order-sidebar-label"
+                            ><i class="ti ti-flag"></i>Deadline</span
+                          >
+                          <span class="order-sidebar-value">
+                            {order?.deadlineDate
+                              ? convertDate(order?.deadlineDate, {
+                                  timeZone: "Asia/Kolkata",
+                                  day: "2-digit",
+                                  month: "short",
+                                  year: "numeric",
+                                })
+                              : "—"}
+                          </span>
+                        </div>
+                        <div class="order-sidebar-row">
+                          <span class="order-sidebar-label"
+                            ><i class="ti ti-source-code"></i>Source</span
+                          >
+                          <span class="order-sidebar-value capitalize"
+                            >{order?.source || "—"}</span
+                          >
                         </div>
                       </div>
                     {/if}
-                  {/each}
+                  </div>
+                  <div class="order-sidebar-expand">
+                    <button
+                      type="button"
+                      class="btn btn-xs btn-outline-secondary"
+                      on:click={() => (orderInfoExpanded = !orderInfoExpanded)}
+                    >
+                      {#if orderInfoExpanded}
+                        <i class="ti ti-chevron-up me-1"></i>Show less
+                      {:else}
+                        <i class="ti ti-chevron-down me-1"></i>Show more
+                      {/if}
+                    </button>
+                  </div>
                 </div>
 
-                <div
-                  class="d-flex align-items-center justify-content-between flex-wrap"
-                >
-                  <h6 class="mb-3 fw-semibold">Assigned Users</h6>
-                  <a
-                    on:click={() => setAssignedUsers()}
-                    href="#tag"
-                    class="link-primary mb-3"
-                    data-bs-toggle="modal"
-                    data-bs-target="#add_contact"
-                  >
-                    <i class="ti ti-plus me-1"></i>Add New
-                  </a>
+                <!-- Client -->
+                <div class="order-sidebar-section">
+                  <div class="order-sidebar-section-head">
+                    <i class="ti ti-building-store"></i>
+                    <span>Client</span>
+                    <div class="order-sidebar-actions">
+                      {#if order.client}
+                        <button
+                          type="button"
+                          class="btn btn-xs btn-outline-warning"
+                          on:click={() => {
+                            showChangeClientModal = true;
+                            changeClientQuery = "";
+                            ccInlineCreate = false;
+                            ccCreateErrors = {};
+                            ccSelectedExisting = null;
+                            initLegacyChecked();
+                          }}
+                        >
+                          <i class="ti ti-replace me-1"></i>Change
+                        </button>
+                        <button
+                          type="button"
+                          class="btn btn-xs btn-outline-secondary"
+                          on:click={openAddContactModal}
+                        >
+                          <i class="ti ti-plus me-1"></i>Contact
+                        </button>
+                      {:else}
+                        <button
+                          type="button"
+                          class="btn btn-xs btn-outline-primary"
+                          on:click={() => {
+                            showChangeClientModal = true;
+                            changeClientQuery = "";
+                            ccInlineCreate = false;
+                            ccCreateErrors = {};
+                            ccSelectedExisting = null;
+                            initLegacyChecked();
+                          }}
+                        >
+                          <i class="ti ti-link me-1"></i>Link
+                        </button>
+                        <button
+                          type="button"
+                          class="btn btn-xs btn-outline-secondary"
+                          on:click={openNewClientModal}
+                        >
+                          <i class="ti ti-plus me-1"></i>Contact
+                        </button>
+                      {/if}
+                    </div>
+                  </div>
+
+                  {#if order.client}
+                    <div class="order-sidebar-client-card">
+                      <a
+                        href="/admin/client/{order.client.id}"
+                        class="order-sidebar-client-name"
+                      >
+                        <i class="ti ti-building-store me-1"></i>{order.client.name}
+                      </a>
+                      {#if order.client.gstNumber}
+                        <div class="order-sidebar-client-gst">
+                          GST: {order.client.gstNumber}
+                        </div>
+                      {/if}
+                    </div>
+
+                    {#if order.orderContacts?.length > 0}
+                      {#each order.orderContacts as oc, index}
+                        <div class="order-sidebar-contact">
+                          <div class="d-flex align-items-start gap-2 min-w-0">
+                            <span class="avatar avatar-xs rounded-circle flex-shrink-0">
+                              <img
+                                src="/assets/img/profiles/user.png"
+                                alt=""
+                                class="img-fluid rounded-circle w-auto h-auto"
+                              />
+                            </span>
+                            <div class="min-w-0">
+                              <div class="order-sidebar-contact-name capitalize">
+                                {oc.clientContact?.name}
+                                {#if oc.clientContact?.designation}
+                                  <span class="order-sidebar-contact-role"
+                                    >({oc.clientContact.designation})</span
+                                  >
+                                {/if}
+                              </div>
+                              {#if visibilityMap[index]}
+                                {#if oc.clientContact?.email}
+                                  <a
+                                    href="mailto:{oc.clientContact.email}"
+                                    class="order-sidebar-contact-detail"
+                                  >
+                                    <i class="ti ti-mail"></i>{oc.clientContact.email}
+                                  </a>
+                                {/if}
+                                {#if oc.clientContact?.mobile}
+                                  <a
+                                    href="tel:{oc.clientContact.mobile}"
+                                    class="order-sidebar-contact-detail"
+                                  >
+                                    <i class="ti ti-phone"></i>{oc.clientContact.mobile}
+                                  </a>
+                                {/if}
+                              {/if}
+                            </div>
+                          </div>
+                          <div class="order-sidebar-contact-actions">
+                            <button
+                              type="button"
+                              on:click={() => toggleVisibility(index)}
+                              class="btn btn-icon btn-xs btn-outline-light"
+                              title={visibilityMap[index]
+                                ? "Hide details"
+                                : "Show details"}
+                            >
+                              <i
+                                class="ti {visibilityMap[index]
+                                  ? 'ti-eye-off'
+                                  : 'ti-eye'}"
+                              ></i>
+                            </button>
+                            <button
+                              type="button"
+                              on:click={() =>
+                                unlinkContact(oc.id, oc.clientContact?.name)}
+                              class="btn btn-icon btn-xs btn-outline-light text-danger"
+                              title="Remove contact"
+                            >
+                              <i class="ti ti-x"></i>
+                            </button>
+                          </div>
+                        </div>
+                      {/each}
+                    {:else}
+                      <p class="order-sidebar-empty mb-0">No contacts linked yet.</p>
+                    {/if}
+
+                    {#if order.client.contacts?.filter((c) => !order.orderContacts?.some((oc) => oc.clientContact?.id === c.id)).length > 0}
+                      <div class="order-sidebar-chip-section">
+                        <div class="order-sidebar-chip-label">
+                          Quick add from {order.client.name}
+                        </div>
+                        <div class="order-sidebar-chip-list">
+                          {#each order.client.contacts.filter((c) => !order.orderContacts?.some((oc) => oc.clientContact?.id === c.id)) as contact}
+                            <button
+                              type="button"
+                              class="btn btn-xs btn-outline-secondary"
+                              on:click={() => linkContact(contact)}
+                            >
+                              <i class="ti ti-plus me-1"></i>{contact.name}
+                            </button>
+                          {/each}
+                        </div>
+                      </div>
+                    {/if}
+                  {:else if order.orderClients?.length > 0}
+                    <p class="order-sidebar-chip-label mb-2">Legacy contacts</p>
+                    {#each order.orderClients as orderClient, index}
+                      {#if orderClient?.deletedAt == null}
+                        <div class="order-sidebar-contact">
+                          <div class="d-flex align-items-start gap-2 min-w-0">
+                            <span class="avatar avatar-xs rounded-circle flex-shrink-0">
+                              <img
+                                src="/assets/img/profiles/user.png"
+                                alt=""
+                                class="img-fluid rounded-circle w-auto h-auto"
+                              />
+                            </span>
+                            <div class="min-w-0">
+                              <div class="order-sidebar-contact-name">
+                                {orderClient?.name}
+                                {#if orderClient?.designation}
+                                  <span class="order-sidebar-contact-role"
+                                    >({orderClient.designation})</span
+                                  >
+                                {/if}
+                              </div>
+                              {#if visibilityMap[index]}
+                                {#if orderClient?.email}
+                                  <span class="order-sidebar-contact-detail">
+                                    <i class="ti ti-mail"></i>{orderClient.email}
+                                  </span>
+                                {/if}
+                                {#if orderClient?.mobile}
+                                  <span class="order-sidebar-contact-detail">
+                                    <i class="ti ti-phone"></i>{orderClient.mobile}
+                                  </span>
+                                {/if}
+                              {/if}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            on:click={() => toggleVisibility(index)}
+                            class="btn btn-icon btn-xs btn-outline-light flex-shrink-0"
+                            title={visibilityMap[index]
+                              ? "Hide details"
+                              : "Show details"}
+                          >
+                            <i
+                              class="ti {visibilityMap[index]
+                                ? 'ti-eye-off'
+                                : 'ti-eye'}"
+                            ></i>
+                          </button>
+                        </div>
+                      {/if}
+                    {/each}
+                  {:else}
+                    <div class="order-sidebar-empty-state">
+                      <i class="ti ti-link-off"></i>
+                      <span>No client linked to this order.</span>
+                    </div>
+                  {/if}
                 </div>
 
-                {#if order.assignedUsers?.some(u => u.status === 'banned')}
-                  <div class="alert alert-danger py-1 px-2 mb-2 d-flex align-items-center gap-1" style="font-size:12px;">
-                    <i class="ti ti-alert-triangle"></i>
-                    <span>Some assigned users are <strong>banned</strong> — consider reassigning.</span>
+                <!-- Assigned Users -->
+                <div class="order-sidebar-section">
+                  <div class="order-sidebar-section-head">
+                    <i class="ti ti-users"></i>
+                    <span>Assigned Users</span>
+                    <a
+                      on:click={() => setAssignedUsers()}
+                      href="#tag"
+                      class="btn btn-xs btn-outline-primary ms-auto"
+                      data-bs-toggle="modal"
+                      data-bs-target="#add_contact"
+                    >
+                      <i class="ti ti-plus me-1"></i>Add
+                    </a>
                   </div>
-                {/if}
-                {#if order.assignedUsers?.some(u => u.status === 'inactive')}
-                  <div class="alert alert-warning py-1 px-2 mb-2 d-flex align-items-center gap-1" style="font-size:12px;">
-                    <i class="ti ti-alert-circle"></i>
-                    <span>Some assigned users are <strong>inactive</strong>.</span>
-                  </div>
-                {/if}
-                {#each order.assignedUsers as assignedUser}
-                  <div class="mb-3">
-                    <div class="d-flex align-items-center">
-                      <span class="avatar avatar-xs rounded-circle me-2">
-                        <img
-                          src="/assets/img/profiles/user.png"
-                          alt="Img"
-                          class="img-fluid rounded-circle w-auto h-auto"
-                        />
-                      </span>
-                      <div class="d-flex align-items-center gap-1 flex-wrap">
-                        <p class="mb-0">{assignedUser?.name}</p>
-                        {#if assignedUser?.status === 'banned'}
-                          <span class="badge bg-danger" style="font-size:10px;">Banned</span>
-                        {:else if assignedUser?.status === 'inactive'}
-                          <span class="badge bg-secondary" style="font-size:10px;">Inactive</span>
+
+                  {#if order.assignedUsers?.some((u) => u.status === "banned")}
+                    <div
+                      class="alert alert-danger py-1 px-2 mb-2 d-flex align-items-center gap-1 order-sidebar-alert"
+                    >
+                      <i class="ti ti-alert-triangle"></i>
+                      <span
+                        >Some users are <strong>banned</strong> — consider reassigning.</span
+                      >
+                    </div>
+                  {/if}
+                  {#if order.assignedUsers?.some((u) => u.status === "inactive")}
+                    <div
+                      class="alert alert-warning py-1 px-2 mb-2 d-flex align-items-center gap-1 order-sidebar-alert"
+                    >
+                      <i class="ti ti-alert-circle"></i>
+                      <span>Some users are <strong>inactive</strong>.</span>
+                    </div>
+                  {/if}
+
+                  {#if order.assignedUsers?.length > 0}
+                    {#each order.assignedUsers as assignedUser}
+                      <div class="order-sidebar-user">
+                        <span class="avatar avatar-xs rounded-circle flex-shrink-0">
+                          <img
+                            src="/assets/img/profiles/user.png"
+                            alt=""
+                            class="img-fluid rounded-circle w-auto h-auto"
+                          />
+                        </span>
+                        <span class="order-sidebar-user-name">{assignedUser?.name}</span>
+                        {#if assignedUser?.status === "banned"}
+                          <span class="badge bg-danger order-sidebar-badge">Banned</span>
+                        {:else if assignedUser?.status === "inactive"}
+                          <span class="badge bg-secondary order-sidebar-badge"
+                            >Inactive</span
+                          >
                         {/if}
                       </div>
+                    {/each}
+                  {:else}
+                    <p class="order-sidebar-empty mb-0">No users assigned.</p>
+                  {/if}
+
+                  <div class="order-sidebar-meta-list order-sidebar-audit mt-3">
+                    <div class="order-sidebar-row">
+                      <span class="order-sidebar-label"
+                        ><i class="ti ti-history"></i>Last Modified</span
+                      >
+                      <span class="order-sidebar-value">
+                        {order?.updatedAt &&
+                          convertDate(order?.updatedAt, {
+                            timeZone: "Asia/Kolkata",
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            hour12: true,
+                          })}
+                      </span>
                     </div>
+                    {#if order?.assignedUsers?.[0]?.name}
+                      <div class="order-sidebar-row">
+                        <span class="order-sidebar-label"
+                          ><i class="ti ti-user-edit"></i>Modified By</span
+                        >
+                        <span class="order-sidebar-value">{order.assignedUsers[0].name}</span>
+                      </div>
+                    {/if}
                   </div>
-                {/each}
-                <div
-                  class="d-flex align-items-center justify-content-between mb-2"
-                >
-                  <p class="mb-0">Last Modified</p>
-                  <p class="mb-0 text-dark">
-                    {order?.updatedAt &&
-                      convertDate(order?.updatedAt, {
-                        timeZone: "Asia/Kolkata",
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        hour12: true,
-                      })}
-                  </p>
-                </div>
-                <div
-                  class="d-flex align-items-center justify-content-between mb-0"
-                >
-                  <p class="mb-0">Modified By</p>
-                  <div class="d-flex align-items-center">
-                    <span class="avatar avatar-xs rounded-circle me-2">
-                      <img
-                        src="/assets/img/profiles/user.png"
-                        alt="Img"
-                        class="img-fluid rounded-circle w-auto h-auto"
-                      />
-                    </span>
-                    <div>
-                      <p class="mb-0">{order?.assignedUsers[0]?.name}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="border-top pt-3 mt-3">
-                  <h6 class="mb-3 fw-semibold">Linked Documents</h6>
-
-                  <!-- PI -->
-                  <p class="mb-1 text-muted fs-12 fw-semibold">Proforma Invoice</p>
-                  {#if order?.orderPayments?.length > 0}
-                    {#each order.orderPayments as pi}
-                      <div class="mb-1">
-                        <a
-                          href="/admin/invoice/{pi.id}"
-                          class="text-primary fs-12 d-inline-flex align-items-center gap-1"
-                        >
-                          <i class="ti ti-receipt"></i>
-                          PI {pi.financialYear}/{String(pi.invoiceNo).padStart(6, "0")}
-                        </a>
-                      </div>
-                    {/each}
-                  {:else}
-                    <div class="mb-2">
-                      <a
-                        href="/admin/invoice?fromOrder={order?.id}"
-                        class="btn btn-xs btn-soft-primary fs-12"
-                      >
-                        <i class="ti ti-plus me-1"></i>Create PI
-                      </a>
-                    </div>
-                  {/if}
-
-                  <!-- Work Order -->
-                  <p class="mb-1 mt-2 text-muted fs-12 fw-semibold">Work Order</p>
-                  {#if order?.workOrders?.length > 0}
-                    {#each order.workOrders as wo}
-                      <div class="mb-1">
-                        <a
-                          href="/admin/workorder/{wo.id}"
-                          class="text-primary fs-12 d-inline-flex align-items-center gap-1"
-                        >
-                          <i class="ti ti-file-description"></i>
-                          WO {wo.financialYear}/{String(wo.workOrderNo).padStart(6, "0")}
-                        </a>
-                      </div>
-                    {/each}
-                  {:else if order?.orderPayments?.length > 0}
-                    <div class="mb-2">
-                      <a
-                        href="/admin/workorder/add?fromOrder={order?.id}"
-                        class="btn btn-xs btn-soft-success fs-12"
-                      >
-                        <i class="ti ti-plus me-1"></i>Create Work Order
-                      </a>
-                    </div>
-                  {:else}
-                    <p class="text-muted fs-12">Create PI first</p>
-                  {/if}
-
-                  <!-- Tax Invoice -->
-                  <p class="mb-1 mt-2 text-muted fs-12 fw-semibold">Tax Invoice</p>
-                  {#if order?.invoices?.length > 0}
-                    {#each order.invoices as inv}
-                      <div class="mb-1">
-                        <a
-                          href="/admin/invoice/tax/{inv.id}"
-                          class="text-primary fs-12 d-inline-flex align-items-center gap-1"
-                        >
-                          <i class="ti ti-file-invoice"></i>
-                          INV {inv.financialYear}/{String(inv.invoiceNo).padStart(6, "0")}
-                          {#if inv.isLocked}<span class="badge bg-success ms-1 fs-10">Locked</span>{/if}
-                        </a>
-                      </div>
-                    {/each}
-                  {:else if order?.orderPayments?.length > 0 && order?.workOrders?.length > 0}
-                    <div class="mb-2">
-                      <a
-                        href="/admin/invoice/tax?fromOrder={order?.id}"
-                        class="btn btn-xs btn-soft-warning fs-12"
-                      >
-                        <i class="ti ti-plus me-1"></i>Create Invoice
-                      </a>
-                    </div>
-                  {:else}
-                    <p class="text-muted fs-12">Create PI & Work Order first</p>
-                  {/if}
                 </div>
 
               </div>
@@ -1942,7 +2798,10 @@
                       aria-expanded="false"
                       class="nav-link border-3"
                       class:active={activeTab === "Queries"}
-                      on:click|preventDefault={() => { activeTab = "Queries"; loadOrderQueries(); }}
+                      on:click|preventDefault={() => {
+                        activeTab = "Queries";
+                        loadOrderQueries();
+                      }}
                       aria-selected={activeTab === "Queries"}
                       tabindex="-1"
                       role="tab"
@@ -1950,12 +2809,20 @@
                       <span class="d-md-inline-block">
                         <i class="ti ti-help-circle me-1"></i>Queries
                         {#if currentUser?.subRole === "tech"}
-                          {@const myCount = orderQueries.filter(q => q.assignedTo?.id === currentUser?.id).length}
+                          {@const myCount = orderQueries.filter(
+                            (q) => q.assignedTo?.id === currentUser?.id,
+                          ).length}
                           {#if myCount > 0}
-                            <span class="badge bg-success ms-1" style="font-size:10px;">{myCount}</span>
+                            <span
+                              class="badge bg-success ms-1"
+                              style="font-size:10px;">{myCount}</span
+                            >
                           {/if}
                         {:else if orderQueries.length > 0}
-                          <span class="badge bg-primary ms-1" style="font-size:10px;">{orderQueries.length}</span>
+                          <span
+                            class="badge bg-primary ms-1"
+                            style="font-size:10px;">{orderQueries.length}</span
+                          >
                         {/if}
                       </span>
                     </a>
@@ -2323,10 +3190,14 @@
                                   </p>
                                 {/if}
                                 {#if attachment?.file}
-                                  {@const fi = fileIcon(null, attachment?.fileName ?? attachment?.file)}
+                                  {@const fi = fileIcon(
+                                    null,
+                                    attachment?.fileName ?? attachment?.file,
+                                  )}
                                   <div
                                     class="row"
-                                    class:mt-3={attachment?.title || attachment?.link}
+                                    class:mt-3={attachment?.title ||
+                                      attachment?.link}
                                   >
                                     <div class="col-xxl-4 col-lg-5">
                                       <div
@@ -2334,28 +3205,62 @@
                                         role="button"
                                         tabindex="0"
                                         aria-label="Open attachment"
-                                        on:click={() => openAttachment(ATTACHMENT_BASE_URL + attachment?.file, null, attachment?.fileName)}
-                                        on:keydown={(e) => { if (e.key === "Enter" || e.key === " ") openAttachment(ATTACHMENT_BASE_URL + attachment?.file, null, attachment?.fileName); }}
+                                        on:click={() =>
+                                          openAttachment(
+                                            ATTACHMENT_BASE_URL +
+                                              attachment?.file,
+                                            null,
+                                            attachment?.fileName,
+                                          )}
+                                        on:keydown={(e) => {
+                                          if (
+                                            e.key === "Enter" ||
+                                            e.key === " "
+                                          )
+                                            openAttachment(
+                                              ATTACHMENT_BASE_URL +
+                                                attachment?.file,
+                                              null,
+                                              attachment?.fileName,
+                                            );
+                                        }}
                                         style="cursor:pointer;"
                                       >
                                         <div class="card-body p-2">
-                                          <div class="d-flex align-items-center justify-content-between flex-wrap row-gap-3">
-                                            <div class="d-flex align-items-center me-3">
+                                          <div
+                                            class="d-flex align-items-center justify-content-between flex-wrap row-gap-3"
+                                          >
+                                            <div
+                                              class="d-flex align-items-center me-3"
+                                            >
                                               <span class="avatar {fi.bg} me-2">
-                                                <i class="ti {fi.icon} fs-20"></i>
+                                                <i class="ti {fi.icon} fs-20"
+                                                ></i>
                                               </span>
                                               <div>
-                                                <h6 class="fw-medium fs-14 mb-1 trank" title={attachment?.fileName}>
-                                                  {shortenFileName(attachment?.fileName)}
+                                                <h6
+                                                  class="fw-medium fs-14 mb-1 trank"
+                                                  title={attachment?.fileName}
+                                                >
+                                                  {shortenFileName(
+                                                    attachment?.fileName,
+                                                  )}
                                                 </h6>
                                               </div>
                                             </div>
                                             <button
-                                              on:click|stopPropagation={() => openAttachment(ATTACHMENT_BASE_URL + attachment?.file, null, attachment?.fileName)}
+                                              on:click|stopPropagation={() =>
+                                                openAttachment(
+                                                  ATTACHMENT_BASE_URL +
+                                                    attachment?.file,
+                                                  null,
+                                                  attachment?.fileName,
+                                                )}
                                               class="avatar avatar-xs rounded-circle bg-light text-dark"
                                               title="Open"
                                             >
-                                              <i class="ti ti-external-link"></i>
+                                              <i class="ti ti-external-link"
+                                              ></i>
                                             </button>
                                           </div>
                                         </div>
@@ -2365,52 +3270,127 @@
                                 {/if}
                                 {#if attachment?.files}
                                   {@const attachImgUrls = attachment.files
-                                    .filter(f => f?.mimeType?.startsWith("image/") || /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(f?.originalName ?? ""))
-                                    .map(f => ATTACHMENT_BASE_URL + f.url)}
+                                    .filter(
+                                      (f) =>
+                                        f?.mimeType?.startsWith("image/") ||
+                                        /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(
+                                          f?.originalName ?? "",
+                                        ),
+                                    )
+                                    .map((f) => ATTACHMENT_BASE_URL + f.url)}
                                   <div
                                     class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3"
-                                    class:mt-3={attachment?.title || attachment?.link}
+                                    class:mt-3={attachment?.title ||
+                                      attachment?.link}
                                   >
                                     {#each attachment?.files as file}
-                                      {@const fi = fileIcon(file?.mimeType, file?.originalName)}
-                                      {@const isImg = file?.mimeType?.startsWith("image/") || /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(file?.originalName ?? "")}
-                                      {@const imgIdx = attachImgUrls.indexOf(ATTACHMENT_BASE_URL + file?.url)}
+                                      {@const fi = fileIcon(
+                                        file?.mimeType,
+                                        file?.originalName,
+                                      )}
+                                      {@const isImg =
+                                        file?.mimeType?.startsWith("image/") ||
+                                        /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(
+                                          file?.originalName ?? "",
+                                        )}
+                                      {@const imgIdx = attachImgUrls.indexOf(
+                                        ATTACHMENT_BASE_URL + file?.url,
+                                      )}
                                       <div
                                         class="card mb-0"
                                         role="button"
                                         tabindex="0"
                                         aria-label="Open attachment"
-                                        on:click={() => isImg ? openImageLightbox(attachImgUrls, imgIdx) : openAttachment(ATTACHMENT_BASE_URL + file?.url, file?.mimeType, file?.originalName)}
-                                        on:keydown={(e) => { if (e.key === "Enter" || e.key === " ") isImg ? openImageLightbox(attachImgUrls, imgIdx) : openAttachment(ATTACHMENT_BASE_URL + file?.url, file?.mimeType, file?.originalName); }}
+                                        on:click={() =>
+                                          isImg
+                                            ? openImageLightbox(
+                                                attachImgUrls,
+                                                imgIdx,
+                                              )
+                                            : openAttachment(
+                                                ATTACHMENT_BASE_URL + file?.url,
+                                                file?.mimeType,
+                                                file?.originalName,
+                                              )}
+                                        on:keydown={(e) => {
+                                          if (
+                                            e.key === "Enter" ||
+                                            e.key === " "
+                                          )
+                                            isImg
+                                              ? openImageLightbox(
+                                                  attachImgUrls,
+                                                  imgIdx,
+                                                )
+                                              : openAttachment(
+                                                  ATTACHMENT_BASE_URL +
+                                                    file?.url,
+                                                  file?.mimeType,
+                                                  file?.originalName,
+                                                );
+                                        }}
                                         style="cursor:pointer;"
                                       >
                                         <div class="card-body p-2">
-                                          <div class="d-flex align-items-center justify-content-between flex-wrap row-gap-3">
-                                            <div class="d-flex align-items-center me-3">
+                                          <div
+                                            class="d-flex align-items-center justify-content-between flex-wrap row-gap-3"
+                                          >
+                                            <div
+                                              class="d-flex align-items-center me-3"
+                                            >
                                               {#if isImg}
-                                                <span class="avatar border me-2">
-                                                  <img src={ATTACHMENT_BASE_URL + file?.url} alt={file?.originalName} class="object-contain" />
+                                                <span
+                                                  class="avatar border me-2"
+                                                >
+                                                  <img
+                                                    src={ATTACHMENT_BASE_URL +
+                                                      file?.url}
+                                                    alt={file?.originalName}
+                                                    class="object-contain"
+                                                  />
                                                 </span>
                                               {:else}
-                                                <span class="avatar {fi.bg} me-2">
-                                                  <i class="ti {fi.icon} fs-20"></i>
+                                                <span
+                                                  class="avatar {fi.bg} me-2"
+                                                >
+                                                  <i class="ti {fi.icon} fs-20"
+                                                  ></i>
                                                 </span>
                                               {/if}
                                               <div>
-                                                <h6 class="fw-medium lg:fs-14 fs-12 mb-1 trank" title={file?.originalName}>
-                                                  {shortenFileName(file?.originalName)}
+                                                <h6
+                                                  class="fw-medium lg:fs-14 fs-12 mb-1 trank"
+                                                  title={file?.originalName}
+                                                >
+                                                  {shortenFileName(
+                                                    file?.originalName,
+                                                  )}
                                                 </h6>
                                                 <p class="mb-0 fs-12 md:fs-10">
-                                                  {(file.size / 1024).toFixed(2)} KB
+                                                  {(file.size / 1024).toFixed(
+                                                    2,
+                                                  )} KB
                                                 </p>
                                               </div>
                                             </div>
                                             <button
-                                              on:click|stopPropagation={() => isImg ? openImageLightbox(attachImgUrls, imgIdx) : openAttachment(ATTACHMENT_BASE_URL + file?.url, file?.mimeType, file?.originalName)}
+                                              on:click|stopPropagation={() =>
+                                                isImg
+                                                  ? openImageLightbox(
+                                                      attachImgUrls,
+                                                      imgIdx,
+                                                    )
+                                                  : openAttachment(
+                                                      ATTACHMENT_BASE_URL +
+                                                        file?.url,
+                                                      file?.mimeType,
+                                                      file?.originalName,
+                                                    )}
                                               class="avatar avatar-xs rounded-circle bg-light text-dark"
                                               title="Open"
                                             >
-                                              <i class="ti ti-external-link"></i>
+                                              <i class="ti ti-external-link"
+                                              ></i>
                                             </button>
                                           </div>
                                         </div>
@@ -2482,11 +3462,19 @@
                                     />
                                   </span>
                                   <p class="mb-0">
-                                    <span class="text-dark fw-medium">{chat?.user?.name}</span>
-                                    {#if chat?.user?.status === 'banned'}
-                                      <span class="badge bg-danger ms-1" style="font-size:10px;">Banned</span>
-                                    {:else if chat?.user?.status === 'inactive'}
-                                      <span class="badge bg-secondary ms-1" style="font-size:10px;">Inactive</span>
+                                    <span class="text-dark fw-medium"
+                                      >{chat?.user?.name}</span
+                                    >
+                                    {#if chat?.user?.status === "banned"}
+                                      <span
+                                        class="badge bg-danger ms-1"
+                                        style="font-size:10px;">Banned</span
+                                      >
+                                    {:else if chat?.user?.status === "inactive"}
+                                      <span
+                                        class="badge bg-secondary ms-1"
+                                        style="font-size:10px;">Inactive</span
+                                      >
                                     {/if}
                                     ........ on
                                     {chat?.createdAt &&
@@ -2637,15 +3625,8 @@
                       class="card-header d-flex align-items-center justify-content-between flex-wrap row-gap-3"
                     >
                       <h5 class="fw-semibold mb-0">Clients</h5>
-                      <div class="d-inline-flex align-items-center">
-                        <a
-                          href="#create_call"
-                          data-bs-toggle="modal"
-                          data-bs-target="#create_client"
-                          class="link-primary fw-medium"
-                          ><i class="ti ti-circle-plus me-1"></i>Add New</a
-                        >
-                      </div>
+                      <!-- Add New button removed — use sidebar client section instead -->
+                      <div class="d-inline-flex align-items-center"></div>
                     </div>
                     <div class="card-body">
                       {#if order?.orderClients.length}
@@ -2883,7 +3864,9 @@
                 <!-- Queries Tab -->
                 <div class="tab-pane active show" id="tab_10">
                   <div class="card">
-                    <div class="card-header d-flex align-items-center justify-content-between py-2">
+                    <div
+                      class="card-header d-flex align-items-center justify-content-between py-2"
+                    >
                       <h5 class="fw-semibold mb-0">
                         <i class="ti ti-help-circle me-1 text-primary"></i>
                         {#if currentUser?.subRole === "tech"}
@@ -2893,7 +3876,10 @@
                         {/if}
                       </h5>
                       {#if currentUser?.subRole === "telecaller" || (currentUser?.role === "user" && !currentUser?.subRole)}
-                        <button class="btn btn-sm btn-outline-warning" on:click={openQueryModal}>
+                        <button
+                          class="btn btn-sm btn-outline-warning"
+                          on:click={openQueryModal}
+                        >
                           <i class="ti ti-plus me-1"></i>Raise Query
                         </button>
                       {/if}
@@ -2901,27 +3887,37 @@
                     <div class="card-body p-0">
                       {#if orderQueriesLoading}
                         <div class="text-center py-4">
-                          <span class="spinner-border spinner-border-sm text-primary"></span>
+                          <span
+                            class="spinner-border spinner-border-sm text-primary"
+                          ></span>
                         </div>
                       {:else}
-                        {@const visibleQueries = currentUser?.subRole === "tech"
-                          ? orderQueries.filter(q => q.assignedTo?.id === currentUser?.id)
-                          : currentUser?.subRole === "telecaller"
-                            ? orderQueries.filter(q => q.raisedBy?.id === currentUser?.id)
-                            : orderQueries}
+                        {@const visibleQueries =
+                          currentUser?.subRole === "tech"
+                            ? orderQueries.filter(
+                                (q) => q.assignedTo?.id === currentUser?.id,
+                              )
+                            : currentUser?.subRole === "telecaller"
+                              ? orderQueries
+                              : orderQueries}
                         {#if visibleQueries.length === 0}
                           <div class="text-center py-4 text-muted small">
                             {#if currentUser?.subRole === "tech"}
-                              <i class="ti ti-help-off me-1"></i>No queries assigned to you for this order.
+                              <i class="ti ti-help-off me-1"></i>No queries
+                              assigned to you for this order.
                             {:else if currentUser?.subRole === "telecaller"}
-                              <i class="ti ti-help-off me-1"></i>You haven't raised any queries for this order yet.
+                              <i class="ti ti-help-off me-1"></i>You haven't
+                              raised any queries for this order yet.
                             {:else}
-                              <i class="ti ti-help-off me-1"></i>No queries raised for this order yet.
+                              <i class="ti ti-help-off me-1"></i>No queries
+                              raised for this order yet.
                             {/if}
                           </div>
                         {:else}
                           <div class="table-responsive">
-                            <table class="table table-hover align-middle mb-0 small">
+                            <table
+                              class="table table-hover align-middle mb-0 small"
+                            >
                               <thead class="table-light">
                                 <tr>
                                   <th>Subject</th>
@@ -2947,20 +3943,34 @@
                                     {:else if currentUser?.subRole === "telecaller"}
                                       <td>
                                         {#if q.assignedTo}
-                                          <span class="badge bg-success-subtle text-success-emphasis">{q.assignedTo.name}</span>
+                                          <span
+                                            class="badge bg-success-subtle text-success-emphasis"
+                                            >{q.assignedTo.name}</span
+                                          >
                                         {:else}
-                                          <span class="text-muted">Unassigned</span>
+                                          <span class="text-muted"
+                                            >Unassigned</span
+                                          >
                                         {/if}
                                       </td>
                                     {:else}
                                       <td>
                                         {#if q.raisedBy}
                                           {#if q.raisedBy.name === "Telecaller"}
-                                            <span class="text-muted small"><i class="ti ti-lock me-1"></i>Hidden</span>
+                                            <span class="text-muted small"
+                                              ><i class="ti ti-lock me-1"
+                                              ></i>Hidden</span
+                                            >
                                           {:else}
-                                            <div class="d-flex align-items-center gap-1">
+                                            <div
+                                              class="d-flex align-items-center gap-1"
+                                            >
                                               <span>{q.raisedBy.name}</span>
-                                              <span class="badge bg-warning-subtle text-warning-emphasis" style="font-size:10px;">Telecaller</span>
+                                              <span
+                                                class="badge bg-warning-subtle text-warning-emphasis"
+                                                style="font-size:10px;"
+                                                >Telecaller</span
+                                              >
                                             </div>
                                           {/if}
                                         {:else}-{/if}
@@ -2968,26 +3978,58 @@
                                       <td>
                                         {#if q.assignedTo}
                                           {#if q.assignedTo.name === "Tech"}
-                                            <span class="text-muted small"><i class="ti ti-lock me-1"></i>Hidden</span>
+                                            <span class="text-muted small"
+                                              ><i class="ti ti-lock me-1"
+                                              ></i>Hidden</span
+                                            >
                                           {:else}
-                                            <div class="d-flex align-items-center gap-1">
+                                            <div
+                                              class="d-flex align-items-center gap-1"
+                                            >
                                               <span>{q.assignedTo.name}</span>
-                                              <span class="badge bg-success-subtle text-success-emphasis" style="font-size:10px;">Tech</span>
+                                              <span
+                                                class="badge bg-success-subtle text-success-emphasis"
+                                                style="font-size:10px;"
+                                                >Tech</span
+                                              >
                                             </div>
                                           {/if}
-                                        {:else}<span class="text-muted">Unassigned</span>{/if}
+                                        {:else}<span class="text-muted"
+                                            >Unassigned</span
+                                          >{/if}
                                       </td>
                                     {/if}
                                     <td>
-                                      <span class="badge {q.status === 'open' ? 'bg-primary' : q.status === 'in_progress' ? 'bg-warning text-dark' : q.status === 'resolved' ? 'bg-success' : q.status === 'reopened' ? 'bg-danger' : 'bg-secondary'}">
+                                      <span
+                                        class="badge {q.status === 'open'
+                                          ? 'bg-primary'
+                                          : q.status === 'in_progress'
+                                            ? 'bg-warning text-dark'
+                                            : q.status === 'resolved'
+                                              ? 'bg-success'
+                                              : q.status === 'reopened'
+                                                ? 'bg-danger'
+                                                : 'bg-secondary'}"
+                                      >
                                         {q.status?.replace("_", " ")}
                                       </span>
                                     </td>
                                     <td class="text-muted">
-                                      {new Date(q.createdAt).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                                      {new Date(q.createdAt).toLocaleString(
+                                        "en-IN",
+                                        {
+                                          day: "2-digit",
+                                          month: "short",
+                                          hour: "2-digit",
+                                          minute: "2-digit",
+                                        },
+                                      )}
                                     </td>
                                     <td>
-                                      <a href="/admin/query/{q.id}" class="btn btn-sm btn-outline-primary">
+                                      <a
+                                        href="/admin/query/{q.id}"
+                                        class="btn btn-sm btn-outline-primary"
+                                      >
                                         <i class="ti ti-eye"></i>
                                       </a>
                                     </td>
@@ -3499,13 +4541,19 @@
                 class="file-upload drag-file w-100 d-flex border shadow align-items-center justify-content-center flex-column p-3 transition-all"
                 class:bg-primary={isDragging}
                 class:bg-light={!isDragging}
-                style="border-style: dashed !important; border-color: {isDragging ? '#4f46e5' : '#dee2e6'} !important;"
+                style="border-style: dashed !important; border-color: {isDragging
+                  ? '#4f46e5'
+                  : '#dee2e6'} !important;"
                 on:dragover={handleDragOver}
                 on:dragleave={handleDragLeave}
                 on:drop={handleDrop}
               >
                 <span class="upload-img d-block mb-1">
-                  <i class="ti ti-folder-open fs-16 {isDragging ? 'text-white' : 'text-primary'}"></i>
+                  <i
+                    class="ti ti-folder-open fs-16 {isDragging
+                      ? 'text-white'
+                      : 'text-primary'}"
+                  ></i>
                 </span>
                 <p class="mb-0 fs-14 {isDragging ? 'text-white' : 'text-dark'}">
                   {#if isDragging}
@@ -3527,7 +4575,9 @@
                   multiple
                   on:change={handleFileChange}
                 />
-                <p class="fs-13 mb-0 {isDragging ? 'text-white' : ''}">Maximum limit: 10 Files</p>
+                <p class="fs-13 mb-0 {isDragging ? 'text-white' : ''}">
+                  Maximum limit: 10 Files
+                </p>
               </div>
 
               {#if formErrors.file}
@@ -3768,11 +4818,7 @@
         </button>
       </div>
       <div class="modal-body">
-        <form
-          on:submit={addAssignedUser}
-          class="needs-validation"
-          novalidate
-        >
+        <form on:submit={addAssignedUser} class="needs-validation" novalidate>
           <!-- Search -->
           <div class="input-group mb-3">
             <span class="input-group-text bg-white border-end-0">
@@ -3787,12 +4833,16 @@
           </div>
 
           <!-- User list -->
-          <div class="access-wrap" style="max-height: 300px; overflow-y: auto; overflow-x: hidden;">
+          <div
+            class="access-wrap"
+            style="max-height: 300px; overflow-y: auto; overflow-x: hidden;"
+          >
             {#if users.length}
               {@const filteredUsers = users
                 .filter((u) => u.status !== "banned")
-                .filter((u) => u.name?.toLowerCase().includes(userSearch.toLowerCase()))
-              }
+                .filter((u) =>
+                  u.name?.toLowerCase().includes(userSearch.toLowerCase()),
+                )}
               {#if filteredUsers.length}
                 <div class="row g-2">
                   {#each filteredUsers as user}
@@ -3802,7 +4852,9 @@
                         class:bg-light={selectedUsers.includes(user.id)}
                         class:border-primary={selectedUsers.includes(user.id)}
                         class:opacity-50={user.status === "inactive"}
-                        style="cursor:{user.status === 'inactive' ? 'not-allowed' : 'pointer'}; transition: background 0.15s;"
+                        style="cursor:{user.status === 'inactive'
+                          ? 'not-allowed'
+                          : 'pointer'}; transition: background 0.15s;"
                       >
                         <input
                           type="checkbox"
@@ -3811,7 +4863,9 @@
                           value={user.id}
                           disabled={user.status === "inactive"}
                         />
-                        <span class="avatar avatar-xs rounded-circle me-2 flex-shrink-0">
+                        <span
+                          class="avatar avatar-xs rounded-circle me-2 flex-shrink-0"
+                        >
                           <img
                             src="/assets/img/profiles/user.png"
                             alt="img"
@@ -3820,8 +4874,16 @@
                           />
                         </span>
                         <div class="overflow-hidden">
-                          <p class="fw-medium mb-0 text-truncate" style="font-size:0.85rem;">{user?.name}</p>
-                          <span class="text-muted text-capitalize" style="font-size:0.72rem;">
+                          <p
+                            class="fw-medium mb-0 text-truncate"
+                            style="font-size:0.85rem;"
+                          >
+                            {user?.name}
+                          </p>
+                          <span
+                            class="text-muted text-capitalize"
+                            style="font-size:0.72rem;"
+                          >
                             {#if user.status === "inactive"}
                               Inactive
                             {:else}
@@ -3834,7 +4896,9 @@
                   {/each}
                 </div>
               {:else}
-                <p class="text-muted text-center py-3 mb-0">No users match "{userSearch}"</p>
+                <p class="text-muted text-center py-3 mb-0">
+                  No users match "{userSearch}"
+                </p>
               {/if}
             {:else}
               <p class="text-muted text-center py-3 mb-0">No users available</p>
@@ -3859,6 +4923,841 @@
   </div>
 </div>
 <!-- /Manage Assigned Users -->
+
+<!-- Add Contact Modal (Scenario 2 — order already has client linked) -->
+{#if showAddContactModal}
+  <div
+    class="modal fade show d-block"
+    role="dialog"
+    style="background:rgba(0,0,0,0.5);z-index:9999;"
+  >
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">
+            <i class="ti ti-user-plus me-2 text-primary"></i>Add Contact
+          </h5>
+          <button
+            type="button"
+            class="btn-close"
+            on:click={() => (showAddContactModal = false)}
+          ></button>
+        </div>
+
+        <div class="modal-body">
+          <!-- Client info badge -->
+          <div
+            class="mb-3 p-2 bg-light rounded d-flex align-items-center gap-2 border"
+          >
+            <i class="ti ti-building-store text-primary"></i>
+            <span class="fw-semibold">{order.client?.name}</span>
+            {#if order.client?.gstNumber}
+              <span class="text-muted small ms-1"
+                >GST: {order.client.gstNumber}</span
+              >
+            {/if}
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="form-label"
+                >Name <span class="text-danger">*</span></label
+              >
+              <input
+                type="text"
+                class="form-control"
+                class:is-invalid={acFormErrors.acName}
+                bind:value={acName}
+                placeholder="Contact name"
+              />
+              {#if acFormErrors.acName}
+                <ul class="text-danger mt-1 text-xs">
+                  <li>{acFormErrors.acName}</li>
+                </ul>
+              {/if}
+            </div>
+            <div>
+              <label class="form-label">Designation</label>
+              <input
+                type="text"
+                class="form-control"
+                bind:value={acDesignation}
+                placeholder="e.g. Manager, Director"
+              />
+            </div>
+            <div>
+              <label class="form-label">Mobile</label>
+              <input
+                type="text"
+                class="form-control"
+                bind:value={acMobile}
+                placeholder="Mobile"
+              />
+            </div>
+            <div>
+              <label class="form-label">Email</label>
+              <input
+                type="email"
+                class="form-control"
+                bind:value={acEmail}
+                placeholder="Email"
+              />
+            </div>
+            <div>
+              <label class="form-label">Whatsapp</label>
+              <input
+                type="text"
+                class="form-control"
+                bind:value={acWhatsapp}
+                placeholder="Whatsapp"
+              />
+            </div>
+            <div>
+              <label class="form-label">Alternate Mobile</label>
+              <input
+                type="text"
+                class="form-control"
+                bind:value={acAltMobile}
+                placeholder="Alternate mobile"
+              />
+            </div>
+            <div class="col-span-2">
+              <label class="form-label">Address</label>
+              <input
+                type="text"
+                class="form-control"
+                bind:value={acAddress}
+                placeholder="Address"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button
+            type="button"
+            class="btn btn-light"
+            on:click={() => (showAddContactModal = false)}>Cancel</button
+          >
+          <button
+            type="button"
+            class="btn btn-primary"
+            on:click={submitAddContact}
+            disabled={acLoading}
+          >
+            {acLoading ? "Saving..." : "Add Contact"}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- New Client + Contact Modal (for unlinked orders) -->
+{#if showNewClientModal}
+  <div
+    class="modal fade show d-block"
+    role="dialog"
+    style="background:rgba(0,0,0,0.5);z-index:9999;"
+  >
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">
+            <i class="ti ti-building-store me-2 text-primary"></i>
+            {newClientStep === 1
+              ? "Step 1 — Select or Create Client"
+              : "Step 2 — Add Contact Person"}
+          </h5>
+          <button
+            type="button"
+            class="btn-close"
+            on:click={() => (showNewClientModal = false)}
+          ></button>
+        </div>
+
+        <div class="modal-body">
+          <!-- Step indicator -->
+          <div class="d-flex align-items-center gap-2 mb-4">
+            <div class="d-flex align-items-center gap-1">
+              <span
+                class="badge rounded-pill {newClientStep >= 1
+                  ? 'bg-primary'
+                  : 'bg-secondary'} px-3 py-2">1</span
+              >
+              <span
+                class="small fw-semibold {newClientStep >= 1
+                  ? 'text-primary'
+                  : 'text-muted'}">Client</span
+              >
+            </div>
+            <div class="flex-grow-1 border-top mx-2"></div>
+            <div class="d-flex align-items-center gap-1">
+              <span
+                class="badge rounded-pill {newClientStep >= 2
+                  ? 'bg-primary'
+                  : 'bg-secondary'} px-3 py-2">2</span
+              >
+              <span
+                class="small fw-semibold {newClientStep >= 2
+                  ? 'text-primary'
+                  : 'text-muted'}">Contact</span
+              >
+            </div>
+          </div>
+
+          <!-- ── STEP 1 ── -->
+          {#if newClientStep === 1}
+            <!-- Search existing client -->
+            {#if !ncSelectedClient && !ncCreateMode}
+              <div class="mb-3 position-relative">
+                <label class="form-label fw-semibold"
+                  >Search Existing Client</label
+                >
+                <div class="input-group">
+                  <input
+                    type="text"
+                    class="form-control"
+                    placeholder="Type company name, mobile, email..."
+                    bind:value={ncSearchQuery}
+                    on:input={ncOnSearchInput}
+                    autocomplete="off"
+                  />
+                  {#if ncSearchLoading}
+                    <span class="input-group-text">
+                      <span class="spinner-border spinner-border-sm"></span>
+                    </span>
+                  {/if}
+                </div>
+
+                {#if ncSearchDropdown && ncSearchResults.length > 0}
+                  <div
+                    class="border rounded bg-white position-absolute w-100 shadow"
+                    style="z-index:9999;max-height:220px;overflow-y:auto;top:100%;"
+                  >
+                    {#each ncSearchResults as client}
+                      <button
+                        type="button"
+                        class="d-block w-100 text-start px-3 py-2 border-bottom"
+                        style="background:none;"
+                        on:click={() => ncSelectClient(client)}
+                      >
+                        <div class="fw-semibold">
+                          <i class="ti ti-building-store me-1 text-primary"
+                          ></i>{client.name}
+                        </div>
+                        {#if client.gstNumber}
+                          <div class="text-muted small">
+                            GST: {client.gstNumber}
+                          </div>
+                        {/if}
+                        {#if client.contacts?.length > 0}
+                          <div class="text-muted small">
+                            Contacts: {client.contacts
+                              .map((c) => c.name)
+                              .join(", ")}
+                          </div>
+                        {/if}
+                      </button>
+                    {/each}
+                  </div>
+                {/if}
+
+                {#if ncSearchDropdown && ncSearchResults.length === 0 && ncSearchQuery.length > 1}
+                  <div
+                    class="border rounded bg-white position-absolute w-100 shadow px-3 py-2"
+                    style="z-index:9999;top:100%;"
+                  >
+                    <div class="text-muted small mb-2">
+                      No client found for "{ncSearchQuery}"
+                    </div>
+                    <button
+                      type="button"
+                      class="btn btn-sm btn-outline-primary"
+                      on:click={() => {
+                        ncCreateMode = true;
+                        ncClientName = ncSearchQuery;
+                        ncSearchDropdown = false;
+                      }}
+                    >
+                      <i class="ti ti-plus me-1"></i>Create New Client
+                    </button>
+                  </div>
+                {/if}
+              </div>
+
+              <div class="text-center text-muted small my-3">— or —</div>
+              <button
+                type="button"
+                class="btn btn-outline-secondary btn-sm"
+                on:click={() => {
+                  ncCreateMode = true;
+                  ncSearchDropdown = false;
+                }}
+              >
+                <i class="ti ti-plus me-1"></i>Create New Client
+              </button>
+            {/if}
+
+            <!-- Selected existing client -->
+            {#if ncSelectedClient}
+              <div class="border rounded p-3 bg-light mb-3">
+                <div class="d-flex justify-content-between align-items-start">
+                  <div>
+                    <div class="fw-bold">
+                      <i class="ti ti-building-store me-1 text-primary"
+                      ></i>{ncSelectedClient.name}
+                    </div>
+                    {#if ncSelectedClient.gstNumber}
+                      <div class="text-muted small">
+                        GST: {ncSelectedClient.gstNumber}
+                      </div>
+                    {/if}
+                    {#if ncSelectedClient.contacts?.length > 0}
+                      <div class="text-muted small mt-1">
+                        Existing contacts: {ncSelectedClient.contacts
+                          .map((c) => c.name)
+                          .join(", ")}
+                      </div>
+                    {/if}
+                  </div>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-danger"
+                    on:click={() => {
+                      ncSelectedClient = null;
+                      ncSearchQuery = "";
+                    }}
+                  >
+                    <i class="ti ti-x"></i>
+                  </button>
+                </div>
+              </div>
+            {/if}
+
+            <!-- Create new client form -->
+            {#if ncCreateMode}
+              <div class="border rounded p-3 bg-light mb-3">
+                <div
+                  class="d-flex justify-content-between align-items-center mb-3"
+                >
+                  <h6 class="mb-0 fw-semibold">New Client</h6>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-secondary"
+                    on:click={() => {
+                      ncCreateMode = false;
+                      ncClientName = "";
+                    }}
+                  >
+                    <i class="ti ti-x"></i>
+                  </button>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="form-label"
+                      >Company Name <span class="text-danger">*</span></label
+                    >
+                    <input
+                      type="text"
+                      class="form-control"
+                      class:is-invalid={ncFormErrors.ncClientName}
+                      bind:value={ncClientName}
+                      placeholder="Company name"
+                    />
+                    {#if ncFormErrors.ncClientName}
+                      <ul class="text-danger mt-1 text-xs">
+                        <li>{ncFormErrors.ncClientName}</li>
+                      </ul>
+                    {/if}
+                  </div>
+                  <div>
+                    <label class="form-label">GST Number</label>
+                    <input
+                      type="text"
+                      class="form-control"
+                      bind:value={ncClientGst}
+                      placeholder="GST number"
+                    />
+                  </div>
+                  <div>
+                    <label class="form-label">Mobile</label>
+                    <input
+                      type="text"
+                      class="form-control"
+                      bind:value={ncClientMobile}
+                      placeholder="Mobile"
+                    />
+                  </div>
+                  <div>
+                    <label class="form-label">Email</label>
+                    <input
+                      type="email"
+                      class="form-control"
+                      bind:value={ncClientEmail}
+                      placeholder="Email"
+                    />
+                  </div>
+                  <div class="col-span-2">
+                    <label class="form-label">Address</label>
+                    <input
+                      type="text"
+                      class="form-control"
+                      bind:value={ncClientAddress}
+                      placeholder="Address"
+                    />
+                  </div>
+                </div>
+              </div>
+            {/if}
+
+            {#if ncFormErrors.step1}
+              <div class="alert alert-warning py-2 small">
+                {ncFormErrors.step1}
+              </div>
+            {/if}
+          {/if}
+          <!-- end step 1 -->
+
+          <!-- ── STEP 2 ── -->
+          {#if newClientStep === 2}
+            <div
+              class="mb-2 p-2 bg-light rounded border d-flex align-items-center gap-2"
+            >
+              <i class="ti ti-building-store text-primary"></i>
+              <span class="fw-semibold"
+                >{ncSelectedClient?.name || ncClientName}</span
+              >
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-secondary ms-auto"
+                on:click={() => (newClientStep = 1)}
+              >
+                <i class="ti ti-edit me-1"></i>Change
+              </button>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 mt-3">
+              <div>
+                <label class="form-label"
+                  >Contact Name <span class="text-danger">*</span></label
+                >
+                <input
+                  type="text"
+                  class="form-control"
+                  class:is-invalid={ncFormErrors.ncContactName}
+                  bind:value={ncContactName}
+                  placeholder="Full name"
+                />
+                {#if ncFormErrors.ncContactName}
+                  <ul class="text-danger mt-1 text-xs">
+                    <li>{ncFormErrors.ncContactName}</li>
+                  </ul>
+                {/if}
+              </div>
+              <div>
+                <label class="form-label">Designation</label>
+                <input
+                  type="text"
+                  class="form-control"
+                  bind:value={ncContactDesignation}
+                  placeholder="e.g. Manager, Director"
+                />
+              </div>
+              <div>
+                <label class="form-label">Mobile</label>
+                <input
+                  type="text"
+                  class="form-control"
+                  bind:value={ncContactMobile}
+                  placeholder="Mobile"
+                />
+              </div>
+              <div>
+                <label class="form-label">Email</label>
+                <input
+                  type="email"
+                  class="form-control"
+                  bind:value={ncContactEmail}
+                  placeholder="Email"
+                />
+              </div>
+              <div>
+                <label class="form-label">Whatsapp</label>
+                <input
+                  type="text"
+                  class="form-control"
+                  bind:value={ncContactWhatsapp}
+                  placeholder="Whatsapp"
+                />
+              </div>
+              <div>
+                <label class="form-label">Alternate Mobile</label>
+                <input
+                  type="text"
+                  class="form-control"
+                  bind:value={ncContactAltMobile}
+                  placeholder="Alternate mobile"
+                />
+              </div>
+            </div>
+          {/if}
+          <!-- end step 2 -->
+        </div>
+
+        <div class="modal-footer">
+          <button
+            type="button"
+            class="btn btn-light"
+            on:click={() => (showNewClientModal = false)}>Cancel</button
+          >
+
+          {#if newClientStep === 1}
+            <button
+              type="button"
+              class="btn btn-primary"
+              on:click={ncGoToStep2}
+            >
+              Next <i class="ti ti-arrow-right ms-1"></i>
+            </button>
+          {:else}
+            <button
+              type="button"
+              class="btn btn-outline-secondary"
+              on:click={() => (newClientStep = 1)}
+            >
+              <i class="ti ti-arrow-left me-1"></i>Back
+            </button>
+            <button
+              type="button"
+              class="btn btn-primary"
+              on:click={ncSubmit}
+              disabled={ncSubmitLoading}
+            >
+              {ncSubmitLoading ? "Saving..." : "Save & Link Client"}
+            </button>
+          {/if}
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Change Client Modal (Svelte-controlled) -->
+{#if showChangeClientModal}
+  <div
+    class="modal fade show d-block"
+    role="dialog"
+    style="background:rgba(0,0,0,0.5);z-index:9999;"
+  >
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">
+            {order.client ? "Change Client" : "Link Client"}
+          </h5>
+          <button
+            type="button"
+            class="btn-close"
+            on:click={() => {
+              showChangeClientModal = false;
+              ccSelectedExisting = null;
+              ccCancelInlineCreate();
+            }}
+          ></button>
+        </div>
+        <div class="modal-body">
+          {#if order.client}
+            <div class="mb-3 text-muted small">
+              Current: <strong>{order.client.name}</strong>
+            </div>
+          {/if}
+
+          <!-- Mode toggle label row -->
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <label class="form-label mb-0 fw-semibold">
+              {#if ccInlineCreate}
+                <i class="ti ti-building-store me-1 text-primary"></i>New Client
+              {:else}
+                <i class="ti ti-search me-1 text-primary"></i>Search Client
+              {/if}
+            </label>
+            {#if ccInlineCreate}
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-secondary"
+                on:click={() => {
+                  ccCancelInlineCreate();
+                  ccSelectedExisting = null;
+                  changeClientQuery = "";
+                }}
+              >
+                <i class="ti ti-arrow-left me-1"></i>Back to Search
+              </button>
+            {:else}
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-primary"
+                on:click={ccOpenInlineCreate}
+              >
+                <i class="ti ti-plus me-1"></i>New Client
+              </button>
+            {/if}
+          </div>
+
+          <!-- ── Search Mode ── -->
+          {#if !ccInlineCreate}
+            <div class="position-relative">
+              <div class="input-group mb-2">
+                <input
+                  type="text"
+                  class="form-control"
+                  placeholder="Type name, mobile, email, GST..."
+                  bind:value={changeClientQuery}
+                  on:input={onChangeClientInput}
+                  autocomplete="off"
+                />
+                {#if changeClientLoading}
+                  <span class="input-group-text">
+                    <span class="spinner-border spinner-border-sm"></span>
+                  </span>
+                {/if}
+              </div>
+
+              <!-- Search results dropdown -->
+              {#if changeClientDropdown && changeClientResults.length > 0}
+                <div
+                  class="border rounded"
+                  style="max-height:200px;overflow-y:auto;"
+                >
+                  {#each changeClientResults as client}
+                    <button
+                      type="button"
+                      class="d-block w-100 text-start px-3 py-2 border-bottom"
+                      style="background:none;"
+                      on:click={() => {
+                        changeClientDropdown = false;
+                        ccSelectedExisting = client;
+                      }}
+                    >
+                      <div class="fw-semibold">
+                        <i class="ti ti-building-store me-1 text-primary"
+                        ></i>{client.name}
+                      </div>
+                      {#if client.gstNumber}
+                        <div class="text-muted small">
+                          GST: {client.gstNumber}
+                        </div>
+                      {/if}
+                      {#if client.contacts?.length > 0}
+                        <div class="text-muted small">
+                          {client.contacts.map((c) => c.name).join(", ")}
+                        </div>
+                      {/if}
+                    </button>
+                  {/each}
+                </div>
+              {/if}
+
+              <!-- No results hint -->
+              {#if changeClientDropdown && changeClientResults.length === 0}
+                <div class="text-muted small mt-1 fst-italic">
+                  No client found — use <strong>New Client</strong> button above
+                  to create one.
+                </div>
+              {/if}
+            </div>
+
+            <!-- Selected existing client card -->
+            {#if ccSelectedExisting}
+              <div
+                class="border rounded p-3 mt-2 bg-light d-flex justify-content-between align-items-start"
+              >
+                <div>
+                  <div class="fw-semibold">
+                    <i class="ti ti-building-store me-1 text-primary"
+                    ></i>{ccSelectedExisting.name}
+                  </div>
+                  {#if ccSelectedExisting.gstNumber}
+                    <div class="text-muted small">
+                      GST: {ccSelectedExisting.gstNumber}
+                    </div>
+                  {/if}
+                  {#if ccSelectedExisting.contacts?.length > 0}
+                    <div class="text-muted small mt-1">
+                      {ccSelectedExisting.contacts
+                        .map((c) => c.name)
+                        .join(", ")}
+                    </div>
+                  {/if}
+                </div>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-secondary"
+                  on:click={() => {
+                    ccSelectedExisting = null;
+                    changeClientQuery = "";
+                  }}
+                >
+                  <i class="ti ti-x"></i>
+                </button>
+              </div>
+            {/if}
+          {/if}
+
+          <!-- ── Create Mode ── -->
+          {#if ccInlineCreate}
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="form-label"
+                  >Company Name <span class="text-danger">*</span></label
+                >
+                <input
+                  type="text"
+                  class="form-control"
+                  class:is-invalid={ccCreateErrors.name}
+                  bind:value={ccNewName}
+                  placeholder="Company name"
+                />
+                {#if ccCreateErrors.name}
+                  <ul class="text-danger mt-1 text-xs">
+                    <li>{ccCreateErrors.name}</li>
+                  </ul>
+                {/if}
+              </div>
+              <div>
+                <label class="form-label">GST Number</label>
+                <input
+                  type="text"
+                  class="form-control"
+                  bind:value={ccNewGst}
+                  placeholder="GST number"
+                />
+              </div>
+              <div>
+                <label class="form-label">Mobile</label>
+                <input
+                  type="text"
+                  class="form-control"
+                  bind:value={ccNewMobile}
+                  placeholder="Mobile"
+                />
+              </div>
+              <div>
+                <label class="form-label">Email</label>
+                <input
+                  type="email"
+                  class="form-control"
+                  bind:value={ccNewEmail}
+                  placeholder="Email"
+                />
+              </div>
+              <div class="col-span-2">
+                <label class="form-label">Address</label>
+                <input
+                  type="text"
+                  class="form-control"
+                  bind:value={ccNewAddress}
+                  placeholder="Address"
+                />
+              </div>
+            </div>
+          {/if}
+
+          <!-- Legacy contacts (first time link only) -->
+          {#if legacyContacts.length > 0 && !order.clientId}
+            <div class="mt-3 border rounded p-3 bg-light">
+              <div class="fw-semibold small mb-2">
+                <i class="ti ti-users me-1 text-primary"></i>
+                Legacy contacts on this order — add to client:
+              </div>
+              {#each legacyContacts as oc}
+                <label
+                  class="d-flex align-items-center gap-2 py-1 cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={legacyChecked.includes(oc.id)}
+                    on:change={() => toggleLegacy(oc.id)}
+                  />
+                  <span class="small">
+                    <strong>{oc.name}</strong>
+                    {#if oc.designation}<span class="text-muted">
+                        · {oc.designation}</span
+                      >{/if}
+                    {#if oc.mobile}<span class="text-muted">
+                        · {oc.mobile}</span
+                      >{/if}
+                    {#if oc.email}<span class="text-muted">
+                        · {oc.email}</span
+                      >{/if}
+                  </span>
+                </label>
+              {/each}
+              {#if legacyChecked.length > 0}
+                <div class="text-primary small mt-1">
+                  <i class="ti ti-check me-1"></i>{legacyChecked.length} contact(s)
+                  will be added
+                </div>
+              {/if}
+            </div>
+          {/if}
+        </div>
+        <div class="modal-footer">
+          <button
+            type="button"
+            class="btn btn-light"
+            on:click={() => {
+              showChangeClientModal = false;
+              ccCancelInlineCreate();
+              ccSelectedExisting = null;
+            }}
+          >
+            Cancel
+          </button>
+
+          <!-- Confirm link for selected existing client -->
+          {#if ccSelectedExisting}
+            <button
+              type="button"
+              class="btn btn-primary"
+              on:click={() => confirmChangeClient(ccSelectedExisting)}
+            >
+              {#if legacyChecked.length > 0 && !order.clientId}
+                Link ({legacyChecked.length} contact{legacyChecked.length > 1
+                  ? "s"
+                  : ""})
+              {:else}
+                Link Client
+              {/if}
+            </button>
+          {/if}
+
+          <!-- Confirm create + link for inline new client -->
+          {#if ccInlineCreate}
+            <button
+              type="button"
+              class="btn btn-primary"
+              on:click={ccCreateAndLink}
+              disabled={ccCreateLoading}
+            >
+              {#if ccCreateLoading}
+                Creating...
+              {:else if legacyChecked.length > 0 && !order.clientId}
+                Create & Link ({legacyChecked.length} contact{legacyChecked.length >
+                1
+                  ? "s"
+                  : ""})
+              {:else}
+                Create & Link
+              {/if}
+            </button>
+          {/if}
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <!-- Create Client -->
 <div class="modal fade" id="create_client" role="dialog">
@@ -4097,6 +5996,477 @@
 <!-- /Create Client -->
 
 <style>
+  .order-header-card {
+    border: none;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+    overflow: visible;
+  }
+
+  .order-header-card .card-body {
+    overflow: visible;
+  }
+
+  .order-header-actions .dropdown-menu {
+    z-index: 1050;
+  }
+
+  .order-header-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+  }
+
+  .order-header-identity {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .order-header-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #212529;
+    line-height: 1.35;
+  }
+
+  .order-header-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+  }
+
+  .order-header-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.55rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #495057;
+    background: #f8fafc;
+    border: 1px solid #e8edf2;
+    border-radius: 999px;
+    line-height: 1.2;
+  }
+
+  .order-header-chip i {
+    font-size: 0.8125rem;
+    color: #6c757d;
+  }
+
+  .order-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+
+  .order-header-docs {
+    padding-top: 0.875rem;
+    border-top: 1px solid #eef1f4;
+  }
+
+  .order-header-docs-label {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #6c757d;
+    margin-bottom: 0.625rem;
+  }
+
+  .order-header-docs-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.75rem;
+  }
+
+  .order-header-doc-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
+  .order-header-doc-type {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.75rem;
+    height: 1.75rem;
+    padding: 0 0.375rem;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: #6c757d;
+    background: #f1f3f5;
+    border-radius: 0.375rem;
+    flex-shrink: 0;
+  }
+
+  .order-header-doc-sep {
+    width: 1px;
+    height: 1.25rem;
+    background: #dee2e6;
+    flex-shrink: 0;
+  }
+
+  .order-header-doc-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    text-decoration: none;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.375rem;
+    line-height: 1.3;
+  }
+
+  .order-header-doc-link--success {
+    color: #198754;
+    background: #ecfdf3;
+    border: 1px solid #bbf7d0;
+  }
+
+  .order-header-doc-link--success:hover {
+    background: #dcfce7;
+    color: #157347;
+  }
+
+  .order-header-doc-link--warning {
+    color: #b45309;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+  }
+
+  .order-header-doc-link--warning:hover {
+    background: #fef3c7;
+    color: #92400e;
+  }
+
+  .order-header-doc-action {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--bs-primary, #3554d1);
+    text-decoration: none;
+    padding: 0.25rem 0.5rem;
+    border: 1px dashed #c7d2fe;
+    border-radius: 0.375rem;
+    background: #f8faff;
+  }
+
+  .order-header-doc-action:hover {
+    background: #eef2ff;
+    color: #2a43a8;
+  }
+
+  .order-header-doc-action--warning {
+    color: #b45309;
+    border-color: #fde68a;
+    background: #fffbeb;
+  }
+
+  .order-header-doc-action--warning:hover {
+    background: #fef3c7;
+    color: #92400e;
+  }
+
+  .order-header-doc-muted {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.75rem;
+    color: #adb5bd;
+    font-style: italic;
+  }
+
+  .order-header-doc-badge {
+    font-size: 0.625rem;
+    font-weight: 600;
+    padding: 0.2em 0.45em;
+  }
+
+  @media (max-width: 575.98px) {
+    .order-header-doc-sep {
+      display: none;
+    }
+
+    .order-header-doc-item {
+      width: 100%;
+    }
+  }
+
+  .order-sidebar {
+    border: none;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+    overflow: hidden;
+  }
+
+  .order-sidebar-section {
+    padding: 1rem 1.125rem;
+    border-bottom: 1px solid #eef1f4;
+  }
+
+  .order-sidebar-section:last-child {
+    border-bottom: none;
+  }
+
+  .order-sidebar-section-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.875rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #344767;
+  }
+
+  .order-sidebar-section-head > i {
+    color: var(--bs-primary, #3554d1);
+    font-size: 1rem;
+    line-height: 1;
+  }
+
+  .order-sidebar-actions {
+    margin-left: auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    justify-content: flex-end;
+  }
+
+  .order-sidebar-meta-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+  }
+
+  .order-sidebar-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+  }
+
+  .order-sidebar-label {
+    color: #6c757d;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    max-width: 52%;
+  }
+
+  .order-sidebar-label i {
+    font-size: 0.875rem;
+    opacity: 0.8;
+  }
+
+  .order-sidebar-value {
+    color: #212529;
+    text-align: right;
+    word-break: break-word;
+  }
+
+  .order-sidebar-expand {
+    text-align: right;
+    margin-top: 0.625rem;
+    padding-top: 0.25rem;
+  }
+
+  .order-sidebar-client-card {
+    background: #f8fafc;
+    border: 1px solid #e8edf2;
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .order-sidebar-client-name {
+    display: block;
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: var(--bs-primary, #3554d1);
+    text-decoration: none;
+    line-height: 1.35;
+  }
+
+  .order-sidebar-client-name:hover {
+    text-decoration: underline;
+  }
+
+  .order-sidebar-client-gst {
+    margin-top: 0.25rem;
+    font-size: 0.75rem;
+    color: #6c757d;
+  }
+
+  .order-sidebar-contact {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.625rem 0.75rem;
+    background: #fff;
+    border: 1px solid #e8edf2;
+    border-radius: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .order-sidebar-contact-name {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: #212529;
+    line-height: 1.35;
+  }
+
+  .order-sidebar-contact-role {
+    font-size: 0.6875rem;
+    font-weight: 400;
+    color: #6c757d;
+    margin-left: 0.125rem;
+  }
+
+  .order-sidebar-contact-detail {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.75rem;
+    color: #6c757d;
+    margin-top: 0.2rem;
+    text-decoration: none;
+    word-break: break-all;
+  }
+
+  .order-sidebar-contact-detail:hover {
+    color: var(--bs-primary, #3554d1);
+  }
+
+  .order-sidebar-contact-actions {
+    display: flex;
+    gap: 0.125rem;
+    flex-shrink: 0;
+  }
+
+  .order-sidebar-empty {
+    font-size: 0.8125rem;
+    color: #6c757d;
+    font-style: italic;
+  }
+
+  .order-sidebar-empty-state {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    background: #f8fafc;
+    border: 1px dashed #dee2e6;
+    border-radius: 0.5rem;
+    font-size: 0.8125rem;
+    color: #6c757d;
+  }
+
+  .order-sidebar-empty-state i {
+    font-size: 1.125rem;
+    opacity: 0.65;
+  }
+
+  .order-sidebar-chip-section {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px dashed #e8edf2;
+  }
+
+  .order-sidebar-chip-label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #6c757d;
+    margin-bottom: 0.5rem;
+  }
+
+  .order-sidebar-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+  }
+
+  .order-sidebar-user {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 0;
+    font-size: 0.8125rem;
+  }
+
+  .order-sidebar-user-name {
+    font-weight: 500;
+    color: #212529;
+  }
+
+  .order-sidebar-badge {
+    font-size: 0.625rem;
+    font-weight: 600;
+    padding: 0.2em 0.45em;
+  }
+
+  .order-sidebar-alert {
+    font-size: 0.75rem;
+  }
+
+  .order-sidebar-audit {
+    padding-top: 0.75rem;
+    border-top: 1px dashed #e8edf2;
+  }
+
+  .order-sidebar-doc-group {
+    margin-bottom: 0.875rem;
+  }
+
+  .order-sidebar-doc-label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #6c757d;
+    margin-bottom: 0.375rem;
+  }
+
+  .order-sidebar-doc-link {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.8125rem;
+    color: var(--bs-primary, #3554d1);
+    text-decoration: none;
+    padding: 0.3rem 0;
+    line-height: 1.35;
+  }
+
+  .order-sidebar-doc-link:hover {
+    text-decoration: underline;
+  }
+
+  .order-sidebar-doc-link i {
+    font-size: 0.9375rem;
+    opacity: 0.85;
+  }
+
   .ribbon {
     position: absolute;
     overflow: hidden;

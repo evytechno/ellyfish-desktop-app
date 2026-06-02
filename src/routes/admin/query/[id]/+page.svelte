@@ -1,5 +1,6 @@
 <script>
   import { onMount, onDestroy, afterUpdate, tick } from "svelte";
+  import { slide } from "svelte/transition";
   import { page } from "$app/stores";
   import { goto } from "$app/navigation";
   import { io } from "socket.io-client";
@@ -43,6 +44,24 @@
   let _prevId = $page.params.id;
   let currentUser;
   let query = null;
+
+  // Order drawer
+  let orderDrawerOpen = false;
+  let orderDrawerData = null;
+  let orderDrawerLoading = false;
+
+  async function openOrderDrawer(orderId) {
+    orderDrawerOpen = true;
+    orderDrawerLoading = true;
+    orderDrawerData = null;
+    try {
+      orderDrawerData = await authApiFetch(`${API_ROUTES.ORDER}/${orderId}`);
+    } catch (e) {
+      orderDrawerData = null;
+    } finally {
+      orderDrawerLoading = false;
+    }
+  }
   let chats = [];
   let loading = true;
   let chatMessage = "";
@@ -52,6 +71,8 @@
   let fileInputEl;
   let sendingChat = false;
   let actionLoading = false;
+  let qdCardCollapsed = true;
+  let orderCardCollapsed = true;
   let switching = false; // true while selectQuery is loading new data (shows shimmer bar)
 
   // reply state
@@ -88,6 +109,50 @@
   let inProgressPage = 1;
   let inProgressTotal = 0;
   const IN_PROGRESS_LIMIT = 15;
+  let inProgressSearch = "";
+  let inProgressSearchDebounce;
+  function handleInProgressSearch(val) {
+    clearTimeout(inProgressSearchDebounce);
+    inProgressSearch = val;
+    inProgressSearchDebounce = setTimeout(() => {
+      loadInProgress(true);
+    }, 300);
+  }
+
+  let inProgressDateFilter = "all"; // all | today | yesterday | 7days | 30days | custom
+  let inProgressCustomFrom = "";
+  let inProgressCustomTo = "";
+
+  function getInProgressDateRange() {
+    const toISO = (d) => d.toISOString().substring(0, 10);
+    const today = new Date();
+    if (inProgressDateFilter === "today") {
+      const s = toISO(today);
+      return { dateFrom: s, dateTo: s };
+    }
+    if (inProgressDateFilter === "yesterday") {
+      const y = new Date(today); y.setDate(y.getDate() - 1);
+      const s = toISO(y);
+      return { dateFrom: s, dateTo: s };
+    }
+    if (inProgressDateFilter === "7days") {
+      const f = new Date(today); f.setDate(f.getDate() - 6);
+      return { dateFrom: toISO(f), dateTo: toISO(today) };
+    }
+    if (inProgressDateFilter === "30days") {
+      const f = new Date(today); f.setDate(f.getDate() - 29);
+      return { dateFrom: toISO(f), dateTo: toISO(today) };
+    }
+    if (inProgressDateFilter === "custom" && inProgressCustomFrom && inProgressCustomTo) {
+      return { dateFrom: inProgressCustomFrom, dateTo: inProgressCustomTo };
+    }
+    return { dateFrom: null, dateTo: null };
+  }
+
+  function setDateFilter(filter) {
+    inProgressDateFilter = filter;
+    if (filter !== "custom") loadInProgress(true);
+  }
   // Always show at least the number of items actually loaded — prevents stale count between reloads.
   $: effectiveInProgressTotal = Math.max(inProgressTotal, inProgressList.length);
 
@@ -112,14 +177,17 @@
     try {
       let res;
       const p = inProgressPage;
+      const searchParam = inProgressSearch.trim() ? `&search=${encodeURIComponent(inProgressSearch.trim())}` : "";
+      const { dateFrom, dateTo } = getInProgressDateRange();
+      const dateParam = dateFrom && dateTo ? `&dateFrom=${dateFrom}&dateTo=${dateTo}` : "";
       if (isTechHelper(currentUser)) {
-        res = await authApiFetch(`${API_ROUTES.QUERY}/assigned?status=in_progress&limit=${IN_PROGRESS_LIMIT}&page=${p}`);
+        res = await authApiFetch(`${API_ROUTES.QUERY}/assigned?status=in_progress&limit=${IN_PROGRESS_LIMIT}&page=${p}${searchParam}${dateParam}`);
       } else if (isTech(currentUser)) {
-        res = await authApiFetch(`${API_ROUTES.QUERY}/assigned?status=in_progress&limit=${IN_PROGRESS_LIMIT}&page=${p}`);
+        res = await authApiFetch(`${API_ROUTES.QUERY}/assigned?status=in_progress&limit=${IN_PROGRESS_LIMIT}&page=${p}${searchParam}${dateParam}`);
       } else if (isTelecaller(currentUser)) {
-        res = await authApiFetch(`${API_ROUTES.QUERY}/my?status=in_progress&limit=${IN_PROGRESS_LIMIT}&page=${p}`);
+        res = await authApiFetch(`${API_ROUTES.QUERY}/my?status=in_progress&limit=${IN_PROGRESS_LIMIT}&page=${p}${searchParam}${dateParam}`);
       } else {
-        res = await authApiFetch(`${API_ROUTES.QUERY}?status=in_progress&limit=${IN_PROGRESS_LIMIT}&page=${p}`);
+        res = await authApiFetch(`${API_ROUTES.QUERY}?status=in_progress&limit=${IN_PROGRESS_LIMIT}&page=${p}${searchParam}${dateParam}`);
       }
       const newItems = Array.isArray(res?.data) ? res.data : [];
       inProgressTotal = res?.total ?? inProgressTotal;
@@ -332,6 +400,38 @@
       Swal.fire({ icon: 'error', title: 'Error', text: 'Could not update final flag.' });
     } finally {
       settingFinalFlag = null;
+    }
+  }
+
+  function canDeleteChat(chat) {
+    if (chat.isDeleted || chat.subQueryEvent) return false;
+    if (currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.role === 'manager') return true;
+    if (isTelecaller(currentUser) && chat.isOwn) return true;
+    return false;
+  }
+
+  let deletingChatId = null;
+  async function deleteChat(chat) {
+    const confirmed = await Swal.fire({
+      icon: 'warning',
+      title: 'Delete message?',
+      text: 'This action cannot be undone.',
+      showCancelButton: true,
+      confirmButtonText: 'Delete',
+      confirmButtonColor: '#d33',
+    });
+    if (!confirmed.isConfirmed) return;
+    deletingChatId = chat.id;
+    try {
+      await authApiFetch(`${API_ROUTES.QUERY}/${queryId}/chat/${chat.id}`, { method: 'DELETE' });
+      const isMaster = currentUser?.role === 'master';
+      chats = chats.map(c => c.id === chat.id
+        ? { ...c, isDeleted: true, ...(isMaster ? {} : { message: null, attachments: [] }) }
+        : c);
+    } catch (e) {
+      Swal.fire({ icon: 'error', title: 'Error', text: 'Could not delete message.' });
+    } finally {
+      deletingChatId = null;
     }
   }
 
@@ -903,6 +1003,17 @@
           ? { ...c, message: data.message, editedAt: data.editedAt }
           : c
       );
+    });
+
+    socket.on("message-deleted", (data) => {
+      const isMaster = currentUser?.role === 'master';
+      const patch = { isDeleted: true, ...(isMaster ? {} : { message: null, attachments: [] }) };
+      if (viewingSubQueryId && data.queryId === Number(viewingSubQueryId)) {
+        sqViewChats = sqViewChats.map(c => c.id === data.chatId ? { ...c, ...patch } : c);
+        return;
+      }
+      if (data.queryId !== Number(queryId)) return;
+      chats = chats.map(c => c.id === data.chatId ? { ...c, ...patch } : c);
     });
 
     socket.on("messages-read", (data) => {
@@ -1683,6 +1794,38 @@
     }
   }
 
+  function sqCanDeleteChat(chat) {
+    if (chat.isDeleted || chat.subQueryEvent) return false;
+    if (currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.role === 'manager') return true;
+    if (isTelecaller(currentUser) && chat.isOwn) return true;
+    return false;
+  }
+
+  let sqDeletingChatId = null;
+  async function sqDeleteChat(chat) {
+    const confirmed = await Swal.fire({
+      icon: 'warning',
+      title: 'Delete message?',
+      text: 'This action cannot be undone.',
+      showCancelButton: true,
+      confirmButtonText: 'Delete',
+      confirmButtonColor: '#d33',
+    });
+    if (!confirmed.isConfirmed) return;
+    sqDeletingChatId = chat.id;
+    try {
+      await authApiFetch(`${API_ROUTES.QUERY}/${viewingSubQueryId}/chat/${chat.id}`, { method: 'DELETE' });
+      const isMaster = currentUser?.role === 'master';
+      sqViewChats = sqViewChats.map(c => c.id === chat.id
+        ? { ...c, isDeleted: true, ...(isMaster ? {} : { message: null, attachments: [] }) }
+        : c);
+    } catch (e) {
+      Swal.fire({ icon: 'error', title: 'Error', text: 'Could not delete message.' });
+    } finally {
+      sqDeletingChatId = null;
+    }
+  }
+
   // ── Sq pending files helpers ──────────────────────────────────────────────
   function sqConfirmPendingFiles() {
     const remaining = 5 - sqAttachedFiles.length;
@@ -1860,29 +2003,34 @@
         <div class="{viewingSubQueryId ? 'col-lg-2 query-left-col' : 'col-lg-3 query-left-col'}">
           {#if (!isTech(currentUser) || currentUser?.orderAccess) && query.order}
             <div class="card border-0 shadow-sm mb-3">
-              <div class="card-header py-2 d-flex align-items-center gap-2">
+              <div class="card-header py-2 d-flex align-items-center gap-2" style="cursor:pointer;" on:click={() => orderCardCollapsed = !orderCardCollapsed} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && (orderCardCollapsed = !orderCardCollapsed)}>
                 <i class="ti ti-receipt text-primary"></i>
                 <span class="fw-semibold small">Linked Order</span>
-                <a href="/admin/order/{query.order.id}" class="btn btn-sm btn-outline-primary ms-auto py-0 px-2" style="font-size:11px;">
+                <button class="btn btn-sm btn-outline-primary ms-auto py-0 px-2" style="font-size:11px;" on:click|stopPropagation={() => openOrderDrawer(query.order.id)}>
                   <i class="ti ti-external-link me-1"></i>View
-                </a>
+                </button>
+                <button class="qd-collapse-btn ms-1" tabindex="-1" on:click|stopPropagation={() => orderCardCollapsed = !orderCardCollapsed}>
+                  <i class="ti {orderCardCollapsed ? 'ti-chevron-down' : 'ti-chevron-up'}"></i>
+                </button>
               </div>
-              <div class="card-body py-3 px-4 small">
-                <div class="mb-1 fw-semibold text-dark">{query.order.title ?? "-"}</div>
-                <div class="text-muted mb-1"><i class="ti ti-hash me-1"></i>Order #{query.order.pId}</div>
-                {#if query.order.company}
-                  <div class="text-muted mb-1"><i class="ti ti-building me-1"></i>{query.order.company}</div>
-                {/if}
-                {#if query.order.category}
-                  <div class="text-muted mb-1"><i class="ti ti-tag me-1"></i>{query.order.category}</div>
-                {/if}
-                <div class="mt-2">
-                  <span class="badge bg-secondary">{query.order.status}</span>
-                  {#if query.order.price}
-                    <span class="badge bg-light text-dark border ms-1">₹{Number(query.order.price).toLocaleString("en-IN")}</span>
+              {#if !orderCardCollapsed}
+                <div class="card-body py-3 px-4 small" transition:slide={{ duration: 250 }}>
+                  <div class="mb-1 fw-semibold text-dark">{query.order.title ?? "-"}</div>
+                  <div class="text-muted mb-1"><i class="ti ti-hash me-1"></i>Order #{query.order.pId}</div>
+                  {#if query.order.company}
+                    <div class="text-muted mb-1"><i class="ti ti-building me-1"></i>{query.order.company}</div>
                   {/if}
+                  {#if query.order.category}
+                    <div class="text-muted mb-1"><i class="ti ti-tag me-1"></i>{query.order.category}</div>
+                  {/if}
+                  <div class="mt-2">
+                    <span class="badge bg-secondary">{query.order.status}</span>
+                    {#if query.order.price}
+                      <span class="badge bg-light text-dark border ms-1">₹{Number(query.order.price).toLocaleString("en-IN")}</span>
+                    {/if}
+                  </div>
                 </div>
-              </div>
+              {/if}
             </div>
           {/if}
           <div class="qd-card mb-3">
@@ -1891,15 +2039,20 @@
             <div class="switch-bar" class:switch-bar--active={switching}></div>
 
             <!-- ── Header: subject + status ── -->
-            <div class="qd-header">
+            <div class="qd-header" class:qd-header--collapsed={qdCardCollapsed} style="cursor:pointer;" on:click={() => qdCardCollapsed = !qdCardCollapsed} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && (qdCardCollapsed = !qdCardCollapsed)}>
               <div class="qd-subject-wrap">
                 <h6 class="qd-subject">{query.subject}</h6>
                 <span class="badge {STATUS_COLORS[query.status] ?? 'bg-secondary'} qd-status-badge">
                   {query.status?.replace("_", " ")}
                 </span>
               </div>
+              <button class="qd-collapse-btn" tabindex="-1">
+                <i class="ti {qdCardCollapsed ? 'ti-chevron-down' : 'ti-chevron-up'}"></i>
+              </button>
             </div>
 
+            {#if !qdCardCollapsed}
+            <div transition:slide={{ duration: 250 }}>
             <!-- ── Tags: type + priority ── -->
             <div class="qd-tags">
               <span class="qd-tag qd-tag--type">
@@ -1954,7 +2107,7 @@
             {#if
               (isTech(currentUser) && (query.status === "open" || query.status === "reopened" || (query.status === "in_progress" && query.assignedToId === currentUser?.id))) ||
               (isTechHelper(currentUser) && (query.status === "open" || (query.status === "in_progress" && query.assignedToId === currentUser?.id))) ||
-              (isTelecaller(currentUser) && query.status === "resolved") ||
+              (isTelecaller(currentUser) && (["open", "in_progress", "reopened", "resolved"].includes(query.status) && Number(query.raisedById) === Number(currentUser?.id))) ||
               (isMasterView(currentUser) && query.status !== "closed")
             }
               <div class="qd-actions">
@@ -1988,13 +2141,22 @@
                     </button>
                   {/if}
                 {/if}
-                {#if isTelecaller(currentUser) && query.status === "resolved"}
-                  <button class="qd-btn qd-btn--success" on:click={acceptSolution} disabled={actionLoading}>
-                    <i class="ti ti-thumb-up"></i> Accept Solution
-                  </button>
-                  <button class="qd-btn qd-btn--danger-outline" on:click={reopen} disabled={actionLoading}>
-                    <i class="ti ti-refresh"></i> Reopen Query
-                  </button>
+                {#if isTelecaller(currentUser)}
+                  {#if ["open", "in_progress", "reopened"].includes(query.status) && Number(query.raisedById) === Number(currentUser?.id)}
+                    <button class="qd-btn qd-btn--danger-outline" on:click={closeQuery} disabled={actionLoading}>
+                      <i class="ti ti-lock"></i> Close Query
+                    </button>
+                  {/if}
+                  {#if query.status === "resolved"}
+                    {#if query.assignedToId}
+                      <button class="qd-btn qd-btn--success" on:click={acceptSolution} disabled={actionLoading}>
+                        <i class="ti ti-thumb-up"></i> Accept Solution
+                      </button>
+                    {/if}
+                    <button class="qd-btn qd-btn--danger-outline" on:click={reopen} disabled={actionLoading}>
+                      <i class="ti ti-refresh"></i> Reopen Query
+                    </button>
+                  {/if}
                 {/if}
                 {#if isMasterView(currentUser) && query.status !== "closed"}
                   <button class="qd-btn qd-btn--danger-outline" on:click={closeQuery} disabled={actionLoading}>
@@ -2003,6 +2165,8 @@
                 {/if}
               </div>
             {/if}
+            </div><!-- end slide wrapper -->
+            {/if}<!-- end qdCardCollapsed -->
 
           </div>
 
@@ -2114,7 +2278,7 @@
             <div class="card border-0 shadow-sm p-3 text-center">
               <span class="spinner-border spinner-border-sm text-primary"></span>
             </div>
-          {:else if inProgressList.length > 0}
+          {:else}
             <div class="card border-0 shadow-sm ip-card">
               <div class="card-header py-2 px-3 d-flex align-items-center gap-2">
                 <i class="ti ti-loader text-warning"></i>
@@ -2124,6 +2288,41 @@
                   <a href="/admin/query/assigned" class="ms-auto small text-muted text-decoration-none">View all →</a>
                 {:else}
                   <a href="/admin/query" class="ms-auto small text-muted text-decoration-none">View all →</a>
+                {/if}
+              </div>
+              <div class="px-3 pt-2 pb-1">
+                <div class="input-group input-group-sm">
+                  <span class="input-group-text bg-white border-end-0"><i class="ti ti-search text-muted" style="font-size:13px;"></i></span>
+                  <input
+                    type="text"
+                    class="form-control border-start-0 ps-0"
+                    placeholder="Search queries..."
+                    style="font-size:12px;"
+                    value={inProgressSearch}
+                    on:input={(e) => handleInProgressSearch(e.target.value)}
+                  />
+                  {#if inProgressSearch}
+                    <button class="input-group-text bg-white border-start-0" style="cursor:pointer;" on:click={() => handleInProgressSearch("")}>
+                      <i class="ti ti-x text-muted" style="font-size:12px;"></i>
+                    </button>
+                  {/if}
+                </div>
+                <!-- Date filter pills -->
+                <div class="ip-date-filters mt-2">
+                  {#each [["all","All"],["today","Today"],["yesterday","Yest."],["7days","7D"],["30days","30D"],["custom","Custom"]] as [val, label]}
+                    <button
+                      class="ip-date-pill {inProgressDateFilter === val ? 'active' : ''}"
+                      on:click={() => setDateFilter(val)}
+                    >{label}</button>
+                  {/each}
+                </div>
+                {#if inProgressDateFilter === "custom"}
+                  <div class="d-flex gap-1 mt-1">
+                    <input type="date" class="form-control form-control-sm" style="font-size:11px;" bind:value={inProgressCustomFrom}
+                      on:change={() => { if (inProgressCustomFrom && inProgressCustomTo) loadInProgress(true); }} />
+                    <input type="date" class="form-control form-control-sm" style="font-size:11px;" bind:value={inProgressCustomTo}
+                      on:change={() => { if (inProgressCustomFrom && inProgressCustomTo) loadInProgress(true); }} />
+                  </div>
                 {/if}
               </div>
               <div class="card-body p-0 ip-list-body" on:scroll={handleInProgressScroll}>
@@ -2182,6 +2381,12 @@
                     {/if}
                   </div>
                 {/each}
+                {#if sortedInProgressList.length === 0 && !inProgressLoadingMore}
+                  <div class="text-center text-muted py-4 small">
+                    <i class="ti ti-inbox d-block mb-1" style="font-size:22px;"></i>
+                    No queries found
+                  </div>
+                {/if}
                 {#if inProgressLoadingMore}
                   <div class="ip-loading-more">
                     <span class="spinner-border spinner-border-sm text-warning" style="width:14px;height:14px;border-width:2px;"></span>
@@ -2395,7 +2600,14 @@
                       </div>
                     {/if}
                     <div class="chat-sender">{maskChatSender(chat)}</div>
-                    {#if editingChatId === chat.id}
+                    {#if chat.isDeleted}
+                      <div class="chat-deleted-text">
+                        <i class="ti ti-trash me-1"></i>This message was deleted
+                      </div>
+                      {#if currentUser?.role === 'master' && chat.message}
+                        <div class="chat-deleted-original">{chat.message}</div>
+                      {/if}
+                    {:else if editingChatId === chat.id}
                       <!-- inline edit mode -->
                       <textarea
                         class="chat-edit-input"
@@ -2485,9 +2697,9 @@
                     </div>
                   </div>
                   </div>
-                  <!-- action buttons: flag → edit → reply -->
+                  <!-- action buttons: flag → edit → delete → reply -->
                   <div class="chat-action-btns">
-                    {#if canSetFinalFlag()}
+                    {#if canSetFinalFlag() && !chat.isDeleted}
                       <button
                         class="final-flag-btn {chat.isFinal ? 'final-flag-btn--active' : ''}"
                         title="{chat.isFinal ? 'Remove final flag' : 'Mark as Final Quotation'}"
@@ -2501,7 +2713,7 @@
                         {/if}
                       </button>
                     {/if}
-                    {#if canEditChat(chat) && editingChatId !== chat.id}
+                    {#if canEditChat(chat) && editingChatId !== chat.id && !chat.isDeleted}
                       <button
                         class="chat-edit-btn"
                         title="Edit message (within 30 min)"
@@ -2510,7 +2722,21 @@
                         <i class="ti ti-pencil"></i>
                       </button>
                     {/if}
-                    {#if canSendChat()}
+                    {#if canDeleteChat(chat)}
+                      <button
+                        class="chat-delete-btn"
+                        title="Delete message"
+                        disabled={deletingChatId === chat.id}
+                        on:click={() => deleteChat(chat)}
+                      >
+                        {#if deletingChatId === chat.id}
+                          <span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span>
+                        {:else}
+                          <i class="ti ti-trash"></i>
+                        {/if}
+                      </button>
+                    {/if}
+                    {#if canSendChat() && !chat.isDeleted}
                       <button
                         class="chat-reply-btn"
                         title="Reply"
@@ -2882,7 +3108,14 @@
                               </div>
                             {/if}
                             <div class="chat-sender">{maskChatSender(chat)}</div>
-                            {#if sqEditingChatId === chat.id}
+                            {#if chat.isDeleted}
+                              <div class="chat-deleted-text">
+                                <i class="ti ti-trash me-1"></i>This message was deleted
+                              </div>
+                              {#if currentUser?.role === 'master' && chat.message}
+                                <div class="chat-deleted-original">{chat.message}</div>
+                              {/if}
+                            {:else if sqEditingChatId === chat.id}
                               <textarea
                                 class="chat-edit-input"
                                 bind:value={sqEditingChatText}
@@ -2950,9 +3183,9 @@
                             </div>
                           </div>
                         </div>
-                        <!-- action buttons: flag → edit → reply -->
+                        <!-- action buttons: flag → edit → delete → reply -->
                         <div class="chat-action-btns">
-                          {#if canSetFinalFlag()}
+                          {#if canSetFinalFlag() && !chat.isDeleted}
                             <button
                               class="final-flag-btn {chat.isFinal ? 'final-flag-btn--active' : ''}"
                               title="{chat.isFinal ? 'Remove final flag' : 'Mark as Final Quotation'}"
@@ -2966,12 +3199,26 @@
                               {/if}
                             </button>
                           {/if}
-                          {#if sqCanEditChat(chat) && sqEditingChatId !== chat.id}
+                          {#if sqCanEditChat(chat) && sqEditingChatId !== chat.id && !chat.isDeleted}
                             <button class="chat-edit-btn" title="Edit message (within 30 min)" on:click={() => sqStartEditChat(chat)}>
                               <i class="ti ti-pencil"></i>
                             </button>
                           {/if}
-                          {#if canSendSqChat()}
+                          {#if sqCanDeleteChat(chat)}
+                            <button
+                              class="chat-delete-btn"
+                              title="Delete message"
+                              disabled={sqDeletingChatId === chat.id}
+                              on:click={() => sqDeleteChat(chat)}
+                            >
+                              {#if sqDeletingChatId === chat.id}
+                                <span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span>
+                              {:else}
+                                <i class="ti ti-trash"></i>
+                              {/if}
+                            </button>
+                          {/if}
+                          {#if canSendSqChat() && !chat.isDeleted}
                             <button class="chat-reply-btn" title="Reply"
                               on:click={() => sqReplyTo = { id: chat.id, senderLabel: chat.senderLabel, message: chat.message, senderType: chat.senderType }}>
                               <i class="ti ti-corner-up-left"></i>
@@ -3103,6 +3350,62 @@
   </div>
 </div>
 
+<!-- ── Order Side Drawer ───────────────────────────────────────────── -->
+{#if orderDrawerOpen}
+  <!-- Backdrop -->
+  <div class="order-drawer-backdrop" on:click={() => orderDrawerOpen = false}></div>
+  <!-- Drawer -->
+  <div class="order-drawer">
+    <div class="order-drawer-header">
+      <span class="fw-semibold">Order Detail</span>
+      <button class="order-drawer-close" on:click={() => orderDrawerOpen = false}>
+        <i class="ti ti-x"></i>
+      </button>
+    </div>
+    <div class="order-drawer-body">
+      {#if orderDrawerLoading}
+        <div class="text-center py-5"><span class="spinner-border text-primary"></span></div>
+      {:else if orderDrawerData}
+        {@const o = orderDrawerData}
+        <div class="mb-3 d-flex align-items-start gap-2 flex-wrap">
+          <span class="fw-semibold flex-grow-1" style="font-size:16px;">{o.title ?? "-"}</span>
+          <span class="badge bg-secondary flex-shrink-0">{o.status ?? "-"}</span>
+        </div>
+        <div class="drawer-row"><span class="drawer-label">Order #</span><span>{o.pId ?? "-"}</span></div>
+        {#if o.company}<div class="drawer-row"><span class="drawer-label">Company</span><span>{o.company}</span></div>{/if}
+        {#if o.orderDate}<div class="drawer-row"><span class="drawer-label">Order Date</span><span>{new Date(o.orderDate).toLocaleDateString("en-IN", { day:"2-digit", month:"short", year:"numeric" })}</span></div>{/if}
+        {#if o.price}<div class="drawer-row"><span class="drawer-label">Price</span><span>₹{Number(o.price).toLocaleString("en-IN")} {o.currency ?? ""}</span></div>{/if}
+        {#if o.category}<div class="drawer-row"><span class="drawer-label">Category</span><span>{o.category}</span></div>{/if}
+        {#if o.workOrderNumber}<div class="drawer-row"><span class="drawer-label">Work Order No.</span><span>{o.workOrderNumber}</span></div>{/if}
+        {#if o.assignedUsers?.length}
+          <div class="drawer-row"><span class="drawer-label">Assigned To</span><span>{o.assignedUsers.map(u => u.name).join(", ")}</span></div>
+        {/if}
+        {#if o.orderClients?.length}
+          <div class="drawer-section-title mt-3 mb-1">Contacts</div>
+          {#each o.orderClients as c}
+            <div class="drawer-client-row">
+              <div class="fw-medium">{c.name ?? "-"}</div>
+              {#if c.mobile}<div class="text-muted small"><i class="ti ti-phone me-1"></i>{c.mobile}</div>{/if}
+              {#if c.email}<div class="text-muted small"><i class="ti ti-mail me-1"></i>{c.email}</div>{/if}
+            </div>
+          {/each}
+        {/if}
+        {#if o.description}
+          <div class="drawer-section-title mt-3 mb-1">Description</div>
+          <div class="small text-muted">{o.description}</div>
+        {/if}
+        <div class="mt-4">
+          <a href="/admin/order/{o.id}" data-order-href="/admin/order/{o.id}" class="btn btn-primary btn-sm w-100">
+            <i class="ti ti-external-link me-1"></i>Full Detail
+          </a>
+        </div>
+      {:else}
+        <div class="text-center text-muted py-5">Failed to load order.</div>
+      {/if}
+    </div>
+  </div>
+{/if}
+
 <style>
   /* ── Badge tab selector ─────────────────────────────── */
   .badge-tab {
@@ -3137,7 +3440,7 @@
     background: #fff;
     border-radius: 16px;
     box-shadow: 0 2px 16px rgba(0,0,0,0.08);
-    height: calc(100vh - 200px);
+    height: calc(100vh - 152px);
     min-height: 480px;
     overflow: hidden;
   }
@@ -3791,6 +4094,33 @@
   }
   .chat-edit-btn:hover { background: #fff3cd; color: #b45309; border-color: #fde68a; }
 
+  .chat-delete-btn {
+    display: flex;
+    align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 50%;
+    background: #f1f3f5; border: 1px solid #e9ecef;
+    color: #6c757d; font-size: 13px; cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .chat-delete-btn:hover { background: #ffe3e3; color: #c92a2a; border-color: #ffc9c9; }
+  .chat-delete-btn:disabled { opacity: 0.5; cursor: default; }
+
+  .chat-deleted-text {
+    font-size: 12.5px;
+    color: #868e96;
+    font-style: italic;
+    padding: 2px 0 4px;
+  }
+  .chat-deleted-original {
+    margin-top: 4px;
+    padding: 6px 10px;
+    background: rgba(0,0,0,0.05);
+    border-left: 3px solid #fa5252;
+    border-radius: 4px;
+    font-size: 12.5px;
+    color: #495057;
+  }
+
   .chat-edit-input {
     width: 100%;
     border: 1px solid #748ffc;
@@ -3868,12 +4198,22 @@
 
   /* header */
   .qd-header {
-    padding: 16px 18px 12px;
+    padding: 14px 18px;
     border-bottom: 1px solid #f1f3f5;
+    display: flex; align-items: flex-start; gap: 8px;
   }
+  .qd-header--collapsed { border-bottom: none; }
+  .qd-header:hover { background: #f8f9fa; }
+  .qd-collapse-btn {
+    background: none; border: none; cursor: pointer;
+    color: #adb5bd; font-size: 14px; padding: 2px;
+    flex-shrink: 0; margin-top: 2px;
+    display: flex; align-items: center;
+  }
+  .qd-collapse-btn:hover { color: #495057; }
   .qd-subject-wrap {
     display: flex; align-items: flex-start;
-    justify-content: space-between; gap: 10px;
+    justify-content: space-between; gap: 10px; flex: 1;
   }
   .qd-subject {
     font-size: 15px; font-weight: 700;
@@ -4036,7 +4376,7 @@
   .query-left-col {
     display: flex;
     flex-direction: column;
-    height: calc(100vh - 200px);
+    height: calc(100vh - 152px);
     min-height: 480px;
     overflow: hidden;
   }
@@ -4259,4 +4599,53 @@
   .sq-event-status--resolved    { color: #2b8a3e; }
   .sq-event-status--closed      { color: #868e96; }
   .sq-event-time { font-size: 11px; color: #adb5bd; }
+
+  /* ── Order Side Drawer ───────────────────────────────────────────── */
+  .order-drawer-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.35);
+    z-index: 1040;
+  }
+  .order-drawer {
+    position: fixed; top: 0; right: 0; height: 100vh;
+    width: 380px; max-width: 95vw;
+    background: #fff; box-shadow: -4px 0 24px rgba(0,0,0,0.12);
+    z-index: 1050; display: flex; flex-direction: column;
+    animation: drawer-slide-in 0.22s ease;
+  }
+  @keyframes drawer-slide-in {
+    from { transform: translateX(100%); }
+    to   { transform: translateX(0); }
+  }
+  .order-drawer-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px; border-bottom: 1px solid #e9ecef;
+    font-size: 15px; flex-shrink: 0;
+  }
+  .order-drawer-close {
+    background: none; border: none; cursor: pointer;
+    color: #868e96; font-size: 18px; line-height: 1;
+    padding: 2px 4px; border-radius: 4px;
+    display: flex; align-items: center;
+  }
+  .order-drawer-close:hover { color: #212529; background: #f1f3f5; }
+  .order-drawer-body {
+    flex: 1; overflow-y: auto; padding: 18px;
+  }
+  .drawer-row {
+    display: flex; justify-content: space-between; gap: 8px;
+    padding: 6px 0; border-bottom: 1px solid #f1f3f5; font-size: 13px;
+  }
+  .drawer-label { color: #868e96; font-weight: 500; white-space: nowrap; }
+  .drawer-section-title { font-size: 12px; font-weight: 600; color: #495057; text-transform: uppercase; letter-spacing: 0.5px; }
+  .drawer-client-row { padding: 6px 0; border-bottom: 1px solid #f1f3f5; }
+
+  /* ── In-progress date filter pills ──────────────────────────────── */
+  .ip-date-filters { display: flex; flex-wrap: wrap; gap: 4px; }
+  .ip-date-pill {
+    font-size: 11px; padding: 2px 8px; border-radius: 20px;
+    border: 1px solid #dee2e6; background: #f8f9fa; color: #495057;
+    cursor: pointer; line-height: 1.6;
+  }
+  .ip-date-pill:hover { background: #e9ecef; }
+  .ip-date-pill.active { background: #0d6efd; color: #fff; border-color: #0d6efd; }
 </style>

@@ -21,8 +21,14 @@
   } from "$lib/stores/groupChatStore";
   import { pushGcToast } from "$lib/stores/groupChatToastStore";
   import GroupChatToast from "$lib/components/GroupChatToast.svelte";
+  import WorkWarning from "$lib/components/WorkWarning.svelte";
 
   let gcSocket = null;
+  let warnSocket = null;
+  let showWorkWarning = false;
+  let workWarningMessage  = "Reminder: Mobile usage during work hours is not permitted. Please focus on your tasks.";
+  let workWarningDuration = 10;
+  let workWarningSound    = true;
 
   let showWarning  = false;
   let warningSeconds = 120;
@@ -265,6 +271,18 @@
         }
       });
 
+      // ── Work-warning socket ────────────────────────────────────────────
+      warnSocket = io(`${API_BASE_URL}/warning`, {
+        auth: { token },
+        transports: ["websocket"],
+      });
+      warnSocket.on("work-warning", (data) => {
+        workWarningMessage  = data?.message  || "Reminder: Mobile usage during work hours is not permitted. Please focus on your tasks.";
+        workWarningDuration = data?.duration || 10;
+        workWarningSound    = data?.sound    ?? true;
+        showWorkWarning = true;
+      });
+
       gcSocket.on("added-to-group", () => loadGroupList());
 
       gcSocket.on("group-updated", (data) => {
@@ -283,6 +301,7 @@
   onDestroy(() => {
     stopInactivityTimer();
     if (gcSocket) { gcSocket.disconnect(); gcSocket = null; }
+    if (warnSocket) { warnSocket.disconnect(); warnSocket = null; }
   });
 
   async function fetchSetting() {
@@ -329,12 +348,14 @@
 <ServerOffline />
 <InactivityWarning bind:show={showWarning} secondsLeft={warningSeconds} />
 <GroupChatToast />
+<WorkWarning bind:show={showWorkWarning} message={workWarningMessage} duration={workWarningDuration} sound={workWarningSound} />
 <main class="main-wrapper min-h-screen bg-gray-50">
   <Header />
   <Sidebar {setting} />
   <slot />
 
   <!-- Start Footer -->
+  {#if !$page.url.pathname.startsWith('/admin/query/')}
   <footer
     class="footer flex justify-between text-md-start text-center no-print"
   >
@@ -349,6 +370,7 @@
       </a> -->
     </p>
   </footer>
+  {/if}
   <!-- End Footer -->
 </main>
 
