@@ -208,6 +208,24 @@
       gcSocket = io(`${API_BASE_URL}/group-chat`, {
         auth: { token },
         transports: ["websocket"],
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 10000,
+      });
+
+      gcSocket.on("disconnect", (reason) => {
+        if (reason === "io server disconnect") {
+          // Server forced disconnect — re-auth and reconnect manually
+          gcSocket.auth = { token: localStorage.getItem("access_token") };
+          gcSocket.connect();
+        }
+        // All other reasons (transport close, ping timeout) — socket.io auto-reconnects
+      });
+
+      gcSocket.on("reconnect", async () => {
+        // Re-sync missed data after reconnection
+        await Promise.all([loadGroupList(), loadGroupUnread()]);
       });
 
       gcSocket.on("new-message", (msg) => {
@@ -275,7 +293,19 @@
       warnSocket = io(`${API_BASE_URL}/warning`, {
         auth: { token },
         transports: ["websocket"],
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 10000,
       });
+
+      warnSocket.on("disconnect", (reason) => {
+        if (reason === "io server disconnect") {
+          warnSocket.auth = { token: localStorage.getItem("access_token") };
+          warnSocket.connect();
+        }
+      });
+
       warnSocket.on("work-warning", (data) => {
         workWarningMessage  = data?.message  || "Reminder: Mobile usage during work hours is not permitted. Please focus on your tasks.";
         workWarningDuration = data?.duration || 10;

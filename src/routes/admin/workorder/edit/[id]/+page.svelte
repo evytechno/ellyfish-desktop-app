@@ -9,6 +9,7 @@
   import Loader from "$lib/components/Loader.svelte";
   import { get } from "svelte/store";
   import { companiesAllStore } from "$lib/stores/dataStores";
+  import { checkAuth } from "$lib/utils/auth";
   import OrderSearchSelect from "$lib/components/OrderSearchSelect.svelte";
   let loadingData = true;
 
@@ -166,12 +167,24 @@
   });
 
   onMount(async () => {
+    const currentUser = checkAuth();
     const cached = get(companiesAllStore);
-    if (cached && cached.length > 0) { companies = cached; return; }
+    if (cached && cached.length > 0) {
+      companies = cached;
+      if (!companyId && currentUser?.companyId) {
+        const matched = companies.find(c => c.id === Number(currentUser.companyId));
+        if (matched) companyId = matched.id;
+      }
+      return;
+    }
     try {
       const data = await authApiFetch(API_ROUTES.COMPANY + "/all");
       companies = data;
       companiesAllStore.set(data);
+      if (!companyId && currentUser?.companyId) {
+        const matched = companies.find(c => c.id === Number(currentUser.companyId));
+        if (matched) companyId = matched.id;
+      }
     } catch (err) {
       errorMessage = "Failed to load company data.";
     }

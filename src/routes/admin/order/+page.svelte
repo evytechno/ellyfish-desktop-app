@@ -886,6 +886,30 @@
           },
         ]
       : []),
+    {
+      key: "piwoTi",
+      label: "PI / WO / TI",
+      render: (val, row) => {
+        if (row.status !== "Deal Won") return '<span class="text-muted">—</span>';
+        const pi = row.orderPayments?.[0];
+        const wo = row.workOrders?.[0];
+        const ti = row.invoices?.[0];
+        const piBtn = pi
+          ? `<a href="/admin/payment/${pi.id}" class="btn btn-xs btn-soft-success me-1" title="PI: ${pi.financialYear}/${String(pi.invoiceNo).padStart(6,'0')}">PI ✓</a>`
+          : `<a href="/admin/invoice/add?fromOrder=${row.id}" class="btn btn-xs btn-soft-secondary me-1" title="Create Proforma Invoice">PI</a>`;
+        const woBtn = pi
+          ? (wo
+              ? `<a href="/admin/workorder/${wo.id}" class="btn btn-xs btn-soft-success me-1" title="WO: ${wo.financialYear}/${String(wo.workOrderNo).padStart(6,'0')}">WO ✓</a>`
+              : `<a href="/admin/workorder/add?fromOrder=${row.id}" class="btn btn-xs btn-soft-secondary me-1" title="Create Work Order">WO</a>`)
+          : `<span class="btn btn-xs btn-soft-secondary me-1 opacity-40" style="cursor:not-allowed" title="Create PI first">WO</span>`;
+        const tiBtn = wo
+          ? (ti
+              ? `<a href="/admin/invoice/tax/${ti.id}" class="btn btn-xs btn-soft-success" title="TI: ${ti.financialYear}/${String(ti.invoiceNo).padStart(6,'0')}">TI ✓</a>`
+              : `<a href="/admin/invoice/create?orderId=${row.id}" class="btn btn-xs btn-soft-secondary" title="Create Tax Invoice">TI</a>`)
+          : `<span class="btn btn-xs btn-soft-secondary opacity-40" style="cursor:not-allowed" title="Create WO first">TI</span>`;
+        return `<div class="d-flex gap-1 flex-nowrap">${piBtn}${woBtn}${tiBtn}</div>`;
+      },
+    },
   ];
 
   let actions = [

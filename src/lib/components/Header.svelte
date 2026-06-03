@@ -95,6 +95,19 @@
 
   onMount(() => {
     const $ = jQuery;
+
+    // Apply saved sidebar state; default to collapsed (mini-sidebar)
+    const sidebarState = localStorage.getItem("screenModeNightTokenState");
+    if (sidebarState === "night") {
+      $("body").removeClass("mini-sidebar");
+      $("#toggle_btn, #toggle_btn2").addClass("active");
+      $(".header-left").addClass("active");
+    } else {
+      $("body").addClass("mini-sidebar");
+      $("#toggle_btn, #toggle_btn2").removeClass("active");
+      $(".header-left").removeClass("active");
+    }
+
     const collapseHeader = $("#collapse-header");
     if (collapseHeader.length > 0) {
       document

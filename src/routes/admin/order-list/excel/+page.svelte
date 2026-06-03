@@ -337,6 +337,7 @@
     { key: "status",  label: "Status",      width: 140, minWidth: 100 },
     { key: "user",    label: "Sales User",  width: 110, minWidth: 80,  masterOnly: true },
     { key: "date",    label: "Date",        width: 110, minWidth: 80 },
+    { key: "actions", label: "PI / WO / TI", width: 150, minWidth: 120 },
   ];
   const DEFAULT_COLS = ALL_COLS.filter(c => !c.masterOnly || isMaster);
   let cols = DEFAULT_COLS.map(c => ({ ...c }));
@@ -928,6 +929,45 @@
 
                 <!-- Date -->
                 <td class="px-2 py-2 border border-gray-100 align-middle text-xs h-[54px] truncate">{formatDate(order.createdAt)}</td>
+
+                <!-- PI / WO / TI -->
+                <td class="px-2 py-2 border border-gray-100 align-middle text-xs h-[54px]" on:click|stopPropagation>
+                  {#if order.status === "Deal Won"}
+                    {@const pi = order.orderPayments?.[0]}
+                    {@const wo = order.workOrders?.[0]}
+                    {@const ti = order.invoices?.[0]}
+                    <div class="flex gap-1">
+                      <a
+                        href={pi ? `/admin/payment/${pi.id}` : `/admin/invoice/add?fromOrder=${order.id}`}
+                        class="btn btn-xs text-[10px] font-semibold {pi ? 'btn-soft-success' : 'btn-soft-secondary'}"
+                        title={pi ? `PI: ${pi.financialYear}/${String(pi.invoiceNo).padStart(6,'0')}` : 'Create PI'}
+                        on:click|stopPropagation={() => goto(pi ? `/admin/payment/${pi.id}` : `/admin/invoice/add?fromOrder=${order.id}`)}
+                      >PI{pi ? ' ✓' : ''}</a>
+                      {#if pi}
+                        <a
+                          href={wo ? `/admin/workorder/${wo.id}` : `/admin/workorder/add?fromOrder=${order.id}`}
+                          class="btn btn-xs text-[10px] font-semibold {wo ? 'btn-soft-success' : 'btn-soft-secondary'}"
+                          title={wo ? `WO: ${wo.financialYear}/${String(wo.workOrderNo).padStart(6,'0')}` : 'Create WO'}
+                          on:click|stopPropagation={() => goto(wo ? `/admin/workorder/${wo.id}` : `/admin/workorder/add?fromOrder=${order.id}`)}
+                        >WO{wo ? ' ✓' : ''}</a>
+                      {:else}
+                        <span class="btn btn-xs btn-soft-secondary text-[10px] font-semibold opacity-40" style="cursor:not-allowed" title="Create PI first">WO</span>
+                      {/if}
+                      {#if wo}
+                        <a
+                          href={ti ? `/admin/invoice/tax/${ti.id}` : `/admin/invoice/create?orderId=${order.id}`}
+                          class="btn btn-xs text-[10px] font-semibold {ti ? 'btn-soft-success' : 'btn-soft-secondary'}"
+                          title={ti ? `TI: ${ti.financialYear}/${String(ti.invoiceNo).padStart(6,'0')}` : 'Create TI'}
+                          on:click|stopPropagation={() => goto(ti ? `/admin/invoice/tax/${ti.id}` : `/admin/invoice/create?orderId=${order.id}`)}
+                        >TI{ti ? ' ✓' : ''}</a>
+                      {:else}
+                        <span class="btn btn-xs btn-soft-secondary text-[10px] font-semibold opacity-40" style="cursor:not-allowed" title="Create WO first">TI</span>
+                      {/if}
+                    </div>
+                  {:else}
+                    <span class="text-gray-300">—</span>
+                  {/if}
+                </td>
               </tr>
             {/each}
 

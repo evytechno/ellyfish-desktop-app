@@ -86,6 +86,54 @@
   $: statusColor =
     invoice?.status === "Paid" ? "success" :
     invoice?.status === "Partially Paid" ? "warning" : "danger";
+
+  // ── Inline item edit ──────────────────────────────────────────────────────
+  const unitOptions = ["Pcs", "Kg", "g", "L", "mL", "m", "cm", "Set", "Box", "Nos"];
+  let editingCell = null; // { rowIndex, field }
+  let editingValue = "";
+  let savingItems = false;
+
+  function startCellEdit(rowIndex, field) {
+    const item = invoice.items[rowIndex];
+    editingCell = { rowIndex, field };
+    editingValue = String(item[field] ?? "");
+  }
+
+  function cancelCellEdit() {
+    editingCell = null;
+    editingValue = "";
+  }
+
+  async function commitCell() {
+    if (!editingCell) return;
+    const { rowIndex, field } = editingCell;
+    const updatedItems = invoice.items.map((item, i) => {
+      if (i !== rowIndex) return item;
+      const updated = { ...item, [field]: field === "quantity" || field === "unitPrice" ? Number(editingValue) : editingValue };
+      updated.total = parseFloat(((updated.quantity || 0) * (updated.unitPrice ?? updated.price ?? 0)).toFixed(2));
+      return updated;
+    });
+    editingCell = null;
+    editingValue = "";
+    savingItems = true;
+    try {
+      await authApiFetch(`${API_ROUTES.ORDER_PAYMENT}/${invoiceId}`, {
+        method: "PUT",
+        data: JSON.stringify({ items: updatedItems }),
+      });
+      invoice = { ...invoice, items: updatedItems };
+    } catch {
+      // revert on error
+      invoice = { ...invoice };
+    } finally {
+      savingItems = false;
+    }
+  }
+
+  function handleCellKeydown(e) {
+    if (e.key === "Enter") { e.preventDefault(); commitCell(); }
+    if (e.key === "Escape") cancelCellEdit();
+  }
 </script>
 
 <svelte:head>
@@ -235,19 +283,55 @@
                     </thead>
                     <tbody>
                       {#each invoice?.items as item, index}
-                        <tr>
+                        {@const sym = currencies.find((c) => c.code === invoice?.currency)?.symbol ?? "₹"}
+                        <tr class="item-row">
                           <td class="border p-2 text-center">{index + 1}.</td>
                           <td class="border p-2 capitalize">{item?.item}</td>
-                          <td class="border p-2 text-center">{item?.quantity}</td>
-                          <td class="border p-2 text-center">{item?.unit || "Pcs"}</td>
-                          <td class="border p-2 text-center">
-                            {currencies.find((c) => c.code === invoice?.currency)?.symbol}
-                            {item?.price?.toFixed(2) ?? item?.unitPrice?.toFixed(2) ?? "0.00"}/-
+
+                          <!-- Qty -->
+                          <td class="border p-2 text-center item-cell" on:click={() => startCellEdit(index, "quantity")}>
+                            {#if editingCell?.rowIndex === index && editingCell?.field === "quantity"}
+                              <input class="inline-cell-input" type="number" min="0" bind:value={editingValue}
+                                on:blur={commitCell} on:keydown={handleCellKeydown} autofocus />
+                            {:else}
+                              {item?.quantity}
+                            {/if}
                           </td>
-                          <td class="border p-2 text-center">{item.hsCode || "-"}</td>
+
+                          <!-- Unit -->
+                          <td class="border p-2 text-center item-cell" on:click={() => startCellEdit(index, "unit")}>
+                            {#if editingCell?.rowIndex === index && editingCell?.field === "unit"}
+                              <select class="inline-cell-input" bind:value={editingValue}
+                                on:change={commitCell} on:blur={commitCell} on:keydown={handleCellKeydown} autofocus>
+                                {#each unitOptions as u}<option value={u}>{u}</option>{/each}
+                              </select>
+                            {:else}
+                              {item?.unit || "Pcs"}
+                            {/if}
+                          </td>
+
+                          <!-- Unit Price -->
+                          <td class="border p-2 text-center item-cell" on:click={() => startCellEdit(index, "unitPrice")}>
+                            {#if editingCell?.rowIndex === index && editingCell?.field === "unitPrice"}
+                              <input class="inline-cell-input" type="number" min="0" bind:value={editingValue}
+                                on:blur={commitCell} on:keydown={handleCellKeydown} autofocus />
+                            {:else}
+                              {sym}{item?.unitPrice?.toFixed(2) ?? item?.price?.toFixed(2) ?? "0.00"}/-
+                            {/if}
+                          </td>
+
+                          <!-- HS Code -->
+                          <td class="border p-2 text-center item-cell" on:click={() => startCellEdit(index, "hsCode")}>
+                            {#if editingCell?.rowIndex === index && editingCell?.field === "hsCode"}
+                              <input class="inline-cell-input" type="text" bind:value={editingValue}
+                                on:blur={commitCell} on:keydown={handleCellKeydown} autofocus />
+                            {:else}
+                              {item.hsCode || "-"}
+                            {/if}
+                          </td>
+
                           <td class="border p-2 text-center">
-                            {currencies.find((c) => c.code === invoice?.currency)?.symbol}
-                            {(item?.total).toFixed(2)}/-
+                            {sym}{(item?.total ?? 0).toFixed(2)}/-
                           </td>
                         </tr>
                       {/each}
@@ -373,6 +457,15 @@
 </div>
 
 <style>
+  .item-cell { cursor: pointer; }
+  .item-cell:hover { background: #f0f4ff; }
+  .inline-cell-input {
+    width: 100%; min-width: 60px; max-width: 120px;
+    border: 1.5px solid #3b5bdb; border-radius: 4px;
+    padding: 2px 4px; font-size: inherit; text-align: center;
+    outline: none; background: #fff;
+  }
+  .item-row .item-cell { position: relative; }
   @media print {
     @page { padding: 5mm; }
     .no-print { display: none; padding: 0; margin: 0; }

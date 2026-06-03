@@ -879,6 +879,50 @@
 
   let orderInfoExpanded = false;
 
+  // ── Edit Client ──────────────────────────────────────────────────────────────
+  let showEditClientModal = false;
+  let editClientData = { name: "", email: "", mobile: "", whatsapp: "", address: "", gstNumber: "", remark: "" };
+  let savingClient = false;
+  let editClientErrors = {};
+
+  function openEditClientModal() {
+    const c = order.client;
+    editClientData = {
+      name:       c.name       ?? "",
+      email:      c.email      ?? "",
+      mobile:     c.mobile     ?? "",
+      whatsapp:   c.whatsapp   ?? "",
+      address:    c.address    ?? "",
+      gstNumber:  c.gstNumber  ?? "",
+      remark:     c.remark     ?? "",
+    };
+    editClientErrors = {};
+    showEditClientModal = true;
+  }
+
+  async function saveEditClient() {
+    if (!editClientData.name?.trim()) {
+      editClientErrors = { name: "Client name is required." };
+      return;
+    }
+    savingClient = true;
+    editClientErrors = {};
+    try {
+      const res = await authApiFetch(`${API_ROUTES.CLIENT}/${order.client.id}`, {
+        method: "PUT",
+        data: JSON.stringify(editClientData),
+      });
+      order = { ...order, client: { ...order.client, ...editClientData } };
+      showEditClientModal = false;
+    } catch (e) {
+      const errs = e?.data?.message;
+      if (typeof errs === "object") editClientErrors = errs;
+      else editClientErrors = { name: errs ?? "Failed to update client." };
+    } finally {
+      savingClient = false;
+    }
+  }
+
   // ── Change Client ────────────────────────────────────────────────────────────
   let showChangeClientModal = false;
   let changeClientQuery = "";
@@ -2286,7 +2330,7 @@
                       </span>
                     </div>
                     {#if orderInfoExpanded}
-                      <div transition:slide={{ duration: 250 }} style="overflow:hidden;margin:0;padding:0;">
+                      <div transition:slide={{ duration: 250 }} style="overflow:hidden;margin:0;padding:0;display:flex;flex-direction:column;">
                         <div class="order-sidebar-row">
                           <span class="order-sidebar-label"
                             ><i class="ti ti-file-text"></i>Price Terms</span
@@ -2421,12 +2465,22 @@
 
                   {#if order.client}
                     <div class="order-sidebar-client-card">
-                      <a
-                        href="/admin/client/{order.client.id}"
-                        class="order-sidebar-client-name"
-                      >
-                        <i class="ti ti-building-store me-1"></i>{order.client.name}
-                      </a>
+                      <div class="d-flex align-items-center justify-content-between gap-2">
+                        <a
+                          href="/admin/client/{order.client.id}"
+                          class="order-sidebar-client-name"
+                        >
+                          <i class="ti ti-building-store me-1"></i>{order.client.name}
+                        </a>
+                        <button
+                          type="button"
+                          class="btn btn-xs btn-outline-secondary flex-shrink-0"
+                          title="Edit client"
+                          on:click={openEditClientModal}
+                        >
+                          <i class="ti ti-pencil"></i>
+                        </button>
+                      </div>
                       {#if order.client.gstNumber}
                         <div class="order-sidebar-client-gst">
                           GST: {order.client.gstNumber}
@@ -4404,40 +4458,6 @@
             </ul>
           {/if}
         </div>
-        <div>
-          <label class="form-label" for="company">Company</label>
-          <input
-            type="text"
-            name="company"
-            class="form-control"
-            class:is-invalid={formErrors.company}
-            bind:value={company}
-            id="company"
-            placeholder="Company"
-          />
-          {#if formErrors.company}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.company[0]}</li>
-            </ul>
-          {/if}
-        </div>
-        <div>
-          <label class="form-label" for="gstNumber">GST Number</label>
-          <input
-            type="text"
-            name="gstNumber"
-            class="form-control"
-            class:is-invalid={formErrors.gstNumber}
-            bind:value={gstNumber}
-            id="gstNumber"
-            placeholder="GST Number"
-          />
-          {#if formErrors.gstNumber}
-            <ul class="text-danger mt-1 text-xs capitalize">
-              <li>{formErrors.gstNumber[0]}</li>
-            </ul>
-          {/if}
-        </div>
       </div>
       <div class="col-span-2">
         <label class="form-label" for="description"> Description </label>
@@ -5443,6 +5463,60 @@
   </div>
 {/if}
 
+<!-- Edit Client Modal -->
+{#if showEditClientModal}
+  <div class="modal fade show d-block" tabindex="-1" role="dialog" style="background:rgba(0,0,0,0.5);">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="ti ti-building-store me-2"></i>Edit Client</h5>
+          <button type="button" class="btn-close" on:click={() => showEditClientModal = false}></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label">Name <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" class:is-invalid={editClientErrors.name} bind:value={editClientData.name} placeholder="Client name" />
+              {#if editClientErrors.name}<div class="invalid-feedback">{editClientErrors.name}</div>{/if}
+            </div>
+            <div class="col-12">
+              <label class="form-label">GST Number</label>
+              <input type="text" class="form-control" bind:value={editClientData.gstNumber} placeholder="GST Number" maxlength="20" />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Mobile</label>
+              <input type="text" class="form-control" bind:value={editClientData.mobile} placeholder="Mobile" maxlength="20" />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">WhatsApp</label>
+              <input type="text" class="form-control" bind:value={editClientData.whatsapp} placeholder="WhatsApp" maxlength="20" />
+            </div>
+            <div class="col-12">
+              <label class="form-label">Email</label>
+              <input type="email" class="form-control" bind:value={editClientData.email} placeholder="Email" maxlength="100" />
+            </div>
+            <div class="col-12">
+              <label class="form-label">Address</label>
+              <textarea class="form-control" rows="2" bind:value={editClientData.address} placeholder="Address" maxlength="500"></textarea>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Remark</label>
+              <textarea class="form-control" rows="2" bind:value={editClientData.remark} placeholder="Remark" maxlength="500"></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" on:click={() => showEditClientModal = false}>Cancel</button>
+          <button type="button" class="btn btn-primary" on:click={saveEditClient} disabled={savingClient}>
+            {#if savingClient}<span class="spinner-border spinner-border-sm me-1"></span>{/if}
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
 <!-- Change Client Modal (Svelte-controlled) -->
 {#if showChangeClientModal}
   <div
@@ -6250,16 +6324,17 @@
   .order-sidebar-meta-list {
     display: flex;
     flex-direction: column;
-    gap: 0.625rem;
+    gap: 0;
   }
 
   .order-sidebar-row {
     display: flex;
-    align-items: flex-start;
+    align-items: baseline;
     justify-content: space-between;
     gap: 0.75rem;
     font-size: 0.8125rem;
     line-height: 1.4;
+    padding: 5px 0;
   }
 
   .order-sidebar-label {
@@ -6284,7 +6359,7 @@
 
   .order-sidebar-expand {
     text-align: right;
-    margin-top: 0.625rem;
+    margin-top: 1rem;
     padding-top: 0.25rem;
   }
 

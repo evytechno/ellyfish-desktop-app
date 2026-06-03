@@ -120,6 +120,11 @@
       if (bMobile)  { billToMobile = bMobile;   shipToMobile = bMobile; }
       if (bAddress) { billToAddress = bAddress; shipToAddress = bAddress; }
       if (bGST)     { billToGSTNumber = bGST;   shipToGSTNumber = bGST; }
+      // auto-select company from order
+      if (!companyId && order.company) {
+        const matched = companies.find(c => c.name?.toLowerCase().trim() === order.company?.toLowerCase().trim());
+        if (matched) { companyId = matched.id; companyChange(matched.id); }
+      }
     } catch {}
   }
 
@@ -324,7 +329,7 @@
 
               <div class="grid grid-cols-3 gap-2">
                 {#if invoiceType === "order"}
-                  <div class="col-span-3" id="field-order">
+                  <div class="col-span-1" id="field-order">
                     <label class="form-label">Order <span class="text-danger">*</span></label>
                     {#key orderSelectKey}
                       <OrderSearchSelect
@@ -344,13 +349,13 @@
                     {/if}
                   </div>
                 {:else}
-                  <div class="col-span-3">
+                  <div class="col-span-1">
                     <label class="form-label">Title <span class="text-danger">*</span></label>
                     <input type="text" class="form-control" bind:value={title} placeholder="Enter invoice title" />
                   </div>
                 {/if}
 
-                <div class="col-span-2" id="field-company">
+                <div class="col-span-1" id="field-company">
                   <label class="form-label">Company <span class="text-danger">*</span></label>
                   <select class="form-control" class:is-invalid={formErrors.companyId}
                     bind:value={companyId} on:change={(e) => companyChange(e.target.value)}>

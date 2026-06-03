@@ -189,7 +189,7 @@
             style="height: 100%; overflow: hidden scroll;"
           >
             <div class="simplebar-content" style="padding: 0px;">
-              <div id="sidebar-menu" class="sidebar-menu">
+              <div id="sidebar-menu" class="sidebar-menu" style="padding-bottom: 80px;">
                 <div class="mb-2">
                   <!-- Role bar -->
                   {#if currentUser}
@@ -295,7 +295,7 @@
                               "/admin/query",
                             )}
                           >
-                            <i class="ti ti-subtask"></i><span>Queries</span>
+                            <i class="ti ti-help-circle"></i><span>Queries</span>
                             {#if totalAssignedUnread > 0}
                               <span class="open-queue-badge"
                                 >{totalAssignedUnread > 99
@@ -473,7 +473,7 @@
                               "/admin/order",
                             )}
                           >
-                            <i class="ti ti-medal"></i><span>Orders</span>
+                            <i class="ti ti-shopping-cart"></i><span>Orders</span>
                             <span class="menu-arrow"></span>
                           </a>
                           <ul>
@@ -555,7 +555,7 @@
                               "/admin/invoice/tax",
                             )}
                           >
-                            <i class="ti ti-invoice"></i><span
+                            <i class="ti ti-receipt-tax"></i><span
                               >Invoice (TAX)</span
                             >
                           </a>
@@ -587,7 +587,7 @@
                               "/admin/workorder",
                             )}
                           >
-                            <i class="ti ti-invoice"></i><span>Work Order</span>
+                            <i class="ti ti-file-description"></i><span>Work Order</span>
                           </a>
                         </li>
                         <li
@@ -622,7 +622,7 @@
                     </ul>
                   </li>
                   {#if currentUser?.role === "master" || currentUser?.role != "user"}
-                    <li class="menu-title"><span>COMMAN</span></li>{/if}
+                    <li class="menu-title"><span>COMMON</span></li>{/if}
                   <li>
                     <ul>
                       {#if currentUser?.role != "user"}
@@ -637,7 +637,7 @@
                               "/admin/category",
                             )}
                           >
-                            <i class="ti ti-building"></i><span>Category</span>
+                            <i class="ti ti-category"></i><span>Category</span>
                           </a>
                         </li>
                         <li
@@ -693,7 +693,7 @@
                               "/admin/setting",
                             )}
                           >
-                            <i class="ti ti-tool"></i><span>Setting</span>
+                            <i class="ti ti-settings"></i><span>Setting</span>
                           </a>
                         </li>
                       {/if}

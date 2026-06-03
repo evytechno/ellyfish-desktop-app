@@ -29,28 +29,40 @@ export const dispatchedDetailsStore = localStore("dispatchedDetails", null);
 export function saveToLocalStorage(keyObj, data) {
     const key = 'data_' + JSON.stringify(keyObj);
 
+    // Update access timestamp for LRU tracking
+    const lruKey = '__lru_' + key;
+    try { localStorage.setItem(lruKey, Date.now().toString()); } catch (_) {}
+
+    const trySet = () => localStorage.setItem(key, JSON.stringify(data));
+
     try {
-        localStorage.setItem(key, JSON.stringify(data));
+        trySet();
     } catch (e) {
         if (e instanceof DOMException && e.name === "QuotaExceededError") {
-            console.warn("Storage full, clearing old items that start with 'data_' ...");
+            // LRU eviction: remove the oldest single data_ entry and retry
+            // Repeat until it fits or nothing left to evict
+            let evicted = true;
+            while (evicted) {
+                evicted = false;
+                let oldestKey = null;
+                let oldestTime = Infinity;
 
-            const keysToRemove = [];
-            for (let i = 0; i < localStorage.length; i++) {
-                const k = localStorage.key(i);
-                if (k && k.startsWith('data_')) {
-                    keysToRemove.push(k);
+                for (let i = 0; i < localStorage.length; i++) {
+                    const k = localStorage.key(i);
+                    if (!k || !k.startsWith('data_')) continue;
+                    const lru = localStorage.getItem('__lru_' + k);
+                    const t = lru ? parseInt(lru, 10) : 0;
+                    if (t < oldestTime) { oldestTime = t; oldestKey = k; }
+                }
+
+                if (oldestKey && oldestKey !== key) {
+                    localStorage.removeItem(oldestKey);
+                    localStorage.removeItem('__lru_' + oldestKey);
+                    evicted = true;
+                    try { trySet(); return; } catch (_) { /* try next oldest */ }
                 }
             }
-
-            keysToRemove.forEach(k => localStorage.removeItem(k));
-            try {
-                localStorage.setItem(key, JSON.stringify(data));
-            } catch (e2) {
-                console.error("Failed to save even after clearing 'data_' items:", e2);
-            }
-        } else {
-            console.error("LocalStorage error:", e);
+            // Nothing left to evict — give up silently
         }
     }
 }

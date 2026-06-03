@@ -44,6 +44,47 @@
       taxCheckDone = true;
     }
   });
+
+  // ── Inline item edit ──────────────────────────────────────────────────────
+  const unitOptions = ["Pcs", "Kg", "g", "L", "mL", "m", "cm", "Set", "Box", "Nos"];
+  let editingCell = null;
+  let editingValue = "";
+  let savingItems = false;
+
+  function startCellEdit(rowIndex, field) {
+    editingCell = { rowIndex, field };
+    editingValue = String(workOrder.items[rowIndex][field] ?? "");
+  }
+
+  function cancelCellEdit() { editingCell = null; editingValue = ""; }
+
+  async function commitCell() {
+    if (!editingCell) return;
+    const { rowIndex, field } = editingCell;
+    const updatedItems = workOrder.items.map((item, i) => {
+      if (i !== rowIndex) return item;
+      return { ...item, [field]: field === "quantity" || field === "unitPrice" ? Number(editingValue) : editingValue };
+    });
+    editingCell = null;
+    editingValue = "";
+    savingItems = true;
+    try {
+      await authApiFetch(`${API_ROUTES.WORK_ORDER}/${workOrderId}`, {
+        method: "PUT",
+        data: JSON.stringify({ items: updatedItems }),
+      });
+      workOrder = { ...workOrder, items: updatedItems };
+    } catch {
+      workOrder = { ...workOrder };
+    } finally {
+      savingItems = false;
+    }
+  }
+
+  function handleCellKeydown(e) {
+    if (e.key === "Enter") { e.preventDefault(); commitCell(); }
+    if (e.key === "Escape") cancelCellEdit();
+  }
 </script>
 
 {#if loadingData}
@@ -195,14 +236,37 @@
                         <th class="p-2 text-center" style="width:44px;">Sr.</th>
                         <th class="p-2 text-left">Item</th>
                         <th class="p-2 text-center" style="width:70px;">Qty</th>
+                        <th class="p-2 text-center" style="width:70px;">Unit</th>
                       </tr>
                     </thead>
                     <tbody>
                       {#each workOrder?.items as item, index}
-                        <tr class="border-bottom">
+                        <tr class="border-bottom item-row">
                           <td class="p-2 text-center">{index + 1}</td>
                           <td class="p-2 capitalize">{item?.item}</td>
-                          <td class="p-2 text-center">{item?.quantity ?? "-"} {item?.unit}</td>
+
+                          <!-- Qty -->
+                          <td class="p-2 text-center item-cell" on:click={() => startCellEdit(index, "quantity")}>
+                            {#if editingCell?.rowIndex === index && editingCell?.field === "quantity"}
+                              <input class="inline-cell-input" type="number" min="0" bind:value={editingValue}
+                                on:blur={commitCell} on:keydown={handleCellKeydown} autofocus />
+                            {:else}
+                              {item?.quantity ?? "-"}
+                            {/if}
+                          </td>
+
+                          <!-- Unit -->
+                          <td class="p-2 text-center item-cell" on:click={() => startCellEdit(index, "unit")}>
+                            {#if editingCell?.rowIndex === index && editingCell?.field === "unit"}
+                              <select class="inline-cell-input" bind:value={editingValue}
+                                on:change={commitCell} on:blur={commitCell} on:keydown={handleCellKeydown} autofocus>
+                                {#each unitOptions as u}<option value={u}>{u}</option>{/each}
+                              </select>
+                            {:else}
+                              {item?.unit || "Pcs"}
+                            {/if}
+                          </td>
+
                         </tr>
                       {/each}
                     </tbody>
@@ -266,6 +330,14 @@
 </div>
 
 <style>
+  .item-cell { cursor: pointer; }
+  .item-cell:hover { background: #f0f4ff; }
+  .inline-cell-input {
+    width: 100%; min-width: 55px; max-width: 110px;
+    border: 1.5px solid #3b5bdb; border-radius: 4px;
+    padding: 2px 4px; font-size: inherit; text-align: center;
+    outline: none; background: #fff;
+  }
   @media print {
     @page {
       padding: 5mm;

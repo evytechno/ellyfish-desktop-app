@@ -71,8 +71,7 @@
   let fileInputEl;
   let sendingChat = false;
   let actionLoading = false;
-  let qdCardCollapsed = true;
-  let orderCardCollapsed = true;
+  let qdCardCollapsed = false;
   let switching = false; // true while selectQuery is loading new data (shows shimmer bar)
 
   // reply state
@@ -106,6 +105,7 @@
   let inProgressList = [];
   let inProgressLoading = false;
   let inProgressLoadingMore = false;
+  let inProgressFiltering = false;
   let inProgressPage = 1;
   let inProgressTotal = 0;
   const IN_PROGRESS_LIMIT = 15;
@@ -115,11 +115,12 @@
     clearTimeout(inProgressSearchDebounce);
     inProgressSearch = val;
     inProgressSearchDebounce = setTimeout(() => {
-      loadInProgress(true);
+      loadInProgress(true, true);
     }, 300);
   }
 
   let inProgressDateFilter = "all"; // all | today | yesterday | 7days | 30days | custom
+  let inProgressDateField = "lastActivityAt"; // createdAt | lastActivityAt | updatedAt
   let inProgressCustomFrom = "";
   let inProgressCustomTo = "";
 
@@ -151,7 +152,7 @@
 
   function setDateFilter(filter) {
     inProgressDateFilter = filter;
-    if (filter !== "custom") loadInProgress(true);
+    if (filter !== "custom") loadInProgress(true, true);
   }
   // Always show at least the number of items actually loaded — prevents stale count between reloads.
   $: effectiveInProgressTotal = Math.max(inProgressTotal, inProgressList.length);
@@ -166,28 +167,33 @@
     return tb - ta;                                                             // then most recent
   });
 
-  async function loadInProgress(reset = true) {
+  async function loadInProgress(reset = true, filtering = false) {
     if (reset) {
       inProgressPage = 1;
       inProgressTotal = 0;
     }
-    // full spinner only on first page with empty list; otherwise silent refresh or bottom spinner
-    if (inProgressPage === 1 && inProgressList.length === 0) inProgressLoading = true;
-    else if (inProgressPage > 1) inProgressLoadingMore = true;
+    if (filtering && reset) {
+      inProgressFiltering = true;
+    } else if (inProgressPage === 1 && inProgressList.length === 0) {
+      inProgressLoading = true;
+    } else if (inProgressPage > 1) {
+      inProgressLoadingMore = true;
+    }
     try {
       let res;
       const p = inProgressPage;
       const searchParam = inProgressSearch.trim() ? `&search=${encodeURIComponent(inProgressSearch.trim())}` : "";
       const { dateFrom, dateTo } = getInProgressDateRange();
       const dateParam = dateFrom && dateTo ? `&dateFrom=${dateFrom}&dateTo=${dateTo}` : "";
+      const dateFieldParam = inProgressDateField !== "createdAt" ? `&dateField=${inProgressDateField}` : "";
       if (isTechHelper(currentUser)) {
-        res = await authApiFetch(`${API_ROUTES.QUERY}/assigned?status=in_progress&limit=${IN_PROGRESS_LIMIT}&page=${p}${searchParam}${dateParam}`);
+        res = await authApiFetch(`${API_ROUTES.QUERY}/assigned?status=in_progress&limit=${IN_PROGRESS_LIMIT}&page=${p}${searchParam}${dateParam}${dateFieldParam}`);
       } else if (isTech(currentUser)) {
-        res = await authApiFetch(`${API_ROUTES.QUERY}/assigned?status=in_progress&limit=${IN_PROGRESS_LIMIT}&page=${p}${searchParam}${dateParam}`);
+        res = await authApiFetch(`${API_ROUTES.QUERY}/assigned?status=in_progress&limit=${IN_PROGRESS_LIMIT}&page=${p}${searchParam}${dateParam}${dateFieldParam}`);
       } else if (isTelecaller(currentUser)) {
-        res = await authApiFetch(`${API_ROUTES.QUERY}/my?status=in_progress&limit=${IN_PROGRESS_LIMIT}&page=${p}${searchParam}${dateParam}`);
+        res = await authApiFetch(`${API_ROUTES.QUERY}/my?status=in_progress&limit=${IN_PROGRESS_LIMIT}&page=${p}${searchParam}${dateParam}${dateFieldParam}`);
       } else {
-        res = await authApiFetch(`${API_ROUTES.QUERY}?status=in_progress&limit=${IN_PROGRESS_LIMIT}&page=${p}${searchParam}${dateParam}`);
+        res = await authApiFetch(`${API_ROUTES.QUERY}?status=in_progress&limit=${IN_PROGRESS_LIMIT}&page=${p}${searchParam}${dateParam}${dateFieldParam}`);
       }
       const newItems = Array.isArray(res?.data) ? res.data : [];
       inProgressTotal = res?.total ?? inProgressTotal;
@@ -202,6 +208,7 @@
     } finally {
       inProgressLoading = false;
       inProgressLoadingMore = false;
+      inProgressFiltering = false;
     }
   }
 
@@ -411,6 +418,22 @@
   }
 
   let deletingChatId = null;
+  let copiedChatId = null;
+  async function copyMessage(chat) {
+    if (!chat.message) return;
+    await navigator.clipboard.writeText(chat.message);
+    copiedChatId = chat.id;
+    setTimeout(() => (copiedChatId = null), 1500);
+  }
+
+  let copiedFieldKey = null;
+  async function copyField(key, text) {
+    if (!text) return;
+    await navigator.clipboard.writeText(text);
+    copiedFieldKey = key;
+    setTimeout(() => (copiedFieldKey = null), 1500);
+  }
+
   async function deleteChat(chat) {
     const confirmed = await Swal.fire({
       icon: 'warning',
@@ -1982,61 +2005,30 @@
         </div>
       {/if}
 
-      {#if statusBanner}
-        <div class="status-live-banner status-live-banner--{statusBanner.status.replace('_','-')}">
-          <i class="ti ti-refresh-alert me-2"></i>
-          <span>
-            Status updated to
-            <strong>{statusBanner.status.replace("_", " ")}</strong>
-            {#if statusBanner.assignedToName}
-              — assigned to <strong>{maskTech(statusBanner.assignedToName)}</strong>
-            {/if}
-          </span>
-          <button class="status-banner-close" on:click={() => statusBanner = null}>
-            <i class="ti ti-x"></i>
-          </button>
-        </div>
-      {/if}
-
       <div class="row g-4">
         <!-- Left: query info + actions -->
         <div class="{viewingSubQueryId ? 'col-lg-2 query-left-col' : 'col-lg-3 query-left-col'}">
           {#if (!isTech(currentUser) || currentUser?.orderAccess) && query.order}
             <div class="card border-0 shadow-sm mb-3">
-              <div class="card-header py-2 d-flex align-items-center gap-2" style="cursor:pointer;" on:click={() => orderCardCollapsed = !orderCardCollapsed} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && (orderCardCollapsed = !orderCardCollapsed)}>
+              <div class="card-header py-2 d-flex align-items-center gap-2">
                 <i class="ti ti-receipt text-primary"></i>
-                <span class="fw-semibold small">Linked Order</span>
-                <button class="btn btn-sm btn-outline-primary ms-auto py-0 px-2" style="font-size:11px;" on:click|stopPropagation={() => openOrderDrawer(query.order.id)}>
+                <span class="fw-semibold small">Current Linked Order</span>
+                <span class="badge bg-secondary ms-1" style="font-size:10px;">{query.order.status}</span>
+                <button class="btn btn-sm btn-outline-primary ms-auto py-0 px-2" style="font-size:11px;" on:click={() => openOrderDrawer(query.order.id)}>
                   <i class="ti ti-external-link me-1"></i>View
                 </button>
-                <button class="qd-collapse-btn ms-1" tabindex="-1" on:click|stopPropagation={() => orderCardCollapsed = !orderCardCollapsed}>
-                  <i class="ti {orderCardCollapsed ? 'ti-chevron-down' : 'ti-chevron-up'}"></i>
-                </button>
               </div>
-              {#if !orderCardCollapsed}
-                <div class="card-body py-3 px-4 small" transition:slide={{ duration: 250 }}>
-                  <div class="mb-1 fw-semibold text-dark">{query.order.title ?? "-"}</div>
-                  <div class="text-muted mb-1"><i class="ti ti-hash me-1"></i>Order #{query.order.pId}</div>
-                  {#if query.order.company}
-                    <div class="text-muted mb-1"><i class="ti ti-building me-1"></i>{query.order.company}</div>
-                  {/if}
-                  {#if query.order.category}
-                    <div class="text-muted mb-1"><i class="ti ti-tag me-1"></i>{query.order.category}</div>
-                  {/if}
-                  <div class="mt-2">
-                    <span class="badge bg-secondary">{query.order.status}</span>
-                    {#if query.order.price}
-                      <span class="badge bg-light text-dark border ms-1">₹{Number(query.order.price).toLocaleString("en-IN")}</span>
-                    {/if}
-                  </div>
-                </div>
-              {/if}
+              <div class="card-body py-2 px-3 small">
+                <div class="fw-semibold text-dark">{query.order.title ?? "-"} <b>#{query.order.pId}</b></div>
+              </div>
             </div>
           {/if}
           <div class="qd-card mb-3">
-
             <!-- ── Switching shimmer bar (always rendered, animated when switching) ── -->
             <div class="switch-bar" class:switch-bar--active={switching}></div>
+
+            <!-- ── Card label ── -->
+            <div class="qd-card-label"><i class="ti ti-message-circle"></i>Query Detail</div>
 
             <!-- ── Header: subject + status ── -->
             <div class="qd-header" class:qd-header--collapsed={qdCardCollapsed} style="cursor:pointer;" on:click={() => qdCardCollapsed = !qdCardCollapsed} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && (qdCardCollapsed = !qdCardCollapsed)}>
@@ -2094,12 +2086,6 @@
                   <span class="qd-meta-label"><i class="ti ti-user-check"></i> Assigned</span>
                   <span class="qd-meta-value">{query.assignedTo ? maskTech(query.assignedTo.name) : "Unassigned"}</span>
                 </div>
-                {#if query.orderId}
-                  <div class="qd-meta-row">
-                    <span class="qd-meta-label"><i class="ti ti-receipt"></i> Order</span>
-                    <span class="qd-meta-value">#{ query.orderId}</span>
-                  </div>
-                {/if}
               {/if}
             </div>
 
@@ -2307,25 +2293,41 @@
                     </button>
                   {/if}
                 </div>
-                <!-- Date filter pills -->
-                <div class="ip-date-filters mt-2">
-                  {#each [["all","All"],["today","Today"],["yesterday","Yest."],["7days","7D"],["30days","30D"],["custom","Custom"]] as [val, label]}
-                    <button
-                      class="ip-date-pill {inProgressDateFilter === val ? 'active' : ''}"
-                      on:click={() => setDateFilter(val)}
-                    >{label}</button>
-                  {/each}
+                <!-- Date filter pills + field selector in one row -->
+                <div class="d-flex align-items-center gap-1 mt-2 flex-wrap">
+                  <div class="ip-date-filters flex-grow-1">
+                    {#each [["all","All"],["today","Today"],["yesterday","Yest."],["7days","7D"],["30days","30D"],["custom","Custom"]] as [val, label]}
+                      <button
+                        class="ip-date-pill {inProgressDateFilter === val ? 'active' : ''}"
+                        on:click={() => setDateFilter(val)}
+                      >{label}</button>
+                    {/each}
+                  </div>
+                  <select
+                    class="ip-field-select"
+                    bind:value={inProgressDateField}
+                    on:change={() => { if (inProgressDateFilter !== "all") loadInProgress(true, true); }}
+                  >
+                    <option value="createdAt">Created</option>
+                    <option value="lastActivityAt">Last Activity</option>
+                    <option value="updatedAt">Updated</option>
+                  </select>
                 </div>
                 {#if inProgressDateFilter === "custom"}
                   <div class="d-flex gap-1 mt-1">
                     <input type="date" class="form-control form-control-sm" style="font-size:11px;" bind:value={inProgressCustomFrom}
-                      on:change={() => { if (inProgressCustomFrom && inProgressCustomTo) loadInProgress(true); }} />
+                      on:change={() => { if (inProgressCustomFrom && inProgressCustomTo) loadInProgress(true, true); }} />
                     <input type="date" class="form-control form-control-sm" style="font-size:11px;" bind:value={inProgressCustomTo}
-                      on:change={() => { if (inProgressCustomFrom && inProgressCustomTo) loadInProgress(true); }} />
+                      on:change={() => { if (inProgressCustomFrom && inProgressCustomTo) loadInProgress(true, true); }} />
                   </div>
                 {/if}
               </div>
               <div class="card-body p-0 ip-list-body" on:scroll={handleInProgressScroll}>
+                {#if inProgressFiltering}
+                  <div class="d-flex align-items-center justify-content-center" style="height:120px;">
+                    <span class="spinner-border spinner-border-sm text-primary"></span>
+                  </div>
+                {:else}
                 {#each sortedInProgressList as q}
                   {@const unread = $queryUnreadCounts[q.id] ?? 0}
                   {@const isTypingHere = typingQueries.has(q.id)}
@@ -2381,7 +2383,7 @@
                     {/if}
                   </div>
                 {/each}
-                {#if sortedInProgressList.length === 0 && !inProgressLoadingMore}
+                {#if sortedInProgressList.length === 0 && !inProgressLoadingMore && !inProgressFiltering}
                   <div class="text-center text-muted py-4 small">
                     <i class="ti ti-inbox d-block mb-1" style="font-size:22px;"></i>
                     No queries found
@@ -2394,13 +2396,14 @@
                 {:else if inProgressList.length > 0 && inProgressList.length >= effectiveInProgressTotal && effectiveInProgressTotal > IN_PROGRESS_LIMIT}
                   <div class="ip-all-loaded">All caught up</div>
                 {/if}
+                {/if}
               </div>
             </div>
           {/if}
         </div>
 
-        <!-- Right: chat (shrinks to col-4 when sub-query panel is open) -->
-        <div class="{viewingSubQueryId ? 'col-lg-5' : 'col-lg-9'}"
+        <!-- Right: chat (shrinks when sub-query panel or order panel is open) -->
+        <div class="{viewingSubQueryId && orderDrawerOpen ? 'col-lg-4' : viewingSubQueryId ? 'col-lg-5' : orderDrawerOpen ? 'col-lg-6' : 'col-lg-9'}"
           style="transition: all 0.2s ease;">
           <div class="chat-card d-flex flex-column">
             <!-- Switching shimmer bar (always rendered, animated when switching) -->
@@ -2600,6 +2603,11 @@
                       </div>
                     {/if}
                     <div class="chat-sender">{maskChatSender(chat)}</div>
+                    {#if chat.message && !chat.isDeleted && editingChatId !== chat.id}
+                      <button class="chat-copy-btn" title="Copy message" on:click|stopPropagation={() => copyMessage(chat)}>
+                        <i class="ti {copiedChatId === chat.id ? 'ti-check' : 'ti-copy'}"></i>
+                      </button>
+                    {/if}
                     {#if chat.isDeleted}
                       <div class="chat-deleted-text">
                         <i class="ti ti-trash me-1"></i>This message was deleted
@@ -3108,6 +3116,11 @@
                               </div>
                             {/if}
                             <div class="chat-sender">{maskChatSender(chat)}</div>
+                            {#if chat.message && !chat.isDeleted && sqEditingChatId !== chat.id}
+                              <button class="chat-copy-btn" title="Copy message" on:click|stopPropagation={() => copyMessage(chat)}>
+                                <i class="ti {copiedChatId === chat.id ? 'ti-check' : 'ti-copy'}"></i>
+                              </button>
+                            {/if}
                             {#if chat.isDeleted}
                               <div class="chat-deleted-text">
                                 <i class="ti ti-trash me-1"></i>This message was deleted
@@ -3345,66 +3358,105 @@
         </div>
         {/if}
 
+        <!-- ── Inline Order Panel ───────────────────────────────────── -->
+        {#if orderDrawerOpen}
+          <div class="col-lg-3" style="transition: all 0.2s ease;">
+            <div class="card border-0 shadow-sm order-inline-panel">
+              <div class="card-header py-2 px-3 d-flex align-items-center gap-2">
+                <i class="ti ti-receipt text-primary"></i>
+                <span class="fw-semibold small">Order Detail</span>
+                <button class="btn-close btn-close-sm ms-auto" style="font-size:10px;" on:click={() => orderDrawerOpen = false}></button>
+              </div>
+              <div class="order-inline-body">
+                {#if orderDrawerLoading}
+                  <div class="text-center py-5"><span class="spinner-border text-primary"></span></div>
+                {:else if orderDrawerData}
+                  {@const o = orderDrawerData}
+
+                  <!-- Title + status -->
+                  <div class="op-section">
+                    <div class="op-section-title"><i class="ti ti-receipt"></i>Title</div>
+                    <div class="d-flex align-items-start gap-2 flex-wrap">
+                      <span class="fw-semibold flex-grow-1" style="font-size:13px;line-height:1.4;">{o.title ?? "-"}</span>
+                      <span class="badge bg-secondary flex-shrink-0" style="font-size:10px;">{o.status ?? "-"}</span>
+                    </div>
+                  </div>
+
+                  <!-- Order fields -->
+                  <div class="op-section">
+                    <div class="op-section-title"><i class="ti ti-info-circle"></i>Order Info</div>
+                    <div class="op-row"><span class="op-label"><i class="ti ti-hash"></i>Order #</span><span class="op-value op-copyable" on:click={() => copyField('orderId', String(o.pId ?? ''))}>{o.pId ?? "-"}<i class="ti {copiedFieldKey === 'orderId' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'orderId'}></i></span></div>
+                    {#if o.category}<div class="op-row"><span class="op-label"><i class="ti ti-tag"></i>Category</span><span class="op-value">{o.category}</span></div>{/if}
+                    {#if o.workOrderNumber}<div class="op-row"><span class="op-label"><i class="ti ti-file-invoice"></i>Work Order</span><span class="op-value op-copyable" on:click={() => copyField('workOrder', o.workOrderNumber)}>{o.workOrderNumber}<i class="ti {copiedFieldKey === 'workOrder' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'workOrder'}></i></span></div>{/if}
+                    {#if o.assignedUsers?.length}<div class="op-row"><span class="op-label"><i class="ti ti-user"></i>Assigned To</span><span class="op-value">{o.assignedUsers.map(u => u.name).join(", ")}</span></div>{/if}
+                  </div>
+
+                  <!-- Company / GST -->
+                  {#if o.company || o.gstNumber || o.client}
+                    <div class="op-section">
+                      <div class="op-section-title"><i class="ti ti-building"></i>Company</div>
+                      {#if o.company}<div class="op-row"><span class="op-label"><i class="ti ti-building"></i>Name</span><span class="op-value op-copyable" on:click={() => copyField('company', o.company)}>{o.company}<i class="ti {copiedFieldKey === 'company' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'company'}></i></span></div>{/if}
+                      {#if o.gstNumber}<div class="op-row"><span class="op-label"><i class="ti ti-license"></i>GST No.</span><span class="op-value op-copyable font-mono" style="font-size:11px;" on:click={() => copyField('gst', o.gstNumber)}>{o.gstNumber}<i class="ti {copiedFieldKey === 'gst' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'gst'}></i></span></div>{/if}
+                      {#if o.client}
+                        {#if o.client.name && o.client.name !== o.company}<div class="op-row"><span class="op-label"><i class="ti ti-id-badge"></i>Client</span><span class="op-value">{o.client.name}</span></div>{/if}
+                        {#if o.client.gstNumber && o.client.gstNumber !== o.gstNumber}<div class="op-row"><span class="op-label"><i class="ti ti-license"></i>Client GST</span><span class="op-value op-copyable font-mono" style="font-size:11px;" on:click={() => copyField('clientGst', o.client.gstNumber)}>{o.client.gstNumber}<i class="ti {copiedFieldKey === 'clientGst' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'clientGst'}></i></span></div>{/if}
+                        {#if o.client.address}<div class="op-row"><span class="op-label"><i class="ti ti-map-pin"></i>Address</span><span class="op-value op-copyable" on:click={() => copyField('address', o.client.address)}>{o.client.address}<i class="ti {copiedFieldKey === 'address' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'address'}></i></span></div>{/if}
+                      {/if}
+                    </div>
+                  {/if}
+
+                  <!-- Contacts — prefer orderContacts, fall back to orderClients -->
+                  {@const allContacts = (o.orderContacts?.length)
+                    ? (o.orderContacts ?? []).map(oc => oc.clientContact).filter(Boolean)
+                    : (o.orderClients ?? [])}
+                  {#if allContacts.length}
+                    <div class="op-section">
+                      <div class="op-section-title"><i class="ti ti-users"></i>Clients Detail</div>
+                      {#each allContacts as c, ci}
+                        <div class="op-contact">
+                          <div class="fw-medium" style="font-size:12px;">{c.name ?? "-"}</div>
+                          {#if c.designation}<div class="op-contact-designation">{c.designation}</div>{/if}
+                          {#if c.mobile}<div class="op-contact-detail"><i class="ti ti-phone"></i><span class="op-copyable" on:click={() => copyField(`mob-${ci}`, c.mobile)}>{c.mobile}<i class="ti {copiedFieldKey === `mob-${ci}` ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === `mob-${ci}`}></i></span></div>{/if}
+                          {#if c.alternateMobile}<div class="op-contact-detail"><i class="ti ti-phone-plus"></i><span class="op-copyable" on:click={() => copyField(`alt-${ci}`, c.alternateMobile)}>{c.alternateMobile}<i class="ti {copiedFieldKey === `alt-${ci}` ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === `alt-${ci}`}></i></span></div>{/if}
+                          {#if c.whatsapp}<div class="op-contact-detail"><i class="ti ti-brand-whatsapp"></i><span class="op-copyable" on:click={() => copyField(`wa-${ci}`, c.whatsapp)}>{c.whatsapp}<i class="ti {copiedFieldKey === `wa-${ci}` ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === `wa-${ci}`}></i></span></div>{/if}
+                          {#if c.email}<div class="op-contact-detail"><i class="ti ti-mail"></i><span class="op-copyable" on:click={() => copyField(`email-${ci}`, c.email)}>{c.email}<i class="ti {copiedFieldKey === `email-${ci}` ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === `email-${ci}`}></i></span></div>{/if}
+                        </div>
+                      {/each}
+                    </div>
+                  {/if}
+
+                  <!-- Description -->
+                  {#if o.description}
+                    <div class="op-section">
+                      <div class="op-section-title d-flex align-items-center justify-content-between">
+                        <span><i class="ti ti-align-left"></i>Description</span>
+                        <button class="op-desc-copy-btn" title="Copy description" on:click={() => copyField('desc', o.description)}>
+                          <i class="ti {copiedFieldKey === 'desc' ? 'ti-check text-success' : 'ti-copy'}"></i>
+                        </button>
+                      </div>
+                      <div class="op-description">{o.description}</div>
+                    </div>
+                  {/if}
+
+                  <!-- Full Detail -->
+                  <div class="op-section" style="border-bottom:none;">
+                    <a href="/admin/order/{o.id}" data-order-href="/admin/order/{o.id}" class="btn btn-primary btn-sm w-100">
+                      <i class="ti ti-external-link me-1"></i>Full Detail
+                    </a>
+                  </div>
+
+                {:else}
+                  <div class="text-center text-muted py-5">Failed to load order.</div>
+                {/if}
+              </div>
+            </div>
+          </div>
+        {/if}
+
       </div>
     {/if}
   </div>
 </div>
-
-<!-- ── Order Side Drawer ───────────────────────────────────────────── -->
-{#if orderDrawerOpen}
-  <!-- Backdrop -->
-  <div class="order-drawer-backdrop" on:click={() => orderDrawerOpen = false}></div>
-  <!-- Drawer -->
-  <div class="order-drawer">
-    <div class="order-drawer-header">
-      <span class="fw-semibold">Order Detail</span>
-      <button class="order-drawer-close" on:click={() => orderDrawerOpen = false}>
-        <i class="ti ti-x"></i>
-      </button>
-    </div>
-    <div class="order-drawer-body">
-      {#if orderDrawerLoading}
-        <div class="text-center py-5"><span class="spinner-border text-primary"></span></div>
-      {:else if orderDrawerData}
-        {@const o = orderDrawerData}
-        <div class="mb-3 d-flex align-items-start gap-2 flex-wrap">
-          <span class="fw-semibold flex-grow-1" style="font-size:16px;">{o.title ?? "-"}</span>
-          <span class="badge bg-secondary flex-shrink-0">{o.status ?? "-"}</span>
-        </div>
-        <div class="drawer-row"><span class="drawer-label">Order #</span><span>{o.pId ?? "-"}</span></div>
-        {#if o.company}<div class="drawer-row"><span class="drawer-label">Company</span><span>{o.company}</span></div>{/if}
-        {#if o.orderDate}<div class="drawer-row"><span class="drawer-label">Order Date</span><span>{new Date(o.orderDate).toLocaleDateString("en-IN", { day:"2-digit", month:"short", year:"numeric" })}</span></div>{/if}
-        {#if o.price}<div class="drawer-row"><span class="drawer-label">Price</span><span>₹{Number(o.price).toLocaleString("en-IN")} {o.currency ?? ""}</span></div>{/if}
-        {#if o.category}<div class="drawer-row"><span class="drawer-label">Category</span><span>{o.category}</span></div>{/if}
-        {#if o.workOrderNumber}<div class="drawer-row"><span class="drawer-label">Work Order No.</span><span>{o.workOrderNumber}</span></div>{/if}
-        {#if o.assignedUsers?.length}
-          <div class="drawer-row"><span class="drawer-label">Assigned To</span><span>{o.assignedUsers.map(u => u.name).join(", ")}</span></div>
-        {/if}
-        {#if o.orderClients?.length}
-          <div class="drawer-section-title mt-3 mb-1">Contacts</div>
-          {#each o.orderClients as c}
-            <div class="drawer-client-row">
-              <div class="fw-medium">{c.name ?? "-"}</div>
-              {#if c.mobile}<div class="text-muted small"><i class="ti ti-phone me-1"></i>{c.mobile}</div>{/if}
-              {#if c.email}<div class="text-muted small"><i class="ti ti-mail me-1"></i>{c.email}</div>{/if}
-            </div>
-          {/each}
-        {/if}
-        {#if o.description}
-          <div class="drawer-section-title mt-3 mb-1">Description</div>
-          <div class="small text-muted">{o.description}</div>
-        {/if}
-        <div class="mt-4">
-          <a href="/admin/order/{o.id}" data-order-href="/admin/order/{o.id}" class="btn btn-primary btn-sm w-100">
-            <i class="ti ti-external-link me-1"></i>Full Detail
-          </a>
-        </div>
-      {:else}
-        <div class="text-center text-muted py-5">Failed to load order.</div>
-      {/if}
-    </div>
-  </div>
-{/if}
 
 <style>
   /* ── Badge tab selector ─────────────────────────────── */
@@ -3613,6 +3665,15 @@
     line-height: 1.5; position: relative; word-break: break-word;
     box-sizing: border-box;
   }
+  .chat-copy-btn {
+    position: absolute; top: 6px; right: 8px;
+    background: none; border: none; padding: 2px 3px;
+    border-radius: 4px; cursor: pointer; line-height: 1;
+    font-size: 12px; color: inherit;
+    opacity: 0; transition: opacity 0.15s;
+  }
+  .chat-bubble:hover .chat-copy-btn { opacity: 0.5; }
+  .chat-copy-btn:hover { opacity: 1 !important; }
   /* own — light blue tint */
   .chat-bubble--own {
     background: #dbe4ff; color: #1c3faa;
@@ -4195,6 +4256,13 @@
     box-shadow: 0 2px 12px rgba(0,0,0,0.07);
     overflow: hidden;
   }
+  .qd-card-label {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 10px; font-weight: 700; color: #868e96;
+    text-transform: uppercase; letter-spacing: 0.6px;
+    padding: 8px 14px 0;
+  }
+  .qd-card-label i { font-size: 11px; }
 
   /* header */
   .qd-header {
@@ -4601,46 +4669,68 @@
   .sq-event-time { font-size: 11px; color: #adb5bd; }
 
   /* ── Order Side Drawer ───────────────────────────────────────────── */
-  .order-drawer-backdrop {
-    position: fixed; inset: 0; background: rgba(0,0,0,0.35);
-    z-index: 1040;
+  .order-inline-panel {
+    height: 100%; display: flex; flex-direction: column;
   }
-  .order-drawer {
-    position: fixed; top: 0; right: 0; height: 100vh;
-    width: 380px; max-width: 95vw;
-    background: #fff; box-shadow: -4px 0 24px rgba(0,0,0,0.12);
-    z-index: 1050; display: flex; flex-direction: column;
-    animation: drawer-slide-in 0.22s ease;
+  .order-inline-body {
+    flex: 1; overflow-y: auto; padding: 14px 16px;
+    max-height: calc(100vh - 160px);
   }
-  @keyframes drawer-slide-in {
-    from { transform: translateX(100%); }
-    to   { transform: translateX(0); }
+  .order-inline-body::-webkit-scrollbar { width: 4px; }
+  .order-inline-body::-webkit-scrollbar-track { background: transparent; }
+  .order-inline-body::-webkit-scrollbar-thumb { background: #dee2e6; border-radius: 10px; }
+  /* ── Inline order panel sections ── */
+  .op-section {
+    padding: 10px 0;
+    border-bottom: 1px solid #f1f3f5;
   }
-  .order-drawer-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 14px 18px; border-bottom: 1px solid #e9ecef;
-    font-size: 15px; flex-shrink: 0;
+  .op-section-title {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 10px; font-weight: 700; color: #868e96;
+    text-transform: uppercase; letter-spacing: 0.6px;
+    margin-bottom: 6px;
   }
-  .order-drawer-close {
+  .op-section-title i { font-size: 11px; }
+  .op-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 8px; padding: 3px 0; font-size: 12px;
+  }
+  .op-label {
+    display: inline-flex; align-items: center; gap: 4px;
+    color: #868e96; white-space: nowrap; flex-shrink: 0;
+  }
+  .op-label i { font-size: 11px; }
+  .op-value { color: #212529; text-align: right; word-break: break-word; }
+  .op-contact { padding: 6px 0; border-bottom: 1px solid #f1f3f5; }
+  .op-contact:last-child { border-bottom: none; }
+  .op-contact-designation { font-size: 11px; color: #868e96; margin-top: 1px; }
+  .op-contact-detail {
+    display: flex; align-items: center; gap: 4px;
+    font-size: 11px; color: #6c757d; margin-top: 3px;
+  }
+  .op-contact-detail i { font-size: 11px; }
+  .op-description { font-size: 12px; color: #495057; line-height: 1.5; }
+  .op-desc-copy-btn {
     background: none; border: none; cursor: pointer;
-    color: #868e96; font-size: 18px; line-height: 1;
-    padding: 2px 4px; border-radius: 4px;
-    display: flex; align-items: center;
+    color: #868e96; font-size: 11px; padding: 0 2px; line-height: 1;
   }
-  .order-drawer-close:hover { color: #212529; background: #f1f3f5; }
-  .order-drawer-body {
-    flex: 1; overflow-y: auto; padding: 18px;
-  }
-  .drawer-row {
-    display: flex; justify-content: space-between; gap: 8px;
-    padding: 6px 0; border-bottom: 1px solid #f1f3f5; font-size: 13px;
-  }
-  .drawer-label { color: #868e96; font-weight: 500; white-space: nowrap; }
-  .drawer-section-title { font-size: 12px; font-weight: 600; color: #495057; text-transform: uppercase; letter-spacing: 0.5px; }
-  .drawer-client-row { padding: 6px 0; border-bottom: 1px solid #f1f3f5; }
+  .op-desc-copy-btn:hover { color: #3b5bdb; }
+  .op-copyable { cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+  .op-copy-icon { font-size: 11px; opacity: 0; transition: opacity 0.15s; flex-shrink: 0; }
+  .op-copyable:hover .op-copy-icon { opacity: 0.6; }
+  .op-copy-icon--copied { opacity: 1 !important; }
+  .op-copyable:hover { color: #3b5bdb; }
 
   /* ── In-progress date filter pills ──────────────────────────────── */
   .ip-date-filters { display: flex; flex-wrap: wrap; gap: 4px; }
+  .ip-field-select {
+    font-size: 10px; color: #6c757d;
+    border: 1px solid #dee2e6; border-radius: 6px;
+    padding: 2px 18px 2px 5px; background-color: #fff;
+    cursor: pointer; outline: none;
+    appearance: auto; flex-shrink: 0;
+  }
+  .ip-field-select:focus { border-color: #86b7fe; }
   .ip-date-pill {
     font-size: 11px; padding: 2px 8px; border-radius: 20px;
     border: 1px solid #dee2e6; background: #f8f9fa; color: #495057;

@@ -89,6 +89,19 @@
     selectedBankAccount = bankAccounts[0] || null;
   }
 
+  async function orderValueChange(id) {
+    if (!id || isNaN(id) || id <= 0) return;
+    try {
+      const order = await authApiFetch(`${API_ROUTES.ORDER}/${id}`);
+      if (!order) return;
+      // auto-select company from order
+      if (!companyId && order.company) {
+        const matched = companies.find(c => c.name?.toLowerCase().trim() === order.company?.toLowerCase().trim());
+        if (matched) { companyId = matched.id; companyChange(matched.id); }
+      }
+    } catch {}
+  }
+
   function bankLabel(b) {
     const parts = [];
     if (b.label) parts.push(b.label);
@@ -204,11 +217,16 @@
       billToGSTNumber = inv.billToGSTNumber || ""; billToMobile = inv.billToMobile || ""; billToEmail = inv.billToEmail || "";
       shipToName = inv.shipToName || ""; shipToAddress = inv.shipToAddress || "";
       shipToGSTNumber = inv.shipToGSTNumber || ""; shipToMobile = inv.shipToMobile || ""; shipToEmail = inv.shipToEmail || "";
-      selectedBankAccount = inv.selectedBankAccount || null;
-
       if (companyId) {
         const company = companies.find(c => c.id == companyId);
         bankAccounts = company?.bankAccounts || [];
+        // match saved bank by id so bind:value gets the exact same object reference
+        const savedBank = inv.selectedBankAccount;
+        selectedBankAccount = savedBank
+          ? (bankAccounts.find(b => b.id === savedBank.id) ?? bankAccounts[0] ?? null)
+          : (bankAccounts[0] ?? null);
+      } else {
+        selectedBankAccount = null;
       }
     } catch (e) {
       Swal.fire("Error!", "Failed to load invoice data.", "error");
@@ -306,26 +324,26 @@
 
               <div class="grid grid-cols-3 gap-2">
                 {#if invoiceType === "order"}
-                  <div class="col-span-3" id="field-order">
+                  <div class="col-span-1" id="field-order">
                     <label class="form-label">Order <span class="text-danger">*</span></label>
                     <OrderSearchSelect
                       isInvalid={!!formErrors.orderId}
                       initialValue={orderId}
                       initialTitle={orderInitialTitle}
-                      on:change={(e) => { orderId = e.detail.id; }}
+                      on:change={(e) => { orderId = e.detail.id; orderValueChange(e.detail.id); }}
                     />
                     {#if formErrors.orderId}
                       <ul class="text-danger mt-1 text-xs"><li>{formErrors.orderId[0]}</li></ul>
                     {/if}
                   </div>
                 {:else}
-                  <div class="col-span-3">
+                  <div class="col-span-1">
                     <label class="form-label">Title <span class="text-danger">*</span></label>
                     <input type="text" class="form-control" bind:value={title} placeholder="Enter invoice title" />
                   </div>
                 {/if}
 
-                <div class="col-span-2" id="field-company">
+                <div class="col-span-1" id="field-company">
                   <label class="form-label">Company <span class="text-danger">*</span></label>
                   <select class="form-control" class:is-invalid={formErrors.companyId}
                     bind:value={companyId} on:change={(e) => companyChange(e.target.value)}>

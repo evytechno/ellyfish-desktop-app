@@ -102,6 +102,39 @@
         </a>
       </div>
     </div>
+    {#if order?.status === "Deal Won"}
+      {@const pi = order?.orderPayments?.[0]}
+      {@const wo = order?.workOrders?.[0]}
+      {@const ti = order?.invoices?.[0]}
+      <div class="flex items-center gap-1 border-top pt-2 mt-2">
+        <a
+          href={pi ? `/admin/payment/${pi.id}` : `/admin/invoice/add?fromOrder=${order.id}`}
+          class="btn btn-xs flex-1 text-center text-[10px] font-semibold {pi ? 'btn-soft-success' : 'btn-soft-secondary'}"
+          title={pi ? `PI: ${pi.financialYear}/${String(pi.invoiceNo).padStart(6, '0')}` : 'Create Proforma Invoice'}
+          on:click|stopPropagation
+        >PI {pi ? '✓' : ''}</a>
+        {#if pi}
+          <a
+            href={wo ? `/admin/workorder/${wo.id}` : `/admin/workorder/add?fromOrder=${order.id}`}
+            class="btn btn-xs flex-1 text-center text-[10px] font-semibold {wo ? 'btn-soft-success' : 'btn-soft-secondary'}"
+            title={wo ? `WO: ${wo.financialYear}/${String(wo.workOrderNo).padStart(6, '0')}` : 'Create Work Order'}
+            on:click|stopPropagation
+          >WO {wo ? '✓' : ''}</a>
+        {:else}
+          <span class="btn btn-xs btn-soft-secondary flex-1 text-center text-[10px] font-semibold opacity-40" style="cursor:not-allowed" title="Create PI first">WO</span>
+        {/if}
+        {#if wo}
+          <a
+            href={ti ? `/admin/invoice/tax/${ti.id}` : `/admin/invoice/create?orderId=${order.id}`}
+            class="btn btn-xs flex-1 text-center text-[10px] font-semibold {ti ? 'btn-soft-success' : 'btn-soft-secondary'}"
+            title={ti ? `TI: ${ti.financialYear}/${String(ti.invoiceNo).padStart(6, '0')}` : 'Create Tax Invoice'}
+            on:click|stopPropagation
+          >TI {ti ? '✓' : ''}</a>
+        {:else}
+          <span class="btn btn-xs btn-soft-secondary flex-1 text-center text-[10px] font-semibold opacity-40" style="cursor:not-allowed" title="Create WO first">TI</span>
+        {/if}
+      </div>
+    {/if}
   </div>
 </div>
 
