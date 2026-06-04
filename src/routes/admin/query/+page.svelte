@@ -77,6 +77,7 @@
   let showRaiseForm = false;
   let raising = false;
   let raiseSubject = "";
+  let raiseDescription = "";
 
   let raiseType = "other";
   let raisePriority = "medium";
@@ -421,7 +422,7 @@
         method: "POST",
         data: JSON.stringify({
           subject: raiseSubject,
-
+          description: raiseDescription.trim() || null,
           type: raiseType,
           priority: raisePriority,
           orderId: raiseOrderId ?? null,
@@ -429,7 +430,7 @@
       });
       showRaiseForm = false;
       raiseSubject = "";
-
+      raiseDescription = "";
       raiseType = "other";
       raisePriority = "medium";
       clearOrder();
@@ -771,6 +772,16 @@
                 </div>
               {/if}
             </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Requirement <span class="text-muted">(optional)</span></label>
+            <textarea
+              class="form-control"
+              rows="3"
+              bind:value={raiseDescription}
+              placeholder="Describe your requirement in detail..."
+              style="font-size:13px;resize:vertical;"
+            ></textarea>
           </div>
           <div class="d-flex gap-2 justify-content-end">
             <button

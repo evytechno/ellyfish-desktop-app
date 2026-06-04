@@ -20,6 +20,14 @@
   import { queryPrivacy } from "$lib/stores/queryPrivacy";
   import Swal from "sweetalert2";
   import LightBox from "$lib/components/LightBox.svelte";
+  import DOMPurify from "dompurify";
+
+  function isHtml(str) {
+    return str ? /<[a-z][\s\S]*>/i.test(str) : false;
+  }
+  function safeHtml(str) {
+    return DOMPurify.sanitize(str ?? '');
+  }
 
   let lightboxData = [];
   let lightboxStartIndex = 0;
@@ -92,6 +100,7 @@
       orderDrawerData = null;
     } finally {
       orderDrawerLoading = false;
+      enhanceDescription();
     }
   }
 
@@ -183,6 +192,7 @@
 
   $: if (orderActiveTab === 'chat') scrollOrderChatBottom();
   $: if (orderActiveTab === 'attachments') scrollOrderAttachBottom();
+  $: if (orderActiveTab === 'info') enhanceDescription();
 
   async function sendOrderChat() {
     if (!orderChatMsg.trim() || !orderDrawerData) return;
@@ -615,6 +625,120 @@
     await navigator.clipboard.writeText(text);
     copiedFieldKey = key;
     setTimeout(() => (copiedFieldKey = null), 1500);
+  }
+
+  // ── Description field copy enhancer ─────────────────────────────────────
+  let descEl;
+
+  // Exposed globally so injected buttons can call it
+  if (typeof window !== 'undefined') {
+    window.__descCopy = async (text, btnEl) => {
+      if (!text) return;
+      await navigator.clipboard.writeText(text);
+      if (btnEl) {
+        const icon = btnEl.querySelector('i');
+        if (icon) { icon.className = 'ti ti-check'; }
+        btnEl.classList.add('desc-copy-btn--copied');
+        setTimeout(() => {
+          if (icon) icon.className = 'ti ti-copy';
+          btnEl.classList.remove('desc-copy-btn--copied');
+        }, 1500);
+      }
+    };
+  }
+
+  async function enhanceDescription() {
+    await tick();
+    if (!descEl) return;
+
+    // Remove previously injected buttons to avoid duplicates
+    descEl.querySelectorAll('.desc-copy-btn').forEach(b => b.remove());
+
+    function makeCopyBtn(text) {
+      const btn = document.createElement('button');
+      btn.className = 'desc-copy-btn';
+      btn.title = 'Copy';
+      btn.innerHTML = '<i class="ti ti-copy"></i>';
+      btn.setAttribute('onclick', `window.__descCopy(${JSON.stringify(text)}, this)`);
+      return btn;
+    }
+
+    // 1. Table rows — from / cc / to / bcc / address / mobile / tel / phone
+    descEl.querySelectorAll('table tr').forEach(row => {
+      const cells = Array.from(row.querySelectorAll('td, th'));
+      if (cells.length < 2) return;
+      const label = cells[0].textContent.trim().toLowerCase().replace(/[:.\s]/g, '');
+
+      const multiTargets = ['cc', 'to', 'bcc'];
+      const singleTargets = ['from', 'fro', 'mobile', 'tel', 'phone', 'fax', 'address', 'email'];
+
+      if (multiTargets.some(t => label.startsWith(t))) {
+        // Inject copy button in EACH value cell separately
+        cells.slice(1).forEach(cell => {
+          const text = cell.textContent.trim();
+          if (!text) return;
+          if (!cell.querySelector('.desc-copy-btn')) {
+            cell.appendChild(makeCopyBtn(text));
+          }
+        });
+
+      } else if (singleTargets.some(t => label.startsWith(t))) {
+        const valueCell = cells[1];
+        const valueText = valueCell.textContent.trim();
+        if (!valueText) return;
+
+        if (!valueCell.querySelector('.desc-copy-btn')) {
+          if (label.startsWith('from') || label.startsWith('fro')) {
+            // Extract email from angle brackets e.g. "Anand Chavan <email@x.com>"
+            const emailMatch = valueText.match(/<([^>]+@[^>]+)>/);
+            const email = emailMatch ? emailMatch[1].trim() : null;
+            // Copy full text button
+            valueCell.appendChild(makeCopyBtn(valueText));
+            // Extra email-only button if email found separately
+            if (email && email !== valueText) {
+              const emailBtn = makeCopyBtn(email);
+              emailBtn.title = 'Copy email only';
+              emailBtn.innerHTML = '<i class="ti ti-mail"></i>';
+              emailBtn.setAttribute('onclick', `window.__descCopy(${JSON.stringify(email)}, this)`);
+              valueCell.appendChild(emailBtn);
+            }
+          } else {
+            valueCell.appendChild(makeCopyBtn(valueText));
+          }
+        }
+      }
+    });
+
+    // 2. mailto links — inject copy button after each
+    descEl.querySelectorAll('a[href^="mailto:"]').forEach(a => {
+      const email = a.href.replace('mailto:', '').trim();
+      if (!email || a.nextSibling?.classList?.contains?.('desc-copy-btn')) return;
+      a.insertAdjacentElement('afterend', makeCopyBtn(email));
+    });
+
+    // 3. Phone / mobile patterns in text nodes — wrap and add button
+    const phoneRe = /(\+?\d[\d\s\-().]{7,}\d)/g;
+    descEl.querySelectorAll('p, li, span, td').forEach(el => {
+      // Skip if already has copy btn or is inside a table cell already handled
+      if (el.querySelector('.desc-copy-btn')) return;
+      if (el.closest('td') && el.closest('td').querySelector('.desc-copy-btn')) return;
+      el.childNodes.forEach(node => {
+        if (node.nodeType !== Node.TEXT_NODE) return;
+        const text = node.textContent;
+        if (!phoneRe.test(text)) return;
+        phoneRe.lastIndex = 0;
+        const matches = [...text.matchAll(phoneRe)];
+        matches.forEach(m => {
+          const phone = m[1].trim();
+          // Only inject once per element to avoid explosion
+          if (!el.querySelector(`.desc-copy-btn[title="${phone}"]`)) {
+            const btn = makeCopyBtn(phone);
+            btn.title = phone;
+            el.appendChild(btn);
+          }
+        });
+      });
+    });
   }
 
   async function deleteChat(chat) {
@@ -2277,6 +2401,14 @@
               {/if}
             </div>
 
+            <!-- ── Requirement ── -->
+            {#if query.description}
+              <div class="qd-description">
+                <div class="qd-meta-label mb-1"><i class="ti ti-notes"></i> Requirement</div>
+                {query.description}
+              </div>
+            {/if}
+
             <!-- ── Actions ── -->
             {#if
               (isTech(currentUser) && (query.status === "open" || query.status === "reopened" || (query.status === "in_progress" && query.assignedToId === currentUser?.id))) ||
@@ -3679,7 +3811,13 @@
                           <i class="ti {copiedFieldKey === 'desc' ? 'ti-check text-success' : 'ti-copy'}"></i>
                         </button>
                       </div>
-                      <div class="op-description">{o.description}</div>
+                      <div class="op-description" bind:this={descEl}>
+                        {#if isHtml(o.description)}
+                          {@html safeHtml(o.description)}
+                        {:else}
+                          {o.description}
+                        {/if}
+                      </div>
                     </div>
                   {/if}
 
@@ -5152,7 +5290,129 @@
     font-size: 11px; color: #6c757d; margin-top: 3px;
   }
   .op-contact-detail i { font-size: 11px; }
-  .op-description { font-size: 12px; color: #495057; line-height: 1.5; }
+  .op-description { font-size: 12px; color: #495057; line-height: 1.6; word-break: break-word; }
+
+  /* Text */
+  .op-description :global(p)          { margin: 0 0 6px; }
+  .op-description :global(strong),
+  .op-description :global(b)          { font-weight: 700; }
+  .op-description :global(em),
+  .op-description :global(i)          { font-style: italic; }
+  .op-description :global(u)          { text-decoration: underline; }
+  .op-description :global(s)          { text-decoration: line-through; }
+  .op-description :global(a)          { color: #3b5bdb; text-decoration: underline; }
+  .op-description :global(a:hover)    { color: #1d4ed8; }
+
+  /* Headings */
+  .op-description :global(h1) { font-size: 18px; font-weight: 700; margin: 8px 0 4px; }
+  .op-description :global(h2) { font-size: 15px; font-weight: 700; margin: 8px 0 4px; }
+  .op-description :global(h3) { font-size: 13px; font-weight: 700; margin: 6px 0 4px; }
+
+  /* Lists */
+  .op-description :global(ul)         { list-style: disc;    padding-left: 20px; margin: 0 0 6px; }
+  .op-description :global(ol)         { list-style: decimal; padding-left: 20px; margin: 0 0 6px; }
+  .op-description :global(li)         { display: list-item; margin-bottom: 2px; }
+  .op-description :global(ul ul)      { list-style: circle; margin: 2px 0; }
+  .op-description :global(ul ul ul)   { list-style: square; }
+
+  /* Blockquote */
+  .op-description :global(blockquote) {
+    border-left: 3px solid #dee2e6;
+    margin: 4px 0 6px;
+    padding: 4px 10px;
+    color: #6c757d;
+    font-style: italic;
+  }
+
+  /* Code */
+  .op-description :global(code) {
+    font-family: monospace;
+    font-size: 11px;
+    background: #f1f3f5;
+    border-radius: 3px;
+    padding: 1px 4px;
+    color: #c92a2a;
+  }
+  .op-description :global(pre) {
+    font-family: monospace;
+    font-size: 11px;
+    background: #f1f3f5;
+    border-radius: 6px;
+    padding: 8px 10px;
+    overflow-x: auto;
+    margin: 0 0 6px;
+    color: #212529;
+    white-space: pre-wrap;
+  }
+
+  /* Table */
+  .op-description :global(table) {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+    margin: 0 0 6px;
+    table-layout: auto;
+  }
+  .op-description :global(th),
+  .op-description :global(td) {
+    border: 1px solid #dee2e6;
+    padding: 5px 8px;
+    text-align: left;
+    vertical-align: top;
+    word-break: break-word;
+  }
+  .op-description :global(th) {
+    background: #f1f3f5;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  /* First column (label) — compact, no wrap */
+  .op-description :global(td:first-child),
+  .op-description :global(th:first-child) {
+    width: 1%;
+    white-space: nowrap;
+    font-weight: 600;
+    color: #495057;
+    background: #f8f9fa;
+  }
+  /* Value columns share remaining width equally */
+  .op-description :global(td:not(:first-child)) {
+    width: auto;
+  }
+  .op-description :global(tr:nth-child(even) td) {
+    background: #f1f3f5;
+  }
+  .op-description :global(tr:nth-child(even) td:first-child) {
+    background: #e9ecef;
+  }
+
+  /* ── Injected copy buttons inside description ── */
+  .op-description :global(.desc-copy-btn) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 1px 5px;
+    margin-left: 5px;
+    cursor: pointer;
+    font-size: 10px;
+    color: #6c757d;
+    vertical-align: middle;
+    transition: all 0.15s;
+    line-height: 1;
+  }
+  .op-description :global(.desc-copy-btn:hover) {
+    background: #e9ecef;
+    color: #212529;
+    border-color: #adb5bd;
+  }
+  .op-description :global(.desc-copy-btn--copied) {
+    background: #d1fae5;
+    color: #065f46;
+    border-color: #6ee7b7;
+  }
   .op-desc-copy-btn {
     background: none; border: none; cursor: pointer;
     color: #868e96; font-size: 11px; padding: 0 2px; line-height: 1;

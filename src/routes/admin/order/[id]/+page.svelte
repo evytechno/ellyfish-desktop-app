@@ -18,6 +18,15 @@
   import { get } from "svelte/store";
   import LightBox from "$lib/components/LightBox.svelte";
   import { checkAuth } from "$lib/utils/auth";
+  import QuillEditor from "$lib/components/QuillEditor.svelte";
+  import DOMPurify from "dompurify";
+
+  function isHtml(str) {
+    return str ? /<[a-z][\s\S]*>/i.test(str) : false;
+  }
+  function safeHtml(str) {
+    return DOMPurify.sanitize(str ?? '');
+  }
   import DispatchProcess from "$lib/components/DispatchProcess.svelte";
 
   let errorMessage = "";
@@ -292,14 +301,13 @@
 
   function openQueryModal() {
     if (!querySubject.trim()) querySubject = order?.title ?? "";
-    if (!queryDescription.trim()) queryDescription = order?.title ?? "";
     showQueryModal = true;
   }
 
   async function submitOrderQuery() {
     queryError = "";
-    if (!querySubject.trim() || !queryDescription.trim()) {
-      queryError = "Subject and description are required.";
+    if (!querySubject.trim()) {
+      queryError = "Subject is required.";
       return;
     }
     raisingQuery = true;
@@ -308,7 +316,7 @@
         method: "POST",
         data: JSON.stringify({
           subject: querySubject,
-          description: queryDescription,
+          description: queryDescription.trim() || null,
           orderId: Number(orderId),
         }),
       });
@@ -2040,14 +2048,15 @@
                     />
                   </div>
                   <div class="mb-3">
-                    <label class="form-label"
-                      >Description <span class="text-danger">*</span></label
-                    >
+                    <label class="form-label">
+                      Requirement <span class="text-muted">(optional)</span>
+                    </label>
                     <textarea
                       class="form-control"
                       rows="4"
                       bind:value={queryDescription}
-                      placeholder="Describe the issue in detail..."
+                      placeholder="Describe your requirement in detail..."
+                      style="resize:vertical;"
                     ></textarea>
                   </div>
                   <div class="d-flex gap-2 justify-content-end">
@@ -4461,15 +4470,14 @@
       </div>
       <div class="col-span-2">
         <label class="form-label" for="description"> Description </label>
-        <textarea
-          name="description"
-          id="description"
-          class="form-control"
-          class:is-invalid={formErrors.description}
-          bind:value={description}
-          required
-          placeholder="Description"
-        ></textarea>
+        <div class:is-invalid={formErrors.description} style="border-radius:6px;">
+          <QuillEditor
+            bind:value={description}
+            placeholder="Description"
+            height="180px"
+            on:change={(e) => description = e.detail}
+          />
+        </div>
 
         {#if formErrors.description}
           <ul class="text-danger mt-1 text-xs capitalize">
