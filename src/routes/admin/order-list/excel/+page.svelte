@@ -9,6 +9,7 @@
   import { categoriesAllStore } from "$lib/stores/dataStores";
   import { get } from "svelte/store";
   import { checkAuth } from "$lib/utils/auth";
+  import PIWOTIModal from "$lib/components/PIWOTIModal.svelte";
 
   // ── auth ─────────────────────────────────────────────────
   const currentUser = checkAuth();
@@ -495,6 +496,23 @@
     "Deal Won", "Deal Lost",
   ];
 
+  // PI/WO/TI modal
+  let piwotiModalOpen = false;
+  let piwotiModalType = "PI";
+  let piwotiModalOrder = null;
+
+  function openPIWOTIModal(type, order) {
+    piwotiModalType  = type;
+    piwotiModalOrder = order;
+    piwotiModalOpen  = true;
+  }
+
+  async function onPIWOTIRefresh() {
+    if (piwotiModalOrder) await refreshOrder(piwotiModalOrder.id);
+    // Sync modal order with updated data
+    piwotiModalOrder = orders.find(o => o.id === piwotiModalOrder?.id) ?? piwotiModalOrder;
+  }
+
   let refresh = false;
   async function refreshPage() {
     refresh = true;
@@ -937,29 +955,26 @@
                     {@const wo = order.workOrders?.[0]}
                     {@const ti = order.invoices?.[0]}
                     <div class="flex gap-1">
-                      <a
-                        href={pi ? `/admin/payment/${pi.id}` : `/admin/invoice/add?fromOrder=${order.id}`}
+                      <button
                         class="btn btn-xs text-[10px] font-semibold {pi ? 'btn-soft-success' : 'btn-soft-secondary'}"
                         title={pi ? `PI: ${pi.financialYear}/${String(pi.invoiceNo).padStart(6,'0')}` : 'Create PI'}
-                        on:click|stopPropagation={() => goto(pi ? `/admin/payment/${pi.id}` : `/admin/invoice/add?fromOrder=${order.id}`)}
-                      >PI{pi ? ' ✓' : ''}</a>
+                        on:click|stopPropagation={() => openPIWOTIModal('PI', order)}
+                      >PI{pi ? ' ✓' : ''}</button>
                       {#if pi}
-                        <a
-                          href={wo ? `/admin/workorder/${wo.id}` : `/admin/workorder/add?fromOrder=${order.id}`}
+                        <button
                           class="btn btn-xs text-[10px] font-semibold {wo ? 'btn-soft-success' : 'btn-soft-secondary'}"
                           title={wo ? `WO: ${wo.financialYear}/${String(wo.workOrderNo).padStart(6,'0')}` : 'Create WO'}
-                          on:click|stopPropagation={() => goto(wo ? `/admin/workorder/${wo.id}` : `/admin/workorder/add?fromOrder=${order.id}`)}
-                        >WO{wo ? ' ✓' : ''}</a>
+                          on:click|stopPropagation={() => openPIWOTIModal('WO', order)}
+                        >WO{wo ? ' ✓' : ''}</button>
                       {:else}
                         <span class="btn btn-xs btn-soft-secondary text-[10px] font-semibold opacity-40" style="cursor:not-allowed" title="Create PI first">WO</span>
                       {/if}
                       {#if wo}
-                        <a
-                          href={ti ? `/admin/invoice/tax/${ti.id}` : `/admin/invoice/create?orderId=${order.id}`}
+                        <button
                           class="btn btn-xs text-[10px] font-semibold {ti ? 'btn-soft-success' : 'btn-soft-secondary'}"
                           title={ti ? `TI: ${ti.financialYear}/${String(ti.invoiceNo).padStart(6,'0')}` : 'Create TI'}
-                          on:click|stopPropagation={() => goto(ti ? `/admin/invoice/tax/${ti.id}` : `/admin/invoice/create?orderId=${order.id}`)}
-                        >TI{ti ? ' ✓' : ''}</a>
+                          on:click|stopPropagation={() => openPIWOTIModal('TI', order)}
+                        >TI{ti ? ' ✓' : ''}</button>
                       {:else}
                         <span class="btn btn-xs btn-soft-secondary text-[10px] font-semibold opacity-40" style="cursor:not-allowed" title="Create WO first">TI</span>
                       {/if}
@@ -1018,6 +1033,15 @@
     {/if}
   </div>
 </div>
+
+<!-- PI/WO/TI Modal -->
+<PIWOTIModal
+  bind:open={piwotiModalOpen}
+  type={piwotiModalType}
+  order={piwotiModalOrder}
+  on:close={() => (piwotiModalOpen = false)}
+  on:refresh={onPIWOTIRefresh}
+/>
 
 <!-- Add Order Drawer -->
 {#if drawerOpen}

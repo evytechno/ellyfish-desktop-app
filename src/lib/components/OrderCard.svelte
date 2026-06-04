@@ -1,12 +1,13 @@
 <script>
   export let order;
 
+  import { statusNamesStore } from "../stores/statusNames";
+  import PIWOTIModal from "./PIWOTIModal.svelte";
+
   function getAvatarText(title) {
     if (!title) return "";
     const words = title.trim().split(" ");
-    if (words.length === 1) {
-      return words[0][0].toUpperCase();
-    }
+    if (words.length === 1) return words[0][0].toUpperCase();
     return (words[0][0] + words[1][0]).toUpperCase();
   }
 
@@ -22,7 +23,21 @@
     "Deal Won": "bg-green",
     "Deal Lost": "bg-red",
   };
-  import { statusNamesStore } from "../stores/statusNames";
+
+  // Modal state
+  let modalOpen = false;
+  let modalType = "PI";
+
+  function openModal(type, e) {
+    e?.stopPropagation();
+    modalType = type;
+    modalOpen = true;
+  }
+
+  function onRefresh() {
+    // Dispatch event so parent (OrderDragula) can refresh order data
+    const el = document.dispatchEvent(new CustomEvent("refreshOrder", { detail: { orderId: order.id } }));
+  }
 </script>
 
 <div class="card kanban-card border mb-0 mt-3 shadow relative">
@@ -107,34 +122,43 @@
       {@const wo = order?.workOrders?.[0]}
       {@const ti = order?.invoices?.[0]}
       <div class="flex items-center gap-1 border-top pt-2 mt-2">
-        <a
-          href={pi ? `/admin/payment/${pi.id}` : `/admin/invoice/add?fromOrder=${order.id}`}
-          class="btn btn-xs flex-1 text-center text-[10px] font-semibold {pi ? 'btn-soft-success' : 'btn-soft-secondary'}"
-          title={pi ? `PI: ${pi.financialYear}/${String(pi.invoiceNo).padStart(6, '0')}` : 'Create Proforma Invoice'}
-          on:click|stopPropagation
-        >PI {pi ? '✓' : ''}</a>
+        <!-- PI -->
+        <button
+          class="btn btn-xs flex-1 text-[10px] font-semibold {pi ? 'btn-soft-success' : 'btn-soft-secondary'}"
+          title={pi ? `PI: ${pi.financialYear}/${String(pi.invoiceNo).padStart(6,'0')}` : 'Create Proforma Invoice'}
+          on:click={(e) => openModal('PI', e)}
+        >PI {pi ? '✓' : ''}</button>
+        <!-- WO -->
         {#if pi}
-          <a
-            href={wo ? `/admin/workorder/${wo.id}` : `/admin/workorder/add?fromOrder=${order.id}`}
-            class="btn btn-xs flex-1 text-center text-[10px] font-semibold {wo ? 'btn-soft-success' : 'btn-soft-secondary'}"
-            title={wo ? `WO: ${wo.financialYear}/${String(wo.workOrderNo).padStart(6, '0')}` : 'Create Work Order'}
-            on:click|stopPropagation
-          >WO {wo ? '✓' : ''}</a>
+          <button
+            class="btn btn-xs flex-1 text-[10px] font-semibold {wo ? 'btn-soft-success' : 'btn-soft-secondary'}"
+            title={wo ? `WO: ${wo.financialYear}/${String(wo.workOrderNo).padStart(6,'0')}` : 'Create Work Order'}
+            on:click={(e) => openModal('WO', e)}
+          >WO {wo ? '✓' : ''}</button>
         {:else}
-          <span class="btn btn-xs btn-soft-secondary flex-1 text-center text-[10px] font-semibold opacity-40" style="cursor:not-allowed" title="Create PI first">WO</span>
+          <span class="btn btn-xs btn-soft-secondary flex-1 text-[10px] font-semibold opacity-40" style="cursor:not-allowed" title="Create PI first">WO</span>
         {/if}
+        <!-- TI -->
         {#if wo}
-          <a
-            href={ti ? `/admin/invoice/tax/${ti.id}` : `/admin/invoice/create?orderId=${order.id}`}
-            class="btn btn-xs flex-1 text-center text-[10px] font-semibold {ti ? 'btn-soft-success' : 'btn-soft-secondary'}"
-            title={ti ? `TI: ${ti.financialYear}/${String(ti.invoiceNo).padStart(6, '0')}` : 'Create Tax Invoice'}
-            on:click|stopPropagation
-          >TI {ti ? '✓' : ''}</a>
+          <button
+            class="btn btn-xs flex-1 text-[10px] font-semibold {ti ? 'btn-soft-success' : 'btn-soft-secondary'}"
+            title={ti ? `TI: ${ti.financialYear}/${String(ti.invoiceNo).padStart(6,'0')}` : 'Create Tax Invoice'}
+            on:click={(e) => openModal('TI', e)}
+          >TI {ti ? '✓' : ''}</button>
         {:else}
-          <span class="btn btn-xs btn-soft-secondary flex-1 text-center text-[10px] font-semibold opacity-40" style="cursor:not-allowed" title="Create WO first">TI</span>
+          <span class="btn btn-xs btn-soft-secondary flex-1 text-[10px] font-semibold opacity-40" style="cursor:not-allowed" title="Create WO first">TI</span>
         {/if}
       </div>
     {/if}
+
+    <!-- PI/WO/TI Modal -->
+    <PIWOTIModal
+      bind:open={modalOpen}
+      type={modalType}
+      {order}
+      on:close={() => (modalOpen = false)}
+      on:refresh={onRefresh}
+    />
   </div>
 </div>
 

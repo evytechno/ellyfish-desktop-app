@@ -50,17 +50,199 @@
   let orderDrawerData = null;
   let orderDrawerLoading = false;
 
+  // ── Right panel stack: 'subquery' | 'order' ──────────────────────────────
+  // Last item = top (visible). Opening a panel pushes it; closing pops/removes it.
+  let rightPanelStack = [];
+
+  function pushRightPanel(panelId) {
+    // Already on top — nothing to do
+    if (rightPanelStack[rightPanelStack.length - 1] === panelId) return;
+    // Already in stack but not on top — move it to top
+    rightPanelStack = [...rightPanelStack.filter(p => p !== panelId), panelId];
+  }
+
+  function removeFromRightPanel(panelId) {
+    rightPanelStack = rightPanelStack.filter(p => p !== panelId);
+  }
+
+  $: rightPanelTop = rightPanelStack[rightPanelStack.length - 1] ?? null;
+
   async function openOrderDrawer(orderId) {
     orderDrawerOpen = true;
+    pushRightPanel('order');
     orderDrawerLoading = true;
     orderDrawerData = null;
+    orderChats = [];
+    orderAttachments = [];
+    orderChatTotal = 0;
+    orderAttachTotal = 0;
+    orderActiveTab = 'info';
     try {
-      orderDrawerData = await authApiFetch(`${API_ROUTES.ORDER}/${orderId}`);
+      const [order, chatsRes, attachRes] = await Promise.all([
+        authApiFetch(`${API_ROUTES.ORDER}/${orderId}`),
+        authApiFetch(`${API_ROUTES.ORDER_CHAT}?orderId=${orderId}&limit=${ORDER_PAGE_LIMIT}&offset=0`).catch(() => null),
+        authApiFetch(`${API_ROUTES.ORDER_ATTACHMENT}?orderId=${orderId}&sort=asc&limit=${ORDER_PAGE_LIMIT}&offset=0`).catch(() => null),
+      ]);
+      orderDrawerData = order;
+      orderChats = Array.isArray(chatsRes?.data) ? chatsRes.data : [];
+      orderChatTotal = chatsRes?.total ?? 0;
+      orderAttachments = Array.isArray(attachRes?.data) ? attachRes.data : [];
+      orderAttachTotal = attachRes?.total ?? 0;
     } catch (e) {
       orderDrawerData = null;
     } finally {
       orderDrawerLoading = false;
     }
+  }
+
+  async function loadMoreOrderChats() {
+    if (!orderDrawerData || orderChatLoadingMore) return;
+    orderChatLoadingMore = true;
+    try {
+      const res = await authApiFetch(
+        `${API_ROUTES.ORDER_CHAT}?orderId=${orderDrawerData.id}&limit=${ORDER_PAGE_LIMIT}&offset=${orderChats.length}`
+      );
+      if (Array.isArray(res?.data) && res.data.length > 0) {
+        const el = orderChatListEl;
+        const prevHeight = el?.scrollHeight ?? 0;
+        orderChats = [...res.data, ...orderChats];
+        orderChatTotal = res.total ?? orderChatTotal;
+        await tick();
+        if (el) el.scrollTop = el.scrollHeight - prevHeight;
+      }
+    } catch (e) { /* ignore */ }
+    finally { orderChatLoadingMore = false; }
+  }
+
+  async function loadMoreOrderAttachments() {
+    if (!orderDrawerData || orderAttachLoadingMore) return;
+    orderAttachLoadingMore = true;
+    try {
+      const res = await authApiFetch(
+        `${API_ROUTES.ORDER_ATTACHMENT}?orderId=${orderDrawerData.id}&sort=asc&limit=${ORDER_PAGE_LIMIT}&offset=${orderAttachments.length}`
+      );
+      if (Array.isArray(res?.data) && res.data.length > 0) {
+        const el = orderAttachListEl;
+        const prevHeight = el?.scrollHeight ?? 0;
+        orderAttachments = [...res.data, ...orderAttachments];
+        orderAttachTotal = res.total ?? orderAttachTotal;
+        await tick();
+        if (el) el.scrollTop = el.scrollHeight - prevHeight;
+      }
+    } catch (e) { /* ignore */ }
+    finally { orderAttachLoadingMore = false; }
+  }
+
+  function closeOrderDrawer() {
+    removeFromRightPanel('order');
+    orderDrawerOpen = false;
+    orderDrawerData = null;
+    orderActiveTab = 'info';
+    orderChats = [];
+    orderAttachments = [];
+    orderChatMsg = '';
+    orderAttachFiles = [];
+    orderChatSending = false;
+    orderAttachSending = false;
+    orderIsDragOver = false;
+    orderDragDepth = 0;
+    orderChatTotal = 0;
+    orderAttachTotal = 0;
+    orderChatLoadingMore = false;
+    orderAttachLoadingMore = false;
+  }
+
+  // Order drawer tabs & data
+  let orderActiveTab = 'info'; // 'info' | 'chat' | 'attachments'
+  let orderChats = [];
+  let orderAttachments = [];
+  let orderChatMsg = '';
+  let orderAttachFiles = [];
+  let orderAttachTitle = '';
+  let orderChatSending = false;
+  let orderAttachSending = false;
+  let orderChatFileInput;
+  let orderIsDragOver = false;
+  let orderDragDepth = 0;
+  let orderChatListEl;
+  let orderAttachListEl;
+  const ORDER_PAGE_LIMIT = 10;
+  let orderChatTotal = 0;
+  let orderAttachTotal = 0;
+  let orderChatLoadingMore = false;
+  let orderAttachLoadingMore = false;
+
+  async function scrollOrderChatBottom() {
+    await tick();
+    if (orderChatListEl) orderChatListEl.scrollTop = orderChatListEl.scrollHeight;
+  }
+  async function scrollOrderAttachBottom() {
+    await tick();
+    if (orderAttachListEl) orderAttachListEl.scrollTop = orderAttachListEl.scrollHeight;
+  }
+
+  $: if (orderActiveTab === 'chat') scrollOrderChatBottom();
+  $: if (orderActiveTab === 'attachments') scrollOrderAttachBottom();
+
+  async function sendOrderChat() {
+    if (!orderChatMsg.trim() || !orderDrawerData) return;
+    orderChatSending = true;
+    try {
+      const data = await authApiFetch(API_ROUTES.ORDER_CHAT, {
+        method: 'POST',
+        data: JSON.stringify({ orderId: orderDrawerData.id, message: orderChatMsg.trim() }),
+      });
+      if (data?.data) {
+        orderChats = [...orderChats, { ...data.data, isOwn: true }];
+        orderChatMsg = '';
+        scrollOrderChatBottom();
+      }
+    } catch (e) { /* ignore */ }
+    finally { orderChatSending = false; }
+  }
+
+  async function addOrderAttachment() {
+    if (!orderDrawerData) return;
+    if (orderAttachFiles.length === 0) return;
+    orderAttachSending = true;
+    try {
+      const fd = new FormData();
+      fd.append('orderId', String(orderDrawerData.id));
+      if (orderAttachTitle.trim()) fd.append('title', orderAttachTitle.trim());
+      orderAttachFiles.forEach(f => fd.append('file', f));
+      const data = await authApiFetch(API_ROUTES.ORDER_ATTACHMENT, { method: 'POST', data: fd });
+      if (data?.data) {
+        orderAttachments = [...orderAttachments, data.data];
+        orderAttachFiles = [];
+        orderAttachTitle = '';
+        if (orderChatFileInput) orderChatFileInput.value = '';
+        scrollOrderAttachBottom();
+      }
+    } catch (e) { /* ignore */ }
+    finally { orderAttachSending = false; }
+  }
+
+  function handleOrderDragEnter(e) {
+    e.preventDefault();
+    orderDragDepth++;
+    orderIsDragOver = true;
+  }
+  function handleOrderDragLeave(e) {
+    orderDragDepth--;
+    if (orderDragDepth <= 0) { orderDragDepth = 0; orderIsDragOver = false; }
+  }
+  function handleOrderDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  }
+  function handleOrderDrop(e) {
+    e.preventDefault();
+    orderDragDepth = 0;
+    orderIsDragOver = false;
+    const dropped = Array.from(e.dataTransfer?.files ?? []);
+    if (!dropped.length) return;
+    orderAttachFiles = dropped.slice(0, 10);
+    if (orderChatFileInput) orderChatFileInput.value = '';
   }
   let chats = [];
   let loading = true;
@@ -248,7 +430,8 @@
 
   $: {
     const _id = $page.params.id;
-    if (_id && _prevId && _id !== _prevId) {
+    const _onQueryRoute = $page.url.pathname.startsWith('/admin/query/');
+    if (_id && _prevId && _id !== _prevId && _onQueryRoute) {
       _prevId = _id;
       queryId = _id;
       _reloadForId(_id);
@@ -587,6 +770,7 @@
     if (sqIsTyping) { sqIsTyping = false; clearTimeout(sqTypingTimer); }
 
     viewingSubQueryId = sq.id;
+    pushRightPanel('subquery');
     history.pushState({}, "", `/admin/query/${queryId}?sq=${sq.id}`);
     sqViewQuery = sq;
     sqViewChats = [];
@@ -624,6 +808,7 @@
       socket?.emit("typing-stop", Number(viewingSubQueryId));
     }
     viewingSubQueryId = null;
+    removeFromRightPanel('subquery');
     history.replaceState({}, "", `/admin/query/${queryId}`);
     sqViewQuery = null;
     sqViewChats = [];
@@ -717,6 +902,7 @@
   });
 
   onMount(async () => {
+    document.body.classList.add('query-no-scroll');
     currentUser = checkAuth();
     if (!currentUser) { goto("/login"); return; }
     if (currentUser.role === "user" && !currentUser.subRole) { goto("/admin/dashboard"); return; }
@@ -744,6 +930,7 @@
   });
 
   onDestroy(() => {
+    document.body.classList.remove('query-no-scroll');
     disconnectSocket();
     window.removeEventListener("popstate", handlePopState);
     if (bannerTimer) clearTimeout(bannerTimer);
@@ -769,8 +956,9 @@
     newId = Number(newId);
     if (newId === Number(queryId)) return;
 
-    // close sub-query panel if open
+    // close sub-query panel and order drawer if open
     if (viewingSubQueryId) closeSubQueryInline();
+    if (orderDrawerOpen) closeOrderDrawer();
 
     // stop typing on the old query
     if (isTyping) {
@@ -2007,7 +2195,7 @@
 
       <div class="row g-4">
         <!-- Left: query info + actions -->
-        <div class="{viewingSubQueryId ? 'col-lg-2 query-left-col' : 'col-lg-3 query-left-col'}">
+        <div class="col-lg-3 query-left-col">
           {#if (!isTech(currentUser) || currentUser?.orderAccess) && query.order}
             <div class="card border-0 shadow-sm mb-3">
               <div class="card-header py-2 d-flex align-items-center gap-2">
@@ -2402,8 +2590,8 @@
           {/if}
         </div>
 
-        <!-- Right: chat (shrinks when sub-query panel or order panel is open) -->
-        <div class="{viewingSubQueryId && orderDrawerOpen ? 'col-lg-4' : viewingSubQueryId ? 'col-lg-5' : orderDrawerOpen ? 'col-lg-6' : 'col-lg-9'}"
+        <!-- Right: chat (shrinks when right panel stack is open) -->
+        <div class="{rightPanelStack.length > 0 ? 'col-lg-5' : 'col-lg-9'}"
           style="transition: all 0.2s ease;">
           <div class="chat-card d-flex flex-column">
             <!-- Switching shimmer bar (always rendered, animated when switching) -->
@@ -2885,10 +3073,8 @@
           </div>
         </div>
 
-        <!-- Sub-query inline chat panel -->
-        {#if viewingSubQueryId}
-
         <!-- ── Sq pending-files preview modal (slider) ───────────────────── -->
+        {#if viewingSubQueryId}
         {#if sqPendingFiles.length > 0}
           {@const sqTotalAllowed = Math.max(0, 5 - sqAttachedFiles.length)}
           {@const sqCur = sqPendingFiles[sqPendingIndex]}
@@ -2988,8 +3174,14 @@
             </div>
           </div>
         {/if}
+        {/if}
 
-        <div class="col-lg-5">
+        <!-- ── Right panel stack: sub-query OR order detail (same column, stacked) ── -->
+        {#if rightPanelStack.length > 0}
+        <div class="col-lg-4" style="transition: all 0.2s ease; overflow: hidden;">
+
+          <!-- Sub-query panel: visible when on top of stack -->
+          {#if rightPanelTop === 'subquery' && viewingSubQueryId}
           <div class="chat-card d-flex flex-column sq-inline-card">
 
             <!-- Header -->
@@ -3013,6 +3205,12 @@
               <span class="badge {STATUS_COLORS[sqViewQuery?.status] ?? 'bg-secondary'}" style="font-size:10px;">
                 {sqViewQuery?.status?.replace('_', ' ')}
               </span>
+              {#if rightPanelStack.includes('order')}
+                <button class="btn btn-sm btn-outline-secondary sq-inline-icon-btn" title="Order Detail is below — close to reveal"
+                  on:click={closeSubQueryInline} style="font-size:10px;padding:2px 6px;">
+                  <i class="ti ti-layers-subtract"></i>
+                </button>
+              {/if}
               <button class="btn btn-sm btn-outline-secondary sq-inline-icon-btn" on:click={closeSubQueryInline} title="Close">
                 <i class="ti ti-x"></i>
               </button>
@@ -3355,24 +3553,47 @@
             {/if}
 
           </div>
-        </div>
-        {/if}
+          {/if}
 
-        <!-- ── Inline Order Panel ───────────────────────────────────── -->
-        {#if orderDrawerOpen}
-          <div class="col-lg-3" style="transition: all 0.2s ease;">
+          <!-- Order panel: visible when on top of stack -->
+          {#if rightPanelTop === 'order' && orderDrawerOpen}
             <div class="card border-0 shadow-sm order-inline-panel">
               <div class="card-header py-2 px-3 d-flex align-items-center gap-2">
                 <i class="ti ti-receipt text-primary"></i>
                 <span class="fw-semibold small">Order Detail</span>
-                <button class="btn-close btn-close-sm ms-auto" style="font-size:10px;" on:click={() => orderDrawerOpen = false}></button>
+                {#if rightPanelStack.includes('subquery')}
+                  <span class="badge bg-light text-muted border ms-1" style="font-size:10px;font-weight:500;">
+                    <i class="ti ti-layers-subtract me-1"></i>{sqWord} below
+                  </span>
+                {/if}
+                <button class="btn-close btn-close-sm ms-auto" style="font-size:10px;" on:click={closeOrderDrawer}></button>
               </div>
+
+              <!-- Tab bar -->
+              {#if !orderDrawerLoading && orderDrawerData}
+              <div class="d-flex gap-1 px-3 pt-2 pb-1 border-bottom" style="background:#fafafa;">
+                <button class="op-tab-btn {orderActiveTab === 'info' ? 'op-tab-btn--active' : ''}" on:click={() => orderActiveTab = 'info'}>
+                  <i class="ti ti-info-circle me-1"></i>Info
+                </button>
+                <button class="op-tab-btn {orderActiveTab === 'chat' ? 'op-tab-btn--active' : ''}" on:click={() => orderActiveTab = 'chat'}>
+                  <i class="ti ti-message me-1"></i>Chat
+                  {#if orderChats.length > 0}<span class="badge bg-primary ms-1" style="font-size:9px;padding:1px 5px;">{orderChats.length}</span>{/if}
+                </button>
+                <button class="op-tab-btn {orderActiveTab === 'attachments' ? 'op-tab-btn--active' : ''}" on:click={() => orderActiveTab = 'attachments'}>
+                  <i class="ti ti-paperclip me-1"></i>Files
+                  {#if orderAttachments.length > 0}<span class="badge bg-secondary ms-1" style="font-size:9px;padding:1px 5px;">{orderAttachments.length}</span>{/if}
+                </button>
+              </div>
+              {/if}
+
               <div class="order-inline-body">
                 {#if orderDrawerLoading}
                   <div class="text-center py-5"><span class="spinner-border text-primary"></span></div>
                 {:else if orderDrawerData}
                   {@const o = orderDrawerData}
 
+                  <!-- ── Info tab ── -->
+                  {#if orderActiveTab === 'info'}
                   <!-- Title + status -->
                   <div class="op-section">
                     <div class="op-section-title"><i class="ti ti-receipt"></i>Title</div>
@@ -3392,34 +3613,58 @@
                   </div>
 
                   <!-- Company / GST -->
-                  {#if o.company || o.gstNumber || o.client}
-                    <div class="op-section">
-                      <div class="op-section-title"><i class="ti ti-building"></i>Company</div>
-                      {#if o.company}<div class="op-row"><span class="op-label"><i class="ti ti-building"></i>Name</span><span class="op-value op-copyable" on:click={() => copyField('company', o.company)}>{o.company}<i class="ti {copiedFieldKey === 'company' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'company'}></i></span></div>{/if}
-                      {#if o.gstNumber}<div class="op-row"><span class="op-label"><i class="ti ti-license"></i>GST No.</span><span class="op-value op-copyable font-mono" style="font-size:11px;" on:click={() => copyField('gst', o.gstNumber)}>{o.gstNumber}<i class="ti {copiedFieldKey === 'gst' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'gst'}></i></span></div>{/if}
-                      {#if o.client}
-                        {#if o.client.name && o.client.name !== o.company}<div class="op-row"><span class="op-label"><i class="ti ti-id-badge"></i>Client</span><span class="op-value">{o.client.name}</span></div>{/if}
-                        {#if o.client.gstNumber && o.client.gstNumber !== o.gstNumber}<div class="op-row"><span class="op-label"><i class="ti ti-license"></i>Client GST</span><span class="op-value op-copyable font-mono" style="font-size:11px;" on:click={() => copyField('clientGst', o.client.gstNumber)}>{o.client.gstNumber}<i class="ti {copiedFieldKey === 'clientGst' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'clientGst'}></i></span></div>{/if}
-                        {#if o.client.address}<div class="op-row"><span class="op-label"><i class="ti ti-map-pin"></i>Address</span><span class="op-value op-copyable" on:click={() => copyField('address', o.client.address)}>{o.client.address}<i class="ti {copiedFieldKey === 'address' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'address'}></i></span></div>{/if}
-                      {/if}
-                    </div>
-                  {/if}
+                  <div class="op-section">
+                    <div class="op-section-title"><i class="ti ti-building"></i>Company</div>
+                    {#if o.company}<div class="op-row"><span class="op-label"><i class="ti ti-building"></i>Name</span><span class="op-value op-copyable" on:click={() => copyField('company', o.company)}>{o.company}<i class="ti {copiedFieldKey === 'company' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'company'}></i></span></div>{/if}
+                    {#if o.gstNumber}<div class="op-row"><span class="op-label"><i class="ti ti-license"></i>GST No.</span><span class="op-value op-copyable font-mono" style="font-size:11px;" on:click={() => copyField('gst', o.gstNumber)}>{o.gstNumber}<i class="ti {copiedFieldKey === 'gst' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'gst'}></i></span></div>{/if}
+                    {#if o.client}
+                      {#if o.client.name}<div class="op-row"><span class="op-label"><i class="ti ti-id-badge"></i>Client</span><span class="op-value op-copyable" on:click={() => copyField('clientName', o.client.name)}>{o.client.name}<i class="ti {copiedFieldKey === 'clientName' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'clientName'}></i></span></div>{/if}
+                      {#if o.client.gstNumber}<div class="op-row"><span class="op-label"><i class="ti ti-license"></i>Client GST</span><span class="op-value op-copyable font-mono" style="font-size:11px;" on:click={() => copyField('clientGst', o.client.gstNumber)}>{o.client.gstNumber}<i class="ti {copiedFieldKey === 'clientGst' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'clientGst'}></i></span></div>{/if}
+                      {#if o.client.mobile}<div class="op-row"><span class="op-label"><i class="ti ti-phone"></i>Client Mobile</span><span class="op-value op-copyable" on:click={() => copyField('clientMobile', o.client.mobile)}>{o.client.mobile}<i class="ti {copiedFieldKey === 'clientMobile' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'clientMobile'}></i></span></div>{/if}
+                      {#if o.client.whatsapp}<div class="op-row"><span class="op-label"><i class="ti ti-brand-whatsapp"></i>Client WA</span><span class="op-value op-copyable" on:click={() => copyField('clientWa', o.client.whatsapp)}>{o.client.whatsapp}<i class="ti {copiedFieldKey === 'clientWa' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'clientWa'}></i></span></div>{/if}
+                      {#if o.client.email}<div class="op-row"><span class="op-label"><i class="ti ti-mail"></i>Client Email</span><span class="op-value op-copyable" on:click={() => copyField('clientEmail', o.client.email)}>{o.client.email}<i class="ti {copiedFieldKey === 'clientEmail' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'clientEmail'}></i></span></div>{/if}
+                      {#if o.client.address}<div class="op-row"><span class="op-label"><i class="ti ti-map-pin"></i>Address</span><span class="op-value op-copyable" on:click={() => copyField('clientAddr', o.client.address)}>{o.client.address}<i class="ti {copiedFieldKey === 'clientAddr' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'clientAddr'}></i></span></div>{/if}
+                      {#if o.client.remark}<div class="op-row"><span class="op-label"><i class="ti ti-note"></i>Remark</span><span class="op-value op-copyable" on:click={() => copyField('clientRemark', o.client.remark)}>{o.client.remark}<i class="ti {copiedFieldKey === 'clientRemark' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'clientRemark'}></i></span></div>{/if}
+                    {/if}
+                    {#if !o.company && !o.gstNumber && !o.client}
+                      <div class="op-row"><span class="op-value text-muted" style="font-size:11px;">No company info.</span></div>
+                    {/if}
+                  </div>
 
-                  <!-- Contacts — prefer orderContacts, fall back to orderClients -->
-                  {@const allContacts = (o.orderContacts?.length)
-                    ? (o.orderContacts ?? []).map(oc => oc.clientContact).filter(Boolean)
-                    : (o.orderClients ?? [])}
-                  {#if allContacts.length}
+                  <!-- orderContacts (master contacts) -->
+                  {@const masterContacts = (o.orderContacts ?? []).map(oc => oc.clientContact).filter(Boolean)}
+                  {#if masterContacts.length}
                     <div class="op-section">
-                      <div class="op-section-title"><i class="ti ti-users"></i>Clients Detail</div>
-                      {#each allContacts as c, ci}
+                      <div class="op-section-title"><i class="ti ti-address-book"></i>Contacts</div>
+                      {#each masterContacts as c, ci}
                         <div class="op-contact">
                           <div class="fw-medium" style="font-size:12px;">{c.name ?? "-"}</div>
                           {#if c.designation}<div class="op-contact-designation">{c.designation}</div>{/if}
-                          {#if c.mobile}<div class="op-contact-detail"><i class="ti ti-phone"></i><span class="op-copyable" on:click={() => copyField(`mob-${ci}`, c.mobile)}>{c.mobile}<i class="ti {copiedFieldKey === `mob-${ci}` ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === `mob-${ci}`}></i></span></div>{/if}
-                          {#if c.alternateMobile}<div class="op-contact-detail"><i class="ti ti-phone-plus"></i><span class="op-copyable" on:click={() => copyField(`alt-${ci}`, c.alternateMobile)}>{c.alternateMobile}<i class="ti {copiedFieldKey === `alt-${ci}` ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === `alt-${ci}`}></i></span></div>{/if}
-                          {#if c.whatsapp}<div class="op-contact-detail"><i class="ti ti-brand-whatsapp"></i><span class="op-copyable" on:click={() => copyField(`wa-${ci}`, c.whatsapp)}>{c.whatsapp}<i class="ti {copiedFieldKey === `wa-${ci}` ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === `wa-${ci}`}></i></span></div>{/if}
-                          {#if c.email}<div class="op-contact-detail"><i class="ti ti-mail"></i><span class="op-copyable" on:click={() => copyField(`email-${ci}`, c.email)}>{c.email}<i class="ti {copiedFieldKey === `email-${ci}` ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === `email-${ci}`}></i></span></div>{/if}
+                          {#if c.mobile}<div class="op-contact-detail"><i class="ti ti-phone"></i><span class="op-copyable" on:click={() => copyField(`mc-mob-${ci}`, c.mobile)}>{c.mobile}<i class="ti {copiedFieldKey === `mc-mob-${ci}` ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === `mc-mob-${ci}`}></i></span></div>{/if}
+                          {#if c.alternateMobile}<div class="op-contact-detail"><i class="ti ti-phone-plus"></i><span class="op-copyable" on:click={() => copyField(`mc-alt-${ci}`, c.alternateMobile)}>{c.alternateMobile}<i class="ti {copiedFieldKey === `mc-alt-${ci}` ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === `mc-alt-${ci}`}></i></span></div>{/if}
+                          {#if c.whatsapp}<div class="op-contact-detail"><i class="ti ti-brand-whatsapp"></i><span class="op-copyable" on:click={() => copyField(`mc-wa-${ci}`, c.whatsapp)}>{c.whatsapp}<i class="ti {copiedFieldKey === `mc-wa-${ci}` ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === `mc-wa-${ci}`}></i></span></div>{/if}
+                          {#if c.email}<div class="op-contact-detail"><i class="ti ti-mail"></i><span class="op-copyable" on:click={() => copyField(`mc-email-${ci}`, c.email)}>{c.email}<i class="ti {copiedFieldKey === `mc-email-${ci}` ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === `mc-email-${ci}`}></i></span></div>{/if}
+                          {#if c.address}<div class="op-contact-detail"><i class="ti ti-map-pin"></i><span class="op-copyable" on:click={() => copyField(`mc-addr-${ci}`, c.address)}>{c.address}<i class="ti {copiedFieldKey === `mc-addr-${ci}` ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === `mc-addr-${ci}`}></i></span></div>{/if}
+                          {#if c.remark}<div class="op-contact-detail"><i class="ti ti-note"></i><span class="op-copyable" on:click={() => copyField(`mc-remark-${ci}`, c.remark)}>{c.remark}<i class="ti {copiedFieldKey === `mc-remark-${ci}` ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === `mc-remark-${ci}`}></i></span></div>{/if}
+                        </div>
+                      {/each}
+                    </div>
+                  {/if}
+
+                  <!-- orderClients (inline clients) -->
+                  {#if (o.orderClients ?? []).length}
+                    <div class="op-section">
+                      <div class="op-section-title"><i class="ti ti-users"></i>Order Clients</div>
+                      {#each o.orderClients as c, ci}
+                        <div class="op-contact">
+                          <div class="fw-medium" style="font-size:12px;">{c.name ?? "-"}</div>
+                          {#if c.designation}<div class="op-contact-designation">{c.designation}</div>{/if}
+                          {#if c.mobile}<div class="op-contact-detail"><i class="ti ti-phone"></i><span class="op-copyable" on:click={() => copyField(`oc-mob-${ci}`, c.mobile)}>{c.mobile}<i class="ti {copiedFieldKey === `oc-mob-${ci}` ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === `oc-mob-${ci}`}></i></span></div>{/if}
+                          {#if c.alternateMobile}<div class="op-contact-detail"><i class="ti ti-phone-plus"></i><span class="op-copyable" on:click={() => copyField(`oc-alt-${ci}`, c.alternateMobile)}>{c.alternateMobile}<i class="ti {copiedFieldKey === `oc-alt-${ci}` ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === `oc-alt-${ci}`}></i></span></div>{/if}
+                          {#if c.whatsapp}<div class="op-contact-detail"><i class="ti ti-brand-whatsapp"></i><span class="op-copyable" on:click={() => copyField(`oc-wa-${ci}`, c.whatsapp)}>{c.whatsapp}<i class="ti {copiedFieldKey === `oc-wa-${ci}` ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === `oc-wa-${ci}`}></i></span></div>{/if}
+                          {#if c.email}<div class="op-contact-detail"><i class="ti ti-mail"></i><span class="op-copyable" on:click={() => copyField(`oc-email-${ci}`, c.email)}>{c.email}<i class="ti {copiedFieldKey === `oc-email-${ci}` ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === `oc-email-${ci}`}></i></span></div>{/if}
+                          {#if c.address}<div class="op-contact-detail"><i class="ti ti-map-pin"></i><span class="op-copyable" on:click={() => copyField(`oc-addr-${ci}`, c.address)}>{c.address}<i class="ti {copiedFieldKey === `oc-addr-${ci}` ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === `oc-addr-${ci}`}></i></span></div>{/if}
+                          {#if c.remark}<div class="op-contact-detail"><i class="ti ti-note"></i><span class="op-copyable" on:click={() => copyField(`oc-remark-${ci}`, c.remark)}>{c.remark}<i class="ti {copiedFieldKey === `oc-remark-${ci}` ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === `oc-remark-${ci}`}></i></span></div>{/if}
                         </div>
                       {/each}
                     </div>
@@ -3444,14 +3689,156 @@
                       <i class="ti ti-external-link me-1"></i>Full Detail
                     </a>
                   </div>
+                  {/if}
+
+                  <!-- ── Chat tab ── -->
+                  {#if orderActiveTab === 'chat'}
+                  <div class="op-chat-wrap">
+                    <div class="op-chat-list" bind:this={orderChatListEl}>
+                      {#if orderChats.length < orderChatTotal}
+                        <div class="text-center py-2">
+                          {#if orderChatLoadingMore}
+                            <span class="text-muted" style="font-size:11px;"><i class="ti ti-loader me-1"></i>Loading…</span>
+                          {:else}
+                            <button class="btn btn-sm btn-outline-secondary px-3 py-1" style="font-size:11px;" on:click={loadMoreOrderChats}>
+                              <i class="ti ti-chevron-up me-1"></i>Load older
+                            </button>
+                          {/if}
+                        </div>
+                      {/if}
+                      {#if orderChats.length === 0}
+                        <div class="text-center text-muted py-4" style="font-size:12px;"><i class="ti ti-messages-off d-block mb-1" style="font-size:20px;"></i>No messages yet.</div>
+                      {:else}
+                        {#each orderChats as oc}
+                          <div class="op-chat-msg">
+                            <div class="op-chat-meta">
+                              <span class="op-chat-sender">{oc.user?.name ?? "User"}</span>
+                              <span class="op-chat-time">{formatDate(oc.createdAt)}</span>
+                            </div>
+                            <div class="op-chat-bubble">{oc.message}</div>
+                          </div>
+                        {/each}
+                      {/if}
+                    </div>
+                    <div class="op-chat-input-row">
+                      <input
+                        class="form-control form-control-sm"
+                        placeholder="Type a message…"
+                        bind:value={orderChatMsg}
+                        on:keydown={(e) => e.key === 'Enter' && !e.shiftKey && sendOrderChat()}
+                        disabled={orderChatSending}
+                        style="font-size:12px;"
+                      />
+                      <button class="btn btn-primary btn-sm" on:click={sendOrderChat} disabled={orderChatSending || !orderChatMsg.trim()} style="font-size:12px;white-space:nowrap;">
+                        {#if orderChatSending}<span class="spinner-border spinner-border-sm" style="width:12px;height:12px;border-width:1.5px;"></span>{:else}<i class="ti ti-send"></i>{/if}
+                      </button>
+                    </div>
+                  </div>
+                  {/if}
+
+                  <!-- ── Attachments tab ── -->
+                  {#if orderActiveTab === 'attachments'}
+                  <div class="op-attach-wrap"
+                    on:dragenter={handleOrderDragEnter}
+                    on:dragleave={handleOrderDragLeave}
+                    on:dragover={handleOrderDragOver}
+                    on:drop={handleOrderDrop}
+                  >
+                    {#if orderIsDragOver}
+                      <div class="drag-overlay" aria-hidden="true">
+                        <div class="drag-overlay-content">
+                          <i class="ti ti-upload"></i>
+                          <span>Drop files here</span>
+                        </div>
+                      </div>
+                    {/if}
+                    <div class="op-attach-list" bind:this={orderAttachListEl}>
+                      {#if orderAttachments.length < orderAttachTotal}
+                        <div class="text-center py-2">
+                          {#if orderAttachLoadingMore}
+                            <span class="text-muted" style="font-size:11px;"><i class="ti ti-loader me-1"></i>Loading…</span>
+                          {:else}
+                            <button class="btn btn-sm btn-outline-secondary px-3 py-1" style="font-size:11px;" on:click={loadMoreOrderAttachments}>
+                              <i class="ti ti-chevron-up me-1"></i>Load older
+                            </button>
+                          {/if}
+                        </div>
+                      {/if}
+                      {#if orderAttachments.length === 0}
+                        <div class="text-center text-muted py-4" style="font-size:12px;"><i class="ti ti-paperclip d-block mb-1" style="font-size:20px;"></i>No attachments yet.</div>
+                      {:else}
+                        {#each orderAttachments as att}
+                          <div class="op-attach-item">
+                            <div class="op-attach-title">{att.title || "Attachment"}</div>
+                            {#if att.link}
+                              <a href={att.link} target="_blank" rel="noopener noreferrer" class="op-attach-link"><i class="ti ti-link me-1"></i>{att.link}</a>
+                            {/if}
+                            {#if att.files?.length}
+                              <div class="d-flex flex-wrap gap-1 mt-1">
+                                {#each att.files as f}
+                                  {@const isImg = f.mimeType?.startsWith('image/')}
+                                  {#if isImg}
+                                    <img src="{ATTACHMENT_BASE_URL}{f.url}" alt={f.originalName} class="op-attach-thumb" on:click={() => openImageLightbox([ATTACHMENT_BASE_URL + f.url], 0)} style="cursor:pointer;" />
+                                  {:else}
+                                    <a href="{ATTACHMENT_BASE_URL}{f.url}" target="_blank" rel="noopener noreferrer" class="op-attach-file-chip" title={f.originalName}>
+                                      <i class="ti ti-file me-1"></i>{f.originalName}
+                                    </a>
+                                  {/if}
+                                {/each}
+                              </div>
+                            {/if}
+                            <div class="op-attach-time">{formatDate(att.createdAt)}</div>
+                          </div>
+                        {/each}
+                      {/if}
+                    </div>
+
+                    <!-- Upload form -->
+                    <div class="op-attach-upload">
+                      <input type="text" class="form-control form-control-sm mb-1" placeholder="Title (optional)" bind:value={orderAttachTitle} style="font-size:12px;" />
+                      <div class="d-flex gap-2 align-items-center">
+                        <label class="op-attach-pick-btn flex-grow-1" title="Click to pick files or drag & drop above">
+                          <i class="ti ti-paperclip me-1"></i>
+                          {#if orderAttachFiles.length > 0}
+                            {orderAttachFiles.length} file{orderAttachFiles.length > 1 ? 's' : ''} selected
+                          {:else}
+                            Pick files or drag & drop
+                          {/if}
+                          <input type="file" multiple accept="*/*" style="display:none;"
+                            on:change={(e) => { orderAttachFiles = Array.from(e.target.files ?? []); }}
+                            bind:this={orderChatFileInput}
+                          />
+                        </label>
+                        <button class="btn btn-primary btn-sm" on:click={addOrderAttachment} disabled={orderAttachSending || orderAttachFiles.length === 0} style="font-size:12px;white-space:nowrap;">
+                          {#if orderAttachSending}<span class="spinner-border spinner-border-sm" style="width:12px;height:12px;border-width:1.5px;"></span>{:else}<i class="ti ti-upload"></i> Upload{/if}
+                        </button>
+                      </div>
+                      {#if orderAttachFiles.length > 0}
+                        <div class="d-flex flex-wrap gap-1 mt-2">
+                          {#each orderAttachFiles as f, fi}
+                            <span class="op-attach-file-chip">
+                              <i class="ti ti-file me-1"></i>{f.name}
+                              <button class="op-attach-chip-remove" on:click={() => { orderAttachFiles = orderAttachFiles.filter((_, i) => i !== fi); }}>
+                                <i class="ti ti-x"></i>
+                              </button>
+                            </span>
+                          {/each}
+                        </div>
+                      {/if}
+                    </div>
+                  </div>
+                  {/if}
 
                 {:else}
                   <div class="text-center text-muted py-5">Failed to load order.</div>
                 {/if}
               </div>
             </div>
-          </div>
+          {/if}
+
+        </div>
         {/if}
+        <!-- ── End right panel stack ── -->
 
       </div>
     {/if}
@@ -3460,6 +3847,50 @@
 
 <style>
   /* ── Badge tab selector ─────────────────────────────── */
+  /* ── Order drawer tabs ─────────────────────────────── */
+  .op-tab-btn {
+    padding: 3px 10px;
+    border-radius: 16px;
+    border: 1.5px solid #dee2e6;
+    background: transparent;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    color: #6c757d;
+    transition: all 0.15s ease;
+    line-height: 1.6;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+  }
+  .op-tab-btn:hover { border-color: #adb5bd; background: #f0f4ff; color: #495057; }
+  .op-tab-btn--active { background: #2563eb; color: #fff; border-color: #2563eb; }
+
+  /* ── Order chat tab ─────────────────────────────── */
+  .op-chat-wrap { display: flex; flex-direction: column; height: 100%; }
+  .op-chat-list { flex: 1 1 0; overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+  .op-chat-msg { display: flex; flex-direction: column; gap: 2px; }
+  .op-chat-meta { display: flex; align-items: baseline; gap: 6px; }
+  .op-chat-sender { font-size: 11px; font-weight: 600; color: #3b5bdb; }
+  .op-chat-time { font-size: 10px; color: #adb5bd; }
+  .op-chat-bubble { background: #f1f3f5; border-radius: 0 8px 8px 8px; padding: 6px 10px; font-size: 12px; color: #212529; line-height: 1.5; word-break: break-word; }
+  .op-chat-input-row { display: flex; gap: 6px; padding: 8px 12px; border-top: 1px solid #f0f0f0; background: #fafafa; flex-shrink: 0; }
+
+  /* ── Order attachments tab ─────────────────────────────── */
+  .op-attach-wrap { display: flex; flex-direction: column; height: 100%; position: relative; }
+  .op-attach-list { flex: 1 1 0; overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+  .op-attach-item { background: #f8f9fa; border-radius: 8px; padding: 8px 10px; font-size: 12px; }
+  .op-attach-title { font-weight: 600; color: #343a40; margin-bottom: 2px; }
+  .op-attach-link { font-size: 11px; color: #3b5bdb; word-break: break-all; display: block; }
+  .op-attach-time { font-size: 10px; color: #adb5bd; margin-top: 4px; }
+  .op-attach-thumb { width: 52px; height: 52px; object-fit: cover; border-radius: 6px; border: 1px solid #dee2e6; }
+  .op-attach-file-chip { display: inline-flex; align-items: center; font-size: 10px; background: #e9ecef; color: #495057; border-radius: 4px; padding: 2px 6px; text-decoration: none; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; gap: 3px; }
+  .op-attach-chip-remove { background: none; border: none; padding: 0; cursor: pointer; color: #868e96; display: flex; align-items: center; flex-shrink: 0; font-size: 10px; line-height: 1; }
+  .op-attach-chip-remove:hover { color: #dc3545; }
+  .op-attach-upload { padding: 8px 12px; border-top: 1px solid #f0f0f0; background: #fafafa; flex-shrink: 0; }
+  .op-attach-pick-btn { display: flex; align-items: center; justify-content: center; font-size: 11px; background: #f1f3f5; color: #495057; border: 1.5px dashed #adb5bd; border-radius: 6px; padding: 5px 10px; cursor: pointer; transition: border-color 0.15s, background 0.15s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .op-attach-pick-btn:hover { border-color: #3b5bdb; background: #eef2ff; color: #3b5bdb; }
+
   .badge-tab {
     display: inline-block;
     padding: 4px 12px;
@@ -4670,11 +5101,23 @@
 
   /* ── Order Side Drawer ───────────────────────────────────────────── */
   .order-inline-panel {
-    height: 100%; display: flex; flex-direction: column;
+    height: calc(100vh - 152px);
+    min-height: 480px;
+    display: flex;
+    flex-direction: column;
   }
   .order-inline-body {
-    flex: 1; overflow-y: auto; padding: 14px 16px;
-    max-height: calc(100vh - 160px);
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 16px;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .order-inline-body .op-chat-wrap,
+  .order-inline-body .op-attach-wrap {
+    margin: -14px -16px;
+    height: calc(100% + 28px);
   }
   .order-inline-body::-webkit-scrollbar { width: 4px; }
   .order-inline-body::-webkit-scrollbar-track { background: transparent; }

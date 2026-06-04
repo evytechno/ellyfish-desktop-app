@@ -11,6 +11,7 @@
   import * as pdfFonts from "pdfmake/build/vfs_fonts";
   import * as XLSX from "xlsx";
   import DynamicDataTable from "$lib/components/DynamicDataTable.svelte";
+  import PIWOTIModal from "$lib/components/PIWOTIModal.svelte";
   import { goto } from "$app/navigation";
   import { checkAuth } from "$lib/utils/auth";
   import { statusNamesStore } from "$lib/stores/statusNames";
@@ -894,23 +895,44 @@
         const pi = row.orderPayments?.[0];
         const wo = row.workOrders?.[0];
         const ti = row.invoices?.[0];
-        const piBtn = pi
-          ? `<a href="/admin/payment/${pi.id}" class="btn btn-xs btn-soft-success me-1" title="PI: ${pi.financialYear}/${String(pi.invoiceNo).padStart(6,'0')}">PI ✓</a>`
-          : `<a href="/admin/invoice/add?fromOrder=${row.id}" class="btn btn-xs btn-soft-secondary me-1" title="Create Proforma Invoice">PI</a>`;
+        const piBtn = `<button onclick="window.__openPIWOTI('PI',${row.id})" class="btn btn-xs ${pi ? 'btn-soft-success' : 'btn-soft-secondary'} me-1" title="${pi ? `PI: ${pi.financialYear}/${String(pi.invoiceNo).padStart(6,'0')}` : 'Create PI'}">PI${pi ? ' ✓' : ''}</button>`;
         const woBtn = pi
-          ? (wo
-              ? `<a href="/admin/workorder/${wo.id}" class="btn btn-xs btn-soft-success me-1" title="WO: ${wo.financialYear}/${String(wo.workOrderNo).padStart(6,'0')}">WO ✓</a>`
-              : `<a href="/admin/workorder/add?fromOrder=${row.id}" class="btn btn-xs btn-soft-secondary me-1" title="Create Work Order">WO</a>`)
+          ? `<button onclick="window.__openPIWOTI('WO',${row.id})" class="btn btn-xs ${wo ? 'btn-soft-success' : 'btn-soft-secondary'} me-1" title="${wo ? `WO: ${wo.financialYear}/${String(wo.workOrderNo).padStart(6,'0')}` : 'Create WO'}">WO${wo ? ' ✓' : ''}</button>`
           : `<span class="btn btn-xs btn-soft-secondary me-1 opacity-40" style="cursor:not-allowed" title="Create PI first">WO</span>`;
         const tiBtn = wo
-          ? (ti
-              ? `<a href="/admin/invoice/tax/${ti.id}" class="btn btn-xs btn-soft-success" title="TI: ${ti.financialYear}/${String(ti.invoiceNo).padStart(6,'0')}">TI ✓</a>`
-              : `<a href="/admin/invoice/create?orderId=${row.id}" class="btn btn-xs btn-soft-secondary" title="Create Tax Invoice">TI</a>`)
+          ? `<button onclick="window.__openPIWOTI('TI',${row.id})" class="btn btn-xs ${ti ? 'btn-soft-success' : 'btn-soft-secondary'}" title="${ti ? `TI: ${ti.financialYear}/${String(ti.invoiceNo).padStart(6,'0')}` : 'Create TI'}">TI${ti ? ' ✓' : ''}</button>`
           : `<span class="btn btn-xs btn-soft-secondary opacity-40" style="cursor:not-allowed" title="Create WO first">TI</span>`;
         return `<div class="d-flex gap-1 flex-nowrap">${piBtn}${woBtn}${tiBtn}</div>`;
       },
     },
   ];
+
+  // PI/WO/TI modal (used from DynamicDataTable via window event)
+  let piwotiModalOpen  = false;
+  let piwotiModalType  = "PI";
+  let piwotiModalOrder = null;
+
+  function openPIWOTIModal(type, orderId) {
+    const order = listOrders.find(o => o.id === orderId);
+    if (!order) return;
+    piwotiModalType  = type;
+    piwotiModalOrder = order;
+    piwotiModalOpen  = true;
+  }
+
+  async function onPIWOTIRefresh() {
+    if (!piwotiModalOrder) return;
+    try {
+      const updated = await authApiFetch(`${API_ROUTES.ORDER}/${piwotiModalOrder.id}`);
+      listOrders = listOrders.map(o => o.id === updated.id ? updated : o);
+      piwotiModalOrder = updated;
+    } catch {}
+  }
+
+  // Expose to window so DynamicDataTable @html render can call it
+  if (typeof window !== "undefined") {
+    window.__openPIWOTI = openPIWOTIModal;
+  }
 
   let actions = [
     {
@@ -1231,6 +1253,15 @@
   </div>
   <!-- End Content -->
 </div>
+
+<!-- PI/WO/TI Modal -->
+<PIWOTIModal
+  bind:open={piwotiModalOpen}
+  type={piwotiModalType}
+  order={piwotiModalOrder}
+  on:close={() => (piwotiModalOpen = false)}
+  on:refresh={onPIWOTIRefresh}
+/>
 
 <!-- Add Canvas -->
 <div

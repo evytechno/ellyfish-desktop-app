@@ -6,6 +6,11 @@ body {
   font-family: "Golos Text", sans-serif;
 }
 
+/* Applied by query detail page via classList — overrides any jQuery inline style reset */
+body.query-no-scroll {
+  overflow: hidden !important;
+}
+
 /* ── Global scrollbar theme ─────────────────────────────────────────────── */
 /* Firefox */
 * {
