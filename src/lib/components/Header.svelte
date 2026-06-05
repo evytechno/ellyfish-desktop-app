@@ -420,7 +420,7 @@
         );
       },
     },
-    {
+    ...(currentUser?.subRole !== "telecaller" ? [{
       key: "assignedUsers",
       label: "assigned Users",
       render: (val, row) => {
@@ -428,7 +428,7 @@
           .map((c) => `${c?.name}${c?.company ? `(${c?.company?.name})` : ""}`)
           .join(", ");
       },
-    },
+    }] : []),
     {
       key: "orderDate",
       label: "Order Date",

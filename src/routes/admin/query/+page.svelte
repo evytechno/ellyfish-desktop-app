@@ -95,6 +95,7 @@
   let editPriority = "medium";
   let editOrderId = null;
   let editOrderText = "";
+  let editDescription = "";
   let editError = "";
 
   // order search for edit form
@@ -148,7 +149,7 @@
   function openEditForm(q) {
     editingQuery = q;
     editSubject = q.subject ?? "";
-
+    editDescription = q.description ?? "";
     editType = q.type ?? "other";
     editPriority = q.priority ?? "medium";
     // pre-fill linked order if any
@@ -177,7 +178,7 @@
     try {
       const payload = {
         subject: editSubject,
-
+        description: editDescription.trim() || null,
         type: editType,
         priority: editPriority,
         orderId: editOrderId ?? null,
@@ -825,6 +826,16 @@
               placeholder="Brief subject..."
               maxlength="150"
             />
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Requirement <span class="text-muted">(optional)</span></label>
+            <textarea
+              class="form-control"
+              rows="3"
+              bind:value={editDescription}
+              placeholder="Describe your requirement in detail..."
+              style="font-size:13px;resize:vertical;"
+            ></textarea>
           </div>
           <div class="mb-3">
             <label class="form-label">Type</label>

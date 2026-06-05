@@ -10,6 +10,7 @@
   import { checkAuth } from "$lib/utils/auth";
   import { errorHandle } from "$lib/utils/errorHandle";
   import { queryUnreadCounts, clearUnread, incrementUnread, loadUnreadCounts } from "$lib/stores/queryUnreadCounts";
+  import { pushQueryToast } from "$lib/stores/queryToastStore";
 
   /** Mark all incoming (not-own) messages in a query as read in the DB, then clear local badge. */
   async function markChatsRead(id) {
@@ -180,18 +181,60 @@
   let orderAttachTotal = 0;
   let orderChatLoadingMore = false;
   let orderAttachLoadingMore = false;
+  let orderChatAtBottom = true;
+  let orderChatShowScrollBtn = false;
+  let orderAttachAtBottom = true;
+  let orderAttachShowScrollBtn = false;
+
+  function handleOrderChatScroll() {
+    if (!orderChatListEl) return;
+    const atBottom = orderChatListEl.scrollHeight - orderChatListEl.scrollTop - orderChatListEl.clientHeight < 50;
+    orderChatAtBottom = atBottom;
+    orderChatShowScrollBtn = !atBottom;
+  }
+
+  function handleOrderAttachScroll() {
+    if (!orderAttachListEl) return;
+    const atBottom = orderAttachListEl.scrollHeight - orderAttachListEl.scrollTop - orderAttachListEl.clientHeight < 50;
+    orderAttachAtBottom = atBottom;
+    orderAttachShowScrollBtn = !atBottom;
+  }
 
   async function scrollOrderChatBottom() {
     await tick();
-    if (orderChatListEl) orderChatListEl.scrollTop = orderChatListEl.scrollHeight;
+    if (orderChatAtBottom && orderChatListEl) {
+      orderChatListEl.scrollTop = orderChatListEl.scrollHeight;
+    }
   }
   async function scrollOrderAttachBottom() {
     await tick();
+    if (orderAttachAtBottom && orderAttachListEl) {
+      orderAttachListEl.scrollTop = orderAttachListEl.scrollHeight;
+    }
+  }
+
+  function jumpOrderChatBottom() {
+    orderChatAtBottom = true;
+    orderChatShowScrollBtn = false;
+    if (orderChatListEl) orderChatListEl.scrollTop = orderChatListEl.scrollHeight;
+  }
+
+  function jumpOrderAttachBottom() {
+    orderAttachAtBottom = true;
+    orderAttachShowScrollBtn = false;
     if (orderAttachListEl) orderAttachListEl.scrollTop = orderAttachListEl.scrollHeight;
   }
 
-  $: if (orderActiveTab === 'chat') scrollOrderChatBottom();
-  $: if (orderActiveTab === 'attachments') scrollOrderAttachBottom();
+  $: if (orderActiveTab === 'chat') {
+    orderChatAtBottom = true;
+    orderChatShowScrollBtn = false;
+    scrollOrderChatBottom();
+  }
+  $: if (orderActiveTab === 'attachments') {
+    orderAttachAtBottom = true;
+    orderAttachShowScrollBtn = false;
+    scrollOrderAttachBottom();
+  }
   $: if (orderActiveTab === 'info') enhanceDescription();
 
   async function sendOrderChat() {
@@ -245,14 +288,40 @@
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
   }
-  function handleOrderDrop(e) {
+  async function handleOrderDrop(e) {
     e.preventDefault();
     orderDragDepth = 0;
     orderIsDragOver = false;
+
+    // Chat attachment reference dragged from query chat — check FIRST
+    // (browser also puts dragged images into dataTransfer.files, so files check must come after)
+    const raw = e.dataTransfer?.getData('application/x-chat-attachment');
+    if (raw) {
+      try {
+        const att = JSON.parse(raw);
+        if (att?.url && att?.name && att?.mime) {
+          const result = await Swal.fire({
+            title: 'Add to Order?',
+            text: `Add "${att.name}" to order attachments?`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, Add',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#3b5bdb',
+            cancelButtonColor: '#adb5bd',
+          });
+          if (result.isConfirmed) addOrderAttachmentFromReference(att);
+        }
+      } catch { /* ignore */ }
+      return;
+    }
+
+    // OS files dragged from desktop (fallback)
     const dropped = Array.from(e.dataTransfer?.files ?? []);
-    if (!dropped.length) return;
-    orderAttachFiles = dropped.slice(0, 10);
-    if (orderChatFileInput) orderChatFileInput.value = '';
+    if (dropped.length) {
+      orderAttachFiles = dropped.slice(0, 10);
+      if (orderChatFileInput) orderChatFileInput.value = '';
+    }
   }
   let chats = [];
   let loading = true;
@@ -415,6 +484,95 @@
     if (el.scrollTop + el.clientHeight >= el.scrollHeight - 30) {
       loadMoreInProgress();
     }
+  }
+
+  // ── All Queries Panel ────────────────────────────────────────────────────
+  const ALL_QUERIES_LIMIT = 20;
+  let aqList = [];
+  let aqLoading = false;
+  let aqLoadingMore = false;
+  let aqFiltering = false;
+  let aqPage = 1;
+  let aqTotal = 0;
+  let aqSearch = "";
+  let aqSearchDebounce;
+  let aqListEl;
+  let aqDateFilter = "all";
+  let aqDateField = "lastActivityAt";
+  let aqCustomFrom = "";
+  let aqCustomTo = "";
+
+  function getAqDateRange() {
+    const toISO = (d) => d.toISOString().substring(0, 10);
+    const today = new Date();
+    if (aqDateFilter === "today") { const s = toISO(today); return { dateFrom: s, dateTo: s }; }
+    if (aqDateFilter === "yesterday") { const y = new Date(today); y.setDate(y.getDate() - 1); const s = toISO(y); return { dateFrom: s, dateTo: s }; }
+    if (aqDateFilter === "7days") { const f = new Date(today); f.setDate(f.getDate() - 6); return { dateFrom: toISO(f), dateTo: toISO(today) }; }
+    if (aqDateFilter === "30days") { const f = new Date(today); f.setDate(f.getDate() - 29); return { dateFrom: toISO(f), dateTo: toISO(today) }; }
+    if (aqDateFilter === "custom" && aqCustomFrom && aqCustomTo) return { dateFrom: aqCustomFrom, dateTo: aqCustomTo };
+    return { dateFrom: null, dateTo: null };
+  }
+
+  function setAqDateFilter(filter) {
+    aqDateFilter = filter;
+    if (filter !== "custom") loadAqList(true, true);
+  }
+
+  function handleAqSearch(val) {
+    clearTimeout(aqSearchDebounce);
+    aqSearch = val;
+    aqSearchDebounce = setTimeout(() => loadAqList(true, true), 300);
+  }
+
+  async function loadAqList(reset = false, filtering = false) {
+    if (reset) { aqPage = 1; aqList = []; aqTotal = 0; }
+    if (filtering) aqFiltering = true;
+    else if (aqPage === 1 && aqList.length === 0) aqLoading = true;
+    else aqLoadingMore = true;
+    try {
+      const searchParam = aqSearch.trim() ? `&search=${encodeURIComponent(aqSearch.trim())}` : "";
+      const { dateFrom, dateTo } = getAqDateRange();
+      const dateParam = dateFrom && dateTo ? `&dateFrom=${dateFrom}&dateTo=${dateTo}` : "";
+      const dateFieldParam = aqDateField !== "createdAt" ? `&dateField=${aqDateField}` : "";
+      let res;
+      if (isTech(currentUser) || isTechHelper(currentUser)) {
+        res = await authApiFetch(`${API_ROUTES.QUERY}/assigned?status=in_progress&limit=${ALL_QUERIES_LIMIT}&page=${aqPage}${searchParam}${dateParam}${dateFieldParam}`);
+      } else if (isTelecaller(currentUser)) {
+        res = await authApiFetch(`${API_ROUTES.QUERY}/my?status=in_progress&limit=${ALL_QUERIES_LIMIT}&page=${aqPage}${searchParam}${dateParam}${dateFieldParam}`);
+      } else {
+        res = await authApiFetch(`${API_ROUTES.QUERY}?status=in_progress&limit=${ALL_QUERIES_LIMIT}&page=${aqPage}${searchParam}${dateParam}${dateFieldParam}`);
+      }
+      const items = Array.isArray(res?.data) ? res.data : [];
+      aqTotal = res?.total ?? aqTotal;
+      aqList = aqPage === 1 ? items : [...aqList, ...items];
+    } catch (e) { /* ignore */ } finally {
+      aqLoading = false; aqLoadingMore = false; aqFiltering = false;
+    }
+  }
+
+  async function loadMoreAq() {
+    if (aqLoadingMore || aqLoading || aqList.length >= aqTotal) return;
+    aqPage += 1;
+    await loadAqList(false);
+  }
+
+  function handleAqScroll(e) {
+    const el = e.currentTarget;
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 40) loadMoreAq();
+  }
+
+  function openAllQueriesPanel() {
+    pushRightPanel('allQueries');
+    aqSearch = "";
+    aqDateFilter = "all";
+    aqDateField = "lastActivityAt";
+    aqCustomFrom = "";
+    aqCustomTo = "";
+    loadAqList(true);
+  }
+
+  function closeAllQueriesPanel() {
+    removeFromRightPanel('allQueries');
   }
 
   // Watch other in-progress query rooms for typing events only
@@ -920,7 +1078,8 @@
       sqViewChats = [];
     } finally {
       sqViewLoading = false;
-      await tick();
+      await tick(); // wait for messages to render
+      await tick(); // wait for {#if canSendSqChat()} input block to render
       if (sqChatContainer) sqChatContainer.scrollTop = sqChatContainer.scrollHeight;
     }
   }
@@ -1019,7 +1178,10 @@
   afterUpdate(() => {
     if (shouldScroll && chatContainer) {
       if (isAtBottom) {
-        chatContainer.scrollTop = chatContainer.scrollHeight;
+        // Extra tick ensures {#if canSendChat()} input block is in DOM before scrolling
+        tick().then(() => {
+          if (chatContainer) chatContainer.scrollTop = chatContainer.scrollHeight;
+        });
       }
       shouldScroll = false;
     }
@@ -1213,7 +1375,19 @@
       // handle messages for other in-progress queries — bubble to top of list + track unread
       if (msg.queryId !== Number(queryId)) {
         const isOwn = msg.senderId === currentUser?.id;
-        if (!isOwn) incrementUnread(msg.queryId);
+        if (!isOwn) {
+          incrementUnread(msg.queryId);
+          // toast notification for new message on other query
+          const listItem = inProgressList.find(q => q.id === msg.queryId);
+          pushQueryToast({
+            type: 'message',
+            queryId: msg.queryId,
+            subject: listItem?.subject ?? `Query #${msg.queryId}`,
+            senderLabel: msg.senderName ?? msg.senderSubRole ?? 'Someone',
+            preview: msg.message ? (msg.message.length > 60 ? msg.message.slice(0, 60) + '…' : msg.message) : '📎 Attachment',
+            createdAt: msg.createdAt,
+          });
+        }
         const idx = inProgressList.findIndex(q => q.id === msg.queryId);
         const now = new Date().toISOString();
         if (idx === 0) {
@@ -1364,8 +1538,9 @@
     socket.on("status-update", (data) => {
       // refresh in-progress list on any status change (query may enter or leave in_progress)
       loadInProgress();
-      if (query && data.queryId === Number(queryId)) {
-        // patch main query reactively — triggers all {#if query.status === ...} blocks
+
+      if (data.queryId === Number(queryId)) {
+        // current query — patch reactively + show existing status banner
         query = {
           ...query,
           status: data.status,
@@ -1375,6 +1550,26 @@
             : query.assignedTo,
         };
         showStatusBanner(data.status, data.assignedToName);
+      } else {
+        // other query — increment unread badge + show toast
+        if (data.status === 'in_progress' || data.status === 'reopened') {
+          incrementUnread(data.queryId);
+        }
+        const listItem = inProgressList.find(q => q.id === data.queryId);
+        const statusLabel = data.status === 'in_progress'
+          ? `Picked up${data.assignedToName ? ' by ' + data.assignedToName : ''}`
+          : data.status === 'reopened' ? 'Query reopened'
+          : data.status === 'resolved' ? 'Query resolved'
+          : data.status === 'closed'   ? 'Query closed'
+          : `Status → ${data.status}`;
+        pushQueryToast({
+          type: 'status',
+          queryId: data.queryId,
+          subject: listItem?.subject ?? `Query #${data.queryId}`,
+          status: data.status,
+          statusLabel,
+          createdAt: new Date().toISOString(),
+        });
       }
       // also patch the inline sub-query panel if the event is for that sub-query
       // (tech joins the sub-query room on openSubQueryInline, so this event arrives here too)
@@ -1473,7 +1668,8 @@
         ? res.data.map((c) => ({ ...c, senderType: deriveSenderType(c.isOwn, c.senderLabel, c.senderSubRole), isFinal: c.isFinal ?? false, finalSetById: c.finalSetById ?? null }))
         : [];
       hasMoreOlderChats = res.hasMore ?? false;
-      await tick();
+      await tick(); // wait for messages to render
+      await tick(); // wait for {#if canSendChat()} input block to render
       if (chatContainer) chatContainer.scrollTop = chatContainer.scrollHeight;
     } catch (_) {}
   }
@@ -1540,6 +1736,69 @@
       day: "numeric", month: "short", year: "numeric",
       hour: "2-digit", minute: "2-digit", hour12: true,
     });
+  }
+
+  // ── Drag-and-drop: order attachment reference → query chat ──────────────
+  async function sendChatWithReference(att) {
+    if (!canSendChat()) return;
+    sendingChat = true;
+    try {
+      const data = await authApiFetch(`${API_ROUTES.QUERY}/${queryId}/chat`, {
+        method: 'POST',
+        data: {
+          referenceUrl:  att.url,
+          referenceName: att.name,
+          referenceMime: att.mime,
+        },
+      });
+      if (data?.data) {
+        const chat = data.data;
+        if (!chats.find((c) => c.id === chat.id)) {
+          chats = [...chats, {
+            id:          chat.id,
+            message:     chat.message,
+            attachments: chat.attachments ?? [],
+            createdAt:   chat.createdAt,
+            isOwn:       true,
+            senderLabel: "You",
+            senderType:  "own",
+            replyTo:     null,
+            isNew:       true,
+            read:        false,
+          }];
+        }
+        await tick();
+        scrollChatBottom();
+      }
+    } catch (e) { /* ignore */ }
+    finally { sendingChat = false; }
+  }
+
+  // ── Drag-and-drop: query chat reference → order attachment ───────────────
+  async function addOrderAttachmentFromReference(att) {
+    if (!orderDrawerData) return;
+    orderAttachSending = true;
+    try {
+      const data = await authApiFetch(API_ROUTES.ORDER_ATTACHMENT, {
+        method: 'POST',
+        data: {
+          orderId:      String(orderDrawerData.id),
+          referenceUrl: att.url,
+          originalName: att.name,
+          mimeType:     att.mime,
+          title:        orderAttachTitle.trim() || undefined,
+        },
+      });
+      if (data?.data) {
+        orderAttachments = [...orderAttachments, data.data];
+        orderAttachTitle = '';
+        orderAttachAtBottom = true;
+        orderAttachShowScrollBtn = false;
+        await tick();
+        if (orderAttachListEl) orderAttachListEl.scrollTop = orderAttachListEl.scrollHeight;
+      }
+    } catch (e) { /* ignore */ }
+    finally { orderAttachSending = false; }
   }
 
   async function sendChat() {
@@ -1838,16 +2097,40 @@
     e.dataTransfer.dropEffect = "copy";
   }
 
-  function handleDrop(e) {
+  async function handleDrop(e) {
     if (!canSendChat()) return;
     e.preventDefault();
     dragDepth = 0;
     isDragOver = false;
+
+    // OS files dragged from desktop (existing behaviour)
     const files = Array.from(e.dataTransfer?.files ?? []);
-    if (!files.length) return;
-    const capacity = 5 - attachedFiles.length - pendingFiles.length;
-    if (capacity <= 0) return;
-    pendingFiles = [...pendingFiles, ...files.slice(0, capacity)];
+    if (files.length) {
+      const capacity = 5 - attachedFiles.length - pendingFiles.length;
+      if (capacity <= 0) return;
+      pendingFiles = [...pendingFiles, ...files.slice(0, capacity)];
+      return;
+    }
+
+    // Order attachment reference dragged from order drawer
+    const raw = e.dataTransfer?.getData('application/x-order-attachment');
+    if (!raw) return;
+    try {
+      const att = JSON.parse(raw);
+      if (att?.url && att?.name && att?.mime) {
+        const result = await Swal.fire({
+          title: 'Send to Chat?',
+          text: `Share "${att.name}" in the discussion thread?`,
+          icon: 'question',
+          showCancelButton: true,
+          confirmButtonText: 'Yes, Send',
+          cancelButtonText: 'Cancel',
+          confirmButtonColor: '#3b5bdb',
+          cancelButtonColor: '#adb5bd',
+        });
+        if (result.isConfirmed) sendChatWithReference(att);
+      }
+    } catch { /* ignore */ }
   }
 
   // ── Paste image handler ───────────────────────────────────────────────────
@@ -2325,13 +2608,15 @@
               <div class="card-header py-2 d-flex align-items-center gap-2">
                 <i class="ti ti-receipt text-primary"></i>
                 <span class="fw-semibold small">Current Linked Order</span>
-                <span class="badge bg-secondary ms-1" style="font-size:10px;">{query.order.status}</span>
                 <button class="btn btn-sm btn-outline-primary ms-auto py-0 px-2" style="font-size:11px;" on:click={() => openOrderDrawer(query.order.id)}>
                   <i class="ti ti-external-link me-1"></i>View
                 </button>
               </div>
               <div class="card-body py-2 px-3 small">
-                <div class="fw-semibold text-dark">{query.order.title ?? "-"} <b>#{query.order.pId}</b></div>
+                <div class="fw-semibold text-dark d-flex align-items-center justify-content-between gap-2">
+                  <span>{query.order.title ?? "-"} <b>#{query.order.pId}</b></span>
+                  <span class="badge bg-secondary" style="font-size:10px;white-space:nowrap;">{query.order.status}</span>
+                </div>
               </div>
             </div>
           {/if}
@@ -2590,11 +2875,7 @@
                 <i class="ti ti-loader text-warning"></i>
                 <span class="fw-semibold small">In Progress</span>
                 <span class="badge bg-warning text-dark ms-1">{effectiveInProgressTotal || 0}</span>
-                {#if isTech(currentUser) || isTechHelper(currentUser)}
-                  <a href="/admin/query/assigned" class="ms-auto small text-muted text-decoration-none">View all →</a>
-                {:else}
-                  <a href="/admin/query" class="ms-auto small text-muted text-decoration-none">View all →</a>
-                {/if}
+                <button class="ip-view-all-btn ms-auto" on:click={openAllQueriesPanel}>View all →</button>
               </div>
               <div class="px-3 pt-2 pb-1">
                 <div class="input-group input-group-sm">
@@ -2988,6 +3269,11 @@
                           {#each imgs as att, i}
                             <button
                               class="chat-attachment-img-btn"
+                              draggable="true"
+                              on:dragstart={(e) => {
+                                e.dataTransfer.effectAllowed = 'copy';
+                                e.dataTransfer.setData('application/x-chat-attachment', JSON.stringify({ url: att.url, name: att.name, mime: att.mime, source: 'query_chat' }));
+                              }}
                               on:click={() => openImageLightbox(imgUrls, i)}
                               title="View {att.name}"
                             >
@@ -3001,6 +3287,11 @@
                           {#each files as att}
                             <button
                               class="chat-attachment-file {chat.senderType === 'own' ? 'chat-attachment-file--own' : ''}"
+                              draggable="true"
+                              on:dragstart={(e) => {
+                                e.dataTransfer.effectAllowed = 'copy';
+                                e.dataTransfer.setData('application/x-chat-attachment', JSON.stringify({ url: att.url, name: att.name, mime: att.mime, source: 'query_chat' }));
+                              }}
                               on:click={() => openAttachment(ATTACHMENT_BASE_URL + att.url, att.mime, att.name)}
                             >
                               <i class="ti ti-file-download me-1"></i>{att.name}
@@ -3688,6 +3979,135 @@
           {/if}
 
           <!-- Order panel: visible when on top of stack -->
+          {#if rightPanelTop === 'allQueries'}
+            <div class="card border-0 shadow-sm aq-panel">
+              <!-- Header -->
+              <div class="card-header py-2 px-3 d-flex align-items-center gap-2">
+                <i class="ti ti-loader text-warning"></i>
+                <span class="fw-semibold small">In Progress</span>
+                <span class="badge bg-warning text-dark ms-1">{aqTotal || 0}</span>
+                <button class="btn-close btn-close-sm ms-auto" style="font-size:10px;" on:click={closeAllQueriesPanel}></button>
+              </div>
+
+              <!-- Search -->
+              <div class="px-3 pt-2 pb-2 border-bottom">
+                <div class="input-group input-group-sm">
+                  <span class="input-group-text bg-white border-end-0"><i class="ti ti-search text-muted" style="font-size:13px;"></i></span>
+                  <input
+                    type="text"
+                    class="form-control border-start-0 ps-0"
+                    placeholder="Search queries..."
+                    style="font-size:12px;"
+                    value={aqSearch}
+                    on:input={(e) => handleAqSearch(e.target.value)}
+                  />
+                  {#if aqSearch}
+                    <button class="input-group-text bg-white border-start-0" style="cursor:pointer;" on:click={() => handleAqSearch("")}>
+                      <i class="ti ti-x text-muted" style="font-size:12px;"></i>
+                    </button>
+                  {/if}
+                </div>
+                <div class="d-flex align-items-center gap-1 mt-2 flex-wrap">
+                  <div class="ip-date-filters flex-grow-1">
+                    {#each [["all","All"],["today","Today"],["yesterday","Yest."],["7days","7D"],["30days","30D"],["custom","Custom"]] as [val, label]}
+                      <button
+                        class="ip-date-pill {aqDateFilter === val ? 'active' : ''}"
+                        on:click={() => setAqDateFilter(val)}
+                      >{label}</button>
+                    {/each}
+                  </div>
+                  <select
+                    class="ip-field-select"
+                    bind:value={aqDateField}
+                    on:change={() => { if (aqDateFilter !== "all") loadAqList(true, true); }}
+                  >
+                    <option value="createdAt">Created</option>
+                    <option value="lastActivityAt">Last Activity</option>
+                    <option value="updatedAt">Updated</option>
+                  </select>
+                </div>
+                {#if aqDateFilter === "custom"}
+                  <div class="d-flex gap-1 mt-1">
+                    <input type="date" class="form-control form-control-sm" style="font-size:11px;" bind:value={aqCustomFrom}
+                      on:change={() => { if (aqCustomFrom && aqCustomTo) loadAqList(true, true); }} />
+                    <input type="date" class="form-control form-control-sm" style="font-size:11px;" bind:value={aqCustomTo}
+                      on:change={() => { if (aqCustomFrom && aqCustomTo) loadAqList(true, true); }} />
+                  </div>
+                {/if}
+              </div>
+
+              <!-- List -->
+              <div class="aq-list-body" on:scroll={handleAqScroll} bind:this={aqListEl}>
+                {#if aqLoading}
+                  <div class="d-flex align-items-center justify-content-center" style="height:120px;">
+                    <span class="spinner-border spinner-border-sm text-warning"></span>
+                  </div>
+                {:else if aqFiltering}
+                  <div class="d-flex align-items-center justify-content-center" style="height:80px;">
+                    <span class="spinner-border spinner-border-sm text-primary"></span>
+                  </div>
+                {:else}
+                  {#each aqList as q}
+                    {@const isCurrent = Number(queryId) === q.id}
+                    {@const typeLabel = QUERY_TYPES.find(t => t.value === q.type)?.label ?? q.type ?? "Other"}
+                    <div
+                      class="in-progress-row {isCurrent ? 'in-progress-row--active' : ''}"
+                      role="button"
+                      tabindex="0"
+                      on:click={() => { selectQuery(q.id); closeAllQueriesPanel(); }}
+                      on:keydown={(e) => e.key === 'Enter' && (selectQuery(q.id), closeAllQueriesPanel())}
+                    >
+                      <div class="ip-avatar-wrap">
+                        <div class="ip-avatar {isCurrent ? 'ip-avatar--active' : ''}">
+                          <i class="ti ti-message-circle"></i>
+                        </div>
+                        <span class="ip-priority-dot ip-priority-dot--{q.priority ?? 'medium'}"></span>
+                      </div>
+                      <div class="ip-body">
+                        <div class="ip-subject-row">
+                          <span class="ip-subject">{q.subject}</span>
+                          {#if q.lastActivityAt}
+                            <span class="ip-time">{timeAgo(q.lastActivityAt)}</span>
+                          {/if}
+                        </div>
+                        <span class="ip-sub">
+                          {#if q.lastMessage}
+                            {q.lastMessage.length > 42 ? q.lastMessage.slice(0, 42).trimEnd() + '…' : q.lastMessage}
+                          {:else}
+                            {typeLabel}
+                          {/if}
+                        </span>
+                        {#if q.createdAt}
+                          <span class="ip-raised">
+                            <i class="ti ti-calendar" style="font-size:9px;"></i> {formatDateTime(q.createdAt)}
+                          </span>
+                        {/if}
+                        {#if isMasterView(currentUser)}
+                          <span class="ip-meta">
+                            {#if q.raisedBy?.name}<i class="ti ti-user" style="font-size:9px;"></i> {maskTC(q.raisedBy.name)}{/if}{#if q.assignedTo?.name}&nbsp;·&nbsp;<i class="ti ti-user-check" style="font-size:9px;"></i> {maskTech(q.assignedTo.name)}{/if}
+                          </span>
+                        {/if}
+                      </div>
+                    </div>
+                  {/each}
+                  {#if aqList.length === 0 && !aqLoadingMore}
+                    <div class="text-center text-muted py-4 small">
+                      <i class="ti ti-inbox d-block mb-1" style="font-size:22px;"></i>
+                      No queries found
+                    </div>
+                  {/if}
+                  {#if aqLoadingMore}
+                    <div class="ip-loading-more">
+                      <span class="spinner-border spinner-border-sm text-warning" style="width:14px;height:14px;border-width:2px;"></span>
+                    </div>
+                  {:else if aqList.length >= aqTotal && aqTotal > ALL_QUERIES_LIMIT}
+                    <div class="ip-all-loaded">All caught up</div>
+                  {/if}
+                {/if}
+              </div>
+            </div>
+          {/if}
+
           {#if rightPanelTop === 'order' && orderDrawerOpen}
             <div class="card border-0 shadow-sm order-inline-panel">
               <div class="card-header py-2 px-3 d-flex align-items-center gap-2">
@@ -3832,7 +4252,13 @@
                   <!-- ── Chat tab ── -->
                   {#if orderActiveTab === 'chat'}
                   <div class="op-chat-wrap">
-                    <div class="op-chat-list" bind:this={orderChatListEl}>
+                    <div class="op-list-wrap">
+                      {#if orderChatShowScrollBtn}
+                        <button class="op-scroll-bottom-btn" on:click={jumpOrderChatBottom} title="Scroll to bottom">
+                          <i class="ti ti-arrow-down"></i>
+                        </button>
+                      {/if}
+                      <div class="op-chat-list" bind:this={orderChatListEl} on:scroll={handleOrderChatScroll}>
                       {#if orderChats.length < orderChatTotal}
                         <div class="text-center py-2">
                           {#if orderChatLoadingMore}
@@ -3858,6 +4284,7 @@
                         {/each}
                       {/if}
                     </div>
+                    </div><!-- /op-list-wrap -->
                     <div class="op-chat-input-row">
                       <input
                         class="form-control form-control-sm"
@@ -3890,7 +4317,13 @@
                         </div>
                       </div>
                     {/if}
-                    <div class="op-attach-list" bind:this={orderAttachListEl}>
+                    <div class="op-list-wrap">
+                      {#if orderAttachShowScrollBtn}
+                        <button class="op-scroll-bottom-btn" on:click={jumpOrderAttachBottom} title="Scroll to bottom">
+                          <i class="ti ti-arrow-down"></i>
+                        </button>
+                      {/if}
+                      <div class="op-attach-list" bind:this={orderAttachListEl} on:scroll={handleOrderAttachScroll}>
                       {#if orderAttachments.length < orderAttachTotal}
                         <div class="text-center py-2">
                           {#if orderAttachLoadingMore}
@@ -3916,9 +4349,36 @@
                                 {#each att.files as f}
                                   {@const isImg = f.mimeType?.startsWith('image/')}
                                   {#if isImg}
-                                    <img src="{ATTACHMENT_BASE_URL}{f.url}" alt={f.originalName} class="op-attach-thumb" on:click={() => openImageLightbox([ATTACHMENT_BASE_URL + f.url], 0)} style="cursor:pointer;" />
+                                    <div
+                                      draggable="true"
+                                      on:dragstart={(e) => {
+                                        e.dataTransfer.effectAllowed = 'copy';
+                                        e.dataTransfer.setData('application/x-order-attachment', JSON.stringify({ url: f.url, name: f.originalName, mime: f.mimeType, source: 'order_attachment' }));
+                                      }}
+                                      style="display:inline-block;cursor:grab;"
+                                    >
+                                      <img
+                                        src="{ATTACHMENT_BASE_URL}{f.url}"
+                                        alt={f.originalName}
+                                        class="op-attach-thumb"
+                                        draggable="false"
+                                        on:click={() => openImageLightbox([ATTACHMENT_BASE_URL + f.url], 0)}
+                                        style="cursor:pointer;"
+                                      />
+                                    </div>
                                   {:else}
-                                    <a href="{ATTACHMENT_BASE_URL}{f.url}" target="_blank" rel="noopener noreferrer" class="op-attach-file-chip" title={f.originalName}>
+                                    <a
+                                      href="{ATTACHMENT_BASE_URL}{f.url}"
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      class="op-attach-file-chip"
+                                      title={f.originalName}
+                                      draggable="true"
+                                      on:dragstart={(e) => {
+                                        e.dataTransfer.effectAllowed = 'copy';
+                                        e.dataTransfer.setData('application/x-order-attachment', JSON.stringify({ url: f.url, name: f.originalName, mime: f.mimeType, source: 'order_attachment' }));
+                                      }}
+                                    >
                                       <i class="ti ti-file me-1"></i>{f.originalName}
                                     </a>
                                   {/if}
@@ -3930,39 +4390,78 @@
                         {/each}
                       {/if}
                     </div>
+                    </div><!-- /op-list-wrap -->
 
                     <!-- Upload form -->
                     <div class="op-attach-upload">
-                      <input type="text" class="form-control form-control-sm mb-1" placeholder="Title (optional)" bind:value={orderAttachTitle} style="font-size:12px;" />
-                      <div class="d-flex gap-2 align-items-center">
-                        <label class="op-attach-pick-btn flex-grow-1" title="Click to pick files or drag & drop above">
-                          <i class="ti ti-paperclip me-1"></i>
+                      <input type="text" class="op-attach-title-input" placeholder="Title (optional)" bind:value={orderAttachTitle} />
+                      <label
+                        class="op-attach-dropzone"
+                        class:has-files={orderAttachFiles.length > 0}
+                        title="Click to pick files or drag & drop"
+                        on:dragover={(e) => {
+                          if (e.dataTransfer?.types?.includes('application/x-chat-attachment')) {
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = 'copy';
+                          }
+                        }}
+                        on:drop={async (e) => {
+                          const raw = e.dataTransfer?.getData('application/x-chat-attachment');
+                          if (raw) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            try {
+                              const att = JSON.parse(raw);
+                              if (att?.url && att?.name && att?.mime) {
+                                const result = await Swal.fire({
+                                  title: 'Add to Order?',
+                                  text: `Add "${att.name}" to order attachments?`,
+                                  icon: 'question',
+                                  showCancelButton: true,
+                                  confirmButtonText: 'Yes, Add',
+                                  cancelButtonText: 'Cancel',
+                                  confirmButtonColor: '#3b5bdb',
+                                  cancelButtonColor: '#adb5bd',
+                                });
+                                if (result.isConfirmed) addOrderAttachmentFromReference(att);
+                              }
+                            } catch { /* ignore */ }
+                          }
+                        }}
+                      >
+                        <i class="ti ti-paperclip op-attach-clip-icon"></i>
+                        <span class="op-attach-dropzone-text">
                           {#if orderAttachFiles.length > 0}
-                            {orderAttachFiles.length} file{orderAttachFiles.length > 1 ? 's' : ''} selected
+                            <strong>{orderAttachFiles.length} file{orderAttachFiles.length > 1 ? 's' : ''}</strong> selected
                           {:else}
-                            Pick files or drag & drop
+                            Click to pick files &nbsp;<span class="op-attach-or">or drag & drop</span>
                           {/if}
-                          <input type="file" multiple accept="*/*" style="display:none;"
-                            on:change={(e) => { orderAttachFiles = Array.from(e.target.files ?? []); }}
-                            bind:this={orderChatFileInput}
-                          />
-                        </label>
-                        <button class="btn btn-primary btn-sm" on:click={addOrderAttachment} disabled={orderAttachSending || orderAttachFiles.length === 0} style="font-size:12px;white-space:nowrap;">
-                          {#if orderAttachSending}<span class="spinner-border spinner-border-sm" style="width:12px;height:12px;border-width:1.5px;"></span>{:else}<i class="ti ti-upload"></i> Upload{/if}
-                        </button>
-                      </div>
+                        </span>
+                        <input type="file" multiple accept="*/*" style="display:none;"
+                          on:change={(e) => { orderAttachFiles = Array.from(e.target.files ?? []); }}
+                          bind:this={orderChatFileInput}
+                        />
+                      </label>
                       {#if orderAttachFiles.length > 0}
-                        <div class="d-flex flex-wrap gap-1 mt-2">
+                        <div class="op-attach-chips">
                           {#each orderAttachFiles as f, fi}
-                            <span class="op-attach-file-chip">
-                              <i class="ti ti-file me-1"></i>{f.name}
-                              <button class="op-attach-chip-remove" on:click={() => { orderAttachFiles = orderAttachFiles.filter((_, i) => i !== fi); }}>
+                            <span class="op-attach-file-chip op-attach-file-chip--new">
+                              <i class="ti ti-file-description"></i>
+                              <span class="op-attach-chip-name">{f.name}</span>
+                              <button class="op-attach-chip-remove" on:click={() => { orderAttachFiles = orderAttachFiles.filter((_, i) => i !== fi); }} title="Remove">
                                 <i class="ti ti-x"></i>
                               </button>
                             </span>
                           {/each}
                         </div>
                       {/if}
+                      <button class="op-attach-upload-btn" on:click={addOrderAttachment} disabled={orderAttachSending || orderAttachFiles.length === 0}>
+                        {#if orderAttachSending}
+                          <span class="spinner-border spinner-border-sm" style="width:13px;height:13px;border-width:2px;"></span> Uploading…
+                        {:else}
+                          <i class="ti ti-upload"></i> Upload
+                        {/if}
+                      </button>
                     </div>
                   </div>
                   {/if}
@@ -4006,7 +4505,10 @@
 
   /* ── Order chat tab ─────────────────────────────── */
   .op-chat-wrap { display: flex; flex-direction: column; height: 100%; }
-  .op-chat-list { flex: 1 1 0; overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+  .op-list-wrap { position: relative; flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+  .op-scroll-bottom-btn { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); z-index: 10; width: 30px; height: 30px; border-radius: 50%; border: 1.5px solid #dee2e6; background: #fff; color: #3b5bdb; display: flex; align-items: center; justify-content: center; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.12); cursor: pointer; transition: background 0.15s, color 0.15s; }
+  .op-scroll-bottom-btn:hover { background: #3b5bdb; color: #fff; }
+  .op-chat-list { flex: 1 1 0; overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
   .op-chat-msg { display: flex; flex-direction: column; gap: 2px; }
   .op-chat-meta { display: flex; align-items: baseline; gap: 6px; }
   .op-chat-sender { font-size: 11px; font-weight: 600; color: #3b5bdb; }
@@ -4016,7 +4518,7 @@
 
   /* ── Order attachments tab ─────────────────────────────── */
   .op-attach-wrap { display: flex; flex-direction: column; height: 100%; position: relative; }
-  .op-attach-list { flex: 1 1 0; overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+  .op-attach-list { flex: 1 1 0; overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
   .op-attach-item { background: #f8f9fa; border-radius: 8px; padding: 8px 10px; font-size: 12px; }
   .op-attach-title { font-weight: 600; color: #343a40; margin-bottom: 2px; }
   .op-attach-link { font-size: 11px; color: #3b5bdb; word-break: break-all; display: block; }
@@ -4025,9 +4527,23 @@
   .op-attach-file-chip { display: inline-flex; align-items: center; font-size: 10px; background: #e9ecef; color: #495057; border-radius: 4px; padding: 2px 6px; text-decoration: none; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; gap: 3px; }
   .op-attach-chip-remove { background: none; border: none; padding: 0; cursor: pointer; color: #868e96; display: flex; align-items: center; flex-shrink: 0; font-size: 10px; line-height: 1; }
   .op-attach-chip-remove:hover { color: #dc3545; }
-  .op-attach-upload { padding: 8px 12px; border-top: 1px solid #f0f0f0; background: #fafafa; flex-shrink: 0; }
-  .op-attach-pick-btn { display: flex; align-items: center; justify-content: center; font-size: 11px; background: #f1f3f5; color: #495057; border: 1.5px dashed #adb5bd; border-radius: 6px; padding: 5px 10px; cursor: pointer; transition: border-color 0.15s, background 0.15s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .op-attach-pick-btn:hover { border-color: #3b5bdb; background: #eef2ff; color: #3b5bdb; }
+  .op-attach-upload { padding: 10px 12px; border-top: 1px solid #e9ecef; background: #f8f9fa; flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; }
+  .op-attach-title-input { width: 100%; font-size: 12px; padding: 5px 9px; border: 1px solid #dee2e6; border-radius: 6px; outline: none; color: #495057; background: #fff; transition: border-color 0.15s, box-shadow 0.15s; }
+  .op-attach-title-input:focus { border-color: #748ffc; box-shadow: 0 0 0 3px rgba(116,143,252,0.15); }
+  .op-attach-title-input::placeholder { color: #adb5bd; }
+  .op-attach-dropzone { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #fff; border: 1.5px dashed #ced4da; border-radius: 8px; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+  .op-attach-dropzone:hover, .op-attach-dropzone.has-files { border-color: #748ffc; background: #f0f4ff; }
+  .op-attach-clip-icon { font-size: 16px; color: #868e96; flex-shrink: 0; }
+  .op-attach-dropzone:hover .op-attach-clip-icon, .op-attach-dropzone.has-files .op-attach-clip-icon { color: #4c6ef5; }
+  .op-attach-dropzone-text { font-size: 11.5px; color: #6c757d; }
+  .op-attach-dropzone.has-files .op-attach-dropzone-text { color: #3b5bdb; }
+  .op-attach-or { color: #adb5bd; }
+  .op-attach-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+  .op-attach-file-chip--new { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; background: #e7f0ff; color: #3b5bdb; border: 1px solid #bac8ff; border-radius: 20px; padding: 3px 8px; max-width: 180px; }
+  .op-attach-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 130px; }
+  .op-attach-upload-btn { width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12.5px; font-weight: 600; padding: 7px 0; border: none; border-radius: 8px; background: linear-gradient(135deg, #4c6ef5, #748ffc); color: #fff; cursor: pointer; transition: opacity 0.15s, box-shadow 0.15s; box-shadow: 0 2px 6px rgba(76,110,245,0.25); }
+  .op-attach-upload-btn:hover:not(:disabled) { opacity: 0.9; box-shadow: 0 4px 10px rgba(76,110,245,0.35); }
+  .op-attach-upload-btn:disabled { background: #adb5bd; box-shadow: none; cursor: not-allowed; opacity: 0.7; }
 
   .badge-tab {
     display: inline-block;
@@ -5441,4 +5957,14 @@
   }
   .ip-date-pill:hover { background: #e9ecef; }
   .ip-date-pill.active { background: #0d6efd; color: #fff; border-color: #0d6efd; }
+
+  /* ── View all button ── */
+  .ip-view-all-btn { background: none; border: none; padding: 0; font-size: 12px; color: #6c757d; cursor: pointer; white-space: nowrap; }
+  .ip-view-all-btn:hover { color: #3b5bdb; text-decoration: underline; }
+
+  /* ── All Queries Panel ── */
+  .aq-panel { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+  .aq-list-body { flex: 1 1 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #dee2e6 transparent; }
+  .aq-list-body::-webkit-scrollbar { width: 4px; }
+  .aq-list-body::-webkit-scrollbar-thumb { background: #dee2e6; border-radius: 10px; }
 </style>

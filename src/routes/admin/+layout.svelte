@@ -21,6 +21,7 @@
   } from "$lib/stores/groupChatStore";
   import { pushGcToast } from "$lib/stores/groupChatToastStore";
   import GroupChatToast from "$lib/components/GroupChatToast.svelte";
+  import QueryToast from "$lib/components/QueryToast.svelte";
   import WorkWarning from "$lib/components/WorkWarning.svelte";
 
   let gcSocket = null;
@@ -378,6 +379,7 @@
 <ServerOffline />
 <InactivityWarning bind:show={showWarning} secondsLeft={warningSeconds} />
 <GroupChatToast />
+<QueryToast />
 <WorkWarning bind:show={showWorkWarning} message={workWarningMessage} duration={workWarningDuration} sound={workWarningSound} />
 <main class="main-wrapper min-h-screen bg-gray-50">
   <Header />

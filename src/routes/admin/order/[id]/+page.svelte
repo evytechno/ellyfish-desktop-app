@@ -346,6 +346,51 @@
     }
   }
 
+  // Edit Query from order detail
+  let showEditQueryModal = false;
+  let editingQuery = null;
+  let editQuerySubject = "";
+  let editQueryDescription = "";
+  let editingQueryLoading = false;
+  let editQueryError = "";
+
+  function openEditQueryModal(q) {
+    editingQuery = q;
+    editQuerySubject = q.subject ?? "";
+    editQueryDescription = q.description ?? "";
+    editQueryError = "";
+    showEditQueryModal = true;
+  }
+
+  async function submitEditQuery() {
+    editQueryError = "";
+    if (!editQuerySubject.trim()) {
+      editQueryError = "Subject is required.";
+      return;
+    }
+    editingQueryLoading = true;
+    try {
+      await authApiFetch(`${API_ROUTES.QUERY}/${editingQuery.id}`, {
+        method: "PATCH",
+        data: JSON.stringify({
+          subject: editQuerySubject.trim(),
+          description: editQueryDescription.trim() || null,
+        }),
+      });
+      showEditQueryModal = false;
+      editingQuery = null;
+      Swal.fire({ icon: "success", title: "Query updated", timer: 1200, showConfirmButton: false });
+      loadOrderQueries();
+    } catch (e) {
+      const msg = e?.data?.message;
+      if (typeof msg === "string") editQueryError = msg;
+      else if (Array.isArray(msg)) editQueryError = msg.flatMap((m) => Object.values(m.constraints ?? {})).join(" • ");
+      else editQueryError = "Failed to update query.";
+    } finally {
+      editingQueryLoading = false;
+    }
+  }
+
   async function loadOrder() {
     if (!orderId) return;
     loadingData = true;
@@ -2070,6 +2115,47 @@
                       disabled={raisingQuery}
                     >
                       {raisingQuery ? "Submitting..." : "Submit Query"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            {/if}
+
+            <!-- Edit Query Modal -->
+            {#if showEditQueryModal}
+              <div
+                style="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1055;display:flex;align-items:center;justify-content:center;padding:1rem;"
+                on:click|self={() => (showEditQueryModal = false)}
+              >
+                <div class="card shadow-lg p-4" style="max-width:520px;width:100%;">
+                  <h5 class="fw-bold mb-3">Edit Query</h5>
+                  {#if editQueryError}
+                    <div class="alert alert-danger py-2">{editQueryError}</div>
+                  {/if}
+                  <div class="mb-3">
+                    <label class="form-label">Subject <span class="text-danger">*</span></label>
+                    <input
+                      type="text"
+                      class="form-control"
+                      bind:value={editQuerySubject}
+                      placeholder="Brief subject..."
+                      maxlength="150"
+                    />
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label">Requirement <span class="text-muted">(optional)</span></label>
+                    <textarea
+                      class="form-control"
+                      rows="4"
+                      bind:value={editQueryDescription}
+                      placeholder="Describe your requirement in detail..."
+                      style="resize:vertical;"
+                    ></textarea>
+                  </div>
+                  <div class="d-flex gap-2 justify-content-end">
+                    <button class="btn btn-secondary btn-sm" on:click={() => (showEditQueryModal = false)}>Cancel</button>
+                    <button class="btn btn-primary btn-sm" on:click={submitEditQuery} disabled={editingQueryLoading}>
+                      {editingQueryLoading ? "Saving..." : "Save Changes"}
                     </button>
                   </div>
                 </div>
@@ -4088,13 +4174,22 @@
                                         },
                                       )}
                                     </td>
-                                    <td>
+                                    <td class="d-flex gap-1 align-items-center">
                                       <a
                                         href="/admin/query/{q.id}"
                                         class="btn btn-sm btn-outline-primary"
                                       >
                                         <i class="ti ti-eye"></i>
                                       </a>
+                                      {#if (currentUser?.subRole === 'telecaller' && q.raisedBy?.id === currentUser?.id) || (!currentUser?.subRole && ['master','admin','manager'].includes(currentUser?.role))}
+                                        <button
+                                          class="btn btn-sm btn-outline-secondary"
+                                          on:click={() => openEditQueryModal(q)}
+                                          title="Edit Query"
+                                        >
+                                          <i class="ti ti-pencil"></i>
+                                        </button>
+                                      {/if}
                                     </td>
                                   </tr>
                                 {/each}
