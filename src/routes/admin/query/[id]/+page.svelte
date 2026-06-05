@@ -58,6 +58,7 @@
   let orderDrawerOpen = false;
   let orderDrawerData = null;
   let orderDrawerLoading = false;
+  let orderNoLinkedOrder = false; // true when drawer is open but query has no linked order
 
   // ── Right panel stack: 'subquery' | 'order' ──────────────────────────────
   // Last item = top (visible). Opening a panel pushes it; closing pops/removes it.
@@ -78,6 +79,7 @@
 
   async function openOrderDrawer(orderId) {
     orderDrawerOpen = true;
+    orderNoLinkedOrder = false;
     pushRightPanel('order');
     orderDrawerLoading = true;
     orderDrawerData = null;
@@ -143,10 +145,22 @@
     finally { orderAttachLoadingMore = false; }
   }
 
+  function openOrderDrawerEmpty() {
+    orderDrawerOpen = true;
+    orderNoLinkedOrder = true;
+    orderDrawerData = null;
+    orderDrawerLoading = false;
+    orderChats = [];
+    orderAttachments = [];
+    orderActiveTab = 'info';
+    pushRightPanel('order');
+  }
+
   function closeOrderDrawer() {
     removeFromRightPanel('order');
     orderDrawerOpen = false;
     orderDrawerData = null;
+    orderNoLinkedOrder = false;
     orderActiveTab = 'info';
     orderChats = [];
     orderAttachments = [];
@@ -586,6 +600,28 @@
     }
   }
 
+  // debounce timers for markChatsRead (avoid rapid parallel PATCH calls)
+  let markReadTimer = null;
+  let sqMarkReadTimer = null;
+
+  function debouncedMarkChatsRead(id) {
+    if (markReadTimer) clearTimeout(markReadTimer);
+    markReadTimer = setTimeout(() => {
+      markChatsRead(id).then(() => loadUnreadCounts()).catch(() => {});
+      authApiFetch(`${API_ROUTES.QUERY}/${id}/read-notifications`, { method: "PATCH" }).catch(() => {});
+      markReadTimer = null;
+    }, 800);
+  }
+
+  function debouncedSqMarkChatsRead(id) {
+    if (sqMarkReadTimer) clearTimeout(sqMarkReadTimer);
+    sqMarkReadTimer = setTimeout(() => {
+      markChatsRead(id).then(() => loadUnreadCounts()).catch(() => {});
+      authApiFetch(`${API_ROUTES.QUERY}/${id}/read-notifications`, { method: "PATCH" }).catch(() => {});
+      sqMarkReadTimer = null;
+    }, 800);
+  }
+
   // live status banner
   let statusBanner = null; // { status, assignedToName } | null
   let bannerTimer = null;
@@ -608,6 +644,7 @@
 
   function _reloadForId(id) {
     disconnectSocket();
+    const _wasOrderDrawerOpen = orderDrawerOpen;
     typingQueries = new Set();
     query = null;
     chats = [];
@@ -650,10 +687,19 @@
         return;
       }
       loadSubQueries(id);
+      // reload order drawer with new query's order, or show "no order" message
+      if (_wasOrderDrawerOpen) {
+        if (query?.order?.id) {
+          openOrderDrawer(query.order.id);
+        } else {
+          openOrderDrawerEmpty();
+        }
+      }
     });
     loadChats(id);
     connectSocket();
     loadInProgress();
+    markChatsRead(id).then(() => loadUnreadCounts()).catch(() => {});
     authApiFetch(`${API_ROUTES.QUERY}/${id}/read-notifications`, { method: "PATCH" }).catch(() => {});
   }
 
@@ -1220,6 +1266,8 @@
     disconnectSocket();
     window.removeEventListener("popstate", handlePopState);
     if (bannerTimer) clearTimeout(bannerTimer);
+    if (markReadTimer) clearTimeout(markReadTimer);
+    if (sqMarkReadTimer) clearTimeout(sqMarkReadTimer);
   });
 
   // Sync panel state with browser back/forward — if ?sq= disappears, close; if it appears, open.
@@ -1242,9 +1290,10 @@
     newId = Number(newId);
     if (newId === Number(queryId)) return;
 
-    // close sub-query panel and order drawer if open
+    // close sub-query panel if open
     if (viewingSubQueryId) closeSubQueryInline();
-    if (orderDrawerOpen) closeOrderDrawer();
+    // track if order drawer was open — will reload or close after new query loads
+    const _wasOrderDrawerOpen = orderDrawerOpen;
 
     // stop typing on the old query
     if (isTyping) {
@@ -1268,6 +1317,8 @@
     isAtBottom = true;
     statusBanner = null;
     if (bannerTimer) clearTimeout(bannerTimer);
+    if (markReadTimer) clearTimeout(markReadTimer);
+    if (sqMarkReadTimer) clearTimeout(sqMarkReadTimer);
     if (chatInputEl) chatInputEl.style.height = "auto";
 
     // show shimmer bar — old query detail + chat stay visible underneath
@@ -1294,6 +1345,15 @@
     hasMoreOlderChats = newChatsRes.hasMore ?? false;
     loadingOlder = false;
     switching = false;
+
+    // reload order drawer with new query's order, or show "no order" message
+    if (_wasOrderDrawerOpen) {
+      if (newQuery?.order?.id) {
+        openOrderDrawer(newQuery.order.id);
+      } else {
+        openOrderDrawerEmpty();
+      }
+    }
 
     await tick();
     if (chatContainer) chatContainer.scrollTop = chatContainer.scrollHeight;
@@ -1348,7 +1408,7 @@
           sqNewMsgCount += 1;
           sqShowNewMsgBanner = true;
         }
-        if (!isOwn) markChatsRead(viewingSubQueryId);
+        if (!isOwn) debouncedSqMarkChatsRead(viewingSubQueryId);
         // bump parent query's lastActivityAt + lastMessage so in-progress list re-sorts and preview updates
         const _sqIpIdx = inProgressList.findIndex(q => q.id === Number(queryId));
         if (_sqIpIdx !== -1) {
@@ -1452,8 +1512,8 @@
         showNewMsgBanner = true;
       }
 
-      // keep DB in sync — mark incoming messages read while actively viewing
-      if (!isOwn) markChatsRead(queryId);
+      // keep DB in sync — mark incoming messages read while actively viewing (debounced)
+      if (!isOwn) debouncedMarkChatsRead(queryId);
       // bump lastActivityAt + lastMessage on current query so in-progress list re-sorts and preview updates
       const _ipIdx = inProgressList.findIndex(q => q.id === Number(queryId));
       if (_ipIdx !== -1) {
@@ -2642,6 +2702,15 @@
 
             {#if !qdCardCollapsed}
             <div transition:slide={{ duration: 250 }}>
+
+            <!-- ── Requirement ── -->
+            {#if query.description}
+              <div class="qd-description">
+                <div class="qd-meta-label mb-1"><i class="ti ti-notes"></i> Requirement</div>
+                {query.description}
+              </div>
+            {/if}
+
             <!-- ── Tags: type + priority ── -->
             <div class="qd-tags">
               <span class="qd-tag qd-tag--type">
@@ -2685,14 +2754,6 @@
                 </div>
               {/if}
             </div>
-
-            <!-- ── Requirement ── -->
-            {#if query.description}
-              <div class="qd-description">
-                <div class="qd-meta-label mb-1"><i class="ti ti-notes"></i> Requirement</div>
-                {query.description}
-              </div>
-            {/if}
 
             <!-- ── Actions ── -->
             {#if
@@ -4141,6 +4202,12 @@
               <div class="order-inline-body">
                 {#if orderDrawerLoading}
                   <div class="text-center py-5"><span class="spinner-border text-primary"></span></div>
+                {:else if orderNoLinkedOrder}
+                  <div class="text-center py-5 px-3">
+                    <i class="ti ti-receipt-off d-block mb-2" style="font-size:36px;color:#adb5bd;"></i>
+                    <div class="fw-semibold text-muted mb-1" style="font-size:13px;">No Order Linked</div>
+                    <div class="text-muted" style="font-size:12px;">This query is not linked to any order.</div>
+                  </div>
                 {:else if orderDrawerData}
                   {@const o = orderDrawerData}
 
@@ -5399,6 +5466,14 @@
     white-space: pre-line; line-height: 1.6;
     border-bottom: 1px solid #f1f3f5;
   }
+  .qd-description .qd-meta-label {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase;
+    color: #3b5bdb;
+    background: #eef2ff; border-radius: 5px;
+    padding: 2px 8px; margin-bottom: 6px;
+  }
+  .qd-description .qd-meta-label i { font-size: 12px; }
 
   /* reopened alert */
   .qd-alert {
