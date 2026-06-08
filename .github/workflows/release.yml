@@ -52,6 +52,26 @@ jobs:
           $version = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).package.version
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
 
+      - name: Pre-download NSIS tauri utils (with retry)
+        shell: pwsh
+        run: |
+          $url = "https://github.com/tauri-apps/nsis-tauri-utils/releases/download/nsis_tauri_utils-v0.4.1/nsis_tauri_utils.dll"
+          $dest = "$env:LOCALAPPDATA\tauri\NSIS\Plugins\x86-unicode\nsis_tauri_utils.dll"
+          New-Item -ItemType Directory -Force -Path (Split-Path $dest) | Out-Null
+          $maxRetries = 5
+          for ($i = 1; $i -le $maxRetries; $i++) {
+            try {
+              Write-Host "Attempt $i of $maxRetries..."
+              Invoke-WebRequest -Uri $url -OutFile $dest -TimeoutSec 120
+              Write-Host "Download succeeded."
+              break
+            } catch {
+              Write-Host "Attempt $i failed: $_"
+              if ($i -eq $maxRetries) { exit 1 }
+              Start-Sleep -Seconds (15 * $i)
+            }
+          }
+
       - name: Build and release
         uses: tauri-apps/tauri-action@v0
         env:
