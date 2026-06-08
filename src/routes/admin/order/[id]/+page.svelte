@@ -1896,10 +1896,12 @@
   async function changeOrderStatus(newStatus) {
     if (order.status === newStatus) return;
     const prevStatus = order.status;
+    const prevLabel = $statusNamesStore[prevStatus]?.name ?? prevStatus;
+    const newLabel  = $statusNamesStore[newStatus]?.name  ?? newStatus;
 
     const result = await Swal.fire({
       title: "Change Status?",
-      text: `Change status from "${prevStatus}" to "${newStatus}"?`,
+      text: `Change status from "${prevLabel}" to "${newLabel}"?`,
       icon: "warning",
       showCancelButton: true,
       confirmButtonText: "Yes, change it!",
@@ -1915,17 +1917,17 @@
           status: newStatus,
           orderActivity: {
             title: "Status Changed",
-            description: `Status changed from "${prevStatus}" to "${newStatus}".`,
+            description: `Status changed from "${prevLabel}" to "${newLabel}".`,
           },
         }),
       });
       let newActivity = {
         title: "Status Changed",
-        description: `Status changed from "${prevStatus}" to "${newStatus}".`,
+        description: `Status changed from "${prevLabel}" to "${newLabel}".`,
         createdAt: new Date().toISOString(),
       };
       order.groupedActivities = addActivityToGroupedActivities(newActivity);
-      Swal.fire("Success!", `Status changed to "${newStatus}".`, "success");
+      Swal.fire("Success!", `Status changed to "${newLabel}".`, "success");
     } catch (error) {
       order.status = prevStatus; // revert on error
       Swal.fire("Error!", "Failed to change status.", "error");
@@ -2225,7 +2227,7 @@
                     <div class="dropdown">
                       <a
                         href="#status"
-                        class={`btn btn-xs bg-success fs-12 py-1 px-2 fw-medium d-inline-flex align-items-center text-white ${statusesColors[order?.status] || "bg-gray"}`}
+                        class={`btn btn-xs bg-success fs-12 py-1 px-2 fw-medium d-inline-flex align-items-center text-white text-nowrap ${statusesColors[order?.status] || "bg-gray"}`}
                         data-bs-toggle="dropdown"
                         aria-expanded="false"
                       >

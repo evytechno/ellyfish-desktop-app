@@ -177,6 +177,401 @@
     orderAttachLoadingMore = false;
   }
 
+  const orderStatuses = [
+    "New Lead",
+    "Contacted",
+    "Quotation Sent",
+    "Follow Up",
+    "Needs Assessment",
+    "Qualified",
+    "Negotiation In Progress",
+    "Deal Won",
+    "Unqualified",
+    "Deal Lost",
+  ];
+
+  async function changeOrderStatusFromPanel(newStatus) {
+    if (!orderDrawerData || orderDrawerData.status === newStatus) return;
+    const prevStatus = orderDrawerData.status;
+    const prevLabel  = $statusNamesStore[prevStatus]?.name ?? prevStatus;
+    const newLabel   = $statusNamesStore[newStatus]?.name  ?? newStatus;
+    const result = await Swal.fire({
+      title: "Change Status?",
+      text: `Change status from "${prevLabel}" to "${newLabel}"?`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Yes, change it!",
+    });
+    if (!result.isConfirmed) return;
+    orderDrawerData = { ...orderDrawerData, status: newStatus };
+    try {
+      await authApiFetch(`${API_ROUTES.ORDER}/${orderDrawerData.id}`, {
+        method: "PUT",
+        data: JSON.stringify({
+          status: newStatus,
+          orderActivity: {
+            title: "Status Changed",
+            description: `Status changed from "${prevLabel}" to "${newLabel}".`,
+          },
+        }),
+      });
+      Swal.fire("Success!", `Status changed to "${newLabel}".`, "success");
+    } catch (e) {
+      orderDrawerData = { ...orderDrawerData, status: prevStatus };
+      Swal.fire("Error!", "Failed to change status.", "error");
+    }
+  }
+
+  // ── Edit Client ─────────────────────────────────────────────────────────────
+  let opShowEditClientModal = false;
+  let opEditClientData = { name: "", email: "", mobile: "", whatsapp: "", address: "", gstNumber: "", remark: "" };
+  let opSavingClient = false;
+  let opEditClientErrors = {};
+
+  function opOpenEditClientModal() {
+    const c = orderDrawerData.client;
+    opEditClientData = {
+      name:      c.name      ?? "",
+      email:     c.email     ?? "",
+      mobile:    c.mobile    ?? "",
+      whatsapp:  c.whatsapp  ?? "",
+      address:   c.address   ?? "",
+      gstNumber: c.gstNumber ?? "",
+      remark:    c.remark    ?? "",
+    };
+    opEditClientErrors = {};
+    opShowEditClientModal = true;
+  }
+
+  async function opSaveEditClient() {
+    if (!opEditClientData.name?.trim()) {
+      opEditClientErrors = { name: "Client name is required." };
+      return;
+    }
+    opSavingClient = true;
+    opEditClientErrors = {};
+    try {
+      await authApiFetch(`${API_ROUTES.CLIENT}/${orderDrawerData.client.id}`, {
+        method: "PUT",
+        data: JSON.stringify(opEditClientData),
+      });
+      orderDrawerData = { ...orderDrawerData, client: { ...orderDrawerData.client, ...opEditClientData } };
+      opShowEditClientModal = false;
+    } catch (e) {
+      const errs = e?.data?.message;
+      if (typeof errs === "object") opEditClientErrors = errs;
+      else opEditClientErrors = { name: errs ?? "Failed to update client." };
+    } finally {
+      opSavingClient = false;
+    }
+  }
+
+  // ── Change / Link Client ────────────────────────────────────────────────────
+  let opShowChangeClientModal = false;
+  let opChangeClientQuery = "";
+  let opChangeClientResults = [];
+  let opChangeClientLoading = false;
+  let opChangeClientTimer = null;
+  let opChangeClientDropdown = false;
+  let opCcSelectedExisting = null;
+  let opCcInlineCreate = false;
+  let opCcNewName = "";
+  let opCcNewGst = "";
+  let opCcNewMobile = "";
+  let opCcNewEmail = "";
+  let opCcNewAddress = "";
+  let opCcCreateLoading = false;
+  let opCcCreateErrors = {};
+
+  function opCcOpenInlineCreate() {
+    opCcInlineCreate = true;
+    opCcNewName = opChangeClientQuery;
+    opCcNewGst = opCcNewMobile = opCcNewEmail = opCcNewAddress = "";
+    opCcCreateErrors = {};
+  }
+
+  function opCcCancelInlineCreate() {
+    opCcInlineCreate = false;
+    opCcNewName = opCcNewGst = opCcNewMobile = opCcNewEmail = opCcNewAddress = "";
+    opCcCreateErrors = {};
+  }
+
+  async function opSearchChangeClient(q) {
+    if (!q || q.trim().length < 1) { opChangeClientResults = []; opChangeClientDropdown = false; return; }
+    opChangeClientLoading = true;
+    try {
+      const res = await authApiFetch(`${API_ROUTES.CLIENT}/search?q=${encodeURIComponent(q)}`, { method: "GET" });
+      opChangeClientResults = res.data || [];
+      opChangeClientDropdown = true;
+    } catch (e) { opChangeClientResults = []; }
+    opChangeClientLoading = false;
+  }
+
+  function opOnChangeClientInput() {
+    clearTimeout(opChangeClientTimer);
+    opChangeClientTimer = setTimeout(() => opSearchChangeClient(opChangeClientQuery), 300);
+  }
+
+  async function opConfirmChangeClient(newClient) {
+    try {
+      await authApiFetch(`${API_ROUTES.ORDER}/${orderDrawerData.id}/change-client`, {
+        method: "PUT",
+        data: JSON.stringify({ clientId: newClient.id }),
+      });
+      orderDrawerData = { ...orderDrawerData, client: newClient, clientId: newClient.id, orderContacts: [] };
+      opShowChangeClientModal = false;
+      opChangeClientQuery = "";
+      opChangeClientResults = [];
+      opChangeClientDropdown = false;
+      opCcSelectedExisting = null;
+      opCcCancelInlineCreate();
+      Swal.fire("Success!", `Client changed to "${newClient.name}".`, "success");
+    } catch (e) {
+      Swal.fire("Error!", "Failed to link client.", "error");
+    }
+  }
+
+  async function opCcCreateAndLink() {
+    opCcCreateErrors = {};
+    if (!opCcNewName.trim()) { opCcCreateErrors.name = "Company name is required."; return; }
+    opCcCreateLoading = true;
+    try {
+      const clientRes = await authApiFetch(API_ROUTES.CLIENT, {
+        method: "POST",
+        data: JSON.stringify({
+          name: opCcNewName.trim(),
+          gstNumber: opCcNewGst || undefined,
+          mobile: opCcNewMobile || undefined,
+          email: opCcNewEmail || undefined,
+          address: opCcNewAddress || undefined,
+        }),
+      });
+      await opConfirmChangeClient(clientRes.data);
+      opCcCancelInlineCreate();
+    } catch (e) {
+      const errs = errorHandle(e);
+      if (errs && typeof errs === "object") opCcCreateErrors = errs;
+      else Swal.fire("Error!", "Failed to create client.", "error");
+    } finally {
+      opCcCreateLoading = false;
+    }
+  }
+
+  // ── Add Contact ─────────────────────────────────────────────────────────────
+  let opShowAddContactModal = false;
+  let opAcName = "";
+  let opAcDesignation = "";
+  let opAcMobile = "";
+  let opAcEmail = "";
+  let opAcWhatsapp = "";
+  let opAcAltMobile = "";
+  let opAcAddress = "";
+  let opAcLoading = false;
+  let opAcFormErrors = {};
+
+  function opOpenAddContactModal() {
+    opAcName = opAcDesignation = opAcMobile = opAcEmail = opAcWhatsapp = opAcAltMobile = opAcAddress = "";
+    opAcFormErrors = {};
+    opAcLoading = false;
+    opShowAddContactModal = true;
+  }
+
+  async function opSubmitAddContact() {
+    opAcFormErrors = {};
+    if (!opAcName.trim()) { opAcFormErrors.name = "Name is required."; return; }
+    opAcLoading = true;
+    try {
+      const contactRes = await authApiFetch(API_ROUTES.CLIENT_CONTACT, {
+        method: "POST",
+        data: JSON.stringify({
+          clientId: orderDrawerData.client.id,
+          name: opAcName.trim(),
+          designation: opAcDesignation || undefined,
+          mobile: opAcMobile || undefined,
+          email: opAcEmail || undefined,
+          whatsapp: opAcWhatsapp || undefined,
+          alternateMobile: opAcAltMobile || undefined,
+          address: opAcAddress || undefined,
+        }),
+      });
+      const newContact = contactRes.data;
+      const ocRes = await authApiFetch(API_ROUTES.ORDER_CONTACT, {
+        method: "POST",
+        data: JSON.stringify({ orderId: orderDrawerData.id, clientContactId: newContact.id }),
+      });
+      if (!orderDrawerData.orderContacts) orderDrawerData.orderContacts = [];
+      orderDrawerData = {
+        ...orderDrawerData,
+        orderContacts: [...orderDrawerData.orderContacts, ocRes.data],
+        client: {
+          ...orderDrawerData.client,
+          contacts: [...(orderDrawerData.client.contacts ?? []), newContact],
+        },
+      };
+      opShowAddContactModal = false;
+      Swal.fire("Success!", `Contact "${newContact.name}" added.`, "success");
+    } catch (e) {
+      const errs = errorHandle(e);
+      if (errs && typeof errs === "object") opAcFormErrors = errs;
+      else Swal.fire("Error!", "Failed to add contact.", "error");
+    } finally {
+      opAcLoading = false;
+    }
+  }
+
+  async function opUnlinkContact(orderContactId, contactName) {
+    const result = await Swal.fire({
+      title: "Remove Contact?",
+      text: `Remove ${contactName} from this order?`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Yes, remove",
+    });
+    if (!result.isConfirmed) return;
+    try {
+      await authApiFetch(`${API_ROUTES.ORDER_CONTACT}/${orderContactId}`, { method: "DELETE" });
+      orderDrawerData = {
+        ...orderDrawerData,
+        orderContacts: orderDrawerData.orderContacts.filter(oc => oc.id !== orderContactId),
+      };
+      Swal.fire("Removed!", "Contact unlinked.", "success");
+    } catch (e) {
+      Swal.fire("Error!", "Failed to remove contact.", "error");
+    }
+  }
+
+  // ── New Client + Contact Modal (unlinked orders) ────────────────────────────
+  let opShowNewClientModal = false;
+  let opNcStep = 1;
+  let opNcSearchQuery = "";
+  let opNcSearchResults = [];
+  let opNcSearchLoading = false;
+  let opNcSearchTimer = null;
+  let opNcSearchDropdown = false;
+  let opNcSelectedClient = null;
+  let opNcCreateMode = false;
+  let opNcClientName = "";
+  let opNcClientGst = "";
+  let opNcClientMobile = "";
+  let opNcClientEmail = "";
+  let opNcClientAddress = "";
+  let opNcContactName = "";
+  let opNcContactDesignation = "";
+  let opNcContactMobile = "";
+  let opNcContactEmail = "";
+  let opNcContactWhatsapp = "";
+  let opNcContactAltMobile = "";
+  let opNcSubmitLoading = false;
+  let opNcFormErrors = {};
+
+  function opOpenNewClientModal() {
+    opShowNewClientModal = true;
+    opNcStep = 1;
+    opNcSearchQuery = opNcClientName = opNcClientGst = opNcClientMobile = opNcClientEmail = opNcClientAddress = "";
+    opNcContactName = opNcContactDesignation = opNcContactMobile = opNcContactEmail = opNcContactWhatsapp = opNcContactAltMobile = "";
+    opNcSearchResults = [];
+    opNcSearchDropdown = false;
+    opNcSelectedClient = null;
+    opNcCreateMode = false;
+    opNcFormErrors = {};
+  }
+
+  async function opNcSearchClients(q) {
+    if (!q || q.trim().length < 1) { opNcSearchResults = []; opNcSearchDropdown = false; return; }
+    opNcSearchLoading = true;
+    try {
+      const res = await authApiFetch(`${API_ROUTES.CLIENT}/search?q=${encodeURIComponent(q)}`, { method: "GET" });
+      opNcSearchResults = res.data || [];
+      opNcSearchDropdown = true;
+    } catch (e) { opNcSearchResults = []; }
+    opNcSearchLoading = false;
+  }
+
+  function opNcOnSearchInput() {
+    clearTimeout(opNcSearchTimer);
+    opNcSelectedClient = null;
+    opNcCreateMode = false;
+    opNcSearchTimer = setTimeout(() => opNcSearchClients(opNcSearchQuery), 300);
+  }
+
+  function opNcSelectClient(client) {
+    opNcSelectedClient = client;
+    opNcSearchQuery = client.name;
+    opNcSearchDropdown = false;
+    opNcCreateMode = false;
+  }
+
+  function opNcGoToStep2() {
+    opNcFormErrors = {};
+    if (!opNcSelectedClient && !opNcCreateMode) {
+      opNcFormErrors.step1 = "Please select an existing client or create a new one.";
+      return;
+    }
+    if (opNcCreateMode && !opNcClientName.trim()) {
+      opNcFormErrors.opNcClientName = "Company name is required.";
+      return;
+    }
+    opNcStep = 2;
+  }
+
+  async function opNcSubmit() {
+    opNcFormErrors = {};
+    if (!opNcContactName.trim()) { opNcFormErrors.opNcContactName = "Contact name is required."; return; }
+    opNcSubmitLoading = true;
+    try {
+      let resolvedClient = opNcSelectedClient;
+      if (!resolvedClient) {
+        const clientRes = await authApiFetch(API_ROUTES.CLIENT, {
+          method: "POST",
+          data: JSON.stringify({
+            name: opNcClientName.trim(),
+            gstNumber: opNcClientGst || undefined,
+            mobile: opNcClientMobile || undefined,
+            email: opNcClientEmail || undefined,
+            address: opNcClientAddress || undefined,
+          }),
+        });
+        resolvedClient = clientRes.data;
+      }
+      const contactRes = await authApiFetch(API_ROUTES.CLIENT_CONTACT, {
+        method: "POST",
+        data: JSON.stringify({
+          clientId: resolvedClient.id,
+          name: opNcContactName.trim(),
+          designation: opNcContactDesignation || undefined,
+          mobile: opNcContactMobile || undefined,
+          email: opNcContactEmail || undefined,
+          whatsapp: opNcContactWhatsapp || undefined,
+          alternateMobile: opNcContactAltMobile || undefined,
+        }),
+      });
+      const newContact = contactRes.data;
+      await authApiFetch(`${API_ROUTES.ORDER}/${orderDrawerData.id}/change-client`, {
+        method: "PUT",
+        data: JSON.stringify({ clientId: resolvedClient.id }),
+      });
+      const ocRes = await authApiFetch(API_ROUTES.ORDER_CONTACT, {
+        method: "POST",
+        data: JSON.stringify({ orderId: orderDrawerData.id, clientContactId: newContact.id }),
+      });
+      resolvedClient.contacts = [...(resolvedClient.contacts ?? []), newContact];
+      orderDrawerData = {
+        ...orderDrawerData,
+        client: resolvedClient,
+        clientId: resolvedClient.id,
+        orderContacts: [ocRes.data],
+      };
+      opShowNewClientModal = false;
+      Swal.fire("Success!", `Client "${resolvedClient.name}" linked to this order.`, "success");
+    } catch (e) {
+      const errs = errorHandle(e);
+      if (errs && typeof errs === "object") opNcFormErrors = errs;
+      else Swal.fire("Error!", "Failed to link client.", "error");
+    } finally {
+      opNcSubmitLoading = false;
+    }
+  }
+
   // Order drawer tabs & data
   let orderActiveTab = 'info'; // 'info' | 'chat' | 'attachments'
   let orderChats = [];
@@ -557,10 +952,11 @@
       inProgressTotal = res?.total ?? inProgressTotal;
       if (p === 1) {
         inProgressList = newItems;
-        joinInProgressRooms();
       } else {
         inProgressList = [...inProgressList, ...newItems];
       }
+      // join rooms after Svelte updates the list so all new items are included
+      tick().then(() => joinInProgressRooms());
     } catch (_) {
       if (inProgressPage === 1) inProgressList = [];
     } finally {
@@ -3189,8 +3585,8 @@
                       {/if}
                     </div>
 
-                    <!-- unread count — tech and tech_helper users -->
-                    {#if (isTech(currentUser) || isTechHelper(currentUser)) && unread > 0}
+                    <!-- unread count — all users -->
+                    {#if unread > 0}
                       <span class="in-progress-unread">{unread > 99 ? "99+" : unread}</span>
                     {/if}
                   </div>
@@ -4396,7 +4792,28 @@
                     <div class="op-section-title"><i class="ti ti-receipt"></i>Title</div>
                     <div class="d-flex align-items-start gap-2 flex-wrap">
                       <span class="fw-semibold flex-grow-1" style="font-size:13px;line-height:1.4;">{o.title ?? "-"}</span>
-                      <span class="badge bg-secondary flex-shrink-0" style="font-size:10px;">{o.status ?? "-"}</span>
+                      <div class="dropdown flex-shrink-0">
+                        <a
+                          class="badge bg-secondary text-white dropdown-toggle"
+                          style="font-size:10px;cursor:pointer;text-decoration:none;white-space:nowrap;display:inline-flex;align-items:center;"
+                          data-bs-toggle="dropdown"
+                          aria-expanded="false"
+                        >
+                          {$statusNamesStore[o.status]?.name ?? o.status ?? "-"}
+                        </a>
+                        <div class="dropdown-menu dropdown-menu-end" style="font-size:12px;min-width:170px;">
+                          {#each orderStatuses as status}
+                            <a
+                              class="dropdown-item"
+                              class:active={o.status === status}
+                              href={`#${status}`}
+                              on:click|preventDefault={() => changeOrderStatusFromPanel(status)}
+                            >
+                              {$statusNamesStore[status]?.name ?? status}
+                            </a>
+                          {/each}
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -4420,6 +4837,36 @@
                     <div class="op-section-title"><i class="ti ti-building"></i>Company</div>
                     {#if o.company}<div class="op-row"><span class="op-label"><i class="ti ti-building"></i>Name</span><span class="op-value op-copyable" on:click={() => copyField('company', o.company)}>{o.company}<i class="ti {copiedFieldKey === 'company' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'company'}></i></span></div>{/if}
                     {#if o.gstNumber}<div class="op-row"><span class="op-label"><i class="ti ti-license"></i>GST No.</span><span class="op-value op-copyable font-mono" style="font-size:11px;" on:click={() => copyField('gst', o.gstNumber)}>{o.gstNumber}<i class="ti {copiedFieldKey === 'gst' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'gst'}></i></span></div>{/if}
+                    {#if !o.company && !o.gstNumber && !o.client}
+                      <div class="op-row"><span class="op-value text-muted" style="font-size:11px;">No company info.</span></div>
+                    {/if}
+                  </div>
+
+                  <!-- Client section with edit/change/link actions -->
+                  <div class="op-section">
+                    <div class="op-section-title d-flex align-items-center justify-content-between">
+                      <span><i class="ti ti-building-store"></i>Client</span>
+                      <div class="d-flex gap-1">
+                        {#if o.client}
+                          <button type="button" class="btn btn-xs btn-outline-warning py-0 px-1" style="font-size:10px;" on:click={opOpenEditClientModal}>
+                            <i class="ti ti-pencil"></i>
+                          </button>
+                          <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-1" style="font-size:10px;" on:click={() => { opShowChangeClientModal = true; opChangeClientQuery = ""; opCcSelectedExisting = null; opCcCancelInlineCreate(); }}>
+                            <i class="ti ti-replace me-1"></i>Change
+                          </button>
+                          <button type="button" class="btn btn-xs btn-outline-primary py-0 px-1" style="font-size:10px;" on:click={opOpenAddContactModal}>
+                            <i class="ti ti-plus me-1"></i>Contact
+                          </button>
+                        {:else}
+                          <button type="button" class="btn btn-xs btn-outline-primary py-0 px-1" style="font-size:10px;" on:click={() => { opShowChangeClientModal = true; opChangeClientQuery = ""; opCcSelectedExisting = null; opCcCancelInlineCreate(); }}>
+                            <i class="ti ti-link me-1"></i>Link
+                          </button>
+                          <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-1" style="font-size:10px;" on:click={opOpenNewClientModal}>
+                            <i class="ti ti-plus me-1"></i>Contact
+                          </button>
+                        {/if}
+                      </div>
+                    </div>
                     {#if o.client}
                       {#if o.client.name}<div class="op-row"><span class="op-label"><i class="ti ti-id-badge"></i>Client</span><span class="op-value op-copyable" on:click={() => copyField('clientName', o.client.name)}>{o.client.name}<i class="ti {copiedFieldKey === 'clientName' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'clientName'}></i></span></div>{/if}
                       {#if o.client.gstNumber}<div class="op-row"><span class="op-label"><i class="ti ti-license"></i>Client GST</span><span class="op-value op-copyable font-mono" style="font-size:11px;" on:click={() => copyField('clientGst', o.client.gstNumber)}>{o.client.gstNumber}<i class="ti {copiedFieldKey === 'clientGst' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'clientGst'}></i></span></div>{/if}
@@ -4428,20 +4875,24 @@
                       {#if o.client.email}<div class="op-row"><span class="op-label"><i class="ti ti-mail"></i>Client Email</span><span class="op-value op-copyable" on:click={() => copyField('clientEmail', o.client.email)}>{o.client.email}<i class="ti {copiedFieldKey === 'clientEmail' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'clientEmail'}></i></span></div>{/if}
                       {#if o.client.address}<div class="op-row"><span class="op-label"><i class="ti ti-map-pin"></i>Address</span><span class="op-value op-copyable" on:click={() => copyField('clientAddr', o.client.address)}>{o.client.address}<i class="ti {copiedFieldKey === 'clientAddr' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'clientAddr'}></i></span></div>{/if}
                       {#if o.client.remark}<div class="op-row"><span class="op-label"><i class="ti ti-note"></i>Remark</span><span class="op-value op-copyable" on:click={() => copyField('clientRemark', o.client.remark)}>{o.client.remark}<i class="ti {copiedFieldKey === 'clientRemark' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'clientRemark'}></i></span></div>{/if}
-                    {/if}
-                    {#if !o.company && !o.gstNumber && !o.client}
-                      <div class="op-row"><span class="op-value text-muted" style="font-size:11px;">No company info.</span></div>
+                    {:else}
+                      <div class="op-row"><span class="op-value text-muted" style="font-size:11px;">No client linked.</span></div>
                     {/if}
                   </div>
 
-                  <!-- orderContacts (master contacts) -->
-                  {@const masterContacts = (o.orderContacts ?? []).map(oc => oc.clientContact).filter(Boolean)}
+                  <!-- orderContacts (master contacts) with unlink -->
+                  {@const masterContacts = (o.orderContacts ?? []).map(oc => ({ ...oc.clientContact, _ocId: oc.id })).filter(Boolean)}
                   {#if masterContacts.length}
                     <div class="op-section">
                       <div class="op-section-title"><i class="ti ti-address-book"></i>Contacts</div>
                       {#each masterContacts as c, ci}
                         <div class="op-contact">
-                          <div class="fw-medium" style="font-size:12px;">{c.name ?? "-"}</div>
+                          <div class="d-flex align-items-center justify-content-between">
+                            <div class="fw-medium" style="font-size:12px;">{c.name ?? "-"}</div>
+                            <button type="button" class="btn btn-xs btn-outline-danger py-0 px-1" style="font-size:10px;" title="Remove contact" on:click={() => opUnlinkContact(c._ocId, c.name)}>
+                              <i class="ti ti-x"></i>
+                            </button>
+                          </div>
                           {#if c.designation}<div class="op-contact-designation">{c.designation}</div>{/if}
                           {#if c.mobile}<div class="op-contact-detail"><i class="ti ti-phone"></i><span class="op-copyable" on:click={() => copyField(`mc-mob-${ci}`, c.mobile)}>{c.mobile}<i class="ti {copiedFieldKey === `mc-mob-${ci}` ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === `mc-mob-${ci}`}></i></span></div>{/if}
                           {#if c.alternateMobile}<div class="op-contact-detail"><i class="ti ti-phone-plus"></i><span class="op-copyable" on:click={() => copyField(`mc-alt-${ci}`, c.alternateMobile)}>{c.alternateMobile}<i class="ti {copiedFieldKey === `mc-alt-${ci}` ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === `mc-alt-${ci}`}></i></span></div>{/if}
@@ -5207,10 +5658,13 @@
   }
   .chat-suggestions__chips {
     display: flex; flex-wrap: nowrap; gap: 6px;
-    overflow-x: auto; padding-bottom: 2px;
-    scrollbar-width: none;
+    overflow-x: auto; padding-bottom: 6px;
+    scrollbar-width: thin;
+    scrollbar-color: #c5cff9 transparent;
   }
-  .chat-suggestions__chips::-webkit-scrollbar { display: none; }
+  .chat-suggestions__chips::-webkit-scrollbar { height: 1px; }
+  .chat-suggestions__chips::-webkit-scrollbar-thumb { background: #c5cff9; border-radius: 10px; min-width: 20px; max-width: 60px; }
+  .chat-suggestions__chips::-webkit-scrollbar-track { background: transparent; }
   .chat-suggestion-chip {
     flex-shrink: 0;
     font-size: 11.5px; font-weight: 500;
@@ -6275,3 +6729,313 @@
   .aq-list-body::-webkit-scrollbar { width: 4px; }
   .aq-list-body::-webkit-scrollbar-thumb { background: #dee2e6; border-radius: 10px; }
 </style>
+
+<!-- ── Edit Client Modal ─────────────────────────────────────────────────── -->
+{#if opShowEditClientModal}
+  <div class="modal fade show d-block" role="dialog" style="background:rgba(0,0,0,0.5);z-index:9999;">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="ti ti-building-store me-2"></i>Edit Client</h5>
+          <button type="button" class="btn-close" on:click={() => opShowEditClientModal = false}></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label">Name <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" class:is-invalid={opEditClientErrors.name} bind:value={opEditClientData.name} placeholder="Client name" />
+              {#if opEditClientErrors.name}<div class="invalid-feedback">{opEditClientErrors.name}</div>{/if}
+            </div>
+            <div class="col-12">
+              <label class="form-label">GST Number</label>
+              <input type="text" class="form-control" bind:value={opEditClientData.gstNumber} placeholder="GST Number" maxlength="20" />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Mobile</label>
+              <input type="text" class="form-control" bind:value={opEditClientData.mobile} placeholder="Mobile" maxlength="20" />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">WhatsApp</label>
+              <input type="text" class="form-control" bind:value={opEditClientData.whatsapp} placeholder="WhatsApp" maxlength="20" />
+            </div>
+            <div class="col-12">
+              <label class="form-label">Email</label>
+              <input type="email" class="form-control" bind:value={opEditClientData.email} placeholder="Email" maxlength="100" />
+            </div>
+            <div class="col-12">
+              <label class="form-label">Address</label>
+              <textarea class="form-control" rows="2" bind:value={opEditClientData.address} placeholder="Address" maxlength="500"></textarea>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Remark</label>
+              <textarea class="form-control" rows="2" bind:value={opEditClientData.remark} placeholder="Remark" maxlength="500"></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" on:click={() => opShowEditClientModal = false}>Cancel</button>
+          <button type="button" class="btn btn-primary" on:click={opSaveEditClient} disabled={opSavingClient}>
+            {#if opSavingClient}<span class="spinner-border spinner-border-sm me-1"></span>{/if}
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- ── Change / Link Client Modal ───────────────────────────────────────── -->
+{#if opShowChangeClientModal}
+  <div class="modal fade show d-block" role="dialog" style="background:rgba(0,0,0,0.5);z-index:9999;">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">{orderDrawerData?.client ? "Change Client" : "Link Client"}</h5>
+          <button type="button" class="btn-close" on:click={() => { opShowChangeClientModal = false; opCcSelectedExisting = null; opCcCancelInlineCreate(); }}></button>
+        </div>
+        <div class="modal-body">
+          {#if orderDrawerData?.client}
+            <div class="mb-3 text-muted small">Current: <strong>{orderDrawerData.client.name}</strong></div>
+          {/if}
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <label class="form-label mb-0 fw-semibold">
+              {#if opCcInlineCreate}<i class="ti ti-building-store me-1 text-primary"></i>New Client
+              {:else}<i class="ti ti-search me-1 text-primary"></i>Search Client{/if}
+            </label>
+            {#if opCcInlineCreate}
+              <button type="button" class="btn btn-sm btn-outline-secondary" on:click={() => { opCcCancelInlineCreate(); opCcSelectedExisting = null; opChangeClientQuery = ""; }}>
+                <i class="ti ti-arrow-left me-1"></i>Back to Search
+              </button>
+            {:else}
+              <button type="button" class="btn btn-sm btn-outline-primary" on:click={opCcOpenInlineCreate}>
+                <i class="ti ti-plus me-1"></i>New Client
+              </button>
+            {/if}
+          </div>
+          {#if !opCcInlineCreate}
+            <div class="position-relative">
+              <div class="input-group mb-2">
+                <input type="text" class="form-control" placeholder="Type name, mobile, email, GST..." bind:value={opChangeClientQuery} on:input={opOnChangeClientInput} autocomplete="off" />
+                {#if opChangeClientLoading}<span class="input-group-text"><span class="spinner-border spinner-border-sm"></span></span>{/if}
+              </div>
+              {#if opChangeClientDropdown && opChangeClientResults.length > 0}
+                <div class="border rounded" style="max-height:200px;overflow-y:auto;">
+                  {#each opChangeClientResults as client}
+                    <button type="button" class="d-block w-100 text-start px-3 py-2 border-bottom" style="background:none;" on:click={() => { opChangeClientDropdown = false; opCcSelectedExisting = client; }}>
+                      <div class="fw-semibold"><i class="ti ti-building-store me-1 text-primary"></i>{client.name}</div>
+                      {#if client.gstNumber}<div class="text-muted small">GST: {client.gstNumber}</div>{/if}
+                      {#if client.contacts?.length > 0}<div class="text-muted small">{client.contacts.map(c => c.name).join(", ")}</div>{/if}
+                    </button>
+                  {/each}
+                </div>
+              {/if}
+              {#if opChangeClientDropdown && opChangeClientResults.length === 0}
+                <div class="text-muted small mt-1 fst-italic">No client found — use <strong>New Client</strong> button above.</div>
+              {/if}
+            </div>
+            {#if opCcSelectedExisting}
+              <div class="border rounded p-3 mt-2 bg-light d-flex justify-content-between align-items-start">
+                <div>
+                  <div class="fw-semibold"><i class="ti ti-building-store me-1 text-primary"></i>{opCcSelectedExisting.name}</div>
+                  {#if opCcSelectedExisting.gstNumber}<div class="text-muted small">GST: {opCcSelectedExisting.gstNumber}</div>{/if}
+                  {#if opCcSelectedExisting.contacts?.length > 0}<div class="text-muted small mt-1">{opCcSelectedExisting.contacts.map(c => c.name).join(", ")}</div>{/if}
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" on:click={() => { opCcSelectedExisting = null; opChangeClientQuery = ""; }}><i class="ti ti-x"></i></button>
+              </div>
+            {/if}
+          {/if}
+          {#if opCcInlineCreate}
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="form-label">Company Name <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" class:is-invalid={opCcCreateErrors.name} bind:value={opCcNewName} placeholder="Company name" />
+                {#if opCcCreateErrors.name}<ul class="text-danger mt-1 text-xs"><li>{opCcCreateErrors.name}</li></ul>{/if}
+              </div>
+              <div><label class="form-label">GST Number</label><input type="text" class="form-control" bind:value={opCcNewGst} placeholder="GST number" /></div>
+              <div><label class="form-label">Mobile</label><input type="text" class="form-control" bind:value={opCcNewMobile} placeholder="Mobile" /></div>
+              <div><label class="form-label">Email</label><input type="email" class="form-control" bind:value={opCcNewEmail} placeholder="Email" /></div>
+              <div class="col-span-2"><label class="form-label">Address</label><input type="text" class="form-control" bind:value={opCcNewAddress} placeholder="Address" /></div>
+            </div>
+          {/if}
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" on:click={() => { opShowChangeClientModal = false; opCcCancelInlineCreate(); opCcSelectedExisting = null; }}>Cancel</button>
+          {#if opCcSelectedExisting}
+            <button type="button" class="btn btn-primary" on:click={() => opConfirmChangeClient(opCcSelectedExisting)}>Link Client</button>
+          {/if}
+          {#if opCcInlineCreate}
+            <button type="button" class="btn btn-primary" on:click={opCcCreateAndLink} disabled={opCcCreateLoading}>
+              {opCcCreateLoading ? "Creating..." : "Create & Link"}
+            </button>
+          {/if}
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- ── Add Contact Modal (linked client) ────────────────────────────────── -->
+{#if opShowAddContactModal}
+  <div class="modal fade show d-block" role="dialog" style="background:rgba(0,0,0,0.5);z-index:9999;">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="ti ti-user-plus me-2 text-primary"></i>Add Contact</h5>
+          <button type="button" class="btn-close" on:click={() => opShowAddContactModal = false}></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3 p-2 bg-light rounded d-flex align-items-center gap-2 border">
+            <i class="ti ti-building-store text-primary"></i>
+            <span class="fw-semibold">{orderDrawerData?.client?.name}</span>
+            {#if orderDrawerData?.client?.gstNumber}<span class="text-muted small ms-1">GST: {orderDrawerData.client.gstNumber}</span>{/if}
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="form-label">Name <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" class:is-invalid={opAcFormErrors.name} bind:value={opAcName} placeholder="Contact name" />
+              {#if opAcFormErrors.name}<ul class="text-danger mt-1 text-xs"><li>{opAcFormErrors.name}</li></ul>{/if}
+            </div>
+            <div><label class="form-label">Designation</label><input type="text" class="form-control" bind:value={opAcDesignation} placeholder="e.g. Manager" /></div>
+            <div><label class="form-label">Mobile</label><input type="text" class="form-control" bind:value={opAcMobile} placeholder="Mobile" /></div>
+            <div><label class="form-label">Email</label><input type="email" class="form-control" bind:value={opAcEmail} placeholder="Email" /></div>
+            <div><label class="form-label">Whatsapp</label><input type="text" class="form-control" bind:value={opAcWhatsapp} placeholder="Whatsapp" /></div>
+            <div><label class="form-label">Alternate Mobile</label><input type="text" class="form-control" bind:value={opAcAltMobile} placeholder="Alternate mobile" /></div>
+            <div class="col-span-2"><label class="form-label">Address</label><input type="text" class="form-control" bind:value={opAcAddress} placeholder="Address" /></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" on:click={() => opShowAddContactModal = false}>Cancel</button>
+          <button type="button" class="btn btn-primary" on:click={opSubmitAddContact} disabled={opAcLoading}>
+            {opAcLoading ? "Saving..." : "Add Contact"}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- ── New Client + Contact Modal (unlinked orders) ──────────────────────── -->
+{#if opShowNewClientModal}
+  <div class="modal fade show d-block" role="dialog" style="background:rgba(0,0,0,0.5);z-index:9999;">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">
+            <i class="ti ti-building-store me-2 text-primary"></i>
+            {opNcStep === 1 ? "Step 1 — Select or Create Client" : "Step 2 — Add Contact Person"}
+          </h5>
+          <button type="button" class="btn-close" on:click={() => opShowNewClientModal = false}></button>
+        </div>
+        <div class="modal-body">
+          <div class="d-flex align-items-center gap-2 mb-4">
+            <div class="d-flex align-items-center gap-1">
+              <span class="badge rounded-pill {opNcStep >= 1 ? 'bg-primary' : 'bg-secondary'} px-3 py-2">1</span>
+              <span class="small fw-semibold {opNcStep >= 1 ? 'text-primary' : 'text-muted'}">Client</span>
+            </div>
+            <div class="flex-grow-1 border-top mx-2"></div>
+            <div class="d-flex align-items-center gap-1">
+              <span class="badge rounded-pill {opNcStep >= 2 ? 'bg-primary' : 'bg-secondary'} px-3 py-2">2</span>
+              <span class="small fw-semibold {opNcStep >= 2 ? 'text-primary' : 'text-muted'}">Contact</span>
+            </div>
+          </div>
+          {#if opNcStep === 1}
+            {#if !opNcSelectedClient && !opNcCreateMode}
+              <div class="mb-3 position-relative">
+                <label class="form-label fw-semibold">Search Existing Client</label>
+                <div class="input-group">
+                  <input type="text" class="form-control" placeholder="Type company name, mobile, email..." bind:value={opNcSearchQuery} on:input={opNcOnSearchInput} autocomplete="off" />
+                  {#if opNcSearchLoading}<span class="input-group-text"><span class="spinner-border spinner-border-sm"></span></span>{/if}
+                </div>
+                {#if opNcSearchDropdown && opNcSearchResults.length > 0}
+                  <div class="border rounded bg-white position-absolute w-100 shadow" style="z-index:9999;max-height:220px;overflow-y:auto;top:100%;">
+                    {#each opNcSearchResults as client}
+                      <button type="button" class="d-block w-100 text-start px-3 py-2 border-bottom" style="background:none;" on:click={() => opNcSelectClient(client)}>
+                        <div class="fw-semibold"><i class="ti ti-building-store me-1 text-primary"></i>{client.name}</div>
+                        {#if client.gstNumber}<div class="text-muted small">GST: {client.gstNumber}</div>{/if}
+                        {#if client.contacts?.length > 0}<div class="text-muted small">Contacts: {client.contacts.map(c => c.name).join(", ")}</div>{/if}
+                      </button>
+                    {/each}
+                  </div>
+                {/if}
+                {#if opNcSearchDropdown && opNcSearchResults.length === 0 && opNcSearchQuery.length > 1}
+                  <div class="border rounded bg-white position-absolute w-100 shadow px-3 py-2" style="z-index:9999;top:100%;">
+                    <div class="text-muted small mb-2">No client found for "{opNcSearchQuery}"</div>
+                    <button type="button" class="btn btn-sm btn-outline-primary" on:click={() => { opNcCreateMode = true; opNcClientName = opNcSearchQuery; opNcSearchDropdown = false; }}>
+                      <i class="ti ti-plus me-1"></i>Create New Client
+                    </button>
+                  </div>
+                {/if}
+              </div>
+              <div class="text-center text-muted small my-3">— or —</div>
+              <button type="button" class="btn btn-outline-secondary btn-sm" on:click={() => { opNcCreateMode = true; opNcSearchDropdown = false; }}>
+                <i class="ti ti-plus me-1"></i>Create New Client
+              </button>
+            {/if}
+            {#if opNcSelectedClient}
+              <div class="border rounded p-3 bg-light mb-3">
+                <div class="d-flex justify-content-between align-items-start">
+                  <div>
+                    <div class="fw-bold"><i class="ti ti-building-store me-1 text-primary"></i>{opNcSelectedClient.name}</div>
+                    {#if opNcSelectedClient.gstNumber}<div class="text-muted small">GST: {opNcSelectedClient.gstNumber}</div>{/if}
+                    {#if opNcSelectedClient.contacts?.length > 0}<div class="text-muted small mt-1">Existing: {opNcSelectedClient.contacts.map(c => c.name).join(", ")}</div>{/if}
+                  </div>
+                  <button type="button" class="btn btn-sm btn-outline-danger" on:click={() => { opNcSelectedClient = null; opNcSearchQuery = ""; }}><i class="ti ti-x"></i></button>
+                </div>
+              </div>
+            {/if}
+            {#if opNcCreateMode}
+              <div class="border rounded p-3 bg-light mb-3">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                  <h6 class="mb-0 fw-semibold">New Client</h6>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" on:click={() => { opNcCreateMode = false; opNcClientName = ""; }}><i class="ti ti-x"></i></button>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="form-label">Company Name <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" class:is-invalid={opNcFormErrors.opNcClientName} bind:value={opNcClientName} placeholder="Company name" />
+                    {#if opNcFormErrors.opNcClientName}<ul class="text-danger mt-1 text-xs"><li>{opNcFormErrors.opNcClientName}</li></ul>{/if}
+                  </div>
+                  <div><label class="form-label">GST Number</label><input type="text" class="form-control" bind:value={opNcClientGst} placeholder="GST number" /></div>
+                  <div><label class="form-label">Mobile</label><input type="text" class="form-control" bind:value={opNcClientMobile} placeholder="Mobile" /></div>
+                  <div><label class="form-label">Email</label><input type="email" class="form-control" bind:value={opNcClientEmail} placeholder="Email" /></div>
+                  <div class="col-span-2"><label class="form-label">Address</label><input type="text" class="form-control" bind:value={opNcClientAddress} placeholder="Address" /></div>
+                </div>
+              </div>
+            {/if}
+            {#if opNcFormErrors.step1}<div class="alert alert-warning py-2 small">{opNcFormErrors.step1}</div>{/if}
+          {/if}
+          {#if opNcStep === 2}
+            <div class="mb-2 p-2 bg-light rounded border d-flex align-items-center gap-2">
+              <i class="ti ti-building-store text-primary"></i>
+              <span class="fw-semibold">{opNcSelectedClient?.name || opNcClientName}</span>
+              <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" on:click={() => opNcStep = 1}><i class="ti ti-edit me-1"></i>Change</button>
+            </div>
+            <div class="grid grid-cols-2 gap-3 mt-3">
+              <div>
+                <label class="form-label">Contact Name <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" class:is-invalid={opNcFormErrors.opNcContactName} bind:value={opNcContactName} placeholder="Full name" />
+                {#if opNcFormErrors.opNcContactName}<ul class="text-danger mt-1 text-xs"><li>{opNcFormErrors.opNcContactName}</li></ul>{/if}
+              </div>
+              <div><label class="form-label">Designation</label><input type="text" class="form-control" bind:value={opNcContactDesignation} placeholder="e.g. Manager" /></div>
+              <div><label class="form-label">Mobile</label><input type="text" class="form-control" bind:value={opNcContactMobile} placeholder="Mobile" /></div>
+              <div><label class="form-label">Email</label><input type="email" class="form-control" bind:value={opNcContactEmail} placeholder="Email" /></div>
+              <div><label class="form-label">Whatsapp</label><input type="text" class="form-control" bind:value={opNcContactWhatsapp} placeholder="Whatsapp" /></div>
+              <div><label class="form-label">Alternate Mobile</label><input type="text" class="form-control" bind:value={opNcContactAltMobile} placeholder="Alternate mobile" /></div>
+            </div>
+          {/if}
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" on:click={() => opShowNewClientModal = false}>Cancel</button>
+          {#if opNcStep === 1}
+            <button type="button" class="btn btn-primary" on:click={opNcGoToStep2}>Next <i class="ti ti-arrow-right ms-1"></i></button>
+          {:else}
+            <button type="button" class="btn btn-outline-secondary" on:click={() => opNcStep = 1}><i class="ti ti-arrow-left me-1"></i>Back</button>
+            <button type="button" class="btn btn-primary" on:click={opNcSubmit} disabled={opNcSubmitLoading}>
+              {opNcSubmitLoading ? "Saving..." : "Save & Link Client"}
+            </button>
+          {/if}
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
