@@ -48,13 +48,19 @@ export const saveSession = async (data) => {
  * Call this once on app mount to restore session
  */
 export const restoreSession = async () => {
-  const accessToken  = await secureStorage.get('access_token');
-  const refreshToken = await secureStorage.get('refresh_token');
-  const user         = await secureStorage.get('user');
+  try {
+    const accessToken  = await secureStorage.get('access_token');
+    const refreshToken = await secureStorage.get('refresh_token');
+    const user         = await secureStorage.get('user');
 
-  if (accessToken)  localStorage.setItem('access_token',  accessToken);
-  if (refreshToken) localStorage.setItem('refresh_token', refreshToken);
-  if (user)         localStorage.setItem('user',          user);
+    if (accessToken)  localStorage.setItem('access_token',  accessToken);
+    if (refreshToken) localStorage.setItem('refresh_token', refreshToken);
+    if (user)         localStorage.setItem('user',          user);
 
-  return !!accessToken;
+    return !!accessToken;
+  } catch {
+    // Keychain unavailable (app just updated, OS locked, etc.) — fall back to
+    // whatever is already in localStorage so the session survives if possible.
+    return !!localStorage.getItem('access_token');
+  }
 };

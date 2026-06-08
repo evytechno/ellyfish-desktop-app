@@ -278,7 +278,11 @@
       fd.append('orderId', String(orderDrawerData.id));
       if (orderAttachTitle.trim()) fd.append('title', orderAttachTitle.trim());
       orderAttachFiles.forEach(f => fd.append('file', f));
-      const data = await authApiFetch(API_ROUTES.ORDER_ATTACHMENT, { method: 'POST', data: fd });
+      const data = await authApiFetch(API_ROUTES.ORDER_ATTACHMENT, {
+        method: 'POST',
+        data: fd,
+        timeout: 60000,
+      });
       if (data?.data) {
         orderAttachments = [...orderAttachments, data.data];
         orderAttachFiles = [];
@@ -286,8 +290,18 @@
         if (orderChatFileInput) orderChatFileInput.value = '';
         scrollOrderAttachBottom();
       }
-    } catch (e) { /* ignore */ }
-    finally { orderAttachSending = false; }
+    } catch (e) {
+      const msg = typeof e?.data?.message === 'string' ? e.data.message : null;
+      if (e?.isTimeout) {
+        Swal.fire({ icon: 'warning', title: 'Upload timed out', text: 'The upload took too long. Please try again.' });
+      } else if (e?.isNetworkError) {
+        Swal.fire({ icon: 'warning', title: 'No internet connection', text: 'Could not reach the server. Please check your connection and try again.' });
+      } else if (e?.status === 413 || msg?.toLowerCase().includes('too large')) {
+        Swal.fire({ icon: 'error', title: 'File too large', text: 'Maximum allowed file size is 5 MB. Please reduce the file size and try again.' });
+      } else {
+        Swal.fire({ icon: 'error', title: 'Upload failed', text: msg ?? 'Something went wrong. Please try again.' });
+      }
+    } finally { orderAttachSending = false; }
   }
 
   function handleOrderDragEnter(e) {
@@ -341,11 +355,79 @@
   let chats = [];
   let loading = true;
   let chatMessage = "";
+
+  // ── Suggested messages ───────────────────────────────────────────────────────
+  const SUGGESTED_TELECALLER = [
+    "Please check when free",
+    "This is urgent, please reply",
+    "Client is waiting for answer",
+    "Need quotation ASAP",
+    "Please confirm stock availability",
+    "Client asking for delivery date",
+    "Need price confirmation",
+    "Please check the order details",
+    "Client has a complaint, need help",
+    "Can we discuss this now?",
+    "Please review and reply",
+    "Waiting for your update",
+    "Client is on call, need answer now",
+    "Please check invoice issue",
+    "Will reply in some time",
+    "Currently busy, will check soon",
+    "Can you share a screenshot?",
+  ];
+  const SUGGESTED_TECH = [
+    "Please confirm with client",
+    "Need more details from client",
+    "Checking, will reply soon",
+    "Done, please verify",
+    "Ask client to share more info",
+    "Order is being processed",
+    "Quotation is ready, please check",
+    "Issue is resolved",
+    "Working on it, give me some time",
+    "Please share client contact",
+    "Ask client to wait",
+    "Need approval before proceeding",
+    "Please check and confirm",
+    "Stock available, confirm order",
+    "Please call me when free",
+    "Will reply in some time",
+    "Currently busy, will check soon",
+    "Can you share a screenshot?",
+  ];
+
+  $: suggestions = isTelecaller(currentUser) ? SUGGESTED_TELECALLER
+    : (isTech(currentUser) || isTechHelper(currentUser)) ? SUGGESTED_TECH
+    : [];
+
+  // Recipient is busy/away when last own message is still unread
+  $: recipientBusy = (() => {
+    const lastOwn = [...chats].reverse().find(c => c.isOwn && !c.subQueryEvent && !c.isDeleted);
+    return lastOwn ? lastOwn.read === false : false;
+  })();
+
+  // Show suggestions when: recipient busy OR user is typing (filter mode)
+  $: showSuggestions = canSendChat()
+    && !attachedFiles.length
+    && suggestions.length > 0
+    && (recipientBusy || chatMessage.trim().length > 0);
+
+  // Filter suggestions by typed text (case-insensitive); when empty show all
+  $: filteredSuggestions = chatMessage.trim()
+    ? suggestions.filter(s => s.toLowerCase().includes(chatMessage.trim().toLowerCase()))
+    : suggestions;
+
+  function sendSuggestion(text) {
+    chatMessage = text;
+    sendChat();
+  }
   let attachedFiles = [];
   let pendingFiles = []; // staged from drop/paste — shown in preview modal before confirm
   let pendingIndex = 0;  // active slide in the preview modal
   let fileInputEl;
   let sendingChat = false;
+  let uploadingFileCount = 0; // >0 while files are being uploaded — drives the upload indicator
   let actionLoading = false;
   let qdCardCollapsed = false;
   let switching = false; // true while selectQuery is loading new data (shows shimmer bar)
@@ -1882,8 +1964,16 @@
         await tick();
         if (orderAttachListEl) orderAttachListEl.scrollTop = orderAttachListEl.scrollHeight;
       }
-    } catch (e) { /* ignore */ }
-    finally { orderAttachSending = false; }
+    } catch (e) {
+      const msg = typeof e?.data?.message === 'string' ? e.data.message : null;
+      if (e?.isTimeout) {
+        Swal.fire({ icon: 'warning', title: 'Upload timed out', text: 'The upload took too long. Please try again.' });
+      } else if (e?.isNetworkError) {
+        Swal.fire({ icon: 'warning', title: 'No internet connection', text: 'Could not reach the server. Please check your connection and try again.' });
+      } else {
+        Swal.fire({ icon: 'error', title: 'Upload failed', text: msg ?? 'Something went wrong. Please try again.' });
+      }
+    } finally { orderAttachSending = false; }
   }
 
   async function sendChat() {
@@ -1905,6 +1995,7 @@
     // reset textarea height back to 1 row after clearing
     if (chatInputEl) { chatInputEl.style.height = "auto"; }
 
+    uploadingFileCount = msgFiles.length;
     try {
       const fd = new FormData();
       if (msgText) fd.append("message", msgText);
@@ -1914,6 +2005,8 @@
       const result = await authApiFetch(`${API_ROUTES.QUERY}/${queryId}/chat`, {
         method: "POST",
         data: fd,
+        // give file uploads enough time on slow connections (default 12s is too short)
+        timeout: msgFiles.length > 0 ? 60000 : 12000,
       });
 
       const chat = result.data;
@@ -1958,8 +2051,21 @@
       const status = e?.status;
       const rawMsg = e?.data?.message;
       const msg = typeof rawMsg === "string" ? rawMsg : null;
+      const restoredNote = msgFiles.length > 0 ? "\n\nYour files have been restored — tap Send to retry." : "";
 
-      if (status === 413 || msg?.toLowerCase().includes("too large") || msg?.includes("LIMIT_FILE_SIZE")) {
+      if (e?.isTimeout) {
+        Swal.fire({
+          icon: "warning",
+          title: "Upload timed out",
+          text: `The upload took too long and was cancelled.${restoredNote}`,
+        });
+      } else if (e?.isNetworkError) {
+        Swal.fire({
+          icon: "warning",
+          title: "No internet connection",
+          text: `Could not reach the server. Please check your connection.${restoredNote}`,
+        });
+      } else if (status === 413 || msg?.toLowerCase().includes("too large") || msg?.includes("LIMIT_FILE_SIZE")) {
         Swal.fire({
           icon: "error",
           title: "File too large",
@@ -1975,11 +2081,12 @@
         Swal.fire({
           icon: "error",
           title: "Failed to send",
-          text: msg ?? "Something went wrong. Please try again.",
+          text: (msg ?? "Something went wrong. Please try again.") + restoredNote,
         });
       }
     } finally {
       sendingChat = false;
+      uploadingFileCount = 0;
     }
   }
 
@@ -2077,7 +2184,7 @@
 
   function canSendChat() {
     if (!query) return false;
-    if (isTelecaller(currentUser)) return query.status !== "closed" && query.status !== "resolved";
+    if (isTelecaller(currentUser)) return query.status !== "closed" && query.status !== "resolved" && query.status !== "reopened";
     if (isTech(currentUser)) {
       if (isSubQuery) return query.status !== "closed";
       return query.status === "in_progress" && query.assignedToId === currentUser?.id;
@@ -3496,6 +3603,17 @@
                 bind:this={fileInputEl}
                 on:change={onFileSelect}
               />
+              {#if showSuggestions && filteredSuggestions.length > 0}
+                <div class="chat-suggestions">
+                  <div class="chat-suggestions__chips">
+                    {#each filteredSuggestions as s}
+                      <button class="chat-suggestion-chip" on:click={() => sendSuggestion(s)} disabled={sendingChat}>
+                        {s}
+                      </button>
+                    {/each}
+                  </div>
+                </div>
+              {/if}
               <div class="chat-input-wrap">
                 {#if replyTo}
                   <div class="chat-reply-preview">
@@ -3542,13 +3660,22 @@
                     {/if}
                   </div>
                 {/if}
+                {#if sendingChat && uploadingFileCount > 0}
+                  <div class="chat-upload-indicator">
+                    <span class="chat-upload-indicator__bar"></span>
+                    <span class="chat-upload-indicator__label">
+                      <span class="spinner-border spinner-border-sm me-1" style="width:12px;height:12px;border-width:2px;"></span>
+                      Uploading {uploadingFileCount} file{uploadingFileCount > 1 ? 's' : ''}…
+                    </span>
+                  </div>
+                {/if}
                 <div class="chat-input-bar">
                   <button
                     type="button"
                     class="chat-attach-btn"
                     title="Attach up to 5 files (image, PDF, doc…)"
                     on:click={triggerFilePicker}
-                    disabled={attachedFiles.length >= 5}
+                    disabled={attachedFiles.length >= 5 || sendingChat}
                   >
                     <i class="ti ti-paperclip"></i>
                   </button>
@@ -4213,7 +4340,15 @@
           {/if}
 
           {#if rightPanelTop === 'order' && orderDrawerOpen}
-            <div class="card border-0 shadow-sm order-inline-panel">
+            <div class="card border-0 shadow-sm order-inline-panel"
+              on:dragenter={(e) => {
+                if (e.dataTransfer?.types?.includes('application/x-chat-attachment')) {
+                  orderIsDragOver = true;
+                  orderDragDepth = 1;
+                  orderActiveTab = 'attachments';
+                }
+              }}
+            >
               <div class="card-header py-2 px-3 d-flex align-items-center gap-2">
                 <i class="ti ti-receipt text-primary"></i>
                 <span class="fw-semibold small">Order Detail</span>
@@ -4271,7 +4406,13 @@
                     <div class="op-row"><span class="op-label"><i class="ti ti-hash"></i>Order #</span><span class="op-value op-copyable" on:click={() => copyField('orderId', String(o.pId ?? ''))}>{o.pId ?? "-"}<i class="ti {copiedFieldKey === 'orderId' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'orderId'}></i></span></div>
                     {#if o.category}<div class="op-row"><span class="op-label"><i class="ti ti-tag"></i>Category</span><span class="op-value">{o.category}</span></div>{/if}
                     {#if o.workOrderNumber}<div class="op-row"><span class="op-label"><i class="ti ti-file-invoice"></i>Work Order</span><span class="op-value op-copyable" on:click={() => copyField('workOrder', o.workOrderNumber)}>{o.workOrderNumber}<i class="ti {copiedFieldKey === 'workOrder' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'workOrder'}></i></span></div>{/if}
-                    {#if o.assignedUsers?.length}<div class="op-row"><span class="op-label"><i class="ti ti-user"></i>Assigned To</span><span class="op-value">{o.assignedUsers.map(u => u.name).join(", ")}</span></div>{/if}
+                    {#if o.assignedUsers?.length}<div class="op-row"><span class="op-label"><i class="ti ti-user"></i>Assigned To</span><span class="op-value">{o.assignedUsers.map(u => {
+                        if (!currentUser) return u.name;
+                        if (['master','admin','manager'].includes(currentUser.role)) return u.name;
+                        if (currentUser.subRole === 'tech' || currentUser.subRole === 'tech_helper') return u.subRole === 'telecaller' ? 'User' : u.name;
+                        if (currentUser.subRole === 'telecaller') return (u.subRole === 'tech' || u.subRole === 'tech_helper') ? 'User' : u.name;
+                        return u.name;
+                      }).join(", ")}</span></div>{/if}
                   </div>
 
                   <!-- Company / GST -->
@@ -4504,10 +4645,11 @@
 
                     <!-- Upload form -->
                     <div class="op-attach-upload">
-                      <input type="text" class="op-attach-title-input" placeholder="Title (optional)" bind:value={orderAttachTitle} />
+                      <input type="text" class="op-attach-title-input" placeholder="Title (optional)" bind:value={orderAttachTitle} disabled={orderAttachSending} />
                       <label
                         class="op-attach-dropzone"
                         class:has-files={orderAttachFiles.length > 0}
+                        class:is-uploading={orderAttachSending}
                         title="Click to pick files or drag & drop"
                         on:dragover={(e) => {
                           if (e.dataTransfer?.types?.includes('application/x-chat-attachment')) {
@@ -4548,8 +4690,9 @@
                           {/if}
                         </span>
                         <input type="file" multiple accept="*/*" style="display:none;"
-                          on:change={(e) => { orderAttachFiles = Array.from(e.target.files ?? []); }}
+                          on:change={(e) => { if (!orderAttachSending) orderAttachFiles = Array.from(e.target.files ?? []); }}
                           bind:this={orderChatFileInput}
+                          disabled={orderAttachSending}
                         />
                       </label>
                       {#if orderAttachFiles.length > 0}
@@ -4643,6 +4786,7 @@
   .op-attach-title-input::placeholder { color: #adb5bd; }
   .op-attach-dropzone { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #fff; border: 1.5px dashed #ced4da; border-radius: 8px; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
   .op-attach-dropzone:hover, .op-attach-dropzone.has-files { border-color: #748ffc; background: #f0f4ff; }
+  .op-attach-dropzone.is-uploading { pointer-events: none; opacity: 0.6; cursor: not-allowed; }
   .op-attach-clip-icon { font-size: 16px; color: #868e96; flex-shrink: 0; }
   .op-attach-dropzone:hover .op-attach-clip-icon, .op-attach-dropzone.has-files .op-attach-clip-icon { color: #4c6ef5; }
   .op-attach-dropzone-text { font-size: 11.5px; color: #6c757d; }
@@ -5055,12 +5199,57 @@
     padding: 14px 20px; text-align: center; font-size: 13px; color: #6c757d;
     background: #fff; border-top: 1px solid #f0f0f0; border-radius: 0 0 16px 16px;
   }
+  /* ── Suggested messages ─────────────────────────────────────────────────────── */
+  .chat-suggestions {
+    padding: 5px 12px;
+    background: #f8f9ff;
+    border-top: 1px solid #e9ecef;
+  }
+  .chat-suggestions__chips {
+    display: flex; flex-wrap: nowrap; gap: 6px;
+    overflow-x: auto; padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+  .chat-suggestions__chips::-webkit-scrollbar { display: none; }
+  .chat-suggestion-chip {
+    flex-shrink: 0;
+    font-size: 11.5px; font-weight: 500;
+    padding: 4px 10px; border-radius: 20px;
+    background: #fff; border: 1px solid #c5cff9; color: #3b5bdb;
+    cursor: pointer; transition: background 0.15s, border-color 0.15s;
+    white-space: nowrap;
+  }
+  .chat-suggestion-chip:hover { background: #eef2ff; border-color: #748ffc; }
+  .chat-suggestion-chip:disabled { opacity: 0.5; cursor: not-allowed; }
+
   .chat-input-wrap { background: #fff; border-top: 1px solid #f0f0f0; border-radius: 0 0 16px 16px; }
   .chat-file-preview-row {
     padding: 8px 16px 0;
     display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
   }
   .chip-limit-note { font-size: 11px; color: #868e96; font-style: italic; }
+
+  /* ── Upload progress indicator ──────────────────────────────────────────────── */
+  .chat-upload-indicator {
+    position: relative; overflow: hidden;
+    padding: 5px 14px; background: #eef2ff;
+    border-top: 1px solid #c5cff9;
+    display: flex; align-items: center;
+  }
+  .chat-upload-indicator__bar {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 40%;
+    background: linear-gradient(90deg, transparent, rgba(99,102,241,0.18), transparent);
+    animation: upload-sweep 1.4s ease-in-out infinite;
+  }
+  @keyframes upload-sweep {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(350%); }
+  }
+  .chat-upload-indicator__label {
+    position: relative; z-index: 1;
+    font-size: 12px; color: #3b5bdb; font-weight: 500;
+    display: flex; align-items: center; gap: 4px;
+  }
   .chat-file-chip {
     display: inline-flex; align-items: center; gap: 6px;
     padding: 5px 10px 5px 8px; border-radius: 20px;

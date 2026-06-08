@@ -6,6 +6,7 @@
   import Loader from "$lib/components/Loader.svelte";
   import DynamicDataTable from "$lib/components/DynamicDataTable.svelte";
   import { checkAuth } from "$lib/utils/auth";
+  import { maskAssignedName } from '$lib/utils/maskUser';
   import {
     companiesAllStore,
     usersAllStore,
@@ -621,7 +622,7 @@
             label: "User",
             render: (val, row) =>
               (row?.assignedUsers || [])
-                .map((user) => `${user.name}`)
+                .map((user) => maskAssignedName(user, currentUser))
                 .join(", "),
           },
         ]
@@ -734,7 +735,10 @@
           <div class="flex items-center gap-2 flex-wrap">
             <select bind:value={userId} class="form-select">
               <option value={null}>Select User</option>
-              {#each users as user}
+              {#each users.filter(u => {
+                if (['master','admin','manager'].includes(currentUser?.role)) return true;
+                return u.subRole === currentUser?.subRole;
+              }) as user}
                 <option value={user?.id}>{user?.name}</option>
               {/each}
             </select>

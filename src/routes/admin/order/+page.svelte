@@ -14,6 +14,7 @@
   import PIWOTIModal from "$lib/components/PIWOTIModal.svelte";
   import { goto } from "$app/navigation";
   import { checkAuth } from "$lib/utils/auth";
+  import { maskAssignedName } from '$lib/utils/maskUser';
   import { statusNamesStore } from "$lib/stores/statusNames";
   import {
     companiesAllStore,
@@ -470,7 +471,11 @@
       headers,
       ...listOrders.map((order) => {
         const assignedUsers = (order?.assignedUsers || [])
-          .map((user) => `${user.name} (${user.email})`)
+          .map((user) => {
+            const name = maskAssignedName(user, currentUser);
+            const showEmail = ['master','admin','manager'].includes(currentUser?.role);
+            return showEmail ? `${name} (${user.email})` : name;
+          })
           .join(", ");
         const orderClients = (order?.orderClients || [])
           .map((user) => `${user.name} (${user.email})`)
@@ -565,7 +570,11 @@
     ];
     const newList = listOrders.map((order) => {
       const assignedUsers = (order?.assignedUsers || [])
-        .map((user) => `${user.name} (${user.email})`)
+        .map((user) => {
+          const name = maskAssignedName(user, currentUser);
+          const showEmail = ['master','admin','manager'].includes(currentUser?.role);
+          return showEmail ? `${name} (${user.email})` : name;
+        })
         .join(", ");
       const orderClients = (order?.orderClients || [])
         .map(
@@ -882,7 +891,7 @@
             label: "User",
             render: (val, row) =>
               (row?.assignedUsers || [])
-                .map((user) => `${user.name}`)
+                .map((user) => maskAssignedName(user, currentUser))
                 .join(", "),
           },
         ]
@@ -1025,6 +1034,7 @@
               Lists Title
             </a>
           {/if}
+          {#if !['telecaller','tech','tech_helper'].includes(currentUser?.subRole)}
           <div class="dropdown">
             <a
               href="#Export"
@@ -1056,6 +1066,7 @@
               </ul>
             </div>
           </div>
+          {/if}
           <a
             href="#refresh"
             on:click={refreshPage}
@@ -1142,7 +1153,10 @@
             <div class="flex items-center gap-2 flex-wrap">
               <select bind:value={userId} class="form-select">
                 <option value={null}>Select User</option>
-                {#each users as user}
+                {#each users.filter(u => {
+                  if (['master','admin','manager'].includes(currentUser?.role)) return true;
+                  return u.subRole === currentUser?.subRole;
+                }) as user}
                   <option value={user?.id}>{user?.name}</option>
                 {/each}
               </select>

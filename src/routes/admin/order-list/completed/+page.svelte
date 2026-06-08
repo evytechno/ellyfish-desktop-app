@@ -6,6 +6,7 @@
   import Loader from "$lib/components/Loader.svelte";
   import DynamicDataTable from "$lib/components/DynamicDataTable.svelte";
   import { checkAuth } from "$lib/utils/auth";
+  import { maskAssignedName } from '$lib/utils/maskUser';
   import {
     companiesAllStore,
     usersAllStore,
@@ -588,7 +589,7 @@
             label: "User",
             render: (val, row) =>
               (row?.assignedUsers || [])
-                .map((user) => `${user.name}`)
+                .map((user) => maskAssignedName(user, currentUser))
                 .join(", "),
           },
         ]

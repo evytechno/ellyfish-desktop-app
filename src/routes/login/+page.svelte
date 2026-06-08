@@ -88,8 +88,12 @@
   }
 
   onMount(async () => {
-    // Restore tokens from secure file storage into localStorage
-    await restoreSession();
+    try {
+      // Restore tokens from secure file storage into localStorage
+      await restoreSession();
+    } catch {
+      // Keychain failed — checkAuth will still try localStorage below
+    }
 
     if (checkAuth()) {
       // Token exists — skip login screen, go straight to dashboard

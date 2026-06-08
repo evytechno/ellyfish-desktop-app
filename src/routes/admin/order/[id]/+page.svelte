@@ -18,6 +18,7 @@
   import { get } from "svelte/store";
   import LightBox from "$lib/components/LightBox.svelte";
   import { checkAuth } from "$lib/utils/auth";
+  import { maskAssignedName as _maskAssignedName } from '$lib/utils/maskUser';
   import QuillEditor from "$lib/components/QuillEditor.svelte";
   import DOMPurify from "dompurify";
 
@@ -274,6 +275,11 @@
   let orderId;
   $: orderId = $page.params.id;
   let currentUser = null;
+
+  /** Returns the display name for an assigned user based on the viewer's role/subRole. */
+  function maskAssignedName(assignedUser) {
+    return _maskAssignedName(assignedUser, currentUser);
+  }
 
   // Related Queries
   let orderQueries = [];
@@ -2778,7 +2784,7 @@
                             class="img-fluid rounded-circle w-auto h-auto"
                           />
                         </span>
-                        <span class="order-sidebar-user-name">{assignedUser?.name}</span>
+                        <span class="order-sidebar-user-name">{maskAssignedName(assignedUser)}</span>
                         {#if assignedUser?.status === "banned"}
                           <span class="badge bg-danger order-sidebar-badge">Banned</span>
                         {:else if assignedUser?.status === "inactive"}
@@ -2815,7 +2821,7 @@
                         <span class="order-sidebar-label"
                           ><i class="ti ti-user-edit"></i>Modified By</span
                         >
-                        <span class="order-sidebar-value">{order.assignedUsers[0].name}</span>
+                        <span class="order-sidebar-value">{maskAssignedName(order.assignedUsers[0])}</span>
                       </div>
                     {/if}
                   </div>
@@ -3164,7 +3170,11 @@
                                     {/if}
                                     <div>
                                       <h6 class="fw-medium fs-14 mb-1">
-                                        {activity?.description}
+                                        {#if currentUser?.subRole === 'telecaller' || currentUser?.subRole === 'tech' || currentUser?.subRole === 'tech_helper'}
+                                          {activity?.title}
+                                        {:else}
+                                          {activity?.description}
+                                        {/if}
                                       </h6>
                                       {#if activity.title == "Order Chat Added"}
                                         <p class="mb-1">
@@ -3308,7 +3318,7 @@
                                     </span>
                                     <div>
                                       <h6 class="fw-medium fs-14 mb-1">
-                                        {attachment?.user?.name}
+                                        {maskAssignedName(attachment?.user)}
                                       </h6>
                                       <p class="mb-0 fs-13">
                                         {attachment?.createdAt &&
@@ -3612,7 +3622,7 @@
                                   </span>
                                   <p class="mb-0">
                                     <span class="text-dark fw-medium"
-                                      >{chat?.user?.name}</span
+                                      >{maskAssignedName(chat?.user)}</span
                                     >
                                     {#if chat?.user?.status === "banned"}
                                       <span
@@ -3956,7 +3966,7 @@
 
                                   <div>
                                     <h6 class="fw-medium fs-14 mb-1">
-                                      {reminder?.user?.name}
+                                      {maskAssignedName(reminder?.user)}
                                     </h6>
                                     <p class="mb-0 fs-13">
                                       {reminder?.createdAt &&
@@ -4088,13 +4098,13 @@
                                   <tr>
                                     <td class="fw-semibold">{q.subject}</td>
                                     {#if currentUser?.subRole === "tech"}
-                                      <td>{q.raisedBy?.name ?? "-"}</td>
+                                      <td>{maskAssignedName(q.raisedBy) ?? "-"}</td>
                                     {:else if currentUser?.subRole === "telecaller"}
                                       <td>
                                         {#if q.assignedTo}
                                           <span
                                             class="badge bg-success-subtle text-success-emphasis"
-                                            >{q.assignedTo.name}</span
+                                            >{maskAssignedName(q.assignedTo)}</span
                                           >
                                         {:else}
                                           <span class="text-muted"
@@ -4962,7 +4972,13 @@
           >
             {#if users.length}
               {@const filteredUsers = users
-                .filter((u) => u.status !== "banned")
+                .filter((u) => u.status !== "banned" && u.status !== "inactive")
+                .filter((u) => {
+                  if (['master','admin','manager'].includes(currentUser?.role)) return true;
+                  if (currentUser?.subRole === 'telecaller') return u.subRole === 'telecaller';
+                  if (currentUser?.subRole === 'tech' || currentUser?.subRole === 'tech_helper') return u.subRole === 'tech' || u.subRole === 'tech_helper';
+                  return false;
+                })
                 .filter((u) =>
                   u.name?.toLowerCase().includes(userSearch.toLowerCase()),
                 )}
@@ -5001,18 +5017,8 @@
                             class="fw-medium mb-0 text-truncate"
                             style="font-size:0.85rem;"
                           >
-                            {user?.name}
+                            {maskAssignedName(user)}
                           </p>
-                          <span
-                            class="text-muted text-capitalize"
-                            style="font-size:0.72rem;"
-                          >
-                            {#if user.status === "inactive"}
-                              Inactive
-                            {:else}
-                              {user?.subRole || user?.role}
-                            {/if}
-                          </span>
                         </div>
                       </label>
                     </div>
