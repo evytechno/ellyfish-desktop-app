@@ -702,7 +702,10 @@
           <div class="flex items-center gap-2 flex-wrap">
             <select bind:value={userId} class="form-select">
               <option value={null}>Select User</option>
-              {#each users as user}
+              {#each users.filter(u => {
+                if (['master','admin','manager'].includes(currentUser?.role)) return true;
+                return u.subRole === currentUser?.subRole;
+              }) as user}
                 <option value={user?.id}>{user?.name}</option>
               {/each}
             </select>

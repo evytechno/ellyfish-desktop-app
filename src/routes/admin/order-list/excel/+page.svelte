@@ -9,6 +9,7 @@
   import { categoriesAllStore } from "$lib/stores/dataStores";
   import { get } from "svelte/store";
   import { checkAuth } from "$lib/utils/auth";
+  import { maskAssignedName } from '$lib/utils/maskUser';
   import PIWOTIModal from "$lib/components/PIWOTIModal.svelte";
 
   // ── auth ─────────────────────────────────────────────────
@@ -794,7 +795,7 @@
                   {#if !isExp}
                     <div class="text-xs cursor-pointer text-gray-600 max-w-full" on:click={() => toggleRow(order.id)}>
                       {#if lastChat}
-                        <div class="truncate"><b>{lastChat.user?.name || ""}:</b> {lastChat.message || ""}</div>
+                        <div class="truncate"><b>{maskAssignedName(lastChat.user, currentUser) || ""}:</b> {lastChat.message || ""}</div>
                         <div class="text-[10px] text-gray-400 mt-px whitespace-nowrap">{formatDateTime(lastChat.createdAt)}</div>
                       {:else}
                         <span class="text-gray-400 italic text-[11px]">No chats</span>
@@ -804,7 +805,7 @@
                     <div id="chat-scroll-{order.id}" class="max-h-[90px] overflow-y-auto border border-gray-100 rounded p-1 bg-white text-[11px]">
                       {#each chats as c}
                         <div class="py-0.5 border-b border-gray-100 last:border-b-0 break-words">
-                          <div><b>{c.user?.name || ""}:</b> {c.message}</div>
+                          <div><b>{maskAssignedName(c.user, currentUser) || ""}:</b> {c.message}</div>
                           <div class="text-[10px] text-gray-400 mt-px">{formatDateTime(c.createdAt)}</div>
                         </div>
                       {/each}
@@ -940,7 +941,7 @@
                 <!-- Sales User (master only) -->
                 {#if isMaster}
                   <td class="px-2 py-2 border border-gray-100 align-middle text-xs h-[54px] truncate">
-                    {order.assignedUsers?.find(u => u.role === "user")?.name || "-"}
+                    {maskAssignedName(order.assignedUsers?.find(u => u.role === "user"), currentUser) || "-"}
                   </td>
                 {/if}
 
