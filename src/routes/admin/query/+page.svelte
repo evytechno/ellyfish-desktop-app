@@ -8,6 +8,7 @@
   import Swal from "sweetalert2";
   import Pagination from "$lib/components/Pagination.svelte";
   import { queryPrivacy } from "$lib/stores/queryPrivacy";
+  import { statusNamesStore } from "$lib/stores/statusNames";
   import { queryUnreadCounts } from "$lib/stores/queryUnreadCounts";
 
   let currentUser;
@@ -468,7 +469,7 @@
 
   $: maskTC     = (name) => (currentUser?.role === "master" && $queryPrivacy.telecaller && name) ? "Telecaller" : (name ?? "-");
   $: maskTech   = (name) => (currentUser?.role === "master" && $queryPrivacy.tech       && name) ? "Tech"        : (name ?? "-");
-  $: maskHelper = (name) => (currentUser?.role === "master" && $queryPrivacy.techHelper && name) ? "Helper"      : (name ?? "-");
+  $: maskHelper = (name) => (currentUser?.role === "master" && $queryPrivacy.techHelper && name) ? "Senior Tech" : (name ?? "-");
 </script>
 
 <div class="page-wrapper">
@@ -765,7 +766,7 @@
                           >{/if}
                         <span
                           class="badge bg-secondary ms-auto"
-                          style="font-size:10px;">{o.status}</span
+                          style="font-size:10px;">{$statusNamesStore[o.status]?.name ?? o.status}</span
                         >
                       </button>
                     {/each}
@@ -897,7 +898,7 @@
                         <span class="fw-semibold text-primary">#{o.pId}</span>
                         {#if o.title}<span class="ms-1">{o.title}</span>{/if}
                         {#if o.company}<span class="text-muted ms-1 small">· {o.company}</span>{/if}
-                        <span class="badge bg-secondary ms-auto" style="font-size:10px;">{o.status}</span>
+                        <span class="badge bg-secondary ms-auto" style="font-size:10px;">{$statusNamesStore[o.status]?.name ?? o.status}</span>
                       </button>
                     {/each}
                   {/if}

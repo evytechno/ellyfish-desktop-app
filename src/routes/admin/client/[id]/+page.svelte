@@ -8,6 +8,7 @@
   import Swal from "sweetalert2";
   import Loader from "$lib/components/Loader.svelte";
   import { checkAuth } from "$lib/utils/auth";
+  import { statusNamesStore } from "$lib/stores/statusNames";
 
   let loadingData = true;
   let loading = false;
@@ -548,7 +549,7 @@
                         <td class="px-4 py-2 text-muted small">{order.pId}</td>
                         <td class="px-4 py-2 fw-semibold">{order.title}</td>
                         <td class="px-4 py-2">
-                          <span class="badge bg-secondary">{order.status}</span>
+                          <span class="badge bg-secondary">{$statusNamesStore[order.status]?.name ?? order.status}</span>
                         </td>
                         <td class="px-4 py-2 small text-muted">{formatDate(order.orderDate)}</td>
                         <td class="px-4 py-2">

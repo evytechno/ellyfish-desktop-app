@@ -13,13 +13,13 @@
   const STATUSES = [
     "New Lead",
     "Contacted",
-    "Follow Up",
-    "Qualified",
-    "Unqualified",
-    "Needs Assessment",
     "Quotation Sent",
+    "Follow Up",
+    "Needs Assessment",
+    "Qualified",
     "Negotiation In Progress",
     "Deal Won",
+    "Unqualified",
     "Deal Lost",
   ];
 

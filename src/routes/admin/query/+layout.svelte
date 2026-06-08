@@ -174,14 +174,14 @@
               <i class="ti ti-subtask" style="font-size:13px;margin-right:5px;color:#7950f2;"></i>
               Tech Helper Names
             </span>
-            <span class="pq-toggle-desc">Replace real names with "Helper"</span>
+            <span class="pq-toggle-desc">Replace real names with "Senior Tech"</span>
           </div>
           <button
             class="pq-toggle-btn"
             class:pq-toggle-btn--on={$queryPrivacy.techHelper}
             on:click={queryPrivacy.toggleTechHelper}
             aria-pressed={$queryPrivacy.techHelper}
-            title="{$queryPrivacy.techHelper ? 'Showing: Helper' : 'Showing: Real name'}"
+            title="{$queryPrivacy.techHelper ? 'Showing: Senior Tech' : 'Showing: Real name'}"
           >
             <span class="pq-toggle-knob"></span>
           </button>

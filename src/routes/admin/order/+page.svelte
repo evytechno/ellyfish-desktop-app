@@ -798,13 +798,13 @@
   let allStatuses = [
     "New Lead",
     "Contacted",
-    "Follow Up",
-    "Qualified",
-    "Unqualified",
-    "Needs Assessment",
     "Quotation Sent",
+    "Follow Up",
+    "Needs Assessment",
+    "Qualified",
     "Negotiation In Progress",
     "Deal Won",
+    "Unqualified",
     "Deal Lost",
     "Dispatched",
     "Completed",
@@ -1163,7 +1163,7 @@
               <select bind:value={filterStatus} class="form-select">
                 <option value={null}>Select Status</option>
                 {#each allStatuses as status}
-                  <option value={status}>{status}</option>
+                  <option value={status}>{$statusNamesStore[status]?.name ?? status}</option>
                 {/each}
               </select>
             </div>

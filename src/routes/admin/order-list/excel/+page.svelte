@@ -47,13 +47,13 @@
   const STATUS_COLORS = {
     "New Lead":                 { bg: "#cff4fc", color: "#055160" },
     "Contacted":                { bg: "#dbeafe", color: "#1d4ed8" },
-    "Follow Up":                { bg: "#ede9fe", color: "#6d28d9" },
-    "Qualified":                { bg: "#dcfce7", color: "#15803d" },
-    "Unqualified":              { bg: "#f3f4f6", color: "#6b7280" },
-    "Needs Assessment":         { bg: "#ffedd5", color: "#c2410c" },
     "Quotation Sent":           { bg: "#faf5ff", color: "#7e22ce" },
+    "Follow Up":                { bg: "#ede9fe", color: "#6d28d9" },
+    "Needs Assessment":         { bg: "#ffedd5", color: "#c2410c" },
+    "Qualified":                { bg: "#dcfce7", color: "#15803d" },
     "Negotiation In Progress":  { bg: "#fefce8", color: "#a16207" },
     "Deal Won":                 { bg: "#d1fae5", color: "#047857" },
+    "Unqualified":              { bg: "#f3f4f6", color: "#6b7280" },
     "Deal Lost":                { bg: "#fee2e2", color: "#b91c1c" },
   };
 
@@ -491,9 +491,8 @@
   }
 
   const STATUS_OPTIONS = [
-    "New Lead", "Contacted", "Follow Up", "Qualified", "Unqualified",
-    "Needs Assessment", "Quotation Sent", "Negotiation In Progress",
-    "Deal Won", "Deal Lost",
+    "New Lead", "Contacted", "Quotation Sent", "Follow Up", "Needs Assessment",
+    "Qualified", "Negotiation In Progress", "Deal Won", "Unqualified", "Deal Lost",
   ];
 
   // PI/WO/TI modal

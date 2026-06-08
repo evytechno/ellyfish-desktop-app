@@ -1751,13 +1751,13 @@
   const statuses = [
     "New Lead",
     "Contacted",
-    "Follow Up",
-    "Qualified",
-    "Unqualified",
-    "Needs Assessment",
     "Quotation Sent",
+    "Follow Up",
+    "Needs Assessment",
+    "Qualified",
     "Negotiation In Progress",
     "Deal Won",
+    "Unqualified",
     "Deal Lost",
   ];
 
@@ -2238,7 +2238,7 @@
                             on:click|preventDefault={() =>
                               changeOrderStatus(status)}
                           >
-                            <span>{status}</span>
+                            <span>{$statusNamesStore[status]?.name ?? status}</span>
                           </a>
                         {/each}
                       </div>
@@ -2832,7 +2832,7 @@
             <h5 class="mb-3">Order Pipeline Status</h5>
             <div class="step-progress d-flex flex-wrap gap-2">
               {#each statuses as status}
-                <div class={`step bg-indigo ${statusesColors[status] || "bg-gray"}`}>{status}</div>
+                <div class={`step bg-indigo ${statusesColors[status] || "bg-gray"}`}>{$statusNamesStore[status]?.name ?? status}</div>
               {/each}
             </div>
           </div> -->

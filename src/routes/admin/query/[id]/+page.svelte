@@ -19,6 +19,7 @@
     return authApiFetch(`${API_ROUTES.QUERY}/${id}/chat/mark-read`, { method: "PATCH" });
   }
   import { queryPrivacy } from "$lib/stores/queryPrivacy";
+  import { statusNamesStore } from "$lib/stores/statusNames";
   import Swal from "sweetalert2";
   import LightBox from "$lib/components/LightBox.svelte";
   import DOMPurify from "dompurify";
@@ -1387,10 +1388,13 @@
         if (sqViewChats.find(c => c.id === msg.id)) return;
         const isOwn = msg.senderId === currentUser?.id;
         let senderLabel;
+        const _isMaster = currentUser?.role === 'master';
         if (isOwn) senderLabel = "You";
-        else if (msg.senderSubRole === 'tech_helper') senderLabel = "Helper";
-        else if (msg.senderSubRole === 'tech') senderLabel = "Tech";
-        else senderLabel = msg.senderName ?? "Unknown";
+        else if (msg.senderSubRole === 'tech_helper') senderLabel = _isMaster ? (msg.senderName ?? 'Senior Tech') : 'Senior Tech';
+        else if (msg.senderSubRole === 'tech')        senderLabel = _isMaster ? (msg.senderName ?? "Tech")        : "Tech";
+        else if (msg.senderSubRole === 'telecaller')  senderLabel = _isMaster ? (msg.senderName ?? "Telecaller")  : "Requester";
+        else if (msg.isAdminSender)                   senderLabel = _isMaster ? (msg.senderName ?? "Admin")       : "Admin";
+        else                                          senderLabel = _isMaster ? (msg.senderName ?? "Unknown")     : "Unknown";
         const senderType = deriveSenderType(isOwn, senderLabel, msg.senderSubRole);
         let msgReplyTo = null;
         if (msg.replyToId) {
@@ -1439,11 +1443,23 @@
           incrementUnread(msg.queryId);
           // toast notification for new message on other query
           const listItem = inProgressList.find(q => q.id === msg.queryId);
+          // apply same name masking as chat messages
+          const _isAdminSender = msg.isAdminSender ?? false;
+          let _toastSender;
+          if (isMasterView(currentUser)) {
+            _toastSender = msg.senderName ?? 'Unknown';
+          } else if (_isAdminSender) {
+            _toastSender = 'Admin';
+          } else if (isTelecaller(currentUser)) {
+            _toastSender = 'Support Team';
+          } else {
+            _toastSender = 'Requester';
+          }
           pushQueryToast({
             type: 'message',
             queryId: msg.queryId,
             subject: listItem?.subject ?? `Query #${msg.queryId}`,
-            senderLabel: msg.senderName ?? msg.senderSubRole ?? 'Someone',
+            senderLabel: _toastSender,
             preview: msg.message ? (msg.message.length > 60 ? msg.message.slice(0, 60) + '…' : msg.message) : '📎 Attachment',
             createdAt: msg.createdAt,
           });
@@ -1609,15 +1625,24 @@
             ? { ...(query.assignedTo ?? {}), name: data.assignedToName }
             : query.assignedTo,
         };
-        showStatusBanner(data.status, data.assignedToName);
+        const _bannerAssignee = isMasterView(currentUser)  ? data.assignedToName
+                              : isTelecaller(currentUser)   ? 'Support Team'
+                              : (isTech(currentUser) || isTechHelper(currentUser)) ? 'Tech'
+                              : data.assignedToName;
+        showStatusBanner(data.status, _bannerAssignee);
       } else {
         // other query — increment unread badge + show toast
         if (data.status === 'in_progress' || data.status === 'reopened') {
           incrementUnread(data.queryId);
         }
         const listItem = inProgressList.find(q => q.id === data.queryId);
+        // mask tech real name — show role name instead for non-master viewers
+        const _assigneeName = isMasterView(currentUser)  ? data.assignedToName
+                            : isTelecaller(currentUser)   ? 'Support Team'
+                            : (isTech(currentUser) || isTechHelper(currentUser)) ? 'Tech'
+                            : data.assignedToName;
         const statusLabel = data.status === 'in_progress'
-          ? `Picked up${data.assignedToName ? ' by ' + data.assignedToName : ''}`
+          ? `Picked up${_assigneeName ? ' by ' + _assigneeName : ''}`
           : data.status === 'reopened' ? 'Query reopened'
           : data.status === 'resolved' ? 'Query resolved'
           : data.status === 'closed'   ? 'Query closed'
@@ -2064,7 +2089,7 @@
 
   function typingLabel() {
     if (isTelecaller(currentUser)) return "Support Team is typing…";
-    if (isTech(currentUser)) return isSubQuery ? "Helper is typing…" : "Requester is typing…";
+    if (isTech(currentUser)) return isSubQuery ? "Senior Tech is typing…" : "Requester is typing…";
     if (isTechHelper(currentUser)) return "Tech is typing…";
     return "Someone is typing…";
   }
@@ -2074,14 +2099,32 @@
   // ── Privacy masking (master-only) ────────────────────────────────────────
   $: maskTC     = (name) => (currentUser?.role === "master" && $queryPrivacy.telecaller && name) ? "Telecaller" : (name ?? "-");
   $: maskTech   = (name) => (currentUser?.role === "master" && $queryPrivacy.tech       && name) ? "Tech"        : (name ?? "-");
-  $: maskHelper = (name) => (currentUser?.role === "master" && $queryPrivacy.techHelper && name) ? "Helper"      : (name ?? "-");
+  $: maskHelper = (name) => (currentUser?.role === "master" && $queryPrivacy.techHelper && name) ? "Senior Tech" : (name ?? "-");
   $: maskChatSender = (chat) => {
     if (currentUser?.role !== "master") return chat.senderLabel;
     if ($queryPrivacy.telecaller && chat.senderType === "telecaller") return "Telecaller";
     if ($queryPrivacy.tech       && chat.senderType === "tech")       return "Tech";
-    if ($queryPrivacy.techHelper && chat.senderType === "tech_helper") return "Helper";
+    if ($queryPrivacy.techHelper && chat.senderType === "tech_helper") return "Senior Tech";
     return chat.senderLabel;
   };
+
+  // Mask a senderLabel for reply quotes / previews where only senderType is available.
+  // Applies the same role-based privacy as the main chat bubble logic.
+  function maskSenderLabel(label, senderType) {
+    if (!senderType || label === 'You') return label;
+    // telecaller viewing tech/helper message → "Support Team"
+    if (isTelecaller(currentUser) && senderType === 'tech')        return 'Support Team';
+    if (isTelecaller(currentUser) && senderType === 'tech_helper') return 'Senior Tech';
+    // tech/tech_helper viewing telecaller message → "Requester"
+    if ((isTech(currentUser) || isTechHelper(currentUser)) && senderType === 'telecaller') return 'Requester';
+    // master: apply privacy toggle
+    if (isMasterView(currentUser)) {
+      if ($queryPrivacy.telecaller && senderType === 'telecaller') return 'Telecaller';
+      if ($queryPrivacy.tech       && senderType === 'tech')       return 'Tech';
+      if ($queryPrivacy.techHelper && senderType === 'tech_helper') return 'Senior Tech';
+    }
+    return label;
+  }
 
   // ── Preview attached file before sending ─────────────────────────────────
   function previewAttachedFile(file) {
@@ -2222,7 +2265,7 @@
   }
 
   function sqTypingLabel() {
-    if (isTech(currentUser)) return "Helper is typing…";
+    if (isTech(currentUser)) return "Senior Tech is typing…";
     if (isTechHelper(currentUser)) return "Tech is typing…";
     return "Someone is typing…";
   }
@@ -2675,7 +2718,7 @@
               <div class="card-body py-2 px-3 small">
                 <div class="fw-semibold text-dark d-flex align-items-center justify-content-between gap-2">
                   <span>{query.order.title ?? "-"} <b>#{query.order.pId}</b></span>
-                  <span class="badge bg-secondary" style="font-size:10px;white-space:nowrap;">{query.order.status}</span>
+                  <span class="badge bg-secondary" style="font-size:10px;white-space:nowrap;">{$statusNamesStore[query.order.status]?.name ?? query.order.status}</span>
                 </div>
               </div>
             </div>
@@ -3254,7 +3297,7 @@
                         on:keydown={(e) => e.key === 'Enter' && scrollToMessage(chat.replyTo.id)}
                         title="Jump to original message"
                       >
-                        <span class="chat-reply-quote-sender">{chat.replyTo.senderLabel}</span>
+                        <span class="chat-reply-quote-sender">{maskSenderLabel(chat.replyTo.senderLabel, chat.replyTo.senderType)}</span>
                         <span class="chat-reply-quote-text">
                           {#if chat.replyTo.message}
                             {chat.replyTo.message.length > 70 ? chat.replyTo.message.slice(0, 70).trimEnd() + '…' : chat.replyTo.message}
@@ -3458,7 +3501,7 @@
                   <div class="chat-reply-preview">
                     <i class="ti ti-corner-up-left chat-reply-preview-icon"></i>
                     <div class="chat-reply-preview-body">
-                      <span class="chat-reply-preview-sender">{replyTo.senderLabel}</span>
+                      <span class="chat-reply-preview-sender">{maskSenderLabel(replyTo.senderLabel, replyTo.senderType)}</span>
                       <span class="chat-reply-preview-text">
                         {#if replyTo.message}
                           {replyTo.message.length > 90 ? replyTo.message.slice(0, 90).trimEnd() + '…' : replyTo.message}
@@ -3789,7 +3832,7 @@
                                 on:click={() => scrollSqToMsg(chat.replyTo.id)}
                                 on:keydown={(e) => e.key === 'Enter' && scrollSqToMsg(chat.replyTo.id)}
                                 title="Jump to original">
-                                <span class="chat-reply-quote-sender">{chat.replyTo.senderLabel}</span>
+                                <span class="chat-reply-quote-sender">{maskSenderLabel(chat.replyTo.senderLabel, chat.replyTo.senderType)}</span>
                                 <span class="chat-reply-quote-text">
                                   {#if chat.replyTo.message}
                                     {chat.replyTo.message.length > 70 ? chat.replyTo.message.slice(0, 70).trimEnd() + '…' : chat.replyTo.message}
@@ -3947,7 +3990,7 @@
                   <div class="chat-reply-preview">
                     <i class="ti ti-corner-up-left chat-reply-preview-icon"></i>
                     <div class="chat-reply-preview-body">
-                      <span class="chat-reply-preview-sender">{sqReplyTo.senderLabel}</span>
+                      <span class="chat-reply-preview-sender">{maskSenderLabel(sqReplyTo.senderLabel, sqReplyTo.senderType)}</span>
                       <span class="chat-reply-preview-text">
                         {#if sqReplyTo.message}{sqReplyTo.message.length > 90 ? sqReplyTo.message.slice(0, 90).trimEnd() + '…' : sqReplyTo.message}{:else}📎 Attachment{/if}
                       </span>

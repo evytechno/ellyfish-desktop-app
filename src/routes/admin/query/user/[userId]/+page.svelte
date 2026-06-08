@@ -244,7 +244,7 @@
 
   $: maskTC     = (name) => (currentUser?.role === "master" && $queryPrivacy.telecaller && name) ? "Telecaller" : (name ?? "-");
   $: maskTech   = (name) => (currentUser?.role === "master" && $queryPrivacy.tech       && name) ? "Tech"        : (name ?? "-");
-  $: maskHelper = (name) => (currentUser?.role === "master" && $queryPrivacy.techHelper && name) ? "Helper"      : (name ?? "-");
+  $: maskHelper = (name) => (currentUser?.role === "master" && $queryPrivacy.techHelper && name) ? "Senior Tech" : (name ?? "-");
   $: maskedUserName     = user ? (user.subRole === "telecaller" ? maskTC(user.name) : user.subRole === "tech_helper" ? maskHelper(user.name) : maskTech(user.name)) : "";
   $: maskedUserInitials = maskedUserName ? initials(maskedUserName) : "?";
   $: replyTotal = detail

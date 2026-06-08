@@ -33,7 +33,7 @@
 
   $: maskTC     = (name) => (currentUser?.role === "master" && $queryPrivacy.telecaller && name) ? "Telecaller" : (name ?? "?");
   $: maskTech   = (name) => (currentUser?.role === "master" && $queryPrivacy.tech       && name) ? "Tech"        : (name ?? "?");
-  $: maskHelper = (name) => (currentUser?.role === "master" && $queryPrivacy.techHelper && name) ? "Helper"      : (name ?? "?");
+  $: maskHelper = (name) => (currentUser?.role === "master" && $queryPrivacy.techHelper && name) ? "Senior Tech" : (name ?? "?");
 </script>
 
 <div class="page-wrapper">
@@ -103,16 +103,16 @@
         </div>
       {/if}
 
-      <!-- Tech Helpers -->
+      <!-- Senior Techs -->
       {#if canViewTechHelper && techHelpers.length}
-        <div class="section-label mt-4">Tech Helpers</div>
+        <div class="section-label mt-4">Senior Techs</div>
         <div class="row g-3">
           {#each techHelpers as u}
             <div class="col-6 col-md-3">
               <a href="/admin/query/user/{u.id}" class="user-card user-card--helper">
                 <div class="uc-avatar uc-avatar--helper">{initials(maskHelper(u.name))}</div>
                 <div class="uc-name">{maskHelper(u.name)}</div>
-                <div class="uc-sub">Tech Helper</div>
+                <div class="uc-sub">Senior Tech</div>
                 <span class="uc-status {u.status === 'active' ? 'uc-status--active' : 'uc-status--inactive'}">
                   {u.status ?? "active"}
                 </span>
@@ -121,9 +121,9 @@
           {/each}
         </div>
       {:else if !canViewTechHelper && techHelpers.length}
-        <div class="section-label mt-4">Tech Helpers</div>
+        <div class="section-label mt-4">Senior Techs</div>
         <div class="access-blocked">
-          <i class="ti ti-lock me-2"></i>You don't have permission to view tech helper stats.
+          <i class="ti ti-lock me-2"></i>You don't have permission to view Senior Tech stats.
         </div>
       {/if}
     {/if}
