@@ -341,7 +341,7 @@
                           <td class="border p-2 capitalize" colspan="5">{item1?.item}</td>
                           <td class="border p-2 text-center">
                             {currencies.find((c) => c.code === invoice?.currency)?.symbol}
-                            {(item1?.total).toFixed(2)}/-
+                            {(item1?.total ?? 0).toFixed(2)}/-
                           </td>
                         </tr>
                       {/each}

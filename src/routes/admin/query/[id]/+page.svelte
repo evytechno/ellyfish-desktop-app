@@ -881,6 +881,7 @@
     "Will reply in some time",
     "Currently busy, will check soon",
     "Can you share a screenshot?",
+    "Ok Please share ASAP we are waiting Your update."
   ];
   const SUGGESTED_TECH = [
     "Please confirm with client",
@@ -901,6 +902,9 @@
     "Will reply in some time",
     "Currently busy, will check soon",
     "Can you share a screenshot?",
+    "Okay sir, i will check and update you soon",
+    "Ok sir, i am sharing with you",
+    "Please share technical details"
   ];
 
   $: suggestions = isTelecaller(currentUser) ? SUGGESTED_TELECALLER

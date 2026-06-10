@@ -203,7 +203,7 @@
       totalAmountValue = inv.totalAmountValue || 0;
       items            = (inv.items || []).map(i => ({ ...i, unit: i.unit || "Pcs" }));
       extraItems       = inv.extraItems || [];
-      taxItems         = inv.taxItems?.length
+      taxItems         = inv.taxItems != null
         ? inv.taxItems
         : [{ item: "CGST", percentage: 9, total: 0 }, { item: "SGST", percentage: 9, total: 0 }, { item: "IGST", percentage: 18, total: 0 }];
       priceTerms       = inv.priceTerms || "";
