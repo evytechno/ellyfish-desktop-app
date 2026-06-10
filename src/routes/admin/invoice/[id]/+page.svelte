@@ -474,14 +474,20 @@
   }
   .item-row .item-cell { position: relative; }
   @media print {
-    @page { padding: 5mm; }
-    .no-print { display: none; padding: 0; margin: 0; }
-    .pageHeader { margin: 0 !important; padding: 0 !important; }
+    @page { margin: 10mm; }
+    :global(*) {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      color-adjust: exact !important;
+    }
+    :global(.no-print) { display: none !important; }
+    :global(.sidebar), :global(aside), :global(header.header), :global(.main-wrapper > .header) { display: none !important; }
+    :global(.page-wrapper) { padding: 0 !important; margin: 0 !important; }
+    :global(.content) { padding: 0 !important; margin: 0 !important; }
+    :global(.card) { margin: 0 !important; border: 0 !important; box-shadow: none !important; }
+    :global(.card-body) { margin: 0 !important; }
     .avoid-page-break { page-break-inside: avoid; break-inside: avoid; }
     table { page-break-inside: auto; }
     tr { page-break-inside: avoid; }
-    .card { margin: 0; border: 0; }
-    .card-body { margin: 0; }
-    .content { padding: 0; margin: 0; }
   }
 </style>
