@@ -206,6 +206,12 @@
                         <div>Proforma Invoice</div>
                         <div>#{invoice?.invoiceNo?.toString().padStart(6, "0")}</div>
                       </div>
+                      {#if invoice?.title}
+                        <div class="flex items-center justify-between p-2 px-0 text-sm text-gray-600">
+                          <div>Subject</div>
+                          <div class="text-right">{invoice.title}</div>
+                        </div>
+                      {/if}
                       <div class="flex items-center justify-between p-2 text-lg bg-[#106ab0] text-white">
                         <div>{invoice?.totalAmountTitle || "Total Amount"}</div>
                         <div>
@@ -235,10 +241,10 @@
                       </div>
                     {/if}
                     {#if invoice?.priceTerms}
-                      <div class="grow flex items-center">Payment : {invoice?.priceTerms}</div>
-                    {/if}
-                    {#if invoice?.swiftCode}
-                      <div class="grow flex items-center">Swift Code : {invoice?.swiftCode}</div>
+                      <div class="flex items-center justify-between pb-1 px-0">
+                        <div>Payment</div>
+                        <div>{invoice.priceTerms}</div>
+                      </div>
                     {/if}
                   </div>
                 </div>
@@ -357,8 +363,9 @@
                       {#each [invoice?.selectedBankAccount ?? invoice?.company] as b}
                         {#if b?.accountHolderName}<div>Account Holder Name : {b.accountHolderName}</div>{/if}
                         {#if b?.bankName}<div>Bank Name : {b.bankName}</div>{/if}
-                        {#if b?.accountNumber}<div>Account Number : {b.accountNumber}</div>{/if}
                         {#if b?.branchAddress || b?.bankAddress}<div>Bank Address : {b.branchAddress || b.bankAddress}</div>{/if}
+                        {#if b?.accountNumber}<div>Account Number : {b.accountNumber}</div>{/if}
+                        {#if invoice?.swiftCode}<div>Swift Code : {invoice.swiftCode}</div>{/if}
                         {#if b?.ifscCode}<div>IFSC Code : {b.ifscCode}</div>{/if}
                       {/each}
                     </div>

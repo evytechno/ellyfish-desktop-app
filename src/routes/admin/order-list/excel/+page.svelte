@@ -8,6 +8,7 @@
   import LightBox from "$lib/components/LightBox.svelte";
   import { categoriesAllStore } from "$lib/stores/dataStores";
   import { get } from "svelte/store";
+  import { orderExcelFilterStore } from "$lib/stores/filterStore";
   import { checkAuth } from "$lib/utils/auth";
   import { statusNamesStore } from "$lib/stores/statusNames";
   import { maskAssignedName } from '$lib/utils/maskUser';
@@ -391,8 +392,21 @@
   }
   function resetColWidths() { cols = DEFAULT_COLS.map(c => ({ ...c })); }
 
+  function saveFilterStore() {
+    orderExcelFilterStore.set({ searchTerm, filterStatus, filterDateRange, filterUserId, orderBy, pageSize });
+  }
+
   // ── lifecycle ────────────────────────────────────────────
   onMount(async () => {
+    const saved = $orderExcelFilterStore;
+    if (saved && Object.keys(saved).length > 0) {
+      if (saved.searchTerm    !== undefined) searchTerm    = saved.searchTerm;
+      if (saved.filterStatus  !== undefined) filterStatus  = saved.filterStatus;
+      if (saved.filterDateRange !== undefined) filterDateRange = saved.filterDateRange;
+      if (saved.filterUserId  !== undefined) filterUserId  = saved.filterUserId;
+      if (saved.orderBy       !== undefined) orderBy       = saved.orderBy;
+      if (saved.pageSize      !== undefined) pageSize      = saved.pageSize;
+    }
     if (isMaster || currentUser?.role === "admin") {
       try {
         const res = await authApiFetch(`${API_ROUTES.USER}/all`, { method: "GET" });
@@ -598,23 +612,23 @@
           class="form-control"
           placeholder="Search..."
           bind:value={searchTerm}
-          on:keydown={(e) => e.key === "Enter" && fetchOrders(1)}
+          on:keydown={(e) => { if (e.key === "Enter") { saveFilterStore(); fetchOrders(1); } }}
         />
       </div>
       <!-- Date Range -->
-      <select class="form-select" style="width:155px;" bind:value={filterDateRange} on:change={() => fetchOrders(1)}>
+      <select class="form-select" style="width:155px;" bind:value={filterDateRange} on:change={() => { saveFilterStore(); fetchOrders(1); }}>
         {#each DATE_RANGE_OPTIONS as opt}
           <option value={opt.value}>{opt.label}</option>
         {/each}
       </select>
       <!-- Status filter -->
-      <select class="form-select" style="width:155px;" bind:value={filterStatus} on:change={() => fetchOrders(1)}>
+      <select class="form-select" style="width:155px;" bind:value={filterStatus} on:change={() => { saveFilterStore(); fetchOrders(1); }}>
         <option value="">Select Status</option>
         {#each STATUS_OPTIONS as s}<option value={s}>{$statusNamesStore[s]?.name ?? s}</option>{/each}
       </select>
       <!-- User filter (master / admin only) -->
       {#if (isMaster || currentUser?.role === "admin") && allUsers.length > 0}
-        <select class="form-select" style="width:165px;" bind:value={filterUserId} on:change={() => fetchOrders(1)}>
+        <select class="form-select" style="width:165px;" bind:value={filterUserId} on:change={() => { saveFilterStore(); fetchOrders(1); }}>
           <option value="">All Users</option>
           {#each allUsers as u}
             <option value={String(u.id)}>{u.name} ({u.role})</option>
@@ -622,7 +636,7 @@
         </select>
       {/if}
       <!-- Sort -->
-      <select class="form-select" style="width:155px;" bind:value={orderBy} on:change={() => fetchOrders(1)}>
+      <select class="form-select" style="width:155px;" bind:value={orderBy} on:change={() => { saveFilterStore(); fetchOrders(1); }}>
         {#each ORDER_BY_OPTIONS as opt}
           <option value={opt.value}>{opt.label}</option>
         {/each}
@@ -1078,7 +1092,7 @@
               <span class="text-muted" style="font-size:13px;">Rows:</span>
               <select class="form-select form-select-sm" style="width:70px;"
                 bind:value={pageSize}
-                on:change={() => fetchOrders(1)}>
+                on:change={() => { saveFilterStore(); fetchOrders(1); }}>
                 {#each PAGE_SIZE_OPTIONS as n}<option value={n}>{n}</option>{/each}
               </select>
             </div>

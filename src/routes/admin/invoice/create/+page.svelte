@@ -261,6 +261,7 @@
         accountNumber: piCompany?.accountNumber,
         branchAddress: piCompany?.branchAddress,
         ifscCode: piCompany?.ifscCode,
+        swiftCode: pi?.swiftCode ?? "",
       };
 
       const payload = {

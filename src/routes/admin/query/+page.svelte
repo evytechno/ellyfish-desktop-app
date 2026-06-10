@@ -10,6 +10,7 @@
   import { queryPrivacy } from "$lib/stores/queryPrivacy";
   import { statusNamesStore } from "$lib/stores/statusNames";
   import { queryUnreadCounts } from "$lib/stores/queryUnreadCounts";
+  import { queryFilterStore } from "$lib/stores/filterStore";
 
   let currentUser;
   let queries = [];
@@ -292,6 +293,10 @@
     return params;
   }
 
+  function saveFilterStore() {
+    queryFilterStore.set({ search, filterStatus, filterType, filterPriority, selectedFilter, customStartDate, customEndDate, dateField, raisedById, assignedToId, rowsPerPage, currentPage });
+  }
+
   onMount(async () => {
     currentUser = checkAuth();
     if (!currentUser) {
@@ -310,6 +315,23 @@
       goto("/admin/query/sub-queue");
       return;
     }
+
+    const saved = $queryFilterStore;
+    if (saved && Object.keys(saved).length > 0) {
+      if (saved.search          !== undefined) search          = saved.search;
+      if (saved.filterStatus    !== undefined) filterStatus    = saved.filterStatus;
+      if (saved.filterType      !== undefined) filterType      = saved.filterType;
+      if (saved.filterPriority  !== undefined) filterPriority  = saved.filterPriority;
+      if (saved.selectedFilter  !== undefined) selectedFilter  = saved.selectedFilter;
+      if (saved.customStartDate !== undefined) customStartDate = saved.customStartDate;
+      if (saved.customEndDate   !== undefined) customEndDate   = saved.customEndDate;
+      if (saved.dateField       !== undefined) dateField       = saved.dateField;
+      if (saved.raisedById      !== undefined) raisedById      = saved.raisedById;
+      if (saved.assignedToId    !== undefined) assignedToId    = saved.assignedToId;
+      if (saved.rowsPerPage     !== undefined) rowsPerPage     = saved.rowsPerPage;
+      if (saved.currentPage     !== undefined) currentPage     = saved.currentPage;
+    }
+
     if (isMasterView(currentUser)) {
       await Promise.all([loadData(), loadStats(), loadUsers()]);
     } else {
@@ -378,12 +400,14 @@
     clearTimeout(searchTimeout);
     searchTimeout = setTimeout(() => {
       currentPage = 1;
+      saveFilterStore();
       loadData();
     }, 400);
   }
 
   function onFilterChange() {
     currentPage = 1;
+    saveFilterStore();
     loadData();
   }
 
@@ -1077,11 +1101,13 @@
             {rowsPerPage}
             on:pageChange={(e) => {
               currentPage = e.detail;
+              saveFilterStore();
               loadData();
             }}
             on:rowsPerPageChange={(e) => {
               rowsPerPage = e.detail;
               currentPage = 1;
+              saveFilterStore();
               loadData();
             }}
           />

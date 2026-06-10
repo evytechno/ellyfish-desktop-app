@@ -175,6 +175,12 @@
                         <div>Tax Invoice</div>
                         <div>#{invoice?.invoiceNo?.toString().padStart(6, "0")}</div>
                       </div>
+                      {#if invoice?.title}
+                        <div class="flex items-center justify-between p-2 px-0 text-sm text-gray-600">
+                          <div>Subject</div>
+                          <div class="text-right">{invoice.title}</div>
+                        </div>
+                      {/if}
                       <div class="flex items-center justify-between p-2 text-lg bg-[#106ab0] text-white">
                         <div>{invoice?.totalAmountTitle || "Total Amount"}</div>
                         <div>
@@ -189,17 +195,27 @@
                         </div>
                       </div>
                     </div>
-                    {#if invoice?.poNumber}
-                      <div class="flex items-center justify-between pb-1 px-0">
-                        <div>PO Number</div>
-                        <div>{invoice?.poNumber}</div>
+                    {#if invoice?.poNumber || invoice?.poDate}
+                      <div>
+                        {#if invoice?.poNumber}
+                          <div class="flex items-center justify-between pb-1 px-0">
+                            <div>PO Number</div>
+                            <div>{invoice.poNumber}</div>
+                          </div>
+                        {/if}
+                        {#if invoice?.poDate}
+                          <div class="flex items-center justify-between pb-1 px-0">
+                            <div>PO Date</div>
+                            <div>{`${String(new Date(invoice.poDate).getDate()).padStart(2,"0")}-${String(new Date(invoice.poDate).getMonth()+1).padStart(2,"0")}-${new Date(invoice.poDate).getFullYear()}`}</div>
+                          </div>
+                        {/if}
                       </div>
                     {/if}
                     {#if invoice?.priceTerms}
-                      <div class="grow flex items-center">Payment : {invoice?.priceTerms}</div>
-                    {/if}
-                    {#if invoice?.swiftCode}
-                      <div class="grow flex items-center">Swift Code : {invoice?.swiftCode}</div>
+                      <div class="flex items-center justify-between pb-1 px-0">
+                        <div>Payment</div>
+                        <div>{invoice.priceTerms}</div>
+                      </div>
                     {/if}
                   </div>
                 </div>
@@ -262,7 +278,7 @@
                         {#each invoice?.extraItems ?? [] as item1, index1}
                           <tr>
                             <td class="border p-2 text-center">{(invoice?.items?.length ?? 0) + index1 + 1}.</td>
-                            <td class="border p-2 capitalize" colspan="4">{item1?.item}</td>
+                            <td class="border p-2 capitalize" colspan="5">{item1?.item}</td>
                             <td class="border p-2 text-center">
                               {currencies.find((c) => c.code === invoice?.currency)?.symbol}
                               {(item1?.total)?.toFixed(2)}/-
@@ -281,8 +297,9 @@
                       {#each [invoice?.bankSnapshot ?? piCompany ?? displayCompany] as b}
                         {#if b?.accountHolderName}<div>Account Holder Name : {b.accountHolderName}</div>{/if}
                         {#if b?.bankName}<div>Bank Name : {b.bankName}</div>{/if}
-                        {#if b?.accountNumber}<div>Account Number : {b.accountNumber}</div>{/if}
                         {#if b?.branchAddress}<div>Bank Address : {b.branchAddress}</div>{/if}
+                        {#if b?.accountNumber}<div>Account Number : {b.accountNumber}</div>{/if}
+                        {#if invoice?.swiftCode}<div>Swift Code : {invoice.swiftCode}</div>{/if}
                         {#if b?.ifscCode}<div>IFSC Code : {b.ifscCode}</div>{/if}
                       {/each}
                     </div>

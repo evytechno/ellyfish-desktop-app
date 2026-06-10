@@ -1,5 +1,6 @@
 <script>
   import { onMount, onDestroy } from "svelte";
+  import { querySubQueueFilterStore } from "$lib/stores/filterStore";
   import { goto } from "$app/navigation";
   import { authApiFetch } from "$lib/api/client";
   import { API_ROUTES } from "$lib/constants/apiRoutes";
@@ -45,12 +46,26 @@
     { value: "other_help", label: "Other Help" },
   ];
 
+  function saveFilterStore() {
+    querySubQueueFilterStore.set({ search, filterType, filterPriority, rowsPerPage, currentPage });
+  }
+
   onMount(async () => {
     currentUser = checkAuth();
     if (!currentUser) { goto("/login"); return; }
     if (currentUser.subRole !== "tech_helper" && currentUser.role === "user") {
       goto("/admin/dashboard"); return;
     }
+
+    const saved = $querySubQueueFilterStore;
+    if (saved && Object.keys(saved).length > 0) {
+      if (saved.search         !== undefined) search         = saved.search;
+      if (saved.filterType     !== undefined) filterType     = saved.filterType;
+      if (saved.filterPriority !== undefined) filterPriority = saved.filterPriority;
+      if (saved.rowsPerPage    !== undefined) rowsPerPage    = saved.rowsPerPage;
+      if (saved.currentPage    !== undefined) currentPage    = saved.currentPage;
+    }
+
     await loadQueries();
     // auto-refresh every 30 seconds
     refreshInterval = setInterval(loadQueries, 30000);
@@ -83,7 +98,7 @@
 
   function handleSearch() {
     clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(() => loadQueries(1), 350);
+    searchTimeout = setTimeout(() => { saveFilterStore(); loadQueries(1); }, 350);
   }
 
   function handlePageChange(e) { loadQueries(e.detail); }
@@ -151,14 +166,14 @@
         </div>
       </div>
       <div>
-        <select class="form-select" bind:value={filterType} on:change={() => loadQueries(1)}>
+        <select class="form-select" bind:value={filterType} on:change={() => { saveFilterStore(); loadQueries(1); }}>
           {#each SUB_QUERY_TYPES as t}
             <option value={t.value}>{t.label}</option>
           {/each}
         </select>
       </div>
       <div>
-        <select class="form-select" bind:value={filterPriority} on:change={() => loadQueries(1)}>
+        <select class="form-select" bind:value={filterPriority} on:change={() => { saveFilterStore(); loadQueries(1); }}>
           <option value="">All Priority</option>
           <option value="high">High</option>
           <option value="medium">Medium</option>
@@ -246,8 +261,8 @@
           {currentPage}
           {totalPages}
           {rowsPerPage}
-          on:pageChange={(e) => { currentPage = e.detail; loadQueries(e.detail); }}
-          on:rowsPerPageChange={(e) => { rowsPerPage = e.detail; currentPage = 1; loadQueries(1); }}
+          on:pageChange={(e) => { currentPage = e.detail; saveFilterStore(); loadQueries(e.detail); }}
+          on:rowsPerPageChange={(e) => { rowsPerPage = e.detail; currentPage = 1; saveFilterStore(); loadQueries(1); }}
         />
         </div>
       </div>

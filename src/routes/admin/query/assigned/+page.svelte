@@ -7,6 +7,7 @@
   import { errorHandle } from "$lib/utils/errorHandle";
   import Pagination from "$lib/components/Pagination.svelte";
   import { queryUnreadCounts } from "$lib/stores/queryUnreadCounts";
+  import { queryAssignedFilterStore } from "$lib/stores/filterStore";
 
   let currentUser;
   let queries = [];
@@ -84,10 +85,28 @@
     return params;
   }
 
+  function saveFilterStore() {
+    queryAssignedFilterStore.set({ search, filterStatus, filterType, filterPriority, selectedFilter, customStartDate, customEndDate, rowsPerPage, currentPage });
+  }
+
   onMount(async () => {
     currentUser = checkAuth();
     if (!currentUser) { goto("/login"); return; }
     if (currentUser.subRole !== "tech" && currentUser.subRole !== "tech_helper") { goto("/admin/query"); return; }
+
+    const saved = $queryAssignedFilterStore;
+    if (saved && Object.keys(saved).length > 0) {
+      if (saved.search          !== undefined) search          = saved.search;
+      if (saved.filterStatus    !== undefined) filterStatus    = saved.filterStatus;
+      if (saved.filterType      !== undefined) filterType      = saved.filterType;
+      if (saved.filterPriority  !== undefined) filterPriority  = saved.filterPriority;
+      if (saved.selectedFilter  !== undefined) selectedFilter  = saved.selectedFilter;
+      if (saved.customStartDate !== undefined) customStartDate = saved.customStartDate;
+      if (saved.customEndDate   !== undefined) customEndDate   = saved.customEndDate;
+      if (saved.rowsPerPage     !== undefined) rowsPerPage     = saved.rowsPerPage;
+      if (saved.currentPage     !== undefined) currentPage     = saved.currentPage;
+    }
+
     await Promise.all([loadData(), loadStats()]);
   });
 
@@ -124,15 +143,15 @@
 
   function onSearchInput() {
     clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(() => { currentPage = 1; loadData(); }, 400);
+    searchTimeout = setTimeout(() => { currentPage = 1; saveFilterStore(); loadData(); }, 400);
   }
 
-  function onFilterChange() { currentPage = 1; loadData(); }
+  function onFilterChange() { currentPage = 1; saveFilterStore(); loadData(); }
 
   function clearFilters() {
     search = ""; filterStatus = ""; filterType = ""; filterPriority = "";
     selectedFilter = "today"; customStartDate = ""; customEndDate = "";
-    currentPage = 1; loadData();
+    currentPage = 1; saveFilterStore(); loadData();
   }
 
   $: hasFilters = search || filterStatus || filterType || filterPriority || selectedFilter !== "today";
@@ -324,8 +343,8 @@
           {currentPage}
           {totalPages}
           {rowsPerPage}
-          on:pageChange={(e) => { currentPage = e.detail; loadData(); }}
-          on:rowsPerPageChange={(e) => { rowsPerPage = e.detail; currentPage = 1; loadData(); }}
+          on:pageChange={(e) => { currentPage = e.detail; saveFilterStore(); loadData(); }}
+          on:rowsPerPageChange={(e) => { rowsPerPage = e.detail; currentPage = 1; saveFilterStore(); loadData(); }}
         />
         </div>
       </div>

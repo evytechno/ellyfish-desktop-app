@@ -8,6 +8,7 @@
   import Swal from "sweetalert2";
   import Pagination from "$lib/components/Pagination.svelte";
   import { openQueryCount } from "$lib/stores/queryStore";
+  import { queryOpenFilterStore } from "$lib/stores/filterStore";
 
   let currentUser;
   let queries = [];
@@ -107,10 +108,27 @@
     if (!document.hidden) silentRefresh();
   }
 
+  function saveFilterStore() {
+    queryOpenFilterStore.set({ search, filterType, filterPriority, selectedFilter, customStartDate, customEndDate, rowsPerPage, currentPage });
+  }
+
   onMount(async () => {
     currentUser = checkAuth();
     if (!currentUser) { goto("/login"); return; }
     if (currentUser.subRole !== "tech") { goto("/admin/query"); return; }
+
+    const saved = $queryOpenFilterStore;
+    if (saved && Object.keys(saved).length > 0) {
+      if (saved.search          !== undefined) search          = saved.search;
+      if (saved.filterType      !== undefined) filterType      = saved.filterType;
+      if (saved.filterPriority  !== undefined) filterPriority  = saved.filterPriority;
+      if (saved.selectedFilter  !== undefined) selectedFilter  = saved.selectedFilter;
+      if (saved.customStartDate !== undefined) customStartDate = saved.customStartDate;
+      if (saved.customEndDate   !== undefined) customEndDate   = saved.customEndDate;
+      if (saved.rowsPerPage     !== undefined) rowsPerPage     = saved.rowsPerPage;
+      if (saved.currentPage     !== undefined) currentPage     = saved.currentPage;
+    }
+
     await Promise.all([loadData(), loadStats()]);
 
     refreshInterval = setInterval(silentRefresh, 10000);
@@ -159,6 +177,7 @@
     clearTimeout(searchTimeout);
     searchTimeout = setTimeout(() => {
       currentPage = 1;
+      saveFilterStore();
       loadData().finally(() => { isFiltering = false; });
     }, 400);
   }
@@ -166,6 +185,7 @@
   function onFilterChange() {
     isFiltering = true;
     currentPage = 1;
+    saveFilterStore();
     loadData().finally(() => { isFiltering = false; });
   }
 
@@ -389,8 +409,8 @@
           {currentPage}
           {totalPages}
           {rowsPerPage}
-          on:pageChange={(e) => { currentPage = e.detail; loadData(); }}
-          on:rowsPerPageChange={(e) => { rowsPerPage = e.detail; currentPage = 1; loadData(); }}
+          on:pageChange={(e) => { currentPage = e.detail; saveFilterStore(); loadData(); }}
+          on:rowsPerPageChange={(e) => { rowsPerPage = e.detail; currentPage = 1; saveFilterStore(); loadData(); }}
         />
         </div>
       </div>

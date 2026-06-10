@@ -1,6 +1,8 @@
 <script>
   import { onMount } from "svelte";
   import { page } from "$app/stores";
+  import { taxInvoiceFilterStore } from "$lib/stores/filterStore";
+  import { get } from "svelte/store";
   import { goto } from "$app/navigation";
   import { authApiFetch } from "$lib/api/client";
   import { errorHandle } from "$lib/utils/errorHandle";
@@ -19,6 +21,10 @@
   let search = "";
   let searchTimeout;
 
+  function saveFilterStore() {
+    taxInvoiceFilterStore.set({ search, currentPage, rowsPerPage });
+  }
+
   onMount(async () => {
     // Handle URL param redirects (legacy links from other pages)
     const fromOrderId = $page.url.searchParams.get("fromOrder");
@@ -36,6 +42,13 @@
     if (syncId) {
       goto(`/admin/invoice/tax/${syncId}/edit?sync=1`);
       return;
+    }
+
+    const saved = get(taxInvoiceFilterStore);
+    if (saved && Object.keys(saved).length > 0) {
+      if (saved.search      !== undefined) search      = saved.search;
+      if (saved.currentPage !== undefined) currentPage = saved.currentPage;
+      if (saved.rowsPerPage !== undefined) rowsPerPage = saved.rowsPerPage;
     }
 
     await fetchInvoices();
@@ -62,7 +75,7 @@
   function handleSearch(e) {
     clearTimeout(searchTimeout);
     search = e.target.value;
-    searchTimeout = setTimeout(() => { currentPage = 1; fetchInvoices(); }, 400);
+    searchTimeout = setTimeout(() => { currentPage = 1; saveFilterStore(); fetchInvoices(); }, 400);
   }
 
   const columns = [
@@ -198,8 +211,8 @@
           {totalItems}
           totalPages={Math.ceil(totalItems / rowsPerPage)}
           serverMode={true}
-          on:pageChange={(e) => { currentPage = e.detail; fetchInvoices(); }}
-          on:rowsPerPageChange={(e) => { rowsPerPage = e.detail; currentPage = 1; fetchInvoices(); }}
+          on:pageChange={(e) => { currentPage = e.detail; saveFilterStore(); fetchInvoices(); }}
+          on:rowsPerPageChange={(e) => { rowsPerPage = e.detail; currentPage = 1; saveFilterStore(); fetchInvoices(); }}
         />
       </div>
     </div>

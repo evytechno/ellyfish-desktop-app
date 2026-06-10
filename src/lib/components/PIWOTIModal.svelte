@@ -72,6 +72,7 @@
   let items      = [];
   let extraItems = [];
   let taxItems   = [];
+  let isOutOfIndia = false;
 
   // ── WO fields ─────────────────────────────────────────────────────────────
   let workOrderDate        = today();
@@ -137,6 +138,12 @@
     const c = companies.find(c => c.id == id);
     bankAccounts        = c?.bankAccounts || [];
     selectedBankAccount = bankAccounts[0] || null;
+    if (selectedBankAccount?.swiftCode) swiftCode = selectedBankAccount.swiftCode;
+  }
+
+  function bankAccountChange(account) {
+    selectedBankAccount = account;
+    if (account?.swiftCode) swiftCode = account.swiftCode;
   }
 
   function bankLabel(b) {
@@ -188,8 +195,9 @@
       items = order?.price
         ? [{ item: order.title || "Supply of Goods", quantity: 1, unit: "Pcs", unitPrice: parseFloat(order.price), hsCode: "", total: parseFloat(order.price) }]
         : [{ item: "", quantity: 1, unit: "Pcs", unitPrice: 0, hsCode: "", total: 0 }];
-      extraItems = [];
-      taxItems   = [
+      extraItems   = [];
+      isOutOfIndia = false;
+      taxItems     = [
         { item: "CGST", percentage: 9,  total: 0 },
         { item: "SGST", percentage: 9,  total: 0 },
         { item: "IGST", percentage: 18, total: 0 },
@@ -213,6 +221,7 @@
       invoiceDate     = today();
       piTitle         = pi?.title || order?.title || "";
       poNumber        = pi?.poNumber || "";
+      poDate          = pi?.poDate ? new Date(pi.poDate).toISOString().split("T")[0] : null;
       currency        = pi?.currency || order?.currency || "INR";
       priceTerms      = pi?.priceTerms || "";
       swiftCode       = pi?.swiftCode || "";
@@ -239,15 +248,15 @@
         const qty     = parseFloat(woItem?.quantity ?? piItem.quantity ?? 1);
         return { item: piItem.item || "", quantity: qty, unit: piItem.unit || "Pcs", unitPrice: price, hsCode: piItem.hsCode || "", total: parseFloat((qty * price).toFixed(2)) };
       });
-      extraItems = (pi?.extraItems ?? []).map(i => ({ ...i }));
-      taxItems   = (pi?.taxItems   ?? []).map(t => ({ item: t.item, percentage: t.percentage }));
-      if (!taxItems.length) {
-        taxItems = [
-          { item: "CGST", percentage: 9 },
-          { item: "SGST", percentage: 9 },
-          { item: "IGST", percentage: 18 },
-        ];
-      }
+      extraItems   = (pi?.extraItems ?? []).map(i => ({ ...i }));
+      isOutOfIndia = pi?.isOutOfIndia || false;
+      taxItems     = pi?.taxItems != null
+        ? pi.taxItems.map(t => ({ item: t.item, percentage: t.percentage }))
+        : (isOutOfIndia ? [] : [
+            { item: "CGST", percentage: 9 },
+            { item: "SGST", percentage: 9 },
+            { item: "IGST", percentage: 18 },
+          ]);
     }
     // Always recompute totals after init so display is immediately correct
     recompute();
@@ -270,6 +279,20 @@
   function removeExtra(i) { extraItems = extraItems.filter((_, idx) => idx !== i); recompute(); }
   function addTax()       { taxItems   = [...taxItems,   { item: "", percentage: 0 }]; recompute(); }
   function removeTax(i)   { taxItems   = taxItems.filter((_, idx) => idx !== i); recompute(); }
+
+  function toggleIndia(outOfIndia) {
+    isOutOfIndia = outOfIndia;
+    if (outOfIndia) {
+      taxItems = [];
+    } else {
+      taxItems = [
+        { item: "CGST", percentage: 9 },
+        { item: "SGST", percentage: 9 },
+        { item: "IGST", percentage: 18 },
+      ];
+    }
+    recompute();
+  }
   function addWoItem()    { woItems    = [...woItems,    { item: "", quantity: 1, unit: "Pcs" }]; }
   function removeWoItem(i){ woItems    = woItems.filter((_, idx) => idx !== i); }
 
@@ -347,11 +370,10 @@
       items,
       extraItems,
       taxItems: taxItems.map(t => ({ ...t, total: taxItemTotal(t) })),
+      isOutOfIndia,
       billToName, billToAddress, billToGSTNumber, billToMobile, billToEmail,
       shipToName, shipToAddress, shipToGSTNumber, shipToMobile, shipToEmail,
     };
-    // Only include date & optional string fields if they have a value
-    // (mirrors full-page form behavior — avoids sending null to @IsDateString DTO fields)
     if (invoiceDate) payload.invoiceDate = invoiceDate;
     if (poDate)      payload.poDate      = poDate;
     if (poNumber)    payload.poNumber    = poNumber;
@@ -392,6 +414,7 @@
       accountNumber: piCompany?.accountNumber,
       branchAddress: piCompany?.branchAddress,
       ifscCode: piCompany?.ifscCode,
+      swiftCode: pi?.swiftCode ?? "",
     };
     const payload = {
       orderId: order.id, piId: pi?.id, workOrderId: wo?.id,
@@ -409,6 +432,7 @@
       // Only send date fields when they have a value
       ...(invoiceDate && { invoiceDate }),
       ...(poNumber    && { poNumber }),
+      ...(poDate      && { poDate }),
     };
     await authApiFetch(API_ROUTES.INVOICE, { method: "POST", data: JSON.stringify(payload) });
     await done("Tax Invoice created successfully.");
@@ -636,7 +660,8 @@
                 </div>
                 <div class="col-md-4">
                   <label class="form-label fw-semibold" style="font-size:12px;">Bank Account</label>
-                  <select class="form-select form-select-sm" bind:value={selectedBankAccount}>
+                  <select class="form-select form-select-sm" bind:value={selectedBankAccount}
+                    on:change={(e) => bankAccountChange(selectedBankAccount)}>
                     <option value={null}>— Select Bank —</option>
                     {#each bankAccounts as b}<option value={b}>{bankLabel(b)}</option>{/each}
                   </select>
@@ -793,23 +818,43 @@
                 </div>
                 <!-- Tax Items -->
                 <div class="col-md-6">
-                  <div class="d-flex align-items-center justify-content-between mb-2">
+                  <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-1">
                     <span class="fw-semibold small text-uppercase text-muted">Tax Items</span>
-                    <button type="button" class="btn btn-xs btn-outline-secondary" on:click={addTax}><i class="ti ti-plus me-1"></i>Add</button>
+                    <div class="d-flex align-items-center gap-2">
+                      <label class="d-flex align-items-center gap-1 mb-0" style="cursor:pointer;font-size:11px;">
+                        <input type="radio" name="piIndiaType" checked={!isOutOfIndia} on:change={() => toggleIndia(false)} />
+                        <span style="color:#2e7d32;font-weight:600;">In India</span>
+                      </label>
+                      <label class="d-flex align-items-center gap-1 mb-0" style="cursor:pointer;font-size:11px;">
+                        <input type="radio" name="piIndiaType" checked={isOutOfIndia} on:change={() => toggleIndia(true)} />
+                        <span style="color:#856404;font-weight:600;">Out of India</span>
+                      </label>
+                      {#if !isOutOfIndia}
+                      <button type="button" class="btn btn-xs btn-outline-secondary" on:click={addTax}><i class="ti ti-plus me-1"></i>Add</button>
+                      {/if}
+                    </div>
                   </div>
-                  <table class="table table-sm table-bordered mb-0">
-                    <thead class="table-light"><tr><th>Tax</th><th class="text-center" style="width:80px;">Rate %</th><th class="text-end" style="width:90px;">Amount</th><th style="width:36px;"></th></tr></thead>
-                    <tbody>
-                      {#each taxItems as t, i}
-                        <tr>
-                          <td class="p-1"><input type="text" class="form-control form-control-sm border-0 shadow-none" bind:value={t.item} placeholder="CGST / IGST" /></td>
-                          <td class="p-1"><input type="number" class="form-control form-control-sm border-0 shadow-none text-center" min="0" max="100" step="0.5" bind:value={t.percentage} on:input={recompute} /></td>
-                          <td class="p-1 text-end fw-semibold align-middle small">{taxItemTotal(t).toFixed(2)}</td>
-                          <td class="p-1 text-center"><button type="button" class="btn btn-sm text-danger" on:click={() => removeTax(i)}><i class="ti ti-x"></i></button></td>
-                        </tr>
-                      {/each}
-                    </tbody>
-                  </table>
+                  {#if isOutOfIndia}
+                    <div class="d-flex align-items-center justify-content-center p-3 rounded"
+                      style="background:#fff3cd;border:1px dashed #ffc107;color:#856404;">
+                      <i class="ti ti-world-off me-2"></i>
+                      <span style="font-size:12px;font-weight:600;">Tax not applicable (Export)</span>
+                    </div>
+                  {:else}
+                    <table class="table table-sm table-bordered mb-0">
+                      <thead class="table-light"><tr><th>Tax</th><th class="text-center" style="width:80px;">Rate %</th><th class="text-end" style="width:90px;">Amount</th><th style="width:36px;"></th></tr></thead>
+                      <tbody>
+                        {#each taxItems as t, i}
+                          <tr>
+                            <td class="p-1"><input type="text" class="form-control form-control-sm border-0 shadow-none" bind:value={t.item} placeholder="CGST / IGST" /></td>
+                            <td class="p-1"><input type="number" class="form-control form-control-sm border-0 shadow-none text-center" min="0" max="100" step="0.5" bind:value={t.percentage} on:input={recompute} /></td>
+                            <td class="p-1 text-end fw-semibold align-middle small">{taxItemTotal(t).toFixed(2)}</td>
+                            <td class="p-1 text-center"><button type="button" class="btn btn-sm text-danger" on:click={() => removeTax(i)}><i class="ti ti-x"></i></button></td>
+                          </tr>
+                        {/each}
+                      </tbody>
+                    </table>
+                  {/if}
                 </div>
 
                 <!-- Discount + Total Label + Total Override + Grand Total -->
@@ -1137,23 +1182,43 @@
                 </div>
                 <!-- Tax Items -->
                 <div class="col-md-7">
-                  <div class="d-flex align-items-center justify-content-between mb-2">
+                  <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-1">
                     <span class="fw-semibold small text-uppercase text-muted">Tax Items</span>
-                    <button type="button" class="btn btn-xs btn-outline-secondary" on:click={addTax}><i class="ti ti-plus me-1"></i>Add</button>
+                    <div class="d-flex align-items-center gap-2">
+                      <label class="d-flex align-items-center gap-1 mb-0" style="cursor:pointer;font-size:11px;">
+                        <input type="radio" name="tiIndiaType" checked={!isOutOfIndia} on:change={() => toggleIndia(false)} />
+                        <span style="color:#2e7d32;font-weight:600;">In India</span>
+                      </label>
+                      <label class="d-flex align-items-center gap-1 mb-0" style="cursor:pointer;font-size:11px;">
+                        <input type="radio" name="tiIndiaType" checked={isOutOfIndia} on:change={() => toggleIndia(true)} />
+                        <span style="color:#856404;font-weight:600;">Out of India</span>
+                      </label>
+                      {#if !isOutOfIndia}
+                      <button type="button" class="btn btn-xs btn-outline-secondary" on:click={addTax}><i class="ti ti-plus me-1"></i>Add</button>
+                      {/if}
+                    </div>
                   </div>
-                  <table class="table table-sm table-bordered mb-0">
-                    <thead class="table-light"><tr><th>Tax</th><th class="text-center" style="width:80px;">Rate %</th><th class="text-end" style="width:90px;">Amount</th><th style="width:36px;"></th></tr></thead>
-                    <tbody>
-                      {#each taxItems as t, i}
-                        <tr>
-                          <td class="p-1"><input type="text" class="form-control form-control-sm border-0 shadow-none" bind:value={t.item} placeholder="CGST / IGST" /></td>
-                          <td class="p-1"><input type="number" class="form-control form-control-sm border-0 shadow-none text-center" min="0" max="100" step="0.5" bind:value={t.percentage} on:input={recompute} /></td>
-                          <td class="p-1 text-end fw-semibold align-middle small">{taxItemTotal(t).toFixed(2)}</td>
-                          <td class="p-1 text-center"><button type="button" class="btn btn-sm text-danger" on:click={() => removeTax(i)}><i class="ti ti-x"></i></button></td>
-                        </tr>
-                      {/each}
-                    </tbody>
-                  </table>
+                  {#if isOutOfIndia}
+                    <div class="d-flex align-items-center justify-content-center p-3 rounded"
+                      style="background:#fff3cd;border:1px dashed #ffc107;color:#856404;">
+                      <i class="ti ti-world-off me-2"></i>
+                      <span style="font-size:12px;font-weight:600;">Tax not applicable (Export)</span>
+                    </div>
+                  {:else}
+                    <table class="table table-sm table-bordered mb-0">
+                      <thead class="table-light"><tr><th>Tax</th><th class="text-center" style="width:80px;">Rate %</th><th class="text-end" style="width:90px;">Amount</th><th style="width:36px;"></th></tr></thead>
+                      <tbody>
+                        {#each taxItems as t, i}
+                          <tr>
+                            <td class="p-1"><input type="text" class="form-control form-control-sm border-0 shadow-none" bind:value={t.item} placeholder="CGST / IGST" /></td>
+                            <td class="p-1"><input type="number" class="form-control form-control-sm border-0 shadow-none text-center" min="0" max="100" step="0.5" bind:value={t.percentage} on:input={recompute} /></td>
+                            <td class="p-1 text-end fw-semibold align-middle small">{taxItemTotal(t).toFixed(2)}</td>
+                            <td class="p-1 text-center"><button type="button" class="btn btn-sm text-danger" on:click={() => removeTax(i)}><i class="ti ti-x"></i></button></td>
+                          </tr>
+                        {/each}
+                      </tbody>
+                    </table>
+                  {/if}
                 </div>
 
                 <!-- Discount + Total Label + Override + Grand Total -->

@@ -24,11 +24,11 @@
 
   // Multiple bank accounts
   let bankAccounts = [
-    { label: "", bankName: "", accountHolderName: "", accountNumber: "", ifscCode: "", branchAddress: "" }
+    { label: "", bankName: "", accountHolderName: "", accountNumber: "", ifscCode: "", swiftCode: "", branchAddress: "" }
   ];
 
   function addBankAccount() {
-    bankAccounts = [...bankAccounts, { label: "", bankName: "", accountHolderName: "", accountNumber: "", ifscCode: "", branchAddress: "" }];
+    bankAccounts = [...bankAccounts, { label: "", bankName: "", accountHolderName: "", accountNumber: "", ifscCode: "", swiftCode: "", branchAddress: "" }];
   }
 
   function removeBankAccount(index) {
@@ -91,10 +91,11 @@
           accountHolderName: data.accountHolderName || "",
           accountNumber: data.accountNumber || "",
           ifscCode: data.ifscCode || "",
+          swiftCode: "",
           branchAddress: data.branchAddress || "",
         }];
       } else {
-        bankAccounts = [{ label: "", bankName: "", accountHolderName: "", accountNumber: "", ifscCode: "", branchAddress: "" }];
+        bankAccounts = [{ label: "", bankName: "", accountHolderName: "", accountNumber: "", ifscCode: "", swiftCode: "", branchAddress: "" }];
       }
     } catch (error) {
       errorMessage = "Failed to load company data.";
@@ -360,6 +361,10 @@
                   <div>
                     <label class="form-label">IFSC Code</label>
                     <input class="form-control" type="text" bind:value={bank.ifscCode} placeholder="IFSC Code" />
+                  </div>
+                  <div>
+                    <label class="form-label">Swift Code</label>
+                    <input class="form-control" type="text" bind:value={bank.swiftCode} placeholder="e.g. HDFCINBBXXX" />
                   </div>
                   <div>
                     <label class="form-label">Branch Address</label>

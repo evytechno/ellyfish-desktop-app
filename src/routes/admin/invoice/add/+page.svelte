@@ -40,6 +40,7 @@
     { item: "SGST", percentage: 9, total: 0 },
     { item: "IGST", percentage: 18, total: 0 },
   ];
+  let isOutOfIndia = false;
   let priceTerms = "";
   let swiftCode = "";
   let currency = "INR";
@@ -84,6 +85,20 @@
   function removeExtraItem(i) { extraItems = extraItems.filter((_, idx) => idx !== i); }
   function addTaxItem() { taxItems = [...taxItems, { item: "", percentage: 0, total: 0 }]; }
   function removeTaxItem(i) { taxItems = taxItems.filter((_, idx) => idx !== i); }
+
+  function toggleIndia(outOfIndia) {
+    isOutOfIndia = outOfIndia;
+    if (outOfIndia) {
+      taxItems = [];
+    } else {
+      taxItems = [
+        { item: "CGST", percentage: 9, total: 0 },
+        { item: "SGST", percentage: 9, total: 0 },
+        { item: "IGST", percentage: 18, total: 0 },
+      ];
+      recalculateTaxes();
+    }
+  }
 
   function shipToChange(e) {
     if (e.target.checked) {
@@ -185,7 +200,7 @@
     loading = true;
     try {
       const payload = {
-        title, items, extraItems, taxItems, priceTerms, swiftCode, currency,
+        title, items, extraItems, taxItems, isOutOfIndia, priceTerms, swiftCode, currency,
         paymentMethod, status, termsConditions, remarks, poNumber, discount,
         totalAmountTitle, totalAmountValue: totalAmountValue || total,
         selectedBankAccount, billToName, billToAddress, billToGSTNumber,
@@ -315,7 +330,7 @@
             </div>
             <div class="card-body">
               <!-- Invoice Type toggle -->
-              <div class="mb-4 p-3 bg-light rounded d-flex gap-4 align-items-center">
+              <div class="mb-4 p-3 bg-light rounded d-flex gap-4 align-items-center flex-wrap">
                 <span class="fw-semibold small text-muted">Invoice Type:</span>
                 <label class="d-flex align-items-center gap-2 cursor-pointer mb-0">
                   <input type="radio" name="invoiceType" value="order" bind:group={invoiceType} />
@@ -602,10 +617,24 @@
 
           <!-- Section 4: Extra Charges & Taxes -->
           <div class="card border mb-3">
-            <div class="card-header py-2 bg-white">
+            <div class="card-header py-2 d-flex align-items-center justify-content-between flex-wrap gap-2"
+              style="background:{isOutOfIndia ? '#fff8e1' : '#f0f9f0'};">
               <h6 class="mb-0 fw-semibold">
                 <i class="ti ti-receipt-tax me-2 text-primary"></i>Extra Charges & Taxes
               </h6>
+              <div class="d-flex align-items-center gap-3 ms-auto">
+                <span class="fw-semibold small" style="color:{isOutOfIndia ? '#856404' : '#2e7d32'};">
+                  <i class="ti ti-world me-1"></i>Supply Type:
+                </span>
+                <label class="d-flex align-items-center gap-2 cursor-pointer mb-0">
+                  <input type="radio" name="indiaType" checked={!isOutOfIndia} on:change={() => toggleIndia(false)} />
+                  <span class="small fw-semibold" style="color:#2e7d32;">In India (GST)</span>
+                </label>
+                <label class="d-flex align-items-center gap-2 cursor-pointer mb-0">
+                  <input type="radio" name="indiaType" checked={isOutOfIndia} on:change={() => toggleIndia(true)} />
+                  <span class="small fw-semibold" style="color:#856404;">Out of India (Export)</span>
+                </label>
+              </div>
             </div>
             <div class="card-body">
               <div class="grid grid-cols-2 gap-2">
@@ -656,10 +685,19 @@
                 <div>
                   <div class="d-flex align-items-center justify-content-between mb-3">
                     <span class="fw-semibold small text-uppercase text-muted">Tax Items</span>
+                    {#if !isOutOfIndia}
                     <button type="button" class="btn btn-xs btn-outline-secondary" on:click={addTaxItem}>
                       <i class="ti ti-plus me-1"></i>Add
                     </button>
+                    {/if}
                   </div>
+                  {#if isOutOfIndia}
+                  <div class="d-flex align-items-center justify-content-center p-3 rounded"
+                    style="background:#fff3cd;border:1px dashed #ffc107;color:#856404;">
+                    <i class="ti ti-world-off me-2"></i>
+                    <span class="small fw-semibold">Tax not applicable for Out of India (Export)</span>
+                  </div>
+                  {:else}
                   <table class="table table-sm table-bordered mb-0">
                     <thead class="table-light">
                       <tr>
@@ -692,6 +730,7 @@
                       {/each}
                     </tbody>
                   </table>
+                  {/if}
                 </div>
 
               </div>
