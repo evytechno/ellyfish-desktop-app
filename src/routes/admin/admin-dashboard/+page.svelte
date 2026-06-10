@@ -356,7 +356,19 @@
         <!-- body -->
         <div class="db-card-body">
           {#if s1Loading}
-            <div class="db-loading"><span class="spinner-border spinner-border-sm text-primary"></span></div>
+            <table class="db-table">
+              <thead><tr><th>User</th><th class="text-center">Orders</th><th class="text-end">Value</th><th class="text-end">Share</th></tr></thead>
+              <tbody>
+                {#each Array(4) as _}
+                  <tr>
+                    <td><div class="skel-line" style="width:70%"></div></td>
+                    <td><div class="skel-line mx-auto" style="width:30px"></div></td>
+                    <td><div class="skel-line ms-auto" style="width:60px"></div></td>
+                    <td><div class="skel-line ms-auto" style="width:80px"></div></td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
           {:else if s1Data.length === 0}
             <div class="db-empty"><i class="ti ti-mood-empty"></i> No data found</div>
           {:else}
@@ -459,7 +471,19 @@
         </div>
         <div class="db-card-body">
           {#if s2Loading}
-            <div class="db-loading"><span class="spinner-border spinner-border-sm text-success"></span></div>
+            <table class="db-table">
+              <thead><tr><th>Category</th><th class="text-center">Orders</th><th class="text-end">Value</th><th class="text-end">Share</th></tr></thead>
+              <tbody>
+                {#each Array(4) as _}
+                  <tr>
+                    <td><div class="skel-line" style="width:65%"></div></td>
+                    <td><div class="skel-line mx-auto" style="width:30px"></div></td>
+                    <td><div class="skel-line ms-auto" style="width:60px"></div></td>
+                    <td><div class="skel-line ms-auto" style="width:80px"></div></td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
           {:else if s2Data.length === 0}
             <div class="db-empty"><i class="ti ti-mood-empty"></i> No data found</div>
           {:else}
@@ -567,7 +591,21 @@
         </div>
         <div class="db-card-body">
           {#if s3Loading}
-            <div class="db-loading"><span class="spinner-border spinner-border-sm text-warning"></span></div>
+            <table class="db-table">
+              <thead><tr><th>User</th><th class="text-center">📞</th><th class="text-center">WA</th><th class="text-center">✉️</th><th class="text-center">All</th><th class="text-center">Total</th></tr></thead>
+              <tbody>
+                {#each Array(4) as _}
+                  <tr>
+                    <td><div class="skel-line" style="width:65%"></div></td>
+                    <td><div class="skel-line mx-auto" style="width:24px"></div></td>
+                    <td><div class="skel-line mx-auto" style="width:24px"></div></td>
+                    <td><div class="skel-line mx-auto" style="width:24px"></div></td>
+                    <td><div class="skel-line mx-auto" style="width:24px"></div></td>
+                    <td><div class="skel-line mx-auto" style="width:28px"></div></td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
           {:else if s3Data.length === 0}
             <div class="db-empty"><i class="ti ti-mood-empty"></i> No contact data found</div>
           {:else}
@@ -668,7 +706,24 @@
         </div>
         <div class="db-card-body" style="overflow-x:auto;">
           {#if s5Loading}
-            <div class="db-loading"><span class="spinner-border spinner-border-sm text-purple"></span></div>
+            <table class="db-table" style="min-width:700px;">
+              <thead>
+                <tr>
+                  <th style="min-width:140px;">Category</th>
+                  <th class="text-center">Total</th>
+                  {#each Array(6) as _}<th class="text-center"><div class="skel-line mx-auto" style="width:50px;height:10px;"></div></th>{/each}
+                </tr>
+              </thead>
+              <tbody>
+                {#each Array(4) as _}
+                  <tr>
+                    <td><div class="skel-line" style="width:70%"></div></td>
+                    <td><div class="skel-line mx-auto" style="width:28px"></div></td>
+                    {#each Array(6) as _}<td><div class="skel-line mx-auto" style="width:24px"></div></td>{/each}
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
           {:else if s5Data.length === 0}
             <div class="db-empty"><i class="ti ti-mood-empty"></i> No data found</div>
           {:else}
@@ -790,7 +845,29 @@
       </div>
       <div class="db-card-body">
         {#if s4Loading}
-          <div class="db-loading"><span class="spinner-border spinner-border-sm text-danger"></span></div>
+          <div class="table-responsive">
+            <table class="db-table">
+              <thead>
+                <tr>
+                  <th style="width:40px">#</th>
+                  <th>Order</th><th>Status</th><th>Assigned To</th>
+                  <th class="text-center">Last Activity</th><th class="text-center">Flag</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each Array(6) as _}
+                  <tr>
+                    <td><div class="skel-line" style="width:20px"></div></td>
+                    <td><div class="skel-line" style="width:75%"></div></td>
+                    <td><div class="skel-line" style="width:70px"></div></td>
+                    <td><div class="skel-line" style="width:80px"></div></td>
+                    <td><div class="skel-line mx-auto" style="width:50px"></div></td>
+                    <td><div class="skel-line mx-auto" style="width:60px"></div></td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
         {:else if s4Data.length === 0}
           <div class="db-empty"><i class="ti ti-mood-empty"></i> No orders found</div>
         {:else}
@@ -995,8 +1072,19 @@
   .db-flag--green { background: #ebfbee; color: #2f9e44; }
 
   /* ── Loading / empty ── */
-  .db-loading { text-align: center; padding: 32px; }
   .db-empty { text-align: center; padding: 32px; color: #adb5bd; font-size: 13px; }
+
+  /* ── Skeleton loader ── */
+  @keyframes skel-shimmer {
+    0%   { background-position: -400px 0; }
+    100% { background-position: 400px 0; }
+  }
+  .skel-line {
+    height: 12px; border-radius: 6px;
+    background: linear-gradient(90deg, #f1f3f5 25%, #e9ecef 50%, #f1f3f5 75%);
+    background-size: 800px 100%;
+    animation: skel-shimmer 1.4s infinite linear;
+  }
 
   /* ── Pagination ── */
   .db-pagination {

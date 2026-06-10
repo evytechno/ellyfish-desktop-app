@@ -657,9 +657,35 @@
   let orderChats = [];
   let orderAttachments = [];
   let orderChatMsg = '';
+  let orderChatSelectedTypes = [];
   let orderAttachFiles = [];
   let orderAttachTitle = '';
   let orderChatSending = false;
+
+  const ORDER_CHAT_TYPES = ["Call", "WhatsApp", "Email"];
+  function toggleOrderChatType(t) {
+    if (t === "All") {
+      orderChatSelectedTypes = orderChatSelectedTypes.length === ORDER_CHAT_TYPES.length ? [] : [...ORDER_CHAT_TYPES];
+    } else {
+      orderChatSelectedTypes = orderChatSelectedTypes.includes(t)
+        ? orderChatSelectedTypes.filter((x) => x !== t)
+        : [...orderChatSelectedTypes, t];
+    }
+  }
+  $: orderChatAllSelected = orderChatSelectedTypes.length === ORDER_CHAT_TYPES.length;
+
+  function normalizeSingleOrderChatType(raw) {
+    if (!raw || raw.trim() === "") return null;
+    const t = raw.trim().toLowerCase();
+    if (t.includes("call")) return "Call";
+    if (t.includes("whatsapp") || t.includes("whats app")) return "WhatsApp";
+    if (t.includes("email") || t.includes("mail")) return "Email";
+    return null;
+  }
+  function normalizeOrderChatTypes(typeStr) {
+    if (!typeStr || typeStr.trim() === "") return [];
+    return typeStr.split(",").map(normalizeSingleOrderChatType).filter(Boolean);
+  }
   let orderAttachSending = false;
   let orderChatFileInput;
   let orderIsDragOver = false;
@@ -733,11 +759,16 @@
     try {
       const data = await authApiFetch(API_ROUTES.ORDER_CHAT, {
         method: 'POST',
-        data: JSON.stringify({ orderId: orderDrawerData.id, message: orderChatMsg.trim() }),
+        data: JSON.stringify({
+          orderId: orderDrawerData.id,
+          message: orderChatMsg.trim(),
+          type: orderChatSelectedTypes.join(","),
+        }),
       });
       if (data?.data) {
         orderChats = [...orderChats, { ...data.data, isOwn: true }];
         orderChatMsg = '';
+        orderChatSelectedTypes = [];
         scrollOrderChatBottom();
       }
     } catch (e) { /* ignore */ }
@@ -5136,6 +5167,15 @@
                           <div class="op-chat-msg">
                             <div class="op-chat-meta">
                               <span class="op-chat-sender">{oc.user?.name ?? "User"}</span>
+                              {#each normalizeOrderChatTypes(oc.type) as nt}
+                                <span style="display:inline-flex;align-items:center;gap:2px;font-size:9px;font-weight:600;padding:1px 5px;border-radius:4px;
+                                  {nt === 'Call' ? 'background:#dbeafe;color:#1d4ed8;' : nt === 'WhatsApp' ? 'background:#dcfce7;color:#15803d;' : 'background:#fef9c3;color:#a16207;'}">
+                                  {#if nt === 'Call'}<i class="ti ti-phone" style="font-size:9px;"></i>{/if}
+                                  {#if nt === 'WhatsApp'}<i class="ti ti-brand-whatsapp" style="font-size:9px;"></i>{/if}
+                                  {#if nt === 'Email'}<i class="ti ti-mail" style="font-size:9px;"></i>{/if}
+                                  {nt}
+                                </span>
+                              {/each}
                               <span class="op-chat-time">{formatDate(oc.createdAt)}</span>
                             </div>
                             <div class="op-chat-bubble">{oc.message}</div>
@@ -5144,6 +5184,29 @@
                       {/if}
                     </div>
                     </div><!-- /op-list-wrap -->
+                    <div style="display:flex;align-items:center;gap:5px;padding:7px 12px 4px;border-top:1px solid #f0f0f0;background:#fafafa;">
+                      <span style="font-size:10px;color:#adb5bd;font-weight:500;white-space:nowrap;">Type:</span>
+                      {#each ORDER_CHAT_TYPES as t}
+                        <button
+                          type="button"
+                          style="font-size:10px;padding:2px 8px;border-radius:20px;border:1px solid {orderChatSelectedTypes.includes(t) ? 'transparent' : '#dee2e6'};
+                            background:{orderChatSelectedTypes.includes(t) ? (t === 'Call' ? '#3b82f6' : t === 'WhatsApp' ? '#22c55e' : '#eab308') : '#fff'};
+                            color:{orderChatSelectedTypes.includes(t) ? '#fff' : '#6c757d'};cursor:pointer;display:inline-flex;align-items:center;gap:3px;transition:all 0.15s;"
+                          on:click|stopPropagation={() => toggleOrderChatType(t)}
+                        >
+                          {#if t === 'Call'}<i class="ti ti-phone" style="font-size:10px;"></i>{/if}
+                          {#if t === 'WhatsApp'}<i class="ti ti-brand-whatsapp" style="font-size:10px;"></i>{/if}
+                          {#if t === 'Email'}<i class="ti ti-mail" style="font-size:10px;"></i>{/if}
+                          {t}
+                        </button>
+                      {/each}
+                      <button
+                        type="button"
+                        style="font-size:10px;padding:2px 8px;border-radius:20px;border:1px solid {orderChatAllSelected ? 'transparent' : '#dee2e6'};
+                          background:{orderChatAllSelected ? '#212529' : '#fff'};color:{orderChatAllSelected ? '#fff' : '#6c757d'};cursor:pointer;transition:all 0.15s;"
+                        on:click|stopPropagation={() => toggleOrderChatType('All')}
+                      >All</button>
+                    </div>
                     <div class="op-chat-input-row">
                       <input
                         class="form-control form-control-sm"
