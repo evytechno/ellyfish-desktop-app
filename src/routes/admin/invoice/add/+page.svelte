@@ -103,7 +103,7 @@
       }
     } catch {}
     try {
-      const order = await authApiFetch(`${API_ROUTES.ORDER}/${id}`);
+      const order = await authApiFetch(`${API_ROUTES.ORDER}/${id}/basic`);
       if (!order) return;
       const client = order.orderClients?.[0];
       if (order.title)          title           = order.title;
@@ -220,7 +220,7 @@
       invoiceType = "order";
       orderId = Number(fromOrderId);
       try {
-        const order = await authApiFetch(`${API_ROUTES.ORDER}/${fromOrderId}`);
+        const order = await authApiFetch(`${API_ROUTES.ORDER}/${fromOrderId}/basic`);
         orderInitialTitle = order?.title ?? "";
       } catch {}
       await orderValueChange(orderId);

@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import jQuery from "jquery";
   import { authApiFetch } from "$lib/api/client";
   import { errorHandle } from "$lib/utils/errorHandle";
@@ -22,6 +22,7 @@
     usersAllStore,
   } from "$lib/stores/dataStores";
   import ChangeListVisiableStatus from "$lib/components/ChangeListVisiableStatus.svelte";
+  import ChatQuickModal from "$lib/components/ChatQuickModal.svelte";
 
   let currentUser = null;
   let loadingData = true;
@@ -32,7 +33,7 @@
   let listTotalItems = 0;
   let listTotalPages = 1;
   let listCurrentPage = 1;
-  let listRowsPerPage = 20;
+  let listRowsPerPage = 10;
 
   // Grid refresh trigger
   let gridRefreshKey = 0;
@@ -280,6 +281,8 @@
     customEndDate = filterState.customEndDate || null;
     orderBy = filterState.orderBy || "createdAt";
 
+    document.addEventListener("openChatModal", handleOpenChatModal);
+
     filterReady = true; // filter state is now fully restored — safe to mount OrderDragula
     loadingData = false; // hide main loader; grid uses per-column loaders, list re-sets this in fetchListOrders
 
@@ -291,6 +294,26 @@
     getAllCategories();
 
     setTimeout(() => { firstLoad = true; }, 500);
+  });
+
+  // Chat modal handler (hoisted so onDestroy can reference it)
+  function handleOpenChatModal(e) {
+    const incoming = e.detail.order;
+    if (
+      chatModalOrder?.id === incoming.id &&
+      (chatModalOrder.orderChats?.length || 0) > (incoming.orderChats?.length || 0)
+    ) {
+      chatModalOrder = { ...incoming, orderChats: chatModalOrder.orderChats };
+    } else {
+      chatModalOrder = incoming;
+    }
+    chatModalPreselected = e.detail.preselectedTypes || [];
+    chatModalOpen        = true;
+  }
+
+  // Cleanup page-level document listeners on component destroy
+  onDestroy(() => {
+    document.removeEventListener("openChatModal", handleOpenChatModal);
   });
 
   const updateFilterStore = (newValues) => {
@@ -916,6 +939,11 @@
     },
   ];
 
+  // Chat Quick Modal (single instance at page level, outside Dragula DOM)
+  let chatModalOpen        = false;
+  let chatModalOrder       = null;
+  let chatModalPreselected = [];
+
   // PI/WO/TI modal (used from DynamicDataTable via window event)
   let piwotiModalOpen  = false;
   let piwotiModalType  = "PI";
@@ -1275,6 +1303,22 @@
   order={piwotiModalOrder}
   on:close={() => (piwotiModalOpen = false)}
   on:refresh={onPIWOTIRefresh}
+/>
+
+<!-- Chat Quick Modal — rendered here at page level, completely outside Dragula DOM -->
+<ChatQuickModal
+  bind:open={chatModalOpen}
+  order={chatModalOrder}
+  preselectedTypes={chatModalPreselected}
+  on:close={() => (chatModalOpen = false)}
+  on:chatAdded={(e) => {
+    if (chatModalOrder?.id === e.detail.orderId) {
+      chatModalOrder = {
+        ...chatModalOrder,
+        orderChats: [...(chatModalOrder.orderChats || []), e.detail.chat],
+      };
+    }
+  }}
 />
 
 <!-- Add Canvas -->

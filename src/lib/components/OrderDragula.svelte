@@ -186,6 +186,43 @@
       col.addEventListener("scroll", saveScrollPositions);
     });
 
+    // Handle status change from card dropdown
+    async function handleStatusChanged(e) {
+      const { orderId, oldStatus, newStatus } = e.detail;
+      const order = columnState[oldStatus]?.orders.find(o => o.id === orderId);
+      if (!order) return;
+
+      // Optimistic update — move card between columns
+      columnState[oldStatus] = {
+        ...columnState[oldStatus],
+        orders: columnState[oldStatus].orders.filter(o => o.id !== orderId),
+        total: Math.max(0, columnState[oldStatus].total - 1),
+      };
+      columnState[newStatus] = {
+        ...columnState[newStatus],
+        orders: [{ ...order, status: newStatus }, ...columnState[newStatus].orders],
+        total: columnState[newStatus].total + 1,
+      };
+      columnState = { ...columnState };
+
+      const success = await updateOrderStatus(order, newStatus);
+      if (!success) {
+        // Revert on failure
+        columnState[newStatus] = {
+          ...columnState[newStatus],
+          orders: columnState[newStatus].orders.filter(o => o.id !== orderId),
+          total: Math.max(0, columnState[newStatus].total - 1),
+        };
+        columnState[oldStatus] = {
+          ...columnState[oldStatus],
+          orders: [order, ...columnState[oldStatus].orders],
+          total: columnState[oldStatus].total + 1,
+        };
+        columnState = { ...columnState };
+      }
+    }
+    document.addEventListener("orderStatusChanged", handleStatusChanged);
+
     // Dragula setup
     if (typeof window !== "undefined") {
       globalThis.global = globalThis;
@@ -194,7 +231,14 @@
       let originalNextSibling = null;
 
       const containers = STATUSES.map((s) => columnRefs[s]).filter(Boolean);
-      const drake = dragula(containers, { removeOnSpill: false, revertOnSpill: false });
+      const drake = dragula(containers, {
+        removeOnSpill: false,
+        revertOnSpill: false,
+        moves: (_el, _source, handle) => {
+          // Don't start drag when clicking inside interactive elements or modals
+          return !handle.closest('input, textarea, select, .fixed, [data-no-drag]');
+        },
+      });
 
       let removeAutoScroll = null;
 
@@ -266,6 +310,7 @@
         if (removeAutoScroll) removeAutoScroll();
         window.removeEventListener("beforeunload", saveScrollPositions);
         window.removeEventListener("scroll", saveScrollPositions);
+        document.removeEventListener("orderStatusChanged", handleStatusChanged);
       };
     }
   });

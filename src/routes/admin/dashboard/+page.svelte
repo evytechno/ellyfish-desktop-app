@@ -38,7 +38,6 @@
   let techQueries = [];
 
   async function loadTechDashboard() {
-    loadingData = true;
     try {
       const [stats, assigned] = await Promise.all([
         authApiFetch(`${API_ROUTES.QUERY}/stats`),
@@ -46,18 +45,9 @@
       ]);
       techStats = stats;
       techQueries = assigned.data ?? [];
-    } catch (_) {
-    } finally {
-      loadingData = false;
-    }
+    } catch (_) {}
   }
 
-  onMount(() => {
-    currentUser = checkAuth();
-    if (currentUser) {
-      setUser(currentUser);
-    }
-  });
   let errorMessage = "";
 
   let loading;
@@ -76,33 +66,55 @@
   import { get } from "svelte/store";
   import UpdateNotification from "../../../lib/components/UpdateNotification.svelte";
   let firstLoad = false;
-  onMount(() => {
-    const filterState = $dashboardFilterStore;
 
-    userId = filterState.userId || null;
-    searchTerm = filterState.searchTerm || "";
+  onMount(async () => {
+    // ── 1. Auth + filter state (sync, no network) ──────────────────────────
+    currentUser = checkAuth();
+    if (currentUser) setUser(currentUser);
+
+    const filterState = $dashboardFilterStore;
+    userId         = filterState.userId         || null;
+    searchTerm     = filterState.searchTerm     || "";
     selectedFilter = filterState.selectedFilter || "last7days";
     customStartDate = filterState.customStartDate || null;
-    customEndDate = filterState.customEndDate || null;
+    customEndDate   = filterState.customEndDate   || null;
 
-    if (currentUser?.subRole === "tech" || currentUser?.subRole === "tech_helper") {
-      loadTechDashboard();
-      if (currentUser?.orderAccess) {
-        fetchOrders();
-        fetchActivity();
-        fetchOrdersStats();
+    // ── 2. Users dropdown — use store cache if available ───────────────────
+    const cachedUsers = get(usersAllStore);
+    const usersPromise = cachedUsers?.length > 0
+      ? Promise.resolve(cachedUsers)
+      : authApiFetch(API_ROUTES.USER + "/all").then(data => {
+          usersAllStore.set(data);
+          return data;
+        }).catch(() => []);
+
+    // ── 3. Fire all data calls in parallel ────────────────────────────────
+    loadingData = true;
+    try {
+      const isTech = currentUser?.subRole === "tech" || currentUser?.subRole === "tech_helper";
+      const hasOrderAccess = currentUser?.orderAccess;
+      const isMaster = currentUser?.role === "master";
+
+      const calls = [];
+
+      if (isTech) {
+        calls.push(loadTechDashboard());
+        if (hasOrderAccess) {
+          calls.push(fetchOrders(), fetchActivity(), fetchOrdersStats());
+        }
+      } else {
+        calls.push(fetchOrders(), fetchActivity(), fetchOrdersStats());
       }
-    } else {
-      fetchOrders(), fetchActivity(), fetchOrdersStats();
-    }
 
-    if (currentUser?.role === "master") {
-      loadHighlights();
-    }
+      if (isMaster) calls.push(loadHighlights());
+      calls.push(usersPromise.then(data => { users = data; }));
 
-    setTimeout(() => {
-      firstLoad = true;
-    }, 500);
+      await Promise.all(calls);
+    } catch (_) {
+    } finally {
+      loadingData = false;
+      setTimeout(() => { firstLoad = true; }, 500);
+    }
   });
 
   const updateFilterStore = (newValues) => {
@@ -112,7 +124,6 @@
   };
 
   async function fetchOrdersStats() {
-    loadingData = true;
     try {
       loading = true;
       const query = new URLSearchParams({
@@ -180,21 +191,16 @@
         },
       );
       loading = false;
-
       dashboardData = { ...data };
     } catch (error) {
       loading = false;
-      const validationErrors = errorHandle(error);
+      errorHandle(error);
     } finally {
       loading = false;
-      setTimeout(() => {
-        loadingData = false;
-      }, 500);
     }
   }
 
   async function fetchOrders() {
-    loadingData = true;
     try {
       const query = new URLSearchParams({
         search: searchTerm || "",
@@ -246,19 +252,11 @@
         : [];
       orders = [...newData];
     } catch (error) {
-      console.error("Fetch error:", error);
-      loading = false;
-      const validationErrors = errorHandle(error);
-    } finally {
-      loading = false;
-      setTimeout(() => {
-        loadingData = false;
-      }, 500);
+      errorHandle(error);
     }
   }
 
   async function fetchActivity() {
-    loadingData = true;
     try {
       const query = new URLSearchParams({
         search: searchTerm || "",
@@ -309,37 +307,10 @@
 
       activities = [...data.data];
     } catch (error) {
-      console.error("Fetch error:", error);
-      loading = false;
-      const validationErrors = errorHandle(error);
-    } finally {
-      loading = false;
-      setTimeout(() => {
-        loadingData = false;
-      }, 500);
+      errorHandle(error);
     }
   }
 
-  onMount(async () => {
-    const cached = get(usersAllStore);
-    if (cached && cached.length > 0) {
-      users = cached;
-      loadingData = false;
-      return;
-    }
-    loadingData = true;
-    try {
-      const data = await authApiFetch(API_ROUTES.USER + "/all");
-      users = data;
-      usersAllStore.set(data);
-    } catch (err) {
-      errorMessage = "Failed to load user data.";
-    } finally {
-      setTimeout(() => {
-        loadingData = false;
-      }, 500);
-    }
-  });
 
   $: [searchTerm, selectedFilter, customStartDate, customEndDate, userId],
     checkFetchRecord();
@@ -352,7 +323,9 @@
       if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) {
         return;
       }
-      fetchOrders(), fetchActivity(), fetchOrdersStats();
+      loadingData = true;
+      Promise.all([fetchOrders(), fetchActivity(), fetchOrdersStats()])
+        .finally(() => { loadingData = false; });
     }
   }
 

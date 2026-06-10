@@ -63,8 +63,52 @@
   let link = "";
   let files = [];
 
-  let type = "";
   let message = "";
+
+  const CHAT_TYPES = ["Call", "WhatsApp", "Email"];
+  let selectedTypes = [];   // multi-select array for the form
+  let chatTypeFilter = "All";
+
+  // Toggle a type in the form selector
+  function toggleChatType(t) {
+    if (t === "All") {
+      selectedTypes = selectedTypes.length === CHAT_TYPES.length ? [] : [...CHAT_TYPES];
+    } else {
+      selectedTypes = selectedTypes.includes(t)
+        ? selectedTypes.filter((x) => x !== t)
+        : [...selectedTypes, t];
+    }
+  }
+  $: allSelected = selectedTypes.length === CHAT_TYPES.length;
+
+  // Normalize a single raw token
+  function normalizeSingleType(raw) {
+    if (!raw || raw.trim() === "") return null;
+    const t = raw.trim().toLowerCase();
+    if (t.includes("call")) return "Call";
+    if (t.includes("whatsapp") || t.includes("whats app") || t === "wa") return "WhatsApp";
+    if (t.includes("email") || t.includes("mail")) return "Email";
+    return null;
+  }
+
+  // Parse comma-separated type string → normalized array (no nulls)
+  function normalizeTypes(typeStr) {
+    if (!typeStr || typeStr.trim() === "") return [];
+    return typeStr.split(",").map(normalizeSingleType).filter(Boolean);
+  }
+
+  // For single icon/color use (first type wins)
+  function normalizeType(typeStr) {
+    return normalizeTypes(typeStr)[0] ?? "Other";
+  }
+
+  $: filteredChats = chatTypeFilter === "All"
+    ? (order?.orderChats ?? [])
+    : (order?.orderChats ?? []).filter((c) => normalizeTypes(c.type).includes(chatTypeFilter));
+  $: chatTypeCounts = CHAT_TYPES.reduce((acc, t) => {
+    acc[t] = (order?.orderChats ?? []).filter((c) => normalizeTypes(c.type).includes(t)).length;
+    return acc;
+  }, {});
 
   let reminderTime = null;
   let reminderMessage = "";
@@ -222,7 +266,7 @@
         data: JSON.stringify(updateOrder),
       });
 
-      order = data.data;
+      order = { ...order, ...data.data };
       Swal.fire("Success!", data.message, "success");
       closeOffcanvas();
     } catch (error) {
@@ -397,63 +441,108 @@
     }
   }
 
+  // Loading states for each relation section
+  let relationsLoading = true;
+
   async function loadOrder() {
     if (!orderId) return;
     loadingData = true;
+    relationsLoading = true;
     order = null;
     orderQueries = [];
     selectedUsers = [];
+
     try {
-      const data = await authApiFetch(`${API_ROUTES.ORDER}/${orderId}`);
-      order = data;
+      // ── Wave 1: Core order only (fast — no heavy joins) ──────────────────
+      const data = await authApiFetch(`${API_ROUTES.ORDER}/${orderId}/basic`);
+      order = {
+        ...data,
+        // pre-fill empty arrays so template doesn't crash before wave 2
+        orderChats:       [],
+        orderAttachments: [],
+        orderReminders:   [],
+        orderClients:     data.orderClients ?? [],
+        orderContacts:    [],
+        orderActivities:  [],
+        groupedActivities:[],
+        childOrders:      [],
+        invoices:         data.invoices ?? [],
+        orderPayments:    data.orderPayments ?? [],
+        workOrders:       data.workOrders ?? [],
+      };
 
-      order.orderAttachments = data.orderAttachments.sort((a, b) => {
-        return new Date(b.createdAt) - new Date(a.createdAt);
-      });
-      order.orderChats = data.orderChats.sort((a, b) => {
-        return new Date(b.createdAt) - new Date(a.createdAt);
-      });
-      order.orderReminders = data.orderReminders.sort((a, b) => {
-        return new Date(b.createdAt) - new Date(a.createdAt);
-      });
-      order.orderClients = data.orderClients.sort((a, b) => {
-        return new Date(b.createdAt) - new Date(a.createdAt);
-      });
-      // update params
-      title = data?.title;
-      category = data?.category;
-      orderDate = data?.orderDate
-        ? new Date(data.orderDate).toISOString().substring(0, 10)
-        : "";
-      startDate = data?.startDate
-        ? new Date(data.startDate).toISOString().substring(0, 10)
-        : "";
-      deadlineDate = data?.deadlineDate
-        ? new Date(data.deadlineDate).toISOString().substring(0, 10)
-        : "";
-
-      price = data?.price;
-      priceTerms = data?.priceTerms;
-      currency = data?.currency;
-      source = data?.source;
-      description = data?.description;
-      gstNumber = data?.gstNumber;
+      // populate form fields immediately
+      title           = data?.title;
+      category        = data?.category;
+      orderDate       = data?.orderDate ? new Date(data.orderDate).toISOString().substring(0, 10) : "";
+      startDate       = data?.startDate ? new Date(data.startDate).toISOString().substring(0, 10) : "";
+      deadlineDate    = data?.deadlineDate ? new Date(data.deadlineDate).toISOString().substring(0, 10) : "";
+      price           = data?.price;
+      priceTerms      = data?.priceTerms;
+      currency        = data?.currency;
+      source          = data?.source;
+      description     = data?.description;
+      gstNumber       = data?.gstNumber;
       workOrderNumber = data?.workOrderNumber;
-      importStatus = data?.importStatus;
-      company = data?.company;
+      importStatus    = data?.importStatus;
+      company         = data?.company;
 
-      data?.assignedUsers.map((user) => {
-        if (user?.role == "user") {
-          selectedUsers.push(user?.id);
-        }
+      data?.assignedUsers?.forEach((user) => {
+        if (user?.role == "user") selectedUsers.push(user?.id);
       });
+
+      loadingData = false; // page renders now — user sees content
+
+      // ── Wave 2: Load all heavy relations in parallel ─────────────────────
+      const [chats, attachments, reminders, clients, contacts, activities, childOrders] =
+        await Promise.allSettled([
+          authApiFetch(`${API_ROUTES.ORDER_CHAT}?orderId=${orderId}`),
+          authApiFetch(`${API_ROUTES.ORDER_ATTACHMENT}?orderId=${orderId}`),
+          authApiFetch(`${API_ROUTES.ORDER_REMINDER}?orderId=${orderId}`),
+          authApiFetch(`${API_ROUTES.ORDER_CLIENT}?orderId=${orderId}`),
+          authApiFetch(`${API_ROUTES.ORDER_CONTACT}/by-order/${orderId}`),
+          authApiFetch(`${API_ROUTES.ORDER}/${orderId}`).then(d => d), // full order for activities
+          authApiFetch(`${API_ROUTES.ORDER}?status=all&parentId=${orderId}&limit=50`).catch(() => ({ data: [] })),
+        ]);
+
+      // merge results into order — only update if request succeeded
+      if (chats.status === 'fulfilled') {
+        const raw = Array.isArray(chats.value) ? chats.value : (chats.value?.data ?? []);
+        order.orderChats = raw.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      }
+      if (attachments.status === 'fulfilled') {
+        const raw = Array.isArray(attachments.value) ? attachments.value : (attachments.value?.data ?? []);
+        order.orderAttachments = raw.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      }
+      if (reminders.status === 'fulfilled') {
+        const raw = Array.isArray(reminders.value) ? reminders.value : (reminders.value?.data ?? []);
+        order.orderReminders = raw.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      }
+      if (clients.status === 'fulfilled') {
+        const raw = Array.isArray(clients.value) ? clients.value : (clients.value?.data ?? []);
+        order.orderClients = raw.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      }
+      if (contacts.status === 'fulfilled') {
+        order.orderContacts = Array.isArray(contacts.value) ? contacts.value : (contacts.value?.data ?? []);
+      }
+      if (activities.status === 'fulfilled') {
+        // full order response has groupedActivities + childOrders + invoices
+        const full = activities.value;
+        order.groupedActivities = full.groupedActivities ?? [];
+        order.childOrders       = full.childOrders ?? [];
+        order.invoices          = full.invoices ?? [];
+        order.orderLabels       = full.orderLabels ?? [];
+      }
+
+      order = { ...order }; // trigger Svelte reactivity
+
     } catch (err) {
       errorMessage = "Failed to load order data.";
+      loadingData = false;
     } finally {
-      setTimeout(() => {
-        loadingData = false;
-      }, 500);
+      relationsLoading = false;
     }
+
     getAllCategories();
     loadOrderQueries();
   }
@@ -644,7 +733,7 @@
     formErrors = {};
 
     const chatPayload = {
-      type,
+      type: selectedTypes.join(","),
       message,
     };
     if (order) {
@@ -658,7 +747,7 @@
       });
 
       // Reset Form
-      type = "";
+      selectedTypes = [];
       message = "";
       formErrors = {};
 
@@ -1211,6 +1300,17 @@
     }
   }
 
+  async function setPrimaryContact(ocId) {
+    try {
+      await authApiFetch(`${API_ROUTES.ORDER_CONTACT}/${ocId}/set-primary`, { method: "PATCH" });
+      order.orderContacts = order.orderContacts.map(oc =>
+        ({ ...oc, isPrimary: oc.id === ocId })
+      );
+    } catch (e) {
+      Swal.fire("Error!", "Failed to set primary contact.", "error");
+    }
+  }
+
   async function unlinkContact(orderContactId, contactName) {
     Swal.fire({
       title: "Remove Contact?",
@@ -1661,7 +1761,7 @@
           data: JSON.stringify(updateOrder),
         });
 
-        order = data.data;
+        order = { ...order, assignedUsers: data.data?.assignedUsers ?? order.assignedUsers };
         Swal.fire("Success!", data.message, "success");
         closeModalMenual("#add_contact");
       } catch (error) {
@@ -1947,7 +2047,7 @@
         data: JSON.stringify(updateOrder),
       });
 
-      order = data.data;
+      order = { ...order, pinStatus: updateOrder.pinStatus };
       Swal.fire("Success!", "Pin Status updated successfully.", "success");
     } catch (error) {
       loading = false;
@@ -2603,7 +2703,10 @@
                               />
                             </span>
                             <div class="min-w-0">
-                              <div class="order-sidebar-contact-name capitalize">
+                              <div class="order-sidebar-contact-name capitalize d-flex align-items-center gap-1">
+                                {#if oc.isPrimary}
+                                  <i class="ti ti-star-filled text-warning" style="font-size:11px;flex-shrink:0;" title="Primary contact"></i>
+                                {/if}
                                 {oc.clientContact?.name}
                                 {#if oc.clientContact?.designation}
                                   <span class="order-sidebar-contact-role"
@@ -2632,6 +2735,15 @@
                             </div>
                           </div>
                           <div class="order-sidebar-contact-actions">
+                            <button
+                              type="button"
+                              on:click={() => !oc.isPrimary && setPrimaryContact(oc.id)}
+                              class="btn btn-icon btn-xs {oc.isPrimary ? 'btn-warning' : 'btn-outline-light'}"
+                              title={oc.isPrimary ? "Primary contact" : "Set as primary"}
+                              style={oc.isPrimary ? "pointer-events:none;" : ""}
+                            >
+                              <i class="ti {oc.isPrimary ? 'ti-star-filled' : 'ti-star'}"></i>
+                            </button>
                             <button
                               type="button"
                               on:click={() => toggleVisibility(index)}
@@ -3101,10 +3213,17 @@
                                       </span>
                                     {/if}
                                     {#if activity.title == "Order Chat Added"}
-                                      <span
-                                        class="avatar avatar-md flex-shrink-0 rounded me-2 bg-cyan-500 text-cyan-600"
-                                      >
-                                        <i class="ti ti-mail-code fs-20"></i>
+                                      {@const nt = normalizeType(activity.data?.type)}
+                                      <span class="avatar avatar-md flex-shrink-0 rounded me-2
+                                        {nt === 'Call' ? 'bg-blue-500 text-blue-600' :
+                                         nt === 'WhatsApp' ? 'bg-green-500 text-green-600' :
+                                         nt === 'Email' ? 'bg-yellow-500 text-yellow-600' :
+                                         'bg-cyan-500 text-cyan-600'}">
+                                        <i class="fs-20
+                                          {nt === 'Call' ? 'ti ti-phone' :
+                                           nt === 'WhatsApp' ? 'ti ti-brand-whatsapp' :
+                                           nt === 'Email' ? 'ti ti-mail' :
+                                           'ti ti-message'}"></i>
                                       </span>
                                     {/if}
                                     {#if activity.title == "Order Chat Deleted"}
@@ -3179,7 +3298,15 @@
                                         {/if}
                                       </h6>
                                       {#if activity.title == "Order Chat Added"}
-                                        <p class="mb-1">
+                                        <p class="mb-1 d-flex align-items-center gap-1 flex-wrap">
+                                          {#each normalizeTypes(activity?.data?.type) as nt}
+                                            <span class="badge {nt === 'Call' ? 'bg-primary' : nt === 'WhatsApp' ? 'bg-success' : 'bg-warning text-dark'}" style="font-size:10px;">
+                                              {#if nt === 'Call'}<i class="ti ti-phone me-1"></i>{/if}
+                                              {#if nt === 'WhatsApp'}<i class="ti ti-brand-whatsapp me-1"></i>{/if}
+                                              {#if nt === 'Email'}<i class="ti ti-mail me-1"></i>{/if}
+                                              {nt}
+                                            </span>
+                                          {/each}
                                           {activity?.data?.message}
                                         </p>
                                       {/if}
@@ -3591,8 +3718,25 @@
                       </div>
                     </div>
                     <div class="card-body">
-                      {#if order?.orderChats.length}
-                        {#each order.orderChats as chat}
+                      <!-- Filter tabs -->
+                      <div class="d-flex gap-2 flex-wrap mb-3">
+                        <button
+                          type="button"
+                          class="btn btn-sm {chatTypeFilter === 'All' ? 'btn-dark' : 'btn-outline-secondary'}"
+                          on:click={() => (chatTypeFilter = 'All')}
+                        >All ({order?.orderChats?.length ?? 0})</button>
+                        {#each CHAT_TYPES as t}
+                          <button
+                            type="button"
+                            class="btn btn-sm {chatTypeFilter === t
+                              ? t === 'Call' ? 'btn-primary' : t === 'WhatsApp' ? 'btn-success' : 'btn-warning'
+                              : 'btn-outline-secondary'}"
+                            on:click={() => (chatTypeFilter = t)}
+                          >{t} ({chatTypeCounts[t]})</button>
+                        {/each}
+                      </div>
+                      {#if filteredChats.length}
+                        {#each filteredChats as chat}
                           <div class="card mb-3 relative">
                             {#if chat?.deletedAt}
                               <div class="ribbon ribbon-top-left">
@@ -3626,6 +3770,14 @@
                                     <span class="text-dark fw-medium"
                                       >{maskAssignedName(chat?.user)}</span
                                     >
+                                    {#each normalizeTypes(chat?.type) as nt}
+                                      <span class="badge ms-1 {nt === 'Call' ? 'bg-primary' : nt === 'WhatsApp' ? 'bg-success' : 'bg-warning text-dark'}" style="font-size:10px;">
+                                        {#if nt === 'Call'}<i class="ti ti-phone me-1"></i>{/if}
+                                        {#if nt === 'WhatsApp'}<i class="ti ti-brand-whatsapp me-1"></i>{/if}
+                                        {#if nt === 'Email'}<i class="ti ti-mail me-1"></i>{/if}
+                                        {nt}
+                                      </span>
+                                    {/each}
                                     {#if chat?.user?.status === "banned"}
                                       <span
                                         class="badge bg-danger ms-1"
@@ -3723,6 +3875,7 @@
                       {:else}
                         <div>No chats found.</div>
                       {/if}
+                      <!-- /Filter tabs -->
                     </div>
                   </div>
                 </div>
@@ -4803,19 +4956,32 @@
         <div class="modal-body">
           <div class="grid grid-cols-1 gap-4">
             <div>
-              <label class="form-label" for="type">
+              <label class="form-label">
                 Type <span class="text-danger">*</span>
               </label>
-              <input
-                type="text"
-                name="type"
-                class="form-control"
-                class:is-invalid={formErrors.type}
-                bind:value={type}
-                required
-                id="type"
-                placeholder="Type"
-              />
+              <div class="d-flex gap-2 flex-wrap">
+                {#each CHAT_TYPES as t}
+                  <button
+                    type="button"
+                    class="btn btn-sm {selectedTypes.includes(t)
+                      ? t === 'Call' ? 'btn-primary' : t === 'WhatsApp' ? 'btn-success' : 'btn-warning'
+                      : 'btn-outline-secondary'}"
+                    on:click|stopPropagation={() => toggleChatType(t)}
+                  >
+                    {#if t === 'Call'}<i class="ti ti-phone me-1"></i>{/if}
+                    {#if t === 'WhatsApp'}<i class="ti ti-brand-whatsapp me-1"></i>{/if}
+                    {#if t === 'Email'}<i class="ti ti-mail me-1"></i>{/if}
+                    {t}
+                  </button>
+                {/each}
+                <button
+                  type="button"
+                  class="btn btn-sm {allSelected ? 'btn-dark' : 'btn-outline-secondary'}"
+                  on:click|stopPropagation={() => toggleChatType('All')}
+                >
+                  <i class="ti ti-select-all me-1"></i>All
+                </button>
+              </div>
               {#if formErrors.type}
                 <ul class="text-danger mt-1 text-xs capitalize">
                   <li>{formErrors.type[0]}</li>

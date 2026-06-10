@@ -357,8 +357,8 @@
     }
   }
 
-  // ── Add Contact ─────────────────────────────────────────────────────────────
-  let opShowAddContactModal = false;
+  // ── Add Contact (inline) ────────────────────────────────────────────────────
+  let opAcInline = false;
   let opAcName = "";
   let opAcDesignation = "";
   let opAcMobile = "";
@@ -373,7 +373,14 @@
     opAcName = opAcDesignation = opAcMobile = opAcEmail = opAcWhatsapp = opAcAltMobile = opAcAddress = "";
     opAcFormErrors = {};
     opAcLoading = false;
-    opShowAddContactModal = true;
+    opEditContactId = null;
+    opAcInline = true;
+  }
+
+  function opCloseAddContact() {
+    opAcInline = false;
+    opAcName = opAcDesignation = opAcMobile = opAcEmail = opAcWhatsapp = opAcAltMobile = opAcAddress = "";
+    opAcFormErrors = {};
   }
 
   async function opSubmitAddContact() {
@@ -408,14 +415,87 @@
           contacts: [...(orderDrawerData.client.contacts ?? []), newContact],
         },
       };
-      opShowAddContactModal = false;
-      Swal.fire("Success!", `Contact "${newContact.name}" added.`, "success");
+      opCloseAddContact();
     } catch (e) {
       const errs = errorHandle(e);
       if (errs && typeof errs === "object") opAcFormErrors = errs;
       else Swal.fire("Error!", "Failed to add contact.", "error");
     } finally {
       opAcLoading = false;
+    }
+  }
+
+  // ── Edit Contact (inline) ────────────────────────────────────────────────────
+  let opEditContactId = null;
+  let opEditContactData = { name: "", designation: "", mobile: "", email: "", whatsapp: "", alternateMobile: "", address: "" };
+  let opEditContactLoading = false;
+  let opEditContactErrors = {};
+
+  function opOpenEditContact(c) {
+    opAcInline = false;
+    opEditContactId = c.id;
+    opEditContactData = {
+      name: c.name ?? "",
+      designation: c.designation ?? "",
+      mobile: c.mobile ?? "",
+      email: c.email ?? "",
+      whatsapp: c.whatsapp ?? "",
+      alternateMobile: c.alternateMobile ?? "",
+      address: c.address ?? "",
+    };
+    opEditContactErrors = {};
+  }
+
+  function opCancelEditContact() {
+    opEditContactId = null;
+    opEditContactErrors = {};
+  }
+
+  async function opSetPrimaryContact(ocId) {
+    try {
+      await authApiFetch(`${API_ROUTES.ORDER_CONTACT}/${ocId}/set-primary`, { method: "PATCH" });
+      orderDrawerData = {
+        ...orderDrawerData,
+        orderContacts: orderDrawerData.orderContacts.map(oc =>
+          ({ ...oc, isPrimary: oc.id === ocId })
+        ),
+      };
+    } catch (e) { errorHandle(e); }
+  }
+
+  async function opSubmitEditContact(contactId) {
+    opEditContactErrors = {};
+    if (!opEditContactData.name.trim()) { opEditContactErrors.name = "Name is required."; return; }
+    opEditContactLoading = true;
+    try {
+      const res = await authApiFetch(`${API_ROUTES.CLIENT_CONTACT}/${contactId}`, {
+        method: "PUT",
+        data: JSON.stringify({
+          name: opEditContactData.name.trim(),
+          designation: opEditContactData.designation || undefined,
+          mobile: opEditContactData.mobile || undefined,
+          email: opEditContactData.email || undefined,
+          whatsapp: opEditContactData.whatsapp || undefined,
+          alternateMobile: opEditContactData.alternateMobile || undefined,
+          address: opEditContactData.address || undefined,
+        }),
+      });
+      const updated = res.data;
+      orderDrawerData = {
+        ...orderDrawerData,
+        orderContacts: orderDrawerData.orderContacts.map(oc =>
+          oc.clientContact?.id === contactId
+            ? { ...oc, clientContact: { ...oc.clientContact, ...updated } }
+            : oc
+        ),
+      };
+      opCancelEditContact();
+    } catch (e) {
+      const errs = errorHandle(e);
+      if (errs && typeof errs === "object") opEditContactErrors = errs;
+      else Swal.fire("Error!", "Failed to update contact.", "error");
+    } finally {
+      opEditContactLoading = false;
     }
   }
 
@@ -4854,9 +4934,6 @@
                           <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-1" style="font-size:10px;" on:click={() => { opShowChangeClientModal = true; opChangeClientQuery = ""; opCcSelectedExisting = null; opCcCancelInlineCreate(); }}>
                             <i class="ti ti-replace me-1"></i>Change
                           </button>
-                          <button type="button" class="btn btn-xs btn-outline-primary py-0 px-1" style="font-size:10px;" on:click={opOpenAddContactModal}>
-                            <i class="ti ti-plus me-1"></i>Contact
-                          </button>
                         {:else}
                           <button type="button" class="btn btn-xs btn-outline-primary py-0 px-1" style="font-size:10px;" on:click={() => { opShowChangeClientModal = true; opChangeClientQuery = ""; opCcSelectedExisting = null; opCcCancelInlineCreate(); }}>
                             <i class="ti ti-link me-1"></i>Link
@@ -4880,18 +4957,68 @@
                     {/if}
                   </div>
 
-                  <!-- orderContacts (master contacts) with unlink -->
-                  {@const masterContacts = (o.orderContacts ?? []).map(oc => ({ ...oc.clientContact, _ocId: oc.id })).filter(Boolean)}
-                  {#if masterContacts.length}
-                    <div class="op-section">
-                      <div class="op-section-title"><i class="ti ti-address-book"></i>Contacts</div>
-                      {#each masterContacts as c, ci}
-                        <div class="op-contact">
-                          <div class="d-flex align-items-center justify-content-between">
-                            <div class="fw-medium" style="font-size:12px;">{c.name ?? "-"}</div>
-                            <button type="button" class="btn btn-xs btn-outline-danger py-0 px-1" style="font-size:10px;" title="Remove contact" on:click={() => opUnlinkContact(c._ocId, c.name)}>
-                              <i class="ti ti-x"></i>
+                  <!-- orderContacts (master contacts) with inline edit/unlink -->
+                  {@const masterContacts = (o.orderContacts ?? []).map(oc => ({ ...oc.clientContact, _ocId: oc.id, _isPrimary: oc.isPrimary ?? false })).filter(Boolean)}
+                  <div class="op-section">
+                    <div class="op-section-title d-flex align-items-center justify-content-between">
+                      <span><i class="ti ti-address-book"></i>Contacts</span>
+                      {#if o.client}
+                        <button type="button" class="btn btn-xs py-0 px-1 {opAcInline ? 'btn-primary' : 'btn-outline-primary'}" style="font-size:10px;" on:click={() => opAcInline ? opCloseAddContact() : opOpenAddContactModal()}>
+                          <i class="ti {opAcInline ? 'ti-x' : 'ti-plus'} me-1"></i>{opAcInline ? 'Cancel' : 'Add'}
+                        </button>
+                      {/if}
+                    </div>
+
+                    {#each masterContacts as c, ci}
+                      <div class="op-contact">
+                        {#if opEditContactId === c.id}
+                          <!-- inline edit form -->
+                          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px;">
+                            <div style="grid-column:1/-1;">
+                              <input type="text" class="form-control form-control-sm {opEditContactErrors.name ? 'is-invalid' : ''}" bind:value={opEditContactData.name} placeholder="Name *" />
+                              {#if opEditContactErrors.name}<div class="invalid-feedback" style="font-size:10px;">{opEditContactErrors.name}</div>{/if}
+                            </div>
+                            <input type="text" class="form-control form-control-sm" bind:value={opEditContactData.designation} placeholder="Designation" />
+                            <input type="text" class="form-control form-control-sm" bind:value={opEditContactData.mobile} placeholder="Mobile" />
+                            <input type="text" class="form-control form-control-sm" bind:value={opEditContactData.whatsapp} placeholder="WhatsApp" />
+                            <input type="text" class="form-control form-control-sm" bind:value={opEditContactData.alternateMobile} placeholder="Alt Mobile" />
+                            <input type="email" class="form-control form-control-sm" bind:value={opEditContactData.email} placeholder="Email" />
+                            <div style="grid-column:1/-1;">
+                              <input type="text" class="form-control form-control-sm" bind:value={opEditContactData.address} placeholder="Address" />
+                            </div>
+                          </div>
+                          <div class="d-flex gap-1 justify-content-end">
+                            <button type="button" class="btn btn-xs btn-light py-0 px-2" style="font-size:10px;" on:click={opCancelEditContact}>Cancel</button>
+                            <button type="button" class="btn btn-xs btn-success py-0 px-2" style="font-size:10px;" disabled={opEditContactLoading} on:click={() => opSubmitEditContact(c.id)}>
+                              {opEditContactLoading ? 'Saving…' : 'Save'}
                             </button>
+                          </div>
+                        {:else}
+                          <!-- read view -->
+                          <div class="d-flex align-items-center justify-content-between flex-wrap gap-1">
+                            <div class="d-flex align-items-center gap-1">
+                              {#if c._isPrimary}
+                                <i class="ti ti-star-filled text-warning" style="font-size:11px;"></i>
+                              {/if}
+                              <span class="fw-medium" style="font-size:12px;">{c.name ?? "-"}</span>
+                            </div>
+                            <div class="d-flex gap-1">
+                              {#if c._isPrimary}
+                                <span class="op-contact-btn op-contact-btn--primary-active">
+                                  <i class="ti ti-star-filled"></i> Primary
+                                </span>
+                              {:else}
+                                <button type="button" class="op-contact-btn op-contact-btn--star" on:click={() => opSetPrimaryContact(c._ocId)}>
+                                  <i class="ti ti-star"></i> Primary
+                                </button>
+                              {/if}
+                              <button type="button" class="op-contact-btn op-contact-btn--edit" on:click={() => opOpenEditContact(c)}>
+                                <i class="ti ti-pencil"></i> Edit
+                              </button>
+                              <button type="button" class="op-contact-btn op-contact-btn--remove" on:click={() => opUnlinkContact(c._ocId, c.name)}>
+                                <i class="ti ti-x"></i>
+                              </button>
+                            </div>
                           </div>
                           {#if c.designation}<div class="op-contact-designation">{c.designation}</div>{/if}
                           {#if c.mobile}<div class="op-contact-detail"><i class="ti ti-phone"></i><span class="op-copyable" on:click={() => copyField(`mc-mob-${ci}`, c.mobile)}>{c.mobile}<i class="ti {copiedFieldKey === `mc-mob-${ci}` ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === `mc-mob-${ci}`}></i></span></div>{/if}
@@ -4900,10 +5027,40 @@
                           {#if c.email}<div class="op-contact-detail"><i class="ti ti-mail"></i><span class="op-copyable" on:click={() => copyField(`mc-email-${ci}`, c.email)}>{c.email}<i class="ti {copiedFieldKey === `mc-email-${ci}` ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === `mc-email-${ci}`}></i></span></div>{/if}
                           {#if c.address}<div class="op-contact-detail"><i class="ti ti-map-pin"></i><span class="op-copyable" on:click={() => copyField(`mc-addr-${ci}`, c.address)}>{c.address}<i class="ti {copiedFieldKey === `mc-addr-${ci}` ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === `mc-addr-${ci}`}></i></span></div>{/if}
                           {#if c.remark}<div class="op-contact-detail"><i class="ti ti-note"></i><span class="op-copyable" on:click={() => copyField(`mc-remark-${ci}`, c.remark)}>{c.remark}<i class="ti {copiedFieldKey === `mc-remark-${ci}` ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === `mc-remark-${ci}`}></i></span></div>{/if}
+                        {/if}
+                      </div>
+                    {/each}
+
+                    {#if !masterContacts.length && !opAcInline}
+                      <div class="op-row"><span class="op-value text-muted" style="font-size:11px;">No contacts linked.</span></div>
+                    {/if}
+
+                    <!-- inline add contact form -->
+                    {#if opAcInline}
+                      <div class="op-inline-form">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px;">
+                          <div style="grid-column:1/-1;">
+                            <input type="text" class="form-control form-control-sm {opAcFormErrors.name ? 'is-invalid' : ''}" bind:value={opAcName} placeholder="Name *" />
+                            {#if opAcFormErrors.name}<div class="invalid-feedback" style="font-size:10px;">{opAcFormErrors.name}</div>{/if}
+                          </div>
+                          <input type="text" class="form-control form-control-sm" bind:value={opAcDesignation} placeholder="Designation" />
+                          <input type="text" class="form-control form-control-sm" bind:value={opAcMobile} placeholder="Mobile" />
+                          <input type="text" class="form-control form-control-sm" bind:value={opAcWhatsapp} placeholder="WhatsApp" />
+                          <input type="text" class="form-control form-control-sm" bind:value={opAcAltMobile} placeholder="Alt Mobile" />
+                          <input type="email" class="form-control form-control-sm" bind:value={opAcEmail} placeholder="Email" />
+                          <div style="grid-column:1/-1;">
+                            <input type="text" class="form-control form-control-sm" bind:value={opAcAddress} placeholder="Address" />
+                          </div>
                         </div>
-                      {/each}
-                    </div>
-                  {/if}
+                        <div class="d-flex gap-1 justify-content-end">
+                          <button type="button" class="btn btn-xs btn-light py-0 px-2" style="font-size:10px;" on:click={opCloseAddContact}>Cancel</button>
+                          <button type="button" class="btn btn-xs btn-primary py-0 px-2" style="font-size:10px;" disabled={opAcLoading} on:click={opSubmitAddContact}>
+                            {opAcLoading ? 'Saving…' : 'Save Contact'}
+                          </button>
+                        </div>
+                      </div>
+                    {/if}
+                  </div>
 
                   <!-- orderClients (inline clients) -->
                   {#if (o.orderClients ?? []).length}
@@ -6560,6 +6717,28 @@
   .op-label i { font-size: 11px; }
   .op-value { color: #212529; text-align: right; word-break: break-word; }
   .op-contact { padding: 6px 0; border-bottom: 1px solid #f1f3f5; }
+  .op-inline-form { background: #f8f9ff; border: 1px solid #dee2f7; border-radius: 6px; padding: 8px; margin-top: 6px; }
+
+  .op-contact-btn {
+    display: inline-flex; align-items: center; gap: 3px;
+    font-size: 10px; font-weight: 500; line-height: 1;
+    padding: 3px 7px; border-radius: 4px; border: 1px solid;
+    background: transparent; cursor: pointer; white-space: nowrap;
+    transition: background 0.15s, color 0.15s;
+  }
+  .op-contact-btn--star { color: #b45309; border-color: #fbbf24; }
+  .op-contact-btn--star:hover { background: #fef3c7; }
+  .op-contact-btn--primary-active {
+    display: inline-flex; align-items: center; gap: 3px;
+    font-size: 10px; font-weight: 600; line-height: 1;
+    padding: 3px 7px; border-radius: 4px;
+    background: #fef3c7; color: #b45309; border: 1px solid #fbbf24;
+    white-space: nowrap;
+  }
+  .op-contact-btn--edit { color: #374151; border-color: #d1d5db; }
+  .op-contact-btn--edit:hover { background: #f3f4f6; }
+  .op-contact-btn--remove { color: #dc2626; border-color: #fca5a5; }
+  .op-contact-btn--remove:hover { background: #fee2e2; }
   .op-contact:last-child { border-bottom: none; }
   .op-contact-designation { font-size: 11px; color: #868e96; margin-top: 1px; }
   .op-contact-detail {
@@ -6868,46 +7047,6 @@
               {opCcCreateLoading ? "Creating..." : "Create & Link"}
             </button>
           {/if}
-        </div>
-      </div>
-    </div>
-  </div>
-{/if}
-
-<!-- ── Add Contact Modal (linked client) ────────────────────────────────── -->
-{#if opShowAddContactModal}
-  <div class="modal fade show d-block" role="dialog" style="background:rgba(0,0,0,0.5);z-index:9999;">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title"><i class="ti ti-user-plus me-2 text-primary"></i>Add Contact</h5>
-          <button type="button" class="btn-close" on:click={() => opShowAddContactModal = false}></button>
-        </div>
-        <div class="modal-body">
-          <div class="mb-3 p-2 bg-light rounded d-flex align-items-center gap-2 border">
-            <i class="ti ti-building-store text-primary"></i>
-            <span class="fw-semibold">{orderDrawerData?.client?.name}</span>
-            {#if orderDrawerData?.client?.gstNumber}<span class="text-muted small ms-1">GST: {orderDrawerData.client.gstNumber}</span>{/if}
-          </div>
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="form-label">Name <span class="text-danger">*</span></label>
-              <input type="text" class="form-control" class:is-invalid={opAcFormErrors.name} bind:value={opAcName} placeholder="Contact name" />
-              {#if opAcFormErrors.name}<ul class="text-danger mt-1 text-xs"><li>{opAcFormErrors.name}</li></ul>{/if}
-            </div>
-            <div><label class="form-label">Designation</label><input type="text" class="form-control" bind:value={opAcDesignation} placeholder="e.g. Manager" /></div>
-            <div><label class="form-label">Mobile</label><input type="text" class="form-control" bind:value={opAcMobile} placeholder="Mobile" /></div>
-            <div><label class="form-label">Email</label><input type="email" class="form-control" bind:value={opAcEmail} placeholder="Email" /></div>
-            <div><label class="form-label">Whatsapp</label><input type="text" class="form-control" bind:value={opAcWhatsapp} placeholder="Whatsapp" /></div>
-            <div><label class="form-label">Alternate Mobile</label><input type="text" class="form-control" bind:value={opAcAltMobile} placeholder="Alternate mobile" /></div>
-            <div class="col-span-2"><label class="form-label">Address</label><input type="text" class="form-control" bind:value={opAcAddress} placeholder="Address" /></div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-light" on:click={() => opShowAddContactModal = false}>Cancel</button>
-          <button type="button" class="btn btn-primary" on:click={opSubmitAddContact} disabled={opAcLoading}>
-            {opAcLoading ? "Saving..." : "Add Contact"}
-          </button>
         </div>
       </div>
     </div>

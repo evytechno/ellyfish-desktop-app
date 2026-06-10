@@ -24,9 +24,17 @@
     "Deal Lost": "bg-red",
   };
 
-  // Modal state
+  // PI/WO/TI modal state
   let modalOpen = false;
   let modalType = "PI";
+
+
+  function openChat(e) {
+    e.stopPropagation();
+    document.dispatchEvent(new CustomEvent("openChatModal", {
+      detail: { order, preselectedTypes: [] },
+    }));
+  }
 
   function openModal(type, e) {
     e?.stopPropagation();
@@ -38,6 +46,12 @@
     // Dispatch event so parent (OrderDragula) can refresh order data
     const el = document.dispatchEvent(new CustomEvent("refreshOrder", { detail: { orderId: order.id } }));
   }
+
+  // Date display logic
+  $: _od = order?.orderDate ? new Date(order.orderDate) : null;
+  $: _ca = order?.createdAt ? new Date(order.createdAt) : null;
+  $: _sameDay = _od && _ca && _od.toDateString() === _ca.toDateString();
+  $: _showCreated = !_od || _sameDay;
 </script>
 
 <div class="card kanban-card border mb-0 mt-3 shadow relative">
@@ -96,27 +110,54 @@
       </span>
     </div>
     <div class="flex items-center justify-between border-top pt-3 mt-3 text-xs">
-      <span>
-        <i class="ti ti-calendar-due"></i>
-        {order?.orderDate &&
-          new Date(order.orderDate).toLocaleDateString("en-GB", {
+      <span class="flex items-center gap-1">
+        {#if _showCreated && _ca}
+          <i class="ti ti-calendar-plus"></i>
+          {_ca.toLocaleString("en-GB", {
             day: "2-digit",
             month: "short",
-            year: "numeric",
+            year: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+            timeZone: "Asia/Kolkata",
           })}
+        {:else if _od}
+          <i class="ti ti-calendar-due"></i>
+          {_od.toLocaleDateString("en-GB", {
+            day: "2-digit",
+            month: "short",
+            year: "2-digit",
+          })}
+        {/if}
       </span>
-      <div class="icons-social flex items-center gap-1">
-        <a href="#phone" class="flex items-center justify-center me-1">
-          <i class="ti ti-phone-check"></i>
-        </a>
-        <a href="#message" class="flex items-center justify-center me-1">
+      <div class="icons-social flex items-center gap-1 relative">
+        <!-- Chat icon -->
+        <button
+          class="flex items-center justify-center"
+          style="background:none;border:none;padding:0;cursor:pointer;color:#3b82f6;font-size:1.2rem;line-height:1;"
+          title="Add Chat"
+          on:click={openChat}
+        >
           <i class="ti ti-message-circle-2"></i>
-        </a>
-        <a href="#label" class="flex items-center justify-center">
-          <i class="ti ti-color-swatch"></i>
-        </a>
+        </button>
       </div>
     </div>
+    {#if order?.orderActivities?.[0]?.createdAt}
+      {@const lastActiveAt = new Date(order.orderActivities[0].createdAt)}
+      <div class="text-[10px] text-gray-400 mt-1 flex items-center gap-1">
+        <i class="ti ti-activity"></i>
+        {lastActiveAt.toLocaleString("en-GB", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+          timeZone: "Asia/Kolkata",
+        })}
+      </div>
+    {/if}
     {#if order?.status === "Deal Won"}
       {@const pi = order?.orderPayments?.[0]}
       {@const wo = order?.workOrders?.[0]}
@@ -159,6 +200,7 @@
       on:close={() => (modalOpen = false)}
       on:refresh={onRefresh}
     />
+
   </div>
 </div>
 

@@ -186,7 +186,7 @@
     const fromOrderId = $page.url.searchParams.get("fromOrder");
     if (!fromOrderId) return;
     try {
-      const order = await authApiFetch(`${API_ROUTES.ORDER}/${fromOrderId}`);
+      const order = await authApiFetch(`${API_ROUTES.ORDER}/${fromOrderId}/basic`);
       if (!order) return;
       const pi = order.orderPayments?.[0];
       if (order.company?.id) companyId = order.company.id;

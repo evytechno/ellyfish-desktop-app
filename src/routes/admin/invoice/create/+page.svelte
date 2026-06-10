@@ -136,7 +136,7 @@
     }
 
     try {
-      order = await authApiFetch(`${API_ROUTES.ORDER}/${orderId}`);
+      order = await authApiFetch(`${API_ROUTES.ORDER}/${orderId}/basic`);
       pi = order?.orderPayments?.[0] ?? null;
       workOrder = order?.workOrders?.[0] ?? null;
 

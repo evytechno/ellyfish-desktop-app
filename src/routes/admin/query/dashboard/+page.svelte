@@ -12,6 +12,7 @@
   let dashboard = null;
   let dashLoading = true;
   let dashError = "";
+  let statsOpen = false;
 
   // ── query list ──────────────────────────────────────────────────────────────
   let queries = [];
@@ -199,6 +200,14 @@
         <div class="text-muted small mt-1">Performance overview · SLA: {dashboard?.slaMinutes ?? 1} min</div>
       </div>
       <div class="d-flex gap-2">
+        <button class="btn btn-sm {statsOpen ? 'btn-primary' : 'btn-outline-primary'} position-relative" on:click={() => statsOpen = !statsOpen}>
+          <i class="ti ti-chart-bar me-1"></i>Stats
+          {#if dashboard && (dashboard.open > 0 || dashboard.slaBreachCount > 0)}
+            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="font-size:9px;">
+              {dashboard.open + (dashboard.slaBreachCount ?? 0)}
+            </span>
+          {/if}
+        </button>
         <a href="/admin/query" class="btn btn-sm btn-outline-secondary">
           <i class="ti ti-list me-1"></i>All Queries
         </a>
@@ -207,177 +216,6 @@
         </button>
       </div>
     </div>
-
-    <!-- ── Stats Section ──────────────────────────────────────────────────── -->
-    {#if dashLoading}
-      <div class="text-center py-4">
-        <span class="spinner-border spinner-border-sm text-primary"></span>
-        <span class="text-muted small ms-2">Loading stats…</span>
-      </div>
-    {:else if dashError}
-      <div class="alert alert-danger py-2">{dashError}</div>
-    {:else if dashboard}
-
-      <div class="section-label">Status Overview</div>
-      <div class="row g-3 mb-4">
-        <div class="col-6 col-md-2">
-          <div class="stat-card stat-card--primary">
-            <div class="stat-icon"><i class="ti ti-help-circle"></i></div>
-            <div class="stat-value">{dashboard.open}</div>
-            <div class="stat-label">Open</div>
-          </div>
-        </div>
-        <div class="col-6 col-md-2">
-          <div class="stat-card stat-card--warning">
-            <div class="stat-icon"><i class="ti ti-loader"></i></div>
-            <div class="stat-value">{dashboard.inProgress}</div>
-            <div class="stat-label">In Progress</div>
-          </div>
-        </div>
-        <div class="col-6 col-md-2">
-          <div class="stat-card stat-card--danger">
-            <div class="stat-icon"><i class="ti ti-refresh"></i></div>
-            <div class="stat-value">{dashboard.reopened}</div>
-            <div class="stat-label">Reopened</div>
-          </div>
-        </div>
-        <div class="col-6 col-md-2">
-          <div class="stat-card stat-card--success">
-            <div class="stat-icon"><i class="ti ti-circle-check"></i></div>
-            <div class="stat-value">{dashboard.resolvedToday}</div>
-            <div class="stat-label">Resolved Today</div>
-          </div>
-        </div>
-        <div class="col-6 col-md-2">
-          <div class="stat-card stat-card--secondary">
-            <div class="stat-icon"><i class="ti ti-check"></i></div>
-            <div class="stat-value">{dashboard.totalResolved}</div>
-            <div class="stat-label">Total Resolved</div>
-          </div>
-        </div>
-        <div class="col-6 col-md-2">
-          <div class="stat-card stat-card--teal">
-            <div class="stat-icon"><i class="ti ti-flag-check"></i></div>
-            <div class="stat-value">{dashboard.finalQuotationSent}</div>
-            <div class="stat-label">Final Quot. Sent</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── Sub-Query Stats (Tech Helpers) ── -->
-      <div class="section-label">Sub-Queries (Tech Helpers)</div>
-      <div class="row g-3 mb-4">
-        <div class="col-6 col-md-3">
-          <div class="stat-card stat-card--purple">
-            <div class="stat-icon"><i class="ti ti-subtask"></i></div>
-            <div class="stat-value">{dashboard.subOpen}</div>
-            <div class="stat-label">Open</div>
-          </div>
-        </div>
-        <div class="col-6 col-md-3">
-          <div class="stat-card stat-card--warning">
-            <div class="stat-icon"><i class="ti ti-loader"></i></div>
-            <div class="stat-value">{dashboard.subInProgress}</div>
-            <div class="stat-label">In Progress</div>
-          </div>
-        </div>
-        <div class="col-6 col-md-3">
-          <div class="stat-card stat-card--success">
-            <div class="stat-icon"><i class="ti ti-circle-check"></i></div>
-            <div class="stat-value">{dashboard.subResolvedToday}</div>
-            <div class="stat-label">Resolved Today</div>
-          </div>
-        </div>
-        <div class="col-6 col-md-3">
-          <div class="stat-card stat-card--secondary">
-            <div class="stat-icon"><i class="ti ti-check"></i></div>
-            <div class="stat-value">{dashboard.subTotalResolved}</div>
-            <div class="stat-label">Total Resolved</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="section-label">Performance Metrics</div>
-      <div class="row g-3 mb-5">
-        <div class="col-md-3">
-          <div class="perf-card perf-card--blue">
-            <div class="perf-card-title"><i class="ti ti-clock-reply"></i> Reply Time</div>
-            <div class="perf-row">
-              <span class="perf-role perf-role--tech">Tech</span>
-              <span class="perf-val">{fmtMins(dashboard.avgTechReplyMins)}</span>
-            </div>
-            <div class="perf-row">
-              <span class="perf-role perf-role--telecaller">Telecaller</span>
-              <span class="perf-val">{fmtMins(dashboard.avgTelecallerReplyMins)}</span>
-            </div>
-          </div>
-        </div>
-        <div class="col-md-3">
-          <div class="perf-card {dashboard.totalMistakes > 0 ? 'perf-card--red' : 'perf-card--green'}">
-            <div class="perf-card-title">
-              <i class="ti ti-alert-triangle"></i> Mistakes
-              <span class="perf-badge {dashboard.totalMistakes > 0 ? 'perf-badge--red' : 'perf-badge--green'}">{dashboard.totalMistakes}</span>
-            </div>
-            <div class="perf-row">
-              <span class="perf-label">Missed replies</span>
-              <span class="perf-val {dashboard.totalMissedReplies > 0 ? 'text-danger' : ''}">{dashboard.totalMissedReplies}</span>
-            </div>
-            <div class="perf-row">
-              <span class="perf-label">Slow replies</span>
-              <span class="perf-val {dashboard.totalSlowReplies > 0 ? 'text-warning' : ''}">{dashboard.totalSlowReplies}</span>
-            </div>
-            <div class="perf-row">
-              <span class="perf-label">Reopened</span>
-              <span class="perf-val {dashboard.totalReopenedQueries > 0 ? 'text-danger' : ''}">{dashboard.totalReopenedQueries}</span>
-            </div>
-          </div>
-        </div>
-        <div class="col-md-3">
-          <div class="perf-card {dashboard.slaBreachCount > 0 ? 'perf-card--orange' : 'perf-card--green'}">
-            <div class="perf-card-title">
-              <i class="ti ti-clock-exclamation"></i> Delay
-              {#if dashboard.slaBreachCount > 0}
-                <span class="perf-badge perf-badge--orange">{dashboard.slaBreachCount} breached</span>
-              {/if}
-            </div>
-            <div class="perf-row">
-              <span class="perf-label">Avg first response</span>
-              <span class="perf-val">{fmtMins(dashboard.avgFirstResponseMins)}</span>
-            </div>
-            <div class="perf-row">
-              <span class="perf-label">Avg resolution</span>
-              <span class="perf-val">{fmtMins(dashboard.avgResolutionMins)}</span>
-            </div>
-            <div class="perf-row">
-              <span class="perf-label">SLA threshold</span>
-              <span class="perf-val">{dashboard.slaMinutes} min</span>
-            </div>
-          </div>
-        </div>
-        <div class="col-md-3">
-          <div class="perf-card perf-card--teal">
-            <div class="perf-card-title"><i class="ti ti-flag-check"></i> Final Quotation</div>
-            <div class="perf-row">
-              <span class="perf-label">Sent</span>
-              <span class="perf-val text-success fw-bold">{dashboard.finalQuotationSent}</span>
-            </div>
-            <div class="perf-row">
-              <span class="perf-label">Pending</span>
-              <span class="perf-val {dashboard.finalQuotationPending > 0 ? 'text-warning' : 'text-success'}">{dashboard.finalQuotationPending}</span>
-            </div>
-            <div class="perf-row">
-              <span class="perf-label">Coverage</span>
-              <span class="perf-val">
-                {(dashboard.finalQuotationSent + dashboard.finalQuotationPending) > 0
-                  ? Math.round(dashboard.finalQuotationSent / (dashboard.finalQuotationSent + dashboard.finalQuotationPending) * 100)
-                  : 0}%
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-    {/if}
 
     <!-- ── Query List Section ─────────────────────────────────────────────── -->
     <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
@@ -462,26 +300,26 @@
             <table class="table table-hover align-middle mb-0">
               <thead class="table-light">
                 <tr>
-                  <th>#</th>
-                  <th>Subject</th>
-                  <th>Raised By</th>
-                  <th>Assigned To</th>
-                  <th>Type</th>
-                  <th>Priority</th>
-                  <th>Status</th>
-                  <th>Order</th>
-                  <th>Raised At</th>
-                  <th title="Final quotation flagged in chat">Final Quot.</th>
-                  <th title="First response time vs SLA">Delay</th>
-                  <th>Action</th>
+                  <th style="width:40px;">#</th>
+                  <th style="min-width:200px; max-width:260px;">Subject</th>
+                  <th style="width:120px;">Raised By</th>
+                  <th style="width:120px;">Assigned To</th>
+                  <th style="width:130px;">Type</th>
+                  <th style="width:80px;">Priority</th>
+                  <th style="width:100px;">Status</th>
+                  <th style="min-width:120px; max-width:180px;">Order</th>
+                  <th style="width:140px;">Raised At</th>
+                  <th style="width:85px;" title="Final quotation flagged in chat">Final Quot.</th>
+                  <th style="width:70px;" title="First response time vs SLA">Delay</th>
+                  <th style="width:60px;">Action</th>
                 </tr>
               </thead>
               <tbody>
                 {#each queries as q, i}
                   <tr>
                     <td>{(currentPage - 1) * rowsPerPage + i + 1}</td>
-                    <td>
-                      <a href="/admin/query/{q.id}" class="text-primary fw-semibold">{q.subject}</a>
+                    <td style="max-width:260px;">
+                      <a href="/admin/query/{q.id}" class="text-primary fw-semibold col-truncate" title={q.subject}>{q.subject}</a>
                     </td>
                     <td>
                       {#if q.raisedBy}
@@ -512,9 +350,9 @@
                         {q.status?.replace("_", " ")}
                       </span>
                     </td>
-                    <td>
+                    <td style="max-width:180px;">
                       {#if q.order}
-                        <a href="/admin/order/{q.order.id}" class="text-primary small">
+                        <a href="/admin/order/{q.order.id}" class="text-primary small col-truncate" title="#{q.order.pId}{q.order.title ? ` — ${q.order.title}` : ''}">
                           #{q.order.pId}{q.order.title ? ` — ${q.order.title}` : ""}
                         </a>
                       {:else}
@@ -564,12 +402,177 @@
   </div>
 </div>
 
+<!-- ── Stats Drawer ───────────────────────────────────────────────────────── -->
+{#if statsOpen}
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <!-- svelte-ignore a11y-no-static-element-interactions -->
+  <div class="stats-backdrop" on:click={() => statsOpen = false}></div>
+{/if}
+
+<div class="stats-drawer" class:stats-drawer--open={statsOpen}>
+  <div class="stats-drawer-header">
+    <span class="fw-bold">Dashboard Stats</span>
+    <button class="btn-close" on:click={() => statsOpen = false}></button>
+  </div>
+  <div class="stats-drawer-body">
+    {#if dashLoading}
+      <div class="text-center py-5">
+        <span class="spinner-border spinner-border-sm text-primary"></span>
+        <span class="text-muted small ms-2">Loading…</span>
+      </div>
+    {:else if dashError}
+      <div class="alert alert-danger py-2 mx-1">{dashError}</div>
+    {:else if dashboard}
+
+      <div class="section-label">Status Overview</div>
+      <div class="summary-card mb-4">
+        <div class="summary-row">
+          <div class="summary-cell">
+            <span class="summary-label">Open</span>
+            <span class="summary-val text-primary">{dashboard.open}</span>
+          </div>
+          <div class="summary-cell">
+            <span class="summary-label">In Progress</span>
+            <span class="summary-val text-warning">{dashboard.inProgress}</span>
+          </div>
+        </div>
+        <div class="summary-row">
+          <div class="summary-cell">
+            <span class="summary-label">Reopened</span>
+            <span class="summary-val text-danger">{dashboard.reopened}</span>
+          </div>
+          <div class="summary-cell">
+            <span class="summary-label">Resolved Today</span>
+            <span class="summary-val text-success">{dashboard.resolvedToday}</span>
+          </div>
+        </div>
+        <div class="summary-row summary-row--last">
+          <div class="summary-cell">
+            <span class="summary-label">Total Resolved</span>
+            <span class="summary-val">{dashboard.totalResolved}</span>
+          </div>
+          <div class="summary-cell">
+            <span class="summary-label">Final Quot. Sent</span>
+            <span class="summary-val" style="color:#0ca678;">{dashboard.finalQuotationSent}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-label">Sub-Queries (Tech Helpers)</div>
+      <div class="summary-card mb-4">
+        <div class="summary-row">
+          <div class="summary-cell">
+            <span class="summary-label">Open</span>
+            <span class="summary-val" style="color:#7950f2;">{dashboard.subOpen}</span>
+          </div>
+          <div class="summary-cell">
+            <span class="summary-label">In Progress</span>
+            <span class="summary-val text-warning">{dashboard.subInProgress}</span>
+          </div>
+        </div>
+        <div class="summary-row summary-row--last">
+          <div class="summary-cell">
+            <span class="summary-label">Resolved Today</span>
+            <span class="summary-val text-success">{dashboard.subResolvedToday}</span>
+          </div>
+          <div class="summary-cell">
+            <span class="summary-label">Total Resolved</span>
+            <span class="summary-val">{dashboard.subTotalResolved}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-label">Performance Metrics</div>
+      <div class="d-flex flex-column gap-3 mb-3">
+        <div class="perf-card perf-card--blue">
+          <div class="perf-card-title"><i class="ti ti-clock-reply"></i> Reply Time</div>
+          <div class="perf-row">
+            <span class="perf-role perf-role--tech">Tech</span>
+            <span class="perf-val">{fmtMins(dashboard.avgTechReplyMins)}</span>
+          </div>
+          <div class="perf-row">
+            <span class="perf-role perf-role--telecaller">Telecaller</span>
+            <span class="perf-val">{fmtMins(dashboard.avgTelecallerReplyMins)}</span>
+          </div>
+        </div>
+        <div class="perf-card {dashboard.totalMistakes > 0 ? 'perf-card--red' : 'perf-card--green'}">
+          <div class="perf-card-title">
+            <i class="ti ti-alert-triangle"></i> Mistakes
+            <span class="perf-badge {dashboard.totalMistakes > 0 ? 'perf-badge--red' : 'perf-badge--green'}">{dashboard.totalMistakes}</span>
+          </div>
+          <div class="perf-row">
+            <span class="perf-label">Missed replies</span>
+            <span class="perf-val {dashboard.totalMissedReplies > 0 ? 'text-danger' : ''}">{dashboard.totalMissedReplies}</span>
+          </div>
+          <div class="perf-row">
+            <span class="perf-label">Slow replies</span>
+            <span class="perf-val {dashboard.totalSlowReplies > 0 ? 'text-warning' : ''}">{dashboard.totalSlowReplies}</span>
+          </div>
+          <div class="perf-row">
+            <span class="perf-label">Reopened</span>
+            <span class="perf-val {dashboard.totalReopenedQueries > 0 ? 'text-danger' : ''}">{dashboard.totalReopenedQueries}</span>
+          </div>
+        </div>
+        <div class="perf-card {dashboard.slaBreachCount > 0 ? 'perf-card--orange' : 'perf-card--green'}">
+          <div class="perf-card-title">
+            <i class="ti ti-clock-exclamation"></i> Delay
+            {#if dashboard.slaBreachCount > 0}
+              <span class="perf-badge perf-badge--orange">{dashboard.slaBreachCount} breached</span>
+            {/if}
+          </div>
+          <div class="perf-row">
+            <span class="perf-label">Avg first response</span>
+            <span class="perf-val">{fmtMins(dashboard.avgFirstResponseMins)}</span>
+          </div>
+          <div class="perf-row">
+            <span class="perf-label">Avg resolution</span>
+            <span class="perf-val">{fmtMins(dashboard.avgResolutionMins)}</span>
+          </div>
+          <div class="perf-row">
+            <span class="perf-label">SLA threshold</span>
+            <span class="perf-val">{dashboard.slaMinutes} min</span>
+          </div>
+        </div>
+        <div class="perf-card perf-card--teal">
+          <div class="perf-card-title"><i class="ti ti-flag-check"></i> Final Quotation</div>
+          <div class="perf-row">
+            <span class="perf-label">Sent</span>
+            <span class="perf-val text-success fw-bold">{dashboard.finalQuotationSent}</span>
+          </div>
+          <div class="perf-row">
+            <span class="perf-label">Pending</span>
+            <span class="perf-val {dashboard.finalQuotationPending > 0 ? 'text-warning' : 'text-success'}">{dashboard.finalQuotationPending}</span>
+          </div>
+          <div class="perf-row">
+            <span class="perf-label">Coverage</span>
+            <span class="perf-val">
+              {(dashboard.finalQuotationSent + dashboard.finalQuotationPending) > 0
+                ? Math.round(dashboard.finalQuotationSent / (dashboard.finalQuotationSent + dashboard.finalQuotationPending) * 100)
+                : 0}%
+            </span>
+          </div>
+        </div>
+      </div>
+
+    {/if}
+  </div>
+</div>
+
 <style>
   .user-link:hover { text-decoration: underline !important; color: #3b5bdb !important; }
 
   .section-label {
     font-size: 11px; font-weight: 700; text-transform: uppercase;
     letter-spacing: 0.8px; color: #adb5bd; margin-bottom: 10px;
+  }
+
+  /* Table column truncation */
+  .col-truncate {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    max-width: 100%;
   }
 
   /* Status stat cards */
@@ -631,7 +634,52 @@
     margin-left: auto; font-size: 10.5px; font-weight: 700;
     padding: 1px 7px; border-radius: 20px;
   }
+  /* Summary single card */
+  .summary-card {
+    background: #fff; border: 1px solid #e9ecef; border-radius: 10px;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.05); overflow: hidden;
+  }
+  .summary-row {
+    display: grid; grid-template-columns: 1fr 1fr;
+    border-bottom: 1px solid #f1f3f5;
+  }
+  .summary-row--last { border-bottom: none; }
+  .summary-cell {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 9px 14px; gap: 8px;
+  }
+  .summary-cell:first-child { border-right: 1px solid #f1f3f5; }
+  .summary-label { font-size: 11.5px; color: #868e96; }
+  .summary-val { font-size: 15px; font-weight: 700; color: #343a40; }
+
   .perf-badge--red    { background: #fff0f0; color: #dc3545; border: 1px solid #f5c6cb; }
   .perf-badge--green  { background: #edfaf3; color: #198754; border: 1px solid #c3e6cb; }
   .perf-badge--orange { background: #fff3e6; color: #fd7e14; border: 1px solid #fcd3a5; }
+
+  /* Stats drawer */
+  .stats-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.35);
+    z-index: 1040; animation: fadeIn 0.15s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+  .stats-drawer {
+    position: fixed; top: 0; right: 0; height: 100vh;
+    width: 420px; max-width: 95vw;
+    background: #fff; z-index: 1050;
+    box-shadow: -4px 0 24px rgba(0,0,0,0.13);
+    display: flex; flex-direction: column;
+    transform: translateX(100%);
+    transition: transform 0.25s cubic-bezier(0.4,0,0.2,1);
+  }
+  .stats-drawer--open { transform: translateX(0); }
+
+  .stats-drawer-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px; border-bottom: 1px solid #e9ecef;
+    font-size: 14px; flex-shrink: 0;
+  }
+  .stats-drawer-body {
+    flex: 1; overflow-y: auto; padding: 18px 16px;
+  }
 </style>

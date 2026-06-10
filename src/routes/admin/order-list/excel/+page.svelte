@@ -9,6 +9,7 @@
   import { categoriesAllStore } from "$lib/stores/dataStores";
   import { get } from "svelte/store";
   import { checkAuth } from "$lib/utils/auth";
+  import { statusNamesStore } from "$lib/stores/statusNames";
   import { maskAssignedName } from '$lib/utils/maskUser';
   import PIWOTIModal from "$lib/components/PIWOTIModal.svelte";
 
@@ -26,6 +27,8 @@
   let filterStatus = "";
   let filterDateRange = "7d";
   let pageSize = 10;
+  let filterUserId = "";
+  let allUsers = [];
 
   const ORDER_BY_OPTIONS = [
     { value: "createdAt", label: "Date Created" },
@@ -82,7 +85,30 @@
 
   // ── inline expand ────────────────────────────────────────
   let expandedRow = null;
-  let chatMsg = {}, reminderInput = {}, reminderTimeInput = {};
+  let chatMsg = {}, chatTypeInput = {}, reminderInput = {}, reminderTimeInput = {};
+
+  const CHAT_TYPES = ["Call", "WA", "Email"];
+  const CHAT_TYPE_COLORS = { Call: "btn-primary", WA: "btn-success", Email: "btn-warning" };
+
+  function normalizeSingleType(raw) {
+    if (!raw || raw.trim() === "") return null;
+    const t = raw.trim().toLowerCase();
+    if (t.includes("call")) return "Call";
+    if (t.includes("whatsapp") || t.includes("whats app") || t === "wa") return "WA";
+    if (t.includes("email") || t.includes("mail")) return "Email";
+    return null;
+  }
+  function normalizeTypes(typeStr) {
+    if (!typeStr || typeStr.trim() === "") return [];
+    return typeStr.split(",").map(normalizeSingleType).filter(Boolean);
+  }
+
+  function chatTypeBadgeStyle(type) {
+    if (type === "Call") return "background:#dbeafe;color:#1d4ed8;";
+    if (type === "WA" || type === "WhatsApp") return "background:#dcfce7;color:#15803d;";
+    if (type === "Email") return "background:#fef9c3;color:#a16207;";
+    return "background:#f3f4f6;color:#6b7280;";
+  }
 
   // ── inline edit ──────────────────────────────────────────
   let editingCell  = null; // { orderId, field }
@@ -366,7 +392,15 @@
   function resetColWidths() { cols = DEFAULT_COLS.map(c => ({ ...c })); }
 
   // ── lifecycle ────────────────────────────────────────────
-  onMount(() => { fetchOrders(); });
+  onMount(async () => {
+    if (isMaster || currentUser?.role === "admin") {
+      try {
+        const res = await authApiFetch(`${API_ROUTES.USER}/all`, { method: "GET" });
+        allUsers = Array.isArray(res) ? res : (res.data || []);
+      } catch (e) { console.error(e); }
+    }
+    fetchOrders();
+  });
 
   // ── API ──────────────────────────────────────────────────
   async function fetchOrders(page = 1) {
@@ -380,7 +414,9 @@
         orderBy,
         limit: String(pageSize),
         page: String(page),
-        ...(filterStatus && { status: filterStatus }),
+        full: 'true',
+        ...(filterStatus   && { status: filterStatus }),
+        ...(filterUserId   && { byUserId: filterUserId }),
         ...dateParams,
       });
       const res = await authApiFetch(`${API_ROUTES.ORDER}?${q}`, { method: "GET" });
@@ -415,9 +451,10 @@
     try {
       await authApiFetch(API_ROUTES.ORDER_CHAT, {
         method: "POST",
-        data: JSON.stringify({ orderId, message: msg, type: "" }),
+        data: JSON.stringify({ orderId, message: msg, type: (chatTypeInput[orderId] || []).map(t => t === "WA" ? "WhatsApp" : t).join(",") }),
       });
       chatMsg[orderId] = "";
+      chatTypeInput[orderId] = [];
       await refreshOrder(orderId);
       await tick();
       const el = document.getElementById(`chat-scroll-${orderId}`);
@@ -573,8 +610,17 @@
       <!-- Status filter -->
       <select class="form-select" style="width:155px;" bind:value={filterStatus} on:change={() => fetchOrders(1)}>
         <option value="">Select Status</option>
-        {#each STATUS_OPTIONS as s}<option value={s}>{s}</option>{/each}
+        {#each STATUS_OPTIONS as s}<option value={s}>{$statusNamesStore[s]?.name ?? s}</option>{/each}
       </select>
+      <!-- User filter (master / admin only) -->
+      {#if (isMaster || currentUser?.role === "admin") && allUsers.length > 0}
+        <select class="form-select" style="width:165px;" bind:value={filterUserId} on:change={() => fetchOrders(1)}>
+          <option value="">All Users</option>
+          {#each allUsers as u}
+            <option value={String(u.id)}>{u.name} ({u.role})</option>
+          {/each}
+        </select>
+      {/if}
       <!-- Sort -->
       <select class="form-select" style="width:155px;" bind:value={orderBy} on:change={() => fetchOrders(1)}>
         {#each ORDER_BY_OPTIONS as opt}
@@ -795,7 +841,12 @@
                   {#if !isExp}
                     <div class="text-xs cursor-pointer text-gray-600 max-w-full" on:click={() => toggleRow(order.id)}>
                       {#if lastChat}
-                        <div class="truncate"><b>{maskAssignedName(lastChat.user, currentUser) || ""}:</b> {lastChat.message || ""}</div>
+                        <div class="flex items-center gap-1 mb-0.5">
+                          {#each normalizeTypes(lastChat.type) as nt}
+                            <span class="rounded px-1 py-0 text-[9px] font-semibold flex-shrink-0" style={chatTypeBadgeStyle(nt)}>{nt}</span>
+                          {/each}
+                          <div class="truncate"><b>{maskAssignedName(lastChat.user, currentUser) || ""}:</b> {lastChat.message || ""}</div>
+                        </div>
                         <div class="text-[10px] text-gray-400 mt-px whitespace-nowrap">{formatDateTime(lastChat.createdAt)}</div>
                       {:else}
                         <span class="text-gray-400 italic text-[11px]">No chats</span>
@@ -805,11 +856,35 @@
                     <div id="chat-scroll-{order.id}" class="max-h-[90px] overflow-y-auto border border-gray-100 rounded p-1 bg-white text-[11px]">
                       {#each chats as c}
                         <div class="py-0.5 border-b border-gray-100 last:border-b-0 break-words">
-                          <div><b>{maskAssignedName(c.user, currentUser) || ""}:</b> {c.message}</div>
+                          <div class="flex items-center gap-1 flex-wrap">
+                            {#each normalizeTypes(c.type) as nt}
+                              <span class="rounded px-1 py-0 text-[9px] font-semibold flex-shrink-0" style={chatTypeBadgeStyle(nt)}>{nt}</span>
+                            {/each}
+                            <span><b>{maskAssignedName(c.user, currentUser) || ""}:</b> {c.message}</span>
+                          </div>
                           <div class="text-[10px] text-gray-400 mt-px">{formatDateTime(c.createdAt)}</div>
                         </div>
                       {/each}
                       {#if chats.length === 0}<div class="text-gray-400 italic text-[11px]">No chats yet</div>{/if}
+                    </div>
+                    <div class="flex gap-1 mt-1 flex-wrap">
+                      {#each CHAT_TYPES as t}
+                        <button
+                          type="button"
+                          class="btn btn-xs py-0 px-1 text-[10px] {(chatTypeInput[order.id] || []).includes(t) ? CHAT_TYPE_COLORS[t] : 'btn-outline-secondary'}"
+                          on:click|stopPropagation={() => {
+                            const cur = chatTypeInput[order.id] || [];
+                            chatTypeInput[order.id] = cur.includes(t) ? cur.filter(x => x !== t) : [...cur, t];
+                          }}
+                        >{t}</button>
+                      {/each}
+                      <button
+                        type="button"
+                        class="btn btn-xs py-0 px-1 text-[10px] {(chatTypeInput[order.id] || []).length === CHAT_TYPES.length ? 'btn-dark' : 'btn-outline-secondary'}"
+                        on:click|stopPropagation={() => {
+                          chatTypeInput[order.id] = (chatTypeInput[order.id] || []).length === CHAT_TYPES.length ? [] : [...CHAT_TYPES];
+                        }}
+                      >All</button>
                     </div>
                     <div class="flex gap-1 mt-1">
                       <input class="form-control form-control-sm !text-[11px]" placeholder="Message..."
@@ -933,7 +1008,7 @@
                     on:change={(e) => updateStatus(order.id, e.target.value)}
                   >
                     {#each STATUS_OPTIONS as s}
-                      <option value={s}>{s}</option>
+                      <option value={s}>{$statusNamesStore[s]?.name ?? s}</option>
                     {/each}
                   </select>
                 </td>

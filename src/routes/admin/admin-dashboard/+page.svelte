@@ -1,432 +1,280 @@
 <script>
-  import { setUser } from "../../../stores/userStore";
   import { onMount } from "svelte";
   import { checkAuth } from "$lib/utils/auth";
-  import SummaryCards from "$lib/components/SummaryCards.svelte";
-  import OrdersByStatusChart from "$lib/components/OrdersByStatusChart.svelte";
-  import OrdersOverTimeChart from "$lib/components/OrdersOverTimeChart.svelte";
   import { authApiFetch } from "$lib/api/client";
   import { API_ROUTES } from "$lib/constants/apiRoutes";
-  import OrdersUsersStatusBarChart from "$lib/components/OrdersUsersStatusBarChart.svelte";
-  import OrdersUsersOverTimeLineChart from "$lib/components/OrdersUsersOverTimeLineChart.svelte";
   import { errorHandle } from "$lib/utils/errorHandle";
   import { usersAllStore } from "$lib/stores/dataStores";
-  import { orderFilterStore } from "$lib/stores/filterStore";
-  import { goto } from "$app/navigation";
-
-  import html2canvas from "html2canvas";
-  import pdfMake from "pdfmake/build/pdfmake";
-  import * as pdfFonts from "pdfmake/build/vfs_fonts";
-  import * as XLSX from "xlsx";
-
-  import Loader from "$lib/components/Loader.svelte";
-  let loadingData = true;
-
-  let loading;
-  let users = [];
-  let dashboardData = null;
-  let selectedFilter = "last7days";
-  let customStartDate = null;
-  let customEndDate = null;
-  let orderBy = "createdAt";
-  let userId = null;
-  let searchString = "";
-
-  import { adminDashboardFilterStore } from "$lib/stores/filterStore";
-  import Swal from "sweetalert2";
   import { get } from "svelte/store";
-  let firstLoad = false;
+  import { setUser } from "../../../stores/userStore";
+  import { statusNamesStore } from "$lib/stores/statusNames";
+  import Loader from "$lib/components/Loader.svelte";
+  import Swal from "sweetalert2";
+
   let currentUser;
-  onMount(() => {
+  let loadingData = true;
+  let users = [];
+  let mounted = false;
+
+  // Section 1 — Role-wise sales
+  let s1SubRole = "telecaller";
+  let s1Filter = "today";
+  let s1CustomStart = "";
+  let s1CustomEnd = "";
+  let s1ByUserId = "";
+  let s1Data = [];
+  let s1Loading = false;
+
+  // Section 2 — Category-wise sales
+  let s2Filter = "last7days";
+  let s2CustomStart = "";
+  let s2CustomEnd = "";
+  let s2Status = "";
+  let s2SubRole = "";
+  let s2ByUserId = "";
+  let s2Data = [];
+  let s2Loading = false;
+
+  // Section 3 — Contact report
+  let s3Filter = "last7days";
+  let s3CustomStart = "";
+  let s3CustomEnd = "";
+  let s3SubRole = "";
+  let s3ByUserId = "";
+  let s3Data = [];
+  let s3Loading = false;
+
+  // Section 4 — Last activity
+  let s4Filter = "today";
+  let s4CustomStart = "";
+  let s4CustomEnd = "";
+  let s4SubRole = "";
+  let s4ByUserId = "";
+  let s4Data = [];
+  let s4Total = 0;
+  let s4Page = 1;
+  let s4Limit = 10;
+  let s4TotalPages = 0;
+  let s4Loading = false;
+
+  // Section 5 — Category × Status breakdown
+  let s5Filter = "last7days";
+  let s5CustomStart = "";
+  let s5CustomEnd = "";
+  let s5SubRole = "";
+  let s5ByUserId = "";
+  let s5Data = [];
+  let s5Loading = false;
+
+  const ROLE_TABS = [
+    { val: "telecaller",  label: "Telecaller", color: "#3b5bdb" },
+    { val: "tech",        label: "Tech",        color: "#0ca678" },
+    { val: "tech_helper", label: "Sr. Tech",    color: "#7950f2" },
+  ];
+
+  const STATUSES = [
+    "New Lead","Contacted","Follow Up","Needs Assessment","Quotation Sent",
+    "Qualified","Negotiation In Progress","Deal Won","Unqualified","Deal Lost",
+    "Dispatched","Completed",
+  ];
+
+  const statusCls = {
+    "New Lead":                "dsb--primary",
+    "Contacted":               "dsb--info",
+    "Follow Up":               "dsb--secondary",
+    "Needs Assessment":        "dsb--warning",
+    "Quotation Sent":          "dsb--warning",
+    "Qualified":               "dsb--success",
+    "Negotiation In Progress": "dsb--dark",
+    "Deal Won":                "dsb--success",
+    "Unqualified":             "dsb--danger",
+    "Deal Lost":               "dsb--danger",
+    "Dispatched":              "dsb--info",
+    "Completed":               "dsb--success",
+  };
+
+  // Derive display name from store (respects admin renames), fall back to key
+  $: statusLabel = (key) => $statusNamesStore[key]?.name ?? key;
+
+  // ── helpers ───────────────────────────────────────────────────────────────
+  function buildDateRange(filter, customStart, customEnd) {
+    const today = new Date();
+    const fmt = (d) => d.toLocaleDateString("en-CA");
+    if (filter === "today") return { startDate: fmt(today), endDate: fmt(today) };
+    if (filter === "yesterday") {
+      const y = new Date(today); y.setDate(y.getDate() - 1);
+      return { startDate: fmt(y), endDate: fmt(y) };
+    }
+    if (filter === "last7days") {
+      const d = new Date(today); d.setDate(d.getDate() - 6);
+      return { startDate: fmt(d), endDate: fmt(today) };
+    }
+    if (filter === "last30days") {
+      const d = new Date(today); d.setDate(d.getDate() - 29);
+      return { startDate: fmt(d), endDate: fmt(today) };
+    }
+    if (filter === "custom" && customStart && customEnd)
+      return { startDate: customStart, endDate: customEnd };
+    return {};
+  }
+
+  function filterLabel(filter, customStart, customEnd) {
+    if (filter === "today") return "Today";
+    if (filter === "yesterday") return "Yesterday";
+    if (filter === "last7days") return "Last 7 Days";
+    if (filter === "last30days") return "Last 30 Days";
+    if (filter === "custom" && customStart && customEnd) return `${customStart} → ${customEnd}`;
+    return "All Time";
+  }
+
+  function fmtINR(val) {
+    if (!val && val !== 0) return "—";
+    return "₹" + Number(val).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+  }
+
+  function isStale(order) {
+    const acts = order.orderActivities ?? [];
+    if (!acts.length) return true;
+    return Date.now() - new Date(acts[0].createdAt).getTime() > 2 * 86400000;
+  }
+
+  function timeAgo(order) {
+    const acts = order.orderActivities ?? [];
+    if (!acts.length) return null;
+    const diff = Math.floor((Date.now() - new Date(acts[0].createdAt).getTime()) / 1000);
+    if (diff < 60) return `${diff}s ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return `${Math.floor(diff / 86400)}d ago`;
+  }
+
+  // ── fetch ─────────────────────────────────────────────────────────────────
+  async function fetchS1() {
+    if (s1Filter === "custom" && (!s1CustomStart || !s1CustomEnd)) return;
+    s1Loading = true;
+    try {
+      const { startDate, endDate } = buildDateRange(s1Filter, s1CustomStart, s1CustomEnd);
+      const q = new URLSearchParams({ subRole: s1SubRole });
+      if (startDate) q.set("startDate", startDate);
+      if (endDate) q.set("endDate", endDate);
+      if (s1ByUserId) q.set("byUserId", s1ByUserId);
+      s1Data = await authApiFetch(`${API_ROUTES.ORDER}/role-sales?${q}`);
+    } catch (e) { errorHandle(e); }
+    finally { s1Loading = false; }
+  }
+
+  async function fetchS2() {
+    if (s2Filter === "custom" && (!s2CustomStart || !s2CustomEnd)) return;
+    s2Loading = true;
+    try {
+      const { startDate, endDate } = buildDateRange(s2Filter, s2CustomStart, s2CustomEnd);
+      const q = new URLSearchParams();
+      if (startDate) q.set("startDate", startDate);
+      if (endDate) q.set("endDate", endDate);
+      if (s2Status) q.set("status", s2Status);
+      if (s2ByUserId) q.set("byUserId", s2ByUserId);
+      else if (s2SubRole) q.set("subRole", s2SubRole);
+      s2Data = await authApiFetch(`${API_ROUTES.ORDER}/category-sales?${q}`);
+    } catch (e) { errorHandle(e); }
+    finally { s2Loading = false; }
+  }
+
+  async function fetchS3() {
+    if (s3Filter === "custom" && (!s3CustomStart || !s3CustomEnd)) return;
+    s3Loading = true;
+    try {
+      const { startDate, endDate } = buildDateRange(s3Filter, s3CustomStart, s3CustomEnd);
+      const q = new URLSearchParams();
+      if (startDate) q.set("startDate", startDate);
+      if (endDate) q.set("endDate", endDate);
+      if (s3ByUserId) q.set("byUserId", s3ByUserId);
+      else if (s3SubRole) q.set("subRole", s3SubRole);
+      s3Data = await authApiFetch(`${API_ROUTES.ORDER_CHAT}/contact-report?${q}`);
+    } catch (e) { errorHandle(e); }
+    finally { s3Loading = false; }
+  }
+
+  async function fetchS4() {
+    if (s4Filter === "custom" && (!s4CustomStart || !s4CustomEnd)) return;
+    s4Loading = true;
+    try {
+      const { startDate, endDate } = buildDateRange(s4Filter, s4CustomStart, s4CustomEnd);
+      const q = new URLSearchParams({ limit: String(s4Limit), page: String(s4Page) });
+      if (startDate) q.set("startDate", startDate);
+      if (endDate) q.set("endDate", endDate);
+      if (s4ByUserId) q.set("byUserId", s4ByUserId);
+      else if (s4SubRole) q.set("subRole", s4SubRole);
+      const res = await authApiFetch(`${API_ROUTES.ORDER}/last-activity?${q}`);
+      s4Data = res.data ?? [];
+      s4Total = res.total ?? 0;
+      s4TotalPages = res.totalPages ?? 0;
+    } catch (e) { errorHandle(e); }
+    finally { s4Loading = false; }
+  }
+
+  async function fetchS5() {
+    if (s5Filter === "custom" && (!s5CustomStart || !s5CustomEnd)) return;
+    s5Loading = true;
+    try {
+      const { startDate, endDate } = buildDateRange(s5Filter, s5CustomStart, s5CustomEnd);
+      const q = new URLSearchParams();
+      if (startDate) q.set("startDate", startDate);
+      if (endDate) q.set("endDate", endDate);
+      if (s5ByUserId) q.set("byUserId", s5ByUserId);
+      else if (s5SubRole) q.set("subRole", s5SubRole);
+      s5Data = await authApiFetch(`${API_ROUTES.ORDER}/category-stats?${q}`);
+    } catch (e) { errorHandle(e); }
+    finally { s5Loading = false; }
+  }
+
+  // ── mount ─────────────────────────────────────────────────────────────────
+  onMount(async () => {
     currentUser = checkAuth();
     if (currentUser) {
       setUser(currentUser);
-      if (currentUser?.role === "user") {
+      if (currentUser.role === "user") {
         loadingData = false;
-        loading = false;
         Swal.fire({
-          icon: "warning",
-          title: "Access Denied",
+          icon: "warning", title: "Access Denied",
           text: "You are not authorized to view this page.",
           confirmButtonText: "Go Back",
-        }).then(() => {
-          window.history.back();
-        });
+        }).then(() => window.history.back());
         return;
       }
     }
-
-    getAllUsers();
-
-    const filterState = $adminDashboardFilterStore;
-
-    selectedFilter = filterState.selectedFilter || "last7days";
-    customStartDate = filterState.customStartDate || null;
-    customEndDate = filterState.customEndDate || null;
-
-    fetchOrdersStats();
-
-    setTimeout(() => {
-      firstLoad = true;
-    }, 500);
+    const cached = get(usersAllStore);
+    if (cached?.length > 0) {
+      users = cached;
+    } else {
+      try {
+        const data = await authApiFetch(API_ROUTES.USER + "/all");
+        users = data;
+        usersAllStore.set(data);
+      } catch (_) {}
+    }
+    await Promise.all([fetchS1(), fetchS2(), fetchS3(), fetchS4(), fetchS5()]);
+    loadingData = false;
+    mounted = true;
   });
 
-  const updateFilterStore = (newValues) => {
-    adminDashboardFilterStore.update((currentState) => {
-      return { ...currentState, ...newValues };
-    });
-  };
+  // ── reactivity ────────────────────────────────────────────────────────────
+  $: if (mounted) { s1SubRole; s1Filter; s1CustomStart; s1CustomEnd; s1ByUserId; fetchS1(); }
+  $: if (mounted) { s2SubRole; s2ByUserId; s2Filter; s2CustomStart; s2CustomEnd; s2Status; fetchS2(); }
+  $: if (mounted) { s3SubRole; s3ByUserId; s3Filter; s3CustomStart; s3CustomEnd; fetchS3(); }
+  $: if (mounted) { s4SubRole; s4ByUserId; s4Filter; s4CustomStart; s4CustomEnd; s4Page; fetchS4(); }
+  $: if (mounted) { s5SubRole; s5ByUserId; s5Filter; s5CustomStart; s5CustomEnd; fetchS5(); }
 
-  async function fetchOrdersStats() {
-    loadingData = true;
-    try {
-      const query = new URLSearchParams({
-        search: "",
-      });
-
-      let startDateFilter;
-      let endDateFilter = new Date();
-
-      const formatDisplayDate = (date) =>
-        date.toLocaleDateString("en-CA", {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-        });
-      searchString = "All";
-
-      if (selectedFilter === "last7days") {
-        const sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        startDateFilter = sevenDaysAgo;
-        searchString = `${formatDisplayDate(sevenDaysAgo)} to ${formatDisplayDate(new Date())}`;
-      } else if (selectedFilter === "last30days") {
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        startDateFilter = thirtyDaysAgo;
-        searchString = `${formatDisplayDate(thirtyDaysAgo)} to ${formatDisplayDate(new Date())}`;
-      } else if (selectedFilter === "today") {
-        startDateFilter = new Date();
-        startDateFilter.setHours(0, 0, 0, 0);
-        endDateFilter.setHours(23, 59, 59, 999);
-        searchString = "Today";
-      } else if (selectedFilter === "yesterday") {
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        startDateFilter = yesterday;
-        startDateFilter.setHours(0, 0, 0, 0);
-        endDateFilter.setHours(23, 59, 59, 999);
-        searchString = "Yesterday";
-      } else if (
-        selectedFilter === "custom" &&
-        customStartDate &&
-        customEndDate
-      ) {
-        query.append("startDate", customStartDate);
-        query.append("endDate", customEndDate);
-        searchString = `${formatDisplayDate(new Date(customStartDate))} to ${formatDisplayDate(new Date(customEndDate))}`;
-      }
-
-      if (startDateFilter && selectedFilter !== "custom") {
-        const formatLocalDate = (date) => date.toLocaleDateString("en-CA"); // Local YYYY-MM-DD
-        query.append("startDate", formatLocalDate(startDateFilter));
-        query.append("endDate", formatLocalDate(endDateFilter));
-      }
-
-      updateFilterStore({
-        selectedFilter,
-        customStartDate,
-        customEndDate,
-      });
-
-      const data = await authApiFetch(
-        `${API_ROUTES.ORDER}/user-stats?${query.toString()}`,
-        {
-          method: "GET",
-        },
-      );
-      loading = false;
-
-      dashboardData = { ...data };
-      fetchCategoryStats();
-    } catch (error) {
-      console.error("Fetch error:", error);
-      loading = false;
-      const validationErrors = errorHandle(error);
-    } finally {
-      loading = false;
-      setTimeout(() => {
-        loadingData = false;
-      }, 500);
-    }
-  }
-
-  async function getAllUsers() {
-    const cached = get(usersAllStore);
-    if (cached && cached.length > 0) {
-      users = cached;
-      loadingData = false;
-      return;
-    }
-    loadingData = true;
-    try {
-      const data = await authApiFetch(API_ROUTES.USER + "/all");
-      users = data;
-      usersAllStore.set(data);
-    } catch (err) {
-      errorMessage = "Failed to load user data.";
-    } finally {
-      setTimeout(() => {
-        loadingData = false;
-      }, 500);
-    }
-  }
-
-  $: [selectedFilter, customStartDate, customEndDate, orderBy],
-    checkFetchRecord();
-
-  function checkFetchRecord() {
-    if (firstLoad) {
-      if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) {
-        return;
-      }
-      fetchOrdersStats();
-    }
-  }
-
-  async function exportDashboardToPDF() {
-    const dashboardElements = document.getElementsByClassName("printDashboard");
-
-    if (!dashboardElements.length) {
-      console.error("No dashboard sections found!");
-      return;
-    }
-
-    const content = [];
-    content.push({ text: "Admin Dashboard Report", style: "header" });
-
-    for (let i = 0; i < dashboardElements.length; i++) {
-      const element = dashboardElements[i];
-
-      // Ensure element is fully visible (optional, for hidden parts)
-      element.scrollIntoView();
-
-      const canvas = await html2canvas(element);
-      const imgData = canvas.toDataURL("image/png");
-
-      content.push({
-        image: imgData,
-        width: 500,
-        margin: [0, 0, 0, 20],
-      });
-    }
-
-    const docDefinition = {
-      content,
-      styles: {
-        header: {
-          fontSize: 18,
-          bold: true,
-          margin: [0, 10, 0, 10],
-        },
-      },
-    };
-
-    // Filename
-    let fileName = "admin_dashboard";
-
-    if (selectedFilter) {
-      fileName += `_${selectedFilter}`;
-    }
-
-    if (selectedFilter === "custom" && customStartDate && customEndDate) {
-      fileName += `_from_${customStartDate}_to_${customEndDate}`;
-    }
-
-    const now = new Date();
-    const timestamp = now.toISOString().split("T")[0];
-    fileName += `_exported_${timestamp}.pdf`;
-
-    pdfMake.vfs = pdfFonts.vfs;
-    pdfMake.createPdf(docDefinition).download(fileName);
-  }
-
-  async function exportDashboardToExcel() {
-    const dashboardElements = document.getElementsByClassName(
-      "generateExcelDashboard",
-    );
-
-    if (!dashboardElements.length) {
-      alert("No dashboard found to export!");
-      return;
-    }
-
-    const table = dashboardElements[0].querySelector("table");
-
-    if (!table) {
-      alert("No table found in the dashboard!");
-      return;
-    }
-
-    const worksheet = XLSX.utils.table_to_sheet(table);
-
-    const cols = [];
-    const range = XLSX.utils.decode_range(worksheet["!ref"]);
-    for (let C = range.s.c; C <= range.e.c; ++C) {
-      let maxWidth = 8;
-      for (let R = range.s.r; R <= range.e.r; ++R) {
-        const cellAddress = { c: C, r: R };
-        const cellRef = XLSX.utils.encode_cell(cellAddress);
-        const cell = worksheet[cellRef];
-
-        if (cell && cell.v) {
-          const cellValue = cell.v.toString();
-          maxWidth = Math.max(maxWidth, cellValue.length);
-        }
-      }
-      if (maxWidth > 10) {
-        maxWidth = maxWidth - 3;
-      } else {
-        maxWidth = maxWidth;
-      }
-      cols.push({ wch: maxWidth });
-    }
-    worksheet["!cols"] = cols;
-
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Dashboard");
-
-    let fileName = "admin_dashboard";
-
-    let startDateFilter;
-    let endDateFilter = new Date();
-
-    const formatLocalDate = (date) => date.toISOString().split("T")[0]; // YYYY-MM-DD
-
-    if (selectedFilter === "last7days") {
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      startDateFilter = sevenDaysAgo;
-    } else if (selectedFilter === "last30days") {
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      startDateFilter = thirtyDaysAgo;
-    } else if (selectedFilter === "today") {
-      startDateFilter = new Date();
-      startDateFilter.setHours(0, 0, 0, 0);
-      endDateFilter.setHours(23, 59, 59, 999);
-    } else if (
-      selectedFilter === "custom" &&
-      customStartDate &&
-      customEndDate
-    ) {
-      startDateFilter = new Date(customStartDate);
-      endDateFilter = new Date(customEndDate);
-    }
-
-    if (startDateFilter && endDateFilter) {
-      fileName += `_from_${formatLocalDate(startDateFilter)}_to_${formatLocalDate(endDateFilter)}`;
-    }
-
-    const now = new Date();
-    const timestamp = now.toISOString().split("T")[0];
-    fileName += `_exported_${timestamp}.xlsx`;
-
-    XLSX.writeFile(workbook, fileName);
-  }
-
-  const statuses = [
-    "New Lead",
-    "Contacted",
-    "Quotation Sent",
-    "Follow Up",
-    "Needs Assessment",
-    "Qualified",
-    "Negotiation In Progress",
-    "Deal Won",
-    "Unqualified",
-    "Deal Lost",
-    "Dispatched",
-    "Completed",
-  ];
-
-  const statusConfig = {
-    "New Lead":                { abbr: "New Lead",    cls: "bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25" },
-    "Contacted":               { abbr: "Contacted",   cls: "bg-info bg-opacity-10 text-info border border-info border-opacity-25" },
-    "Follow Up":               { abbr: "FU Fast",     cls: "bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25" },
-    "Qualified":               { abbr: "Qualified",   cls: "bg-success bg-opacity-10 text-success border border-success border-opacity-25" },
-    "Unqualified":             { abbr: "Unqualified", cls: "bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25" },
-    "Needs Assessment":        { abbr: "FU Slow",     cls: "bg-warning bg-opacity-10 text-warning border border-warning border-opacity-25" },
-    "Quotation Sent":          { abbr: "Quot. Sent",  cls: "bg-warning bg-opacity-10 text-warning border border-warning border-opacity-25" },
-    "Negotiation In Progress": { abbr: "Negotiation", cls: "bg-secondary bg-opacity-10 text-dark border border-secondary border-opacity-25" },
-    "Deal Won":                { abbr: "Deal Won",    cls: "bg-success bg-opacity-10 text-success border border-success border-opacity-25" },
-    "Deal Lost":               { abbr: "Deal Lost",   cls: "bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25" },
-    "Dispatched":              { abbr: "Dispatched",  cls: "bg-info bg-opacity-10 text-info border border-info border-opacity-25" },
-    "Completed":               { abbr: "Completed",   cls: "bg-success bg-opacity-10 text-success border border-success border-opacity-25" },
-  };
-
-  function getUserTotal(user) {
-    return statuses.reduce((t, s) => {
-      const found = user.statusBreakdown.find((sb) => sb.status === s);
-      return t + (found ? found.count : 0);
-    }, 0);
-  }
-
-  function getColumnTotal(status) {
-    return (dashboardData?.userStats ?? []).reduce((sum, user) => {
-      const found = user.statusBreakdown.find((sb) => sb.status === status);
-      return sum + (found ? found.count : 0);
-    }, 0);
-  }
-
-  $: grandTotal =
-    dashboardData?.userStats?.reduce((sum, user) => sum + getUserTotal(user), 0) ?? 0;
-
-  function navigateToOrders({ byUserId = null, status = null, category = null } = {}) {
-    orderFilterStore.update((s) => ({
-      ...s,
-      userId: byUserId,
-      filterStatus: status,
-      filterCategory: category,
-      selectedFilter,
-      customStartDate,
-      customEndDate,
-    }));
-    goto("/admin/order");
-  }
-
-  let categoryStats = [];
-
-  async function fetchCategoryStats() {
-    try {
-      const query = new URLSearchParams();
-      if (selectedFilter === "last7days") {
-        const d = new Date(); d.setDate(d.getDate() - 7);
-        query.append("startDate", d.toLocaleDateString("en-CA"));
-        query.append("endDate", new Date().toLocaleDateString("en-CA"));
-      } else if (selectedFilter === "last30days") {
-        const d = new Date(); d.setDate(d.getDate() - 30);
-        query.append("startDate", d.toLocaleDateString("en-CA"));
-        query.append("endDate", new Date().toLocaleDateString("en-CA"));
-      } else if (selectedFilter === "today") {
-        query.append("startDate", new Date().toLocaleDateString("en-CA"));
-        query.append("endDate", new Date().toLocaleDateString("en-CA"));
-      } else if (selectedFilter === "custom" && customStartDate && customEndDate) {
-        query.append("startDate", customStartDate);
-        query.append("endDate", customEndDate);
-      }
-      const data = await authApiFetch(`${API_ROUTES.ORDER}/category-stats?${query.toString()}`, { method: "GET" });
-      categoryStats = Array.isArray(data) ? data : [];
-    } catch (e) {
-      categoryStats = [];
-    }
-  }
-
-  $: catGrandTotal = categoryStats.reduce((s, c) => s + c.total, 0);
-
-  function getCatColumnTotal(status) {
-    return categoryStats.reduce((sum, c) => {
-      const f = c.statusBreakdown.find((s) => s.status === status);
+  // ── computed ──────────────────────────────────────────────────────────────
+  $: s1Total      = s1Data.reduce((s, r) => s + r.orderCount, 0);
+  $: s1TotalValue = s1Data.reduce((s, r) => s + r.totalValue, 0);
+  $: s2TotalOrders = s2Data.reduce((s, r) => s + r.orderCount, 0);
+  $: s2TotalValue  = s2Data.reduce((s, r) => s + r.totalValue, 0);
+  $: s3GrandTotal  = s3Data.reduce((s, r) => s + r.total, 0);
+  $: s4StaleCount  = s4Data.filter(isStale).length;
+  $: s5GrandTotal = s5Data.reduce((s, r) => s + r.total, 0);
+  function s5ColTotal(status) {
+    return s5Data.reduce((sum, r) => {
+      const f = r.statusBreakdown.find((s) => s.status === status);
       return sum + (f ? f.count : 0);
     }, 0);
   }
@@ -435,644 +283,754 @@
 {#if loadingData}
   <Loader />
 {/if}
+
 <div class="page-wrapper">
-  <!-- Start Content -->
-  <div class="content pb-0">
-    <!-- Page Header -->
-    <div class="flex items-center justify-between gap-2 mb-4 flex-wrap">
-      <div>
-        <h4 class="mb-0">Admin Dashboard</h4>
-      </div>
+  <div class="content pb-4">
 
-      <div class="flex items-center gap-2 flex-wrap">
-        <div class="dropdown">
-          <a
-            href="#Export"
-            class="dropdown-toggle btn btn-outline-light px-2 shadow"
-            data-bs-toggle="dropdown"
-          >
-            <i class="ti ti-package-export me-2"></i>Export
-          </a>
-          <div class="dropdown-menu dropdown-menu-end">
-            <ul>
-              <li>
-                <button
-                  type="button"
-                  on:click={() => exportDashboardToPDF()}
-                  class="dropdown-item"
-                >
-                  <i class="ti ti-file-type-pdf me-1"></i>Export as PDF
-                </button>
-                <button
-                  type="button"
-                  on:click={() => exportDashboardToExcel()}
-                  class="dropdown-item"
-                >
-                  <i class="ti ti-file-type-xls me-1"></i>Export Table as Excel
-                </button>
-              </li>
-            </ul>
-          </div>
-        </div>
+    <!-- ── Page Title ──────────────────────────────────────────────────── -->
+    <div class="db-title-bar mb-4">
+      <div>
+        <h4 class="mb-0 fw-bold">Admin Dashboard</h4>
+        <p class="text-muted small mb-0">Sales & activity overview</p>
       </div>
     </div>
-    <!-- End Page Header -->
-    {#if dashboardData}
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-        <!-- Total Orders -->
-        <div class="flex">
-          <div class="card flex-fill mb-0 relative overflow-hidden">
-            <div class="card-body relative z-1">
-              <div class="flex items-start justify-between">
-                <div>
-                  <p class="fs-14 mb-1">Total Orders</p>
-                  <h2 class="mb-1 fs-16">{dashboardData?.totalOrders}</h2>
-                </div>
-                <span
-                  class="avatar avatar-md rounded-circle bg-soft-primary border border-primary"
-                >
-                  <i class="ti ti-building fs-16 text-primary"></i>
-                </span>
-              </div>
+
+    <!-- ── ROW 1: Section 1 + Section 2 ───────────────────────────────── -->
+    <div class="db-grid-2 mb-4">
+
+      <!-- ── SECTION 1: Role-wise Sales ─────────────────────────────── -->
+      <div class="db-card">
+        <!-- header -->
+        <div class="db-card-head">
+          <div class="db-card-title-block">
+            <span class="db-section-icon bg-primary-soft text-primary">
+              <i class="ti ti-users"></i>
+            </span>
+            <div>
+              <div class="db-card-title">Role-wise Sales</div>
+              <div class="db-card-subtitle">{filterLabel(s1Filter, s1CustomStart, s1CustomEnd)}</div>
             </div>
-            <img
-              src="/assets/img/icons/elemnt-01.svg"
-              alt="element-01"
-              class="img-fluid position-absolute top-0 Start-0"
-            />
+          </div>
+          <!-- filters row -->
+          <div class="db-filters">
+            <div class="db-role-tabs">
+              {#each [["telecaller","Telecaller","#3b5bdb"],["tech","Tech","#0ca678"],["tech_helper","Sr. Tech","#7950f2"]] as [val, label, color]}
+                <button
+                  class="db-role-btn"
+                  class:active={s1SubRole === val}
+                  style="--rc:{color}"
+                  on:click={() => { s1SubRole = val; s1ByUserId = ""; }}
+                >{label}</button>
+              {/each}
+            </div>
+            <select bind:value={s1Filter} class="db-select">
+              <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
+              <option value="last7days">Last 7 Days</option>
+              <option value="last30days">Last 30 Days</option>
+              <option value="custom">Custom</option>
+            </select>
+            {#if s1Filter === "custom"}
+              <input type="date" bind:value={s1CustomStart} class="db-date" />
+              <input type="date" bind:value={s1CustomEnd} class="db-date" />
+            {/if}
+            <select bind:value={s1ByUserId} class="db-select">
+              <option value="">All Users</option>
+              {#each users.filter(u => u.subRole === s1SubRole) as u}
+                <option value={u.id}>{u.name}</option>
+              {/each}
+            </select>
           </div>
         </div>
-
-        <!-- Total Users -->
-        <div class="flex">
-          <div class="card flex-fill mb-0 relative overflow-hidden">
-            <div class="card-body relative z-1">
-              <div class="flex items-start justify-between">
-                <div>
-                  <p class="fs-14 mb-1">Total Users</p>
-                  <h2 class="mb-1 fs-16">{dashboardData?.totalUsers}</h2>
-                </div>
-                <span
-                  class="avatar avatar-md rounded-circle bg-soft-success border border-success"
-                >
-                  <i class="ti ti-carousel-vertical fs-16 text-success"></i>
-                </span>
-              </div>
-            </div>
-            <img
-              src="/assets/img/icons/elemnt-02.svg"
-              alt="element-02"
-              class="img-fluid position-absolute top-0 Start-0"
-            />
+        <!-- summary chips -->
+        <div class="db-chips">
+          <div class="db-chip db-chip--blue">
+            <span class="db-chip-val">{s1Total}</span>
+            <span class="db-chip-lbl">Orders</span>
           </div>
+          <div class="db-chip db-chip--green">
+            <span class="db-chip-val">{fmtINR(s1TotalValue)}</span>
+            <span class="db-chip-lbl">Total Value</span>
+          </div>
+        </div>
+        <!-- body -->
+        <div class="db-card-body">
+          {#if s1Loading}
+            <div class="db-loading"><span class="spinner-border spinner-border-sm text-primary"></span></div>
+          {:else if s1Data.length === 0}
+            <div class="db-empty"><i class="ti ti-mood-empty"></i> No data found</div>
+          {:else}
+            <table class="db-table">
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th class="text-center">Orders</th>
+                  <th class="text-end">Value</th>
+                  <th class="text-end">Share</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each s1Data as row}
+                  {@const pct = s1Total > 0 ? Math.round((row.orderCount / s1Total) * 100) : 0}
+                  <tr>
+                    <td class="fw-medium">{row.userName}</td>
+                    <td class="text-center">
+                      <span class="db-badge db-badge--blue">{row.orderCount}</span>
+                    </td>
+                    <td class="text-end text-muted">{fmtINR(row.totalValue)}</td>
+                    <td class="text-end">
+                      <div class="db-bar-cell">
+                        <div class="db-bar"><div class="db-bar-fill bg-primary" style="width:{pct}%"></div></div>
+                        <span class="db-bar-pct">{pct}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td class="fw-bold">Total</td>
+                  <td class="text-center fw-bold">{s1Total}</td>
+                  <td class="text-end fw-bold">{fmtINR(s1TotalValue)}</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          {/if}
         </div>
       </div>
-    {/if}
 
-    <!-- start row -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      <div class="col-span-2 generateExcelDashboard">
-        <div class="card flex-fill">
-          <div
-            class="card-header flex items-center justify-between flex-wrap row-gap-3"
-          >
-            <h6 class="mb-0 py-2">
-              Users Inquiry Count
-              <span class="text-xs font-normal">
-                {searchString ? `(${searchString})` : ""}
-              </span>
-            </h6>
+      <!-- ── SECTION 2: Category-wise Sales ─────────────────────────── -->
+      <div class="db-card">
+        <div class="db-card-head">
+          <div class="db-card-title-block">
+            <span class="db-section-icon bg-success-soft text-success">
+              <i class="ti ti-category"></i>
+            </span>
+            <div>
+              <div class="db-card-title">Category-wise Sales</div>
+              <div class="db-card-subtitle">{filterLabel(s2Filter, s2CustomStart, s2CustomEnd)}</div>
+            </div>
+          </div>
+          <div class="db-filters">
+            <div class="db-role-tabs">
+              <button class="db-role-btn" class:active={s2SubRole === ""} style="--rc:#6c757d" on:click={() => { s2SubRole = ""; s2ByUserId = ""; }}>All</button>
+              {#each ROLE_TABS as rt}
+                <button class="db-role-btn" class:active={s2SubRole === rt.val} style="--rc:{rt.color}" on:click={() => { s2SubRole = rt.val; s2ByUserId = ""; }}>{rt.label}</button>
+              {/each}
+            </div>
+            <select bind:value={s2ByUserId} class="db-select">
+              <option value="">All Users</option>
+              {#each users.filter(u => u.role === "user" && (!s2SubRole || u.subRole === s2SubRole)) as u}
+                <option value={u.id}>{u.name}</option>
+              {/each}
+            </select>
+            <select bind:value={s2Filter} class="db-select">
+              <option value="all">All Time</option>
+              <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
+              <option value="last7days">Last 7 Days</option>
+              <option value="last30days">Last 30 Days</option>
+              <option value="custom">Custom</option>
+            </select>
+            {#if s2Filter === "custom"}
+              <input type="date" bind:value={s2CustomStart} class="db-date" />
+              <input type="date" bind:value={s2CustomEnd} class="db-date" />
+            {/if}
+            <select bind:value={s2Status} class="db-select">
+              <option value="">All Statuses</option>
+              {#each STATUSES as st}<option value={st}>{statusLabel(st)}</option>{/each}
+            </select>
+          </div>
+        </div>
+        <div class="db-chips">
+          <div class="db-chip db-chip--green">
+            <span class="db-chip-val">{s2TotalOrders}</span>
+            <span class="db-chip-lbl">Orders</span>
+          </div>
+          <div class="db-chip db-chip--teal">
+            <span class="db-chip-val">{fmtINR(s2TotalValue)}</span>
+            <span class="db-chip-lbl">Total Value</span>
+          </div>
+          <div class="db-chip db-chip--purple">
+            <span class="db-chip-val">{s2Data.length}</span>
+            <span class="db-chip-lbl">Categories</span>
+          </div>
+        </div>
+        <div class="db-card-body">
+          {#if s2Loading}
+            <div class="db-loading"><span class="spinner-border spinner-border-sm text-success"></span></div>
+          {:else if s2Data.length === 0}
+            <div class="db-empty"><i class="ti ti-mood-empty"></i> No data found</div>
+          {:else}
+            <table class="db-table">
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th class="text-center">Orders</th>
+                  <th class="text-end">Value</th>
+                  <th class="text-end">Share</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each s2Data as row}
+                  {@const pct = s2TotalOrders > 0 ? Math.round((row.orderCount / s2TotalOrders) * 100) : 0}
+                  <tr>
+                    <td class="fw-medium">{row.category}</td>
+                    <td class="text-center">
+                      <span class="db-badge db-badge--green">{row.orderCount}</span>
+                    </td>
+                    <td class="text-end text-muted">{fmtINR(row.totalValue)}</td>
+                    <td class="text-end">
+                      <div class="db-bar-cell">
+                        <div class="db-bar"><div class="db-bar-fill bg-success" style="width:{pct}%"></div></div>
+                        <span class="db-bar-pct">{pct}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td class="fw-bold">Total</td>
+                  <td class="text-center fw-bold">{s2TotalOrders}</td>
+                  <td class="text-end fw-bold">{fmtINR(s2TotalValue)}</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          {/if}
+        </div>
+      </div>
 
-            <div class="flex items-center gap-2 flex-wrap">
-              <div class="flex items-center gap-2 flex-wrap">
-                <select bind:value={orderBy} class="form-select">
-                  <option value="createdAt">Created At</option>
-                  <option value="orderDate">Inquiry Date</option>
-                </select>
-              </div>
-              <div class="flex items-center gap-2 flex-wrap">
-                <select bind:value={selectedFilter} class="form-select">
-                  <option value="all">All</option>
-                  <option value="today">Today</option>
-                  <option value="yesterday">Yesterday</option>
-                  <option value="last7days">Last 7 Days</option>
-                  <option value="last30days">Last 30 Days</option>
-                  <option value="custom">Custom Range</option>
-                </select>
-              </div>
+    </div>
+    <!-- end row 1 -->
 
-              {#if selectedFilter === "custom"}
-                <div class="flex items-center gap-2">
-                  <input
-                    type="date"
-                    bind:value={customStartDate}
-                    class="form-control"
-                  />
-                </div>
-                <div class="flex items-center gap-2">
-                  <input
-                    type="date"
-                    bind:value={customEndDate}
-                    class="form-control"
-                  />
-                </div>
-              {/if}
-              <div class="flex items-center gap-2 flex-wrap">
-                <select bind:value={userId} class="form-select">
-                  <option value={null}>Select User</option>
-                  {#each users as user}
-                    <option value={user?.id}>{user?.name}</option>
+    <!-- ── ROW 2: Section 3 + Section 5 ───────────────────────────────── -->
+    <div class="db-grid-2 mb-4">
+
+      <!-- ── SECTION 3: Contact Report ──────────────────────────────── -->
+      <div class="db-card">
+        <div class="db-card-head">
+          <div class="db-card-title-block">
+            <span class="db-section-icon bg-warning-soft text-warning">
+              <i class="ti ti-phone-call"></i>
+            </span>
+            <div>
+              <div class="db-card-title">Contact Report</div>
+              <div class="db-card-subtitle">{filterLabel(s3Filter, s3CustomStart, s3CustomEnd)}</div>
+            </div>
+          </div>
+          <div class="db-filters">
+            <div class="db-role-tabs">
+              <button class="db-role-btn" class:active={s3SubRole === ""} style="--rc:#6c757d" on:click={() => { s3SubRole = ""; s3ByUserId = ""; }}>All</button>
+              {#each ROLE_TABS as rt}
+                <button class="db-role-btn" class:active={s3SubRole === rt.val} style="--rc:{rt.color}" on:click={() => { s3SubRole = rt.val; s3ByUserId = ""; }}>{rt.label}</button>
+              {/each}
+            </div>
+            <select bind:value={s3ByUserId} class="db-select">
+              <option value="">All Users</option>
+              {#each users.filter(u => u.role === "user" && (!s3SubRole || u.subRole === s3SubRole)) as u}
+                <option value={u.id}>{u.name}</option>
+              {/each}
+            </select>
+            <select bind:value={s3Filter} class="db-select">
+              <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
+              <option value="last7days">Last 7 Days</option>
+              <option value="last30days">Last 30 Days</option>
+              <option value="custom">Custom</option>
+            </select>
+            {#if s3Filter === "custom"}
+              <input type="date" bind:value={s3CustomStart} class="db-date" />
+              <input type="date" bind:value={s3CustomEnd} class="db-date" />
+            {/if}
+          </div>
+        </div>
+        <div class="db-chips">
+          <div class="db-chip db-chip--green">
+            <span class="db-chip-val">{s3Data.reduce((s,r)=>s+r.call,0)}</span>
+            <span class="db-chip-lbl"><i class="ti ti-phone me-1"></i>Calls</span>
+          </div>
+          <div class="db-chip db-chip--teal">
+            <span class="db-chip-val">{s3Data.reduce((s,r)=>s+r.whatsapp,0)}</span>
+            <span class="db-chip-lbl"><i class="ti ti-brand-whatsapp me-1"></i>WhatsApp</span>
+          </div>
+          <div class="db-chip db-chip--blue">
+            <span class="db-chip-val">{s3Data.reduce((s,r)=>s+r.email,0)}</span>
+            <span class="db-chip-lbl"><i class="ti ti-mail me-1"></i>Email</span>
+          </div>
+          <div class="db-chip db-chip--purple">
+            <span class="db-chip-val">{s3GrandTotal}</span>
+            <span class="db-chip-lbl">Total</span>
+          </div>
+        </div>
+        <div class="db-card-body">
+          {#if s3Loading}
+            <div class="db-loading"><span class="spinner-border spinner-border-sm text-warning"></span></div>
+          {:else if s3Data.length === 0}
+            <div class="db-empty"><i class="ti ti-mood-empty"></i> No contact data found</div>
+          {:else}
+            <table class="db-table">
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th class="text-center"><i class="ti ti-phone text-success"></i></th>
+                  <th class="text-center"><i class="ti ti-brand-whatsapp text-success"></i></th>
+                  <th class="text-center"><i class="ti ti-mail text-primary"></i></th>
+                  <th class="text-center"><i class="ti ti-message text-secondary"></i></th>
+                  <th class="text-center">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each s3Data as row}
+                  <tr>
+                    <td class="fw-medium">{row.userName}</td>
+                    <td class="text-center">{#if row.call > 0}<span class="db-badge db-badge--green">{row.call}</span>{:else}<span class="text-muted">—</span>{/if}</td>
+                    <td class="text-center">{#if row.whatsapp > 0}<span class="db-badge db-badge--teal">{row.whatsapp}</span>{:else}<span class="text-muted">—</span>{/if}</td>
+                    <td class="text-center">{#if row.email > 0}<span class="db-badge db-badge--blue">{row.email}</span>{:else}<span class="text-muted">—</span>{/if}</td>
+                    <td class="text-center">{#if row.all > 0}<span class="db-badge db-badge--gray">{row.all}</span>{:else}<span class="text-muted">—</span>{/if}</td>
+                    <td class="text-center"><span class="db-badge db-badge--purple">{row.total}</span></td>
+                  </tr>
+                {/each}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td class="fw-bold">Total</td>
+                  <td class="text-center fw-bold">{s3Data.reduce((s,r)=>s+r.call,0)||"—"}</td>
+                  <td class="text-center fw-bold">{s3Data.reduce((s,r)=>s+r.whatsapp,0)||"—"}</td>
+                  <td class="text-center fw-bold">{s3Data.reduce((s,r)=>s+r.email,0)||"—"}</td>
+                  <td class="text-center fw-bold">{s3Data.reduce((s,r)=>s+r.all,0)||"—"}</td>
+                  <td class="text-center"><span class="db-badge db-badge--purple">{s3GrandTotal}</span></td>
+                </tr>
+              </tfoot>
+            </table>
+          {/if}
+        </div>
+      </div>
+
+      <!-- ── SECTION 5: Category × Status Breakdown ────────────────── -->
+      <div class="db-card">
+        <div class="db-card-head">
+          <div class="db-card-title-block">
+            <span class="db-section-icon bg-purple-soft text-purple">
+              <i class="ti ti-layout-columns"></i>
+            </span>
+            <div>
+              <div class="db-card-title">Category Status Breakdown</div>
+              <div class="db-card-subtitle">{filterLabel(s5Filter, s5CustomStart, s5CustomEnd)}</div>
+            </div>
+          </div>
+          <div class="db-filters">
+            <div class="db-role-tabs">
+              <button class="db-role-btn" class:active={s5SubRole === ""} style="--rc:#6c757d" on:click={() => { s5SubRole = ""; s5ByUserId = ""; }}>All</button>
+              {#each ROLE_TABS as rt}
+                <button class="db-role-btn" class:active={s5SubRole === rt.val} style="--rc:{rt.color}" on:click={() => { s5SubRole = rt.val; s5ByUserId = ""; }}>{rt.label}</button>
+              {/each}
+            </div>
+            <select bind:value={s5ByUserId} class="db-select">
+              <option value="">All Users</option>
+              {#each users.filter(u => u.role === "user" && (!s5SubRole || u.subRole === s5SubRole)) as u}
+                <option value={u.id}>{u.name}</option>
+              {/each}
+            </select>
+            <select bind:value={s5Filter} class="db-select">
+              <option value="all">All Time</option>
+              <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
+              <option value="last7days">Last 7 Days</option>
+              <option value="last30days">Last 30 Days</option>
+              <option value="custom">Custom</option>
+            </select>
+            {#if s5Filter === "custom"}
+              <input type="date" bind:value={s5CustomStart} class="db-date" />
+              <input type="date" bind:value={s5CustomEnd} class="db-date" />
+            {/if}
+          </div>
+        </div>
+        <div class="db-chips">
+          <div class="db-chip db-chip--purple">
+            <span class="db-chip-val">{s5GrandTotal}</span>
+            <span class="db-chip-lbl">Total Orders</span>
+          </div>
+          <div class="db-chip db-chip--blue">
+            <span class="db-chip-val">{s5Data.length}</span>
+            <span class="db-chip-lbl">Categories</span>
+          </div>
+          <div class="db-chip db-chip--green">
+            <span class="db-chip-val">{s5ColTotal("Deal Won")}</span>
+            <span class="db-chip-lbl">Deal Won</span>
+          </div>
+          <div class="db-chip db-chip--red">
+            <span class="db-chip-val">{s5ColTotal("Deal Lost")}</span>
+            <span class="db-chip-lbl">Deal Lost</span>
+          </div>
+        </div>
+        <div class="db-card-body" style="overflow-x:auto;">
+          {#if s5Loading}
+            <div class="db-loading"><span class="spinner-border spinner-border-sm text-purple"></span></div>
+          {:else if s5Data.length === 0}
+            <div class="db-empty"><i class="ti ti-mood-empty"></i> No data found</div>
+          {:else}
+            <table class="db-table" style="min-width:700px;">
+              <thead>
+                <tr>
+                  <th style="position:sticky;left:0;background:#f8f9fa;z-index:2;white-space:nowrap;min-width:140px;">Category</th>
+                  <th class="text-center">Total</th>
+                  {#each STATUSES as st}
+                    <th class="text-center" title={st} style="white-space:nowrap;min-width:80px;">
+                      {statusLabel(st)}
+                    </th>
                   {/each}
-                </select>
-              </div>
-            </div>
-          </div>
-          <div class="card-body">
-            <div class="table-responsive custom-table">
-              <div class="dataTables_wrapper dt-bootstrap5 no-footer">
-                <table class="table dataTable table-nowrap no-footer">
-                  <thead class="table-light text-center">
-                    <tr>
-                      <th class="text-left align-middle" style="position:sticky;left:0;z-index:2;background:#f8f9fa;">
-                        Name
-                      </th>
-                      <th class="align-middle text-center">
-                        Total
-                        {#if grandTotal > 0}
-                          <div class="mt-1">
-                            <span
-                              class="badge bg-primary rounded-pill dash-link"
-                              style="font-size:10px;"
-                              title="View all orders"
-                              on:click={() => navigateToOrders()}
-                            >{grandTotal}</span>
-                          </div>
+                </tr>
+              </thead>
+              <tbody>
+                {#each s5Data as row}
+                  {@const barPct = s5GrandTotal > 0 ? Math.round((row.total / s5GrandTotal) * 100) : 0}
+                  <tr>
+                    <td class="fw-medium" style="position:sticky;left:0;background:#fff;z-index:1;white-space:nowrap;min-width:140px;">
+                      {row.category}
+                    </td>
+                    <td class="text-center">
+                      <span class="db-badge db-badge--purple">{row.total}</span>
+                      <div class="db-bar mt-1 mx-auto" style="max-width:50px;">
+                        <div class="db-bar-fill" style="width:{barPct}%;background:#7950f2;"></div>
+                      </div>
+                    </td>
+                    {#each STATUSES as st}
+                      {@const found = row.statusBreakdown.find(s => s.status === st)}
+                      {@const count = found ? found.count : 0}
+                      <td class="text-center">
+                        {#if count > 0}
+                          <span class="db-status-badge {statusCls[st] ?? ''}">{count}</span>
+                        {:else}
+                          <span class="text-muted">—</span>
                         {/if}
-                      </th>
-                      {#each statuses as status}
-                        {@const cfg = statusConfig[status]}
-                        {@const colTotal = getColumnTotal(status)}
-                        <th class="align-middle text-center" title={status}>
-                          <div>{cfg.abbr}</div>
-                          {#if colTotal > 0}
-                            <div class="mt-1">
-                              <span
-                                class="badge rounded-pill fw-semibold dash-link {cfg.cls}"
-                                style="font-size:10px;"
-                                title="View all {status} orders"
-                                on:click={() => navigateToOrders({ status })}
-                              >{colTotal}</span>
-                            </div>
-                          {:else}
-                            <div class="text-muted mt-1" style="font-size:10px;">—</div>
-                          {/if}
-                        </th>
-                      {/each}
-                    </tr>
-                  </thead>
-                  <tbody class="text-center">
-                    {#if dashboardData?.userStats?.length}
-                      {#each dashboardData?.userStats as user}
-                        {#if userId === null || userId === user.userId}
-                          {@const uTotal = getUserTotal(user)}
-                          {@const barPct = grandTotal > 0 ? Math.round((uTotal / grandTotal) * 100) : 0}
-                          <tr>
-                            <td class="text-left font-medium" style="position:sticky;left:0;z-index:1;background:#fff;">
-                              <span
-                                class="text-primary fw-semibold dash-link"
-                                title="View {user?.userName}'s orders"
-                                on:click={() => navigateToOrders({ byUserId: user.userId })}
-                              >{user?.userName}</span>
-                            </td>
-                            <td class="font-bold text-black">
-                              <span
-                                class="dash-count"
-                                title="View all {user?.userName}'s orders"
-                                on:click={() => navigateToOrders({ byUserId: user.userId })}
-                              >{uTotal}</span>
-                              <div class="progress mt-1" style="height:3px;">
-                                <div class="progress-bar bg-primary" role="progressbar" style="width:{barPct}%;"></div>
-                              </div>
-                            </td>
-                            {#each statuses as status}
-                              {@const cfg = statusConfig[status]}
-                              {@const found = user?.statusBreakdown.find((s) => s.status === status)}
-                              {@const count = found ? found.count : 0}
-                              <td>
-                                {#if count > 0}
-                                  <span
-                                    class="badge rounded-pill fw-semibold dash-link {cfg.cls}"
-                                    title="View {user?.userName}'s {status} orders"
-                                    on:click={() => navigateToOrders({ byUserId: user.userId, status })}
-                                  >{count}</span>
-                                {:else}
-                                  <span class="text-muted">—</span>
-                                {/if}
-                              </td>
-                            {/each}
-                          </tr>
-                        {/if}
-                      {/each}
-                      <!-- Grand total row -->
-                      <tr class="table-light fw-bold">
-                        <td class="text-left" style="position:sticky;left:0;z-index:1;background:#f8f9fa;">
-                          Grand Total
-                        </td>
-                        <td>
-                          <span
-                            class="dash-count"
-                            title="View all orders"
-                            on:click={() => navigateToOrders()}
-                          >{grandTotal}</span>
-                        </td>
-                        {#each statuses as status}
-                          {@const cfg = statusConfig[status]}
-                          {@const colTotal = getColumnTotal(status)}
-                          <td>
-                            {#if colTotal > 0}
-                              <span
-                                class="badge rounded-pill fw-bold dash-link {cfg.cls}"
-                                title="View all {status} orders"
-                                on:click={() => navigateToOrders({ status })}
-                              >{colTotal}</span>
-                            {:else}
-                              <span class="text-muted">—</span>
-                            {/if}
-                          </td>
-                        {/each}
-                      </tr>
-                    {:else}
-                      <tr>
-                        <td colspan={statuses.length + 2} class="text-center">No Records Found.</td>
-                      </tr>
-                    {/if}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-          <!-- end card body -->
-        </div>
-        <!-- end card -->
-      </div>
-      <!-- Category Inquiry Count -->
-      <div class="col-span-2">
-        <div class="card flex-fill">
-          <div class="card-header flex items-center justify-between flex-wrap row-gap-3">
-            <h6 class="mb-0 py-2">
-              Category Inquiry Count
-              <span class="text-xs font-normal">
-                {searchString ? `(${searchString})` : ""}
-              </span>
-            </h6>
-          </div>
-          <div class="card-body">
-            <div class="table-responsive custom-table">
-              <div class="dataTables_wrapper dt-bootstrap5 no-footer">
-                <table class="table dataTable table-nowrap no-footer">
-                  <thead class="table-light text-center">
-                    <tr>
-                      <th class="text-left align-middle" style="position:sticky;left:0;z-index:2;background:#f8f9fa;">
-                        Category
-                      </th>
-                      <th class="align-middle text-center">
-                        Total
-                        {#if catGrandTotal > 0}
-                          <div class="mt-1">
-                            <span
-                              class="badge bg-primary rounded-pill dash-link"
-                              style="font-size:10px;"
-                              title="View all orders"
-                              on:click={() => navigateToOrders()}
-                            >{catGrandTotal}</span>
-                          </div>
-                        {/if}
-                      </th>
-                      {#each statuses as status}
-                        {@const cfg = statusConfig[status]}
-                        {@const colTotal = getCatColumnTotal(status)}
-                        <th class="align-middle text-center" title={status}>
-                          <div>{cfg.abbr}</div>
-                          {#if colTotal > 0}
-                            <div class="mt-1">
-                              <span
-                                class="badge rounded-pill fw-semibold dash-link {cfg.cls}"
-                                style="font-size:10px;"
-                                title="View all {status} orders"
-                                on:click={() => navigateToOrders({ status })}
-                              >{colTotal}</span>
-                            </div>
-                          {:else}
-                            <div class="text-muted mt-1" style="font-size:10px;">—</div>
-                          {/if}
-                        </th>
-                      {/each}
-                    </tr>
-                  </thead>
-                  <tbody class="text-center">
-                    {#if categoryStats.length}
-                      {#each categoryStats as cat}
-                        {@const barPct = catGrandTotal > 0 ? Math.round((cat.total / catGrandTotal) * 100) : 0}
-                        <tr>
-                          <td class="text-left font-medium" style="position:sticky;left:0;z-index:1;background:#fff;">
-                            <span
-                              class="text-primary fw-semibold dash-link"
-                              title="View {cat.category} orders"
-                              on:click={() => navigateToOrders({ category: cat.category })}
-                            >{cat.category}</span>
-                          </td>
-                          <td class="font-bold text-black">
-                            <span
-                              class="dash-count"
-                              title="View all {cat.category} orders"
-                              on:click={() => navigateToOrders({ category: cat.category })}
-                            >{cat.total}</span>
-                            <div class="progress mt-1" style="height:3px;">
-                              <div class="progress-bar bg-primary" role="progressbar" style="width:{barPct}%;"></div>
-                            </div>
-                          </td>
-                          {#each statuses as status}
-                            {@const cfg = statusConfig[status]}
-                            {@const found = cat.statusBreakdown.find((s) => s.status === status)}
-                            {@const count = found ? found.count : 0}
-                            <td>
-                              {#if count > 0}
-                                <span
-                                  class="badge rounded-pill fw-semibold dash-link {cfg.cls}"
-                                  title="View {cat.category} {status} orders"
-                                  on:click={() => navigateToOrders({ category: cat.category, status })}
-                                >{count}</span>
-                              {:else}
-                                <span class="text-muted">—</span>
-                              {/if}
-                            </td>
-                          {/each}
-                        </tr>
-                      {/each}
-                      <!-- Grand total row -->
-                      <tr class="table-light fw-bold">
-                        <td class="text-left" style="position:sticky;left:0;z-index:1;background:#f8f9fa;">
-                          Grand Total
-                        </td>
-                        <td>
-                          <span
-                            class="dash-count"
-                            title="View all orders"
-                            on:click={() => navigateToOrders()}
-                          >{catGrandTotal}</span>
-                        </td>
-                        {#each statuses as status}
-                          {@const cfg = statusConfig[status]}
-                          {@const colTotal = getCatColumnTotal(status)}
-                          <td>
-                            {#if colTotal > 0}
-                              <span
-                                class="badge rounded-pill fw-bold dash-link {cfg.cls}"
-                                title="View all {status} orders"
-                                on:click={() => navigateToOrders({ status })}
-                              >{colTotal}</span>
-                            {:else}
-                              <span class="text-muted">—</span>
-                            {/if}
-                          </td>
-                        {/each}
-                      </tr>
-                    {:else}
-                      <tr>
-                        <td colspan={statuses.length + 2} class="text-center">No Records Found.</td>
-                      </tr>
-                    {/if}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
+                      </td>
+                    {/each}
+                  </tr>
+                {/each}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td class="fw-bold" style="position:sticky;left:0;background:#f8f9fa;z-index:1;white-space:nowrap;min-width:140px;">Grand Total</td>
+                  <td class="text-center fw-bold">{s5GrandTotal}</td>
+                  {#each STATUSES as st}
+                    {@const col = s5ColTotal(st)}
+                    <td class="text-center">
+                      {#if col > 0}
+                        <span class="db-status-badge {statusCls[st] ?? ''}">{col}</span>
+                      {:else}
+                        <span class="text-muted">—</span>
+                      {/if}
+                    </td>
+                  {/each}
+                </tr>
+              </tfoot>
+            </table>
+          {/if}
         </div>
       </div>
-      <!-- end category stats -->
 
-      <!-- <div class="col-span-2">
-        <div class="flex items-center justify-between gap-2 flex-wrap">
-          <div><h6 class="mb-0">All Stats</h6></div>
-          <div class="flex items-center gap-2 flex-wrap">
-            <div class="flex items-center gap-2 flex-wrap">
-              <select bind:value={orderBy} class="form-select">
-                <option value="createdAt">Created At</option>
-                <option value="orderDate">Inquiry Date</option>
-              </select>
-            </div>
-            <div class="flex items-center gap-2 flex-wrap">
-              <select bind:value={selectedFilter} class="form-select">
-                <option value="all">All</option>
-                <option value="today">Today</option>
-                <option value="last7days">Last 7 Days</option>
-                <option value="last30days">Last 30 Days</option>
-                <option value="custom">Custom Range</option>
-              </select>
-            </div>
-            {#if selectedFilter === "custom"}
-              <div class="flex items-center gap-2">
-                <input
-                  type="date"
-                  bind:value={customStartDate}
-                  class="form-control"
-                />
-              </div>
-              <div class="flex items-center gap-2">
-                <input
-                  type="date"
-                  bind:value={customEndDate}
-                  class="form-control"
-                />
-              </div>
-            {/if}
-            <div class="dropdown">
-              <a
-                href="#Export"
-                class="dropdown-toggle btn btn-outline-light px-2 shadow"
-                data-bs-toggle="dropdown"
-              >
-                <i class="ti ti-package-export me-2"></i>Export
-              </a>
-              <div class="dropdown-menu dropdown-menu-end">
-                <ul>
-                  <li>
-                    <button
-                      type="button"
-                      on:click={() => exportDashboardToPDF()}
-                      class="dropdown-item"
-                    >
-                      <i class="ti ti-file-type-pdf me-1"></i>Export as PDF
-                    </button>
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div> -->
-      <div class="printDashboard">
-        <div class="card flex-fill">
-          <div
-            class="card-header flex items-center justify-between flex-wrap row-gap-3"
-          >
-            <h6 class="mb-0 py-2">Orders Count by Over Time per User</h6>
-          </div>
-          <div class="card-body">
-            {#if !loading && dashboardData}
-              <OrdersUsersOverTimeLineChart
-                dashboardData={dashboardData?.userStats}
-                chartMetric="count"
-              />
-            {/if}
-          </div>
-          <!-- end card body -->
-        </div>
-        <!-- end card -->
-      </div>
-      <div class="printDashboard">
-        <div class="card flex-fill">
-          <div
-            class="card-header flex items-center justify-between flex-wrap row-gap-3"
-          >
-            <h6 class="mb-0 py-2">Orders Count by Status per User</h6>
-          </div>
-          <div class="card-body">
-            {#if !loading && dashboardData}
-              <OrdersUsersStatusBarChart users={dashboardData?.userStats} />
-            {/if}
-          </div>
-          <!-- end card body -->
-        </div>
-        <!-- end card -->
-      </div>
-      <div class="printDashboard">
-        <div class="card flex-fill">
-          <div
-            class="card-header flex items-center justify-between flex-wrap row-gap-3"
-          >
-            <h6 class="mb-0 py-2">Orders Price by Over Time per User</h6>
-          </div>
-          <div class="card-body">
-            {#if !loading && dashboardData}
-              <OrdersUsersOverTimeLineChart
-                dashboardData={dashboardData?.userStats}
-                chartMetric="totalValue"
-              />
-            {/if}
-          </div>
-          <!-- end card body -->
-        </div>
-        <!-- end card -->
-      </div>
-      <div>
-        <div class="card flex-fill">
-          <div
-            class="card-header flex items-center justify-between flex-wrap row-gap-3"
-          >
-            <h6 class="mb-0 py-2">Users</h6>
-          </div>
-          <div class="card-body">
-            <div class="table-responsive custom-table">
-              <div class="dataTables_wrapper dt-bootstrap5 no-footer">
-                <table class="table dataTable table-nowrap no-footer">
-                  <thead class="table-light text-center">
-                    <tr>
-                      <th class="text-left">Name</th>
-                      <th>Total Orders</th>
-                      <th>Active Deals</th>
-                      <th>
-                        Avg Orders
-                        <div style="font-size: 10px;">(Per Day)</div>
-                      </th>
-                      <th>
-                        Completion
-                        <div style="font-size: 10px;">Rate (%)</div>
-                      </th>
-                      <th>
-                        Success
-                        <div style="font-size: 10px;">Rate (%)</div>
-                      </th>
-                      <th>
-                        Failure
-                        <div style="font-size: 10px;">Rate (%)</div>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody class=" text-center">
-                    {#if dashboardData?.userStats?.length}
-                      {#each dashboardData?.userStats as user}
-                        <tr>
-                          <td class="text-left font-medium text-black"
-                            >{user?.userName}</td
-                          >
-                          <td>{user?.totalOrders}</td>
-                          <td>{user?.activeDeals}</td>
-                          <td>{user?.avgOrdersPerDay}</td>
-                          <td>{user?.completionRate}%</td>
-                          <td>{user?.successRate}%</td>
-                          <td>{user?.failureRate}%</td>
-                        </tr>
-                      {/each}
-                    {:else}
-                      <tr>
-                        <td colspan="4" class="text-center"
-                          >No Records Found.
-                        </td>
-                      </tr>
-                    {/if}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-          <!-- end card body -->
-        </div>
-        <!-- end card -->
-      </div>
-      <!-- end col -->
     </div>
-    <!-- end row -->
+    <!-- end row 2 -->
+
+    <!-- ── ROW 3: Section 4 — Order Activity Status (full width) ──────── -->
+    <div class="db-card mb-4">
+      <div class="db-card-head">
+        <div class="db-card-title-block">
+          <span class="db-section-icon bg-danger-soft text-danger">
+            <i class="ti ti-clock-exclamation"></i>
+          </span>
+          <div>
+            <div class="db-card-title">Order Activity Status</div>
+            <div class="db-card-subtitle">{filterLabel(s4Filter, s4CustomStart, s4CustomEnd)} · Orders created in range · No activity 2+ days flagged red</div>
+          </div>
+        </div>
+        <div class="db-filters">
+          <div class="db-role-tabs">
+            <button class="db-role-btn" class:active={s4SubRole === ""} style="--rc:#6c757d" on:click={() => { s4SubRole = ""; s4ByUserId = ""; }}>All</button>
+            {#each ROLE_TABS as rt}
+              <button class="db-role-btn" class:active={s4SubRole === rt.val} style="--rc:{rt.color}" on:click={() => { s4SubRole = rt.val; s4ByUserId = ""; }}>{rt.label}</button>
+            {/each}
+          </div>
+          <select bind:value={s4ByUserId} class="db-select">
+            <option value="">All Users</option>
+            {#each users.filter(u => u.role === "user" && (!s4SubRole || u.subRole === s4SubRole)) as u}
+              <option value={u.id}>{u.name}</option>
+            {/each}
+          </select>
+          <select bind:value={s4Filter} class="db-select">
+            <option value="today">Today</option>
+            <option value="yesterday">Yesterday</option>
+            <option value="last7days">Last 7 Days</option>
+            <option value="last30days">Last 30 Days</option>
+            <option value="custom">Custom</option>
+          </select>
+          {#if s4Filter === "custom"}
+            <input type="date" bind:value={s4CustomStart} class="db-date" />
+            <input type="date" bind:value={s4CustomEnd} class="db-date" />
+          {/if}
+        </div>
+      </div>
+      <!-- chips -->
+      <div class="db-chips">
+        <div class="db-chip db-chip--blue">
+          <span class="db-chip-val">{s4Total}</span>
+          <span class="db-chip-lbl">Total Orders</span>
+        </div>
+        <div class="db-chip db-chip--red">
+          <span class="db-chip-val">{s4StaleCount}</span>
+          <span class="db-chip-lbl">No Activity</span>
+        </div>
+        <div class="db-chip db-chip--green">
+          <span class="db-chip-val">{s4Data.length - s4StaleCount}</span>
+          <span class="db-chip-lbl">Active</span>
+        </div>
+      </div>
+      <div class="db-card-body">
+        {#if s4Loading}
+          <div class="db-loading"><span class="spinner-border spinner-border-sm text-danger"></span></div>
+        {:else if s4Data.length === 0}
+          <div class="db-empty"><i class="ti ti-mood-empty"></i> No orders found</div>
+        {:else}
+          <div class="table-responsive">
+            <table class="db-table">
+              <thead>
+                <tr>
+                  <th style="width:40px">#</th>
+                  <th>Order</th>
+                  <th>Status</th>
+                  <th>Assigned To</th>
+                  <th class="text-center">Last Activity</th>
+                  <th class="text-center">Flag</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each s4Data as order, i}
+                  {@const stale = isStale(order)}
+                  {@const ago = timeAgo(order)}
+                  <tr class:db-row-stale={stale}>
+                    <td class="text-muted small">{(s4Page-1)*s4Limit+i+1}</td>
+                    <td>
+                      <a href="/admin/order/{order.id}" class="fw-semibold text-primary text-decoration-none">
+                        #{order.pId}{order.title ? ` — ${order.title}` : ""}
+                      </a>
+                    </td>
+                    <td>
+                      <span class="db-status-pill">{order.status ? statusLabel(order.status) : "—"}</span>
+                    </td>
+                    <td class="text-muted small">
+                      {order.assignedUsers?.map(u => u.name).join(", ") || "—"}
+                    </td>
+                    <td class="text-center small">
+                      {#if ago}{ago}{:else}<span class="text-muted">—</span>{/if}
+                    </td>
+                    <td class="text-center">
+                      {#if stale}
+                        <span class="db-flag db-flag--red"><i class="ti ti-alert-circle me-1"></i>No Activity</span>
+                      {:else}
+                        <span class="db-flag db-flag--green"><i class="ti ti-check me-1"></i>Active</span>
+                      {/if}
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+          <!-- Pagination -->
+          {#if s4TotalPages > 1}
+            <div class="db-pagination">
+              <span class="text-muted small">{s4Total} orders</span>
+              <div class="d-flex gap-1 align-items-center">
+                <button class="db-page-btn" disabled={s4Page <= 1} on:click={() => s4Page--}>‹</button>
+                <span class="db-page-info">{s4Page} / {s4TotalPages}</span>
+                <button class="db-page-btn" disabled={s4Page >= s4TotalPages} on:click={() => s4Page++}>›</button>
+              </div>
+            </div>
+          {/if}
+        {/if}
+      </div>
+    </div>
+
   </div>
-  <!-- End Content -->
 </div>
 
 <style>
-  :global(.dash-link) {
-    background-color: transparent;
-    cursor: pointer;
-    display: inline-block;
-    transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease, opacity 0.15s ease;
+  /* ── Layout ── */
+  .db-title-bar { display: flex; align-items: center; justify-content: space-between; }
+  .db-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 900px) { .db-grid-2 { grid-template-columns: 1fr; } }
+
+  /* ── Card ── */
+  .db-card {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.04);
+    overflow: hidden;
   }
-  :global(.dash-link:hover) {
-    background-color: transparent;
-    transform: translateY(-1px) scale(1.06);
-    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15);
-    filter: brightness(1.06);
-    opacity: 0.92;
+  .db-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 14px 18px 12px;
+    border-bottom: 1px solid #f1f3f5;
   }
-  :global(.dash-link:active) {
-    transform: translateY(0) scale(0.97);
-    box-shadow: none;
-    filter: brightness(0.95);
+  .db-card-title-block { display: flex; align-items: center; gap: 10px; }
+  .db-section-icon {
+    width: 36px; height: 36px; border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 17px; flex-shrink: 0;
   }
-  :global(span.text-primary.dash-link:hover) {
-    text-decoration: none;
-    text-underline-offset: 2px;
+  .db-card-title { font-size: 13.5px; font-weight: 700; color: #1a1a2e; line-height: 1.2; }
+  .db-card-subtitle { font-size: 11px; color: #adb5bd; margin-top: 2px; }
+
+  /* ── Filters ── */
+  .db-filters { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .db-select {
+    font-size: 12px; padding: 4px 8px; height: 30px;
+    border: 1px solid #dee2e6; border-radius: 6px;
+    background: #f8f9fa; color: #495057;
+    min-width: 100px; max-width: 150px;
+    cursor: pointer; outline: none;
   }
-  :global(.dash-count) {
-    cursor: pointer;
-    display: inline-block;
-    transition: color 0.15s ease, transform 0.15s ease;
-    font-weight: 600;
+  .db-select:focus { border-color: #3b5bdb; box-shadow: 0 0 0 2px rgba(59,91,219,0.12); }
+  .db-date {
+    font-size: 12px; padding: 4px 6px; height: 30px;
+    border: 1px solid #dee2e6; border-radius: 6px;
+    background: #f8f9fa; color: #495057; width: 130px;
   }
-  :global(.dash-count:hover) {
-    color: #0d6efd !important;
-    transform: scale(1.1);
-    text-decoration: none;
-    text-underline-offset: 2px;
+
+  /* ── Role tabs ── */
+  .db-role-tabs { display: flex; gap: 3px; }
+  .db-role-btn {
+    font-size: 11.5px; font-weight: 600; padding: 3px 10px; height: 28px;
+    border: 1.5px solid #dee2e6; border-radius: 6px;
+    background: #fff; color: #6c757d; cursor: pointer;
+    transition: all 0.15s ease;
   }
-  :global(.dash-count:active) {
-    transform: scale(0.95);
+  .db-role-btn.active {
+    background: var(--rc); border-color: var(--rc);
+    color: #fff;
   }
+  .db-role-btn:not(.active):hover { background: #f1f3f5; }
+
+  /* ── Summary chips ── */
+  .db-chips {
+    display: flex; gap: 0; border-bottom: 1px solid #f1f3f5;
+  }
+  .db-chip {
+    flex: 1; padding: 10px 14px; text-align: center;
+    border-right: 1px solid #f1f3f5;
+  }
+  .db-chip:last-child { border-right: none; }
+  .db-chip-val { display: block; font-size: 18px; font-weight: 700; line-height: 1.1; }
+  .db-chip-lbl { display: block; font-size: 10.5px; color: #adb5bd; margin-top: 2px; }
+  .db-chip--blue  .db-chip-val { color: #3b5bdb; }
+  .db-chip--green .db-chip-val { color: #2f9e44; }
+  .db-chip--teal  .db-chip-val { color: #0ca678; }
+  .db-chip--purple .db-chip-val { color: #7950f2; }
+  .db-chip--yellow .db-chip-val { color: #f08c00; }
+  .db-chip--red   .db-chip-val { color: #e03131; }
+  .db-chip--gray  .db-chip-val { color: #495057; }
+
+  /* ── Table ── */
+  .db-card-body { padding: 0; }
+  .db-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .db-table thead tr { background: #f8f9fa; }
+  .db-table th {
+    padding: 8px 14px; font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.4px;
+    color: #868e96; border-bottom: 1px solid #f1f3f5;
+    white-space: nowrap;
+  }
+  .db-table td {
+    padding: 9px 14px; border-bottom: 1px solid #f8f9fa;
+    vertical-align: middle; color: #343a40;
+  }
+  .db-table tbody tr:last-child td { border-bottom: none; }
+  .db-table tbody tr:hover td { background: #f8f9fb; }
+  .db-table tfoot td {
+    padding: 9px 14px; border-top: 2px solid #f1f3f5;
+    background: #f8f9fa; font-size: 12px;
+  }
+  .db-row-stale td { background: #fff5f5 !important; }
+  .db-row-stale:hover td { background: #ffeded !important; }
+
+  /* ── Badges ── */
+  .db-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 24px; padding: 2px 8px; border-radius: 20px;
+    font-size: 11.5px; font-weight: 700; line-height: 1.4;
+  }
+  .db-badge--blue   { background: #e7f0ff; color: #3b5bdb; }
+  .db-badge--green  { background: #ebfbee; color: #2f9e44; }
+  .db-badge--teal   { background: #e6fcf5; color: #0ca678; }
+  .db-badge--purple { background: #f3f0ff; color: #7950f2; }
+  .db-badge--yellow { background: #fff9db; color: #f08c00; }
+  .db-badge--red    { background: #fff5f5; color: #e03131; }
+  .db-badge--gray   { background: #f1f3f5; color: #495057; }
+
+  /* ── Progress bar ── */
+  .db-bar-cell { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
+  .db-bar { flex: 1; height: 5px; background: #e9ecef; border-radius: 99px; min-width: 40px; max-width: 80px; }
+  .db-bar-fill { height: 5px; border-radius: 99px; transition: width 0.3s ease; }
+  .db-bar-pct { font-size: 11px; color: #adb5bd; min-width: 30px; text-align: right; }
+
+  /* ── Status pill ── */
+  .db-status-pill {
+    display: inline-block; font-size: 11px; padding: 2px 8px;
+    border-radius: 20px; background: #f1f3f5; color: #495057;
+    border: 1px solid #dee2e6;
+  }
+
+  /* ── Flags ── */
+  .db-flag {
+    display: inline-flex; align-items: center; font-size: 11px;
+    font-weight: 600; padding: 3px 8px; border-radius: 6px;
+  }
+  .db-flag--red   { background: #fff5f5; color: #e03131; }
+  .db-flag--green { background: #ebfbee; color: #2f9e44; }
+
+  /* ── Loading / empty ── */
+  .db-loading { text-align: center; padding: 32px; }
+  .db-empty { text-align: center; padding: 32px; color: #adb5bd; font-size: 13px; }
+
+  /* ── Pagination ── */
+  .db-pagination {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-top: 1px solid #f1f3f5;
+  }
+  .db-page-btn {
+    width: 28px; height: 28px; border: 1px solid #dee2e6;
+    background: #fff; border-radius: 6px; font-size: 14px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+  .db-page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .db-page-info { font-size: 12px; color: #6c757d; padding: 0 4px; }
+
+  /* ── Status badges (Section 5) ── */
+  :global(.db-status-badge) {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 22px; padding: 2px 7px; border-radius: 20px;
+    font-size: 11px; font-weight: 700; line-height: 1.4;
+    border: 1px solid transparent;
+  }
+  :global(.dsb--primary)   { background: #dbe4ff; color: #3b5bdb; border-color: #bac8ff; }
+  :global(.dsb--info)      { background: #e3fafc; color: #0c8599; border-color: #99e9f2; }
+  :global(.dsb--secondary) { background: #f1f3f5; color: #495057; border-color: #dee2e6; }
+  :global(.dsb--warning)   { background: #fff9db; color: #e67700; border-color: #ffe066; }
+  :global(.dsb--success)   { background: #ebfbee; color: #2f9e44; border-color: #b2f2bb; }
+  :global(.dsb--danger)    { background: #fff5f5; color: #e03131; border-color: #ffc9c9; }
+  :global(.dsb--dark)      { background: #f1f3f5; color: #212529; border-color: #ced4da; }
+
+  /* ── Soft icon backgrounds ── */
+  :global(.bg-primary-soft) { background: #e7f0ff; }
+  :global(.bg-success-soft) { background: #ebfbee; }
+  :global(.bg-warning-soft) { background: #fff9db; }
+  :global(.bg-danger-soft)  { background: #fff5f5; }
+  :global(.bg-purple-soft)  { background: #f3f0ff; }
+  :global(.text-purple) { color: #7950f2; }
 </style>

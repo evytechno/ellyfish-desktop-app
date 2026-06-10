@@ -33,8 +33,10 @@
   let userId = null;
   let companyId = null;
   let searchTerm = "";
-  let currentPage = 1;
-  let rowsPerPage = 10;
+  let listCurrentPage = 1;
+  let listRowsPerPage = 10;
+  let totalItems = 0;
+  let totalPages = 0;
   let selectedFilter = "last7days";
   let customStartDate = null;
   let customEndDate = null;
@@ -171,6 +173,8 @@
       if (trashBin) {
         query.append("withDeleted", trashBin);
       }
+      query.append("page", String(listCurrentPage));
+      query.append("limit", String(listRowsPerPage));
 
       updateFilterStore({
         userId,
@@ -188,6 +192,8 @@
         );
         if (cachedData) {
           orders = cachedData.orders;
+          totalItems = cachedData.totalItems ?? orders.length;
+          totalPages = cachedData.totalPages ?? 1;
           return;
         }
       }
@@ -195,9 +201,11 @@
         `${API_ROUTES.ORDER}?${query.toString()}`,
         { method: "GET" },
       );
-      orders = data;
+      orders = data.data ?? data;
+      totalItems = data.total ?? orders.length;
+      totalPages = data.totalPages ?? 1;
       saveToLocalStorage("orders_won_" + query.toString(), {
-        orders,
+        orders, totalItems, totalPages,
       });
     } catch (error) {
       console.error("Fetch error:", error);
@@ -315,6 +323,8 @@
     if (trashBin) {
       query.append("withDeleted", trashBin);
     }
+    query.append("page", String(listCurrentPage));
+    query.append("limit", String(listRowsPerPage));
 
     updateFilterStore({
       userId,
@@ -463,6 +473,7 @@
       if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) {
         return;
       }
+      listCurrentPage = 1;
       fetchOrders();
     }
   }
@@ -765,20 +776,15 @@
           loading={loadingData}
           {columns}
           {actions}
-          data={[...orders]}
-          {currentPage}
-          {rowsPerPage}
-          totalItems={orders?.length}
-          totalPages={Math.ceil(orders?.length / rowsPerPage)}
-          on:pageChange={(e) => (currentPage = e.detail)}
-          on:rowsPerPageChange={(e) => {
-            rowsPerPage = e.detail;
-            currentPage = 1;
-          }}
-          on:search={(e) => {
-            searchTerm = e.detail;
-            currentPage = 1;
-          }}
+          data={orders}
+          serverMode={true}
+          currentPage={listCurrentPage}
+          rowsPerPage={listRowsPerPage}
+          {totalItems}
+          {totalPages}
+          on:pageChange={(e) => { listCurrentPage = e.detail; fetchOrders(); }}
+          on:rowsPerPageChange={(e) => { listRowsPerPage = e.detail; listCurrentPage = 1; fetchOrders(); }}
+          on:search={(e) => { searchTerm = e.detail; listCurrentPage = 1; }}
         />
       </div>
     </div>
