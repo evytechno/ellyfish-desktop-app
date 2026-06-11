@@ -1033,7 +1033,14 @@
           replaceUsers,
         }),
       });
-      Swal.fire("Transferred!", res.message, "success");
+      const hasSkipped = res.skipped && res.skipped.length > 0;
+      Swal.fire({
+        icon: hasSkipped ? "warning" : "success",
+        title: hasSkipped ? "Partially Transferred" : "Transferred!",
+        html: hasSkipped
+          ? `${res.message}<br><small class="text-muted">Skipped orders: ${res.skipped.map(s => `#${s.id}`).join(", ")}</small>`
+          : res.message,
+      });
       transferModalOpen = false;
       transferUserId = null;
       clearSelection();
