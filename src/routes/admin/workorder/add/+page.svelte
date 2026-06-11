@@ -12,6 +12,8 @@
   import { companiesAllStore } from "$lib/stores/dataStores";
   import { checkAuth } from "$lib/utils/auth";
   let loadingData = true;
+  let fromOrder = false;
+  let linkedOrder = null;
 
   let companies = [];
   let activeTab = 1;
@@ -64,11 +66,6 @@
 
   function goToStep2() {
     formErrors = {};
-    if (workOrderType === "order" && !orderId) {
-      formErrors.orderId = ["Order is required."];
-      scrollToId("field-order");
-      return;
-    }
     if (!companyId) {
       formErrors.companyId = ["Company is required."];
       scrollToId("field-company");
@@ -108,14 +105,7 @@
     if (workOrderDate) newWorkOrder.workOrderDate = workOrderDate;
     if (installationDate) newWorkOrder.installationDate = installationDate;
     newWorkOrder.companyId = companyId;
-    if (workOrderType == "order") {
-      newWorkOrder.orderId = orderId;
-      if (orderId == null) {
-        formErrors.orderId = ["Order is required."];
-        loading = false;
-        return;
-      }
-    }
+    if (fromOrder && orderId) newWorkOrder.orderId = orderId;
     if (companyId == null) {
       formErrors.companyId = ["Company is required."];
       loading = false;
@@ -185,6 +175,7 @@
   onMount(async () => {
     const fromOrderId = $page.url.searchParams.get("fromOrder");
     if (!fromOrderId) return;
+    fromOrder = true;
     try {
       const order = await authApiFetch(`${API_ROUTES.ORDER}/${fromOrderId}/basic`);
       if (!order) return;
@@ -194,6 +185,7 @@
       workOrderType = "order";
       title = order.title ?? "";
       orderInitialTitle = order.title ?? "";
+      linkedOrder = { id: order.id, title: order.title, financialYear: order.financialYear, pId: order.pId };
       orderSelectKey++;
       poNumber = pi?.poNumber ?? "";
       orderNo = pi?.invoiceNo ? String(pi.invoiceNo).padStart(6, "0") : "";
@@ -304,32 +296,23 @@
             <h6 class="mb-0 fw-semibold"><i class="ti ti-info-circle me-2 text-primary"></i>Basic Information</h6>
           </div>
           <div class="card-body">
-            <div class="mb-3 p-3 bg-light rounded d-flex gap-4 align-items-center">
-              <span class="fw-semibold small text-muted">Work Order Type:</span>
-              <label class="d-flex align-items-center gap-2 cursor-pointer mb-0">
-                <input type="radio" id="order" name="workOrderType" value="order" bind:group={workOrderType} />
-                <span>Linked to Order</span>
-              </label>
-              <label class="d-flex align-items-center gap-2 cursor-pointer mb-0">
-                <input type="radio" id="self" name="workOrderType" value="self" bind:group={workOrderType} />
-                <span>Standalone</span>
-              </label>
-            </div>
-
             <div class="grid grid-cols-3 gap-2">
-              {#if workOrderType == "order"}
-                <div class="col-span-2" id="field-order">
-                  <label class="form-label">Order <span class="text-danger">*</span></label>
-                  {#key orderSelectKey}
-                    <OrderSearchSelect
-                      initialValue={orderId}
-                      initialTitle={orderInitialTitle}
-                      isInvalid={!!formErrors.orderId}
-                      on:change={(e) => { orderId = e.detail.id; orderValueChange(e.detail.id, e.detail.text); }}
-                    />
-                  {/key}
-                  {#if formErrors.orderId}<ul class="text-danger mt-1 text-xs"><li>{formErrors.orderId[0]}</li></ul>{/if}
-                  {#if woWarning}<div class="mt-1 text-xs" style="color:#b45309;">&#9888; {woWarning}</div>{/if}
+              {#if fromOrder && linkedOrder}
+                <div class="col-span-2">
+                  <label class="form-label">Order</label>
+                  <div class="form-control d-flex align-items-center gap-2" style="background:#f8f9fa;cursor:default;">
+                    <i class="ti ti-file-description text-primary" style="font-size:15px;flex-shrink:0;"></i>
+                    <a href="/admin/order/{linkedOrder.id}" class="fw-semibold text-primary text-decoration-none text-truncate" style="font-size:13px;">
+                      {#if linkedOrder.financialYear && linkedOrder.pId}
+                        {linkedOrder.financialYear}/{String(linkedOrder.pId).padStart(6,"0")}
+                      {:else}
+                        Order #{linkedOrder.id}
+                      {/if}
+                      {#if linkedOrder.title}
+                        <span class="text-muted fw-normal ms-1">{linkedOrder.title}</span>
+                      {/if}
+                    </a>
+                  </div>
                 </div>
               {:else}
                 <div class="col-span-2">

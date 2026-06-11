@@ -6,7 +6,7 @@
 
   function getAvatarText(title) {
     if (!title) return "";
-    const words = title.trim().split(" ");
+    const words = title.trim().split(/\s+/).filter(Boolean);
     if (words.length === 1) return words[0][0].toUpperCase();
     return (words[0][0] + words[1][0]).toUpperCase();
   }

@@ -132,14 +132,36 @@
       }
 
       if (syncMode && data.order?.id) {
-        // Sync from PI: re-load item quantities from PI/WO
+        // Sync ALL data from PI (preserve TI invoiceDate)
         try {
           const order = await authApiFetch(`${API_ROUTES.ORDER}/${data.order.id}`);
           const pi = order.orderPayments?.[0];
           const wo = order.workOrders?.[0];
           if (pi && wo) {
-            populateFromInvoice(data);
-            // Override items with WO quantities
+            const savedDate = formatDateForInput(data.invoiceDate) || new Date().toISOString().split("T")[0];
+            // Sync all PI fields
+            title = pi.title ?? "";
+            poNumber = pi.poNumber ?? "";
+            currency = pi.currency ?? "INR";
+            discount = pi.discount ?? 0;
+            totalAmountTitle = pi.totalAmountTitle ?? "Total Amount";
+            priceTerms = pi.priceTerms ?? "";
+            swiftCode = pi.swiftCode ?? "";
+            termsConditions = pi.termsConditions ?? "";
+            remarks = pi.remarks ?? "";
+            billToName = pi.billToName ?? "";
+            billToAddress = pi.billToAddress ?? "";
+            billToGSTNumber = pi.billToGSTNumber ?? "";
+            billToMobile = pi.billToMobile ?? "";
+            billToEmail = pi.billToEmail ?? "";
+            shipToName = pi.shipToName ?? "";
+            shipToAddress = pi.shipToAddress ?? "";
+            shipToGSTNumber = pi.shipToGSTNumber ?? "";
+            shipToMobile = pi.shipToMobile ?? "";
+            shipToEmail = pi.shipToEmail ?? "";
+            extraItems = (pi.extraItems ?? []).map((i) => ({ ...i }));
+            taxItems = (pi.taxItems ?? []).map((t) => ({ ...t }));
+            // Items: PI descriptions + WO quantities
             const piItems = pi.items ?? [];
             const woItems = wo.items ?? [];
             items = piItems.map((piItem, idx) => ({
@@ -150,7 +172,7 @@
               hsCode: piItem.hsCode ?? "",
               total: 0,
             }));
-            // Update company & bank from PI
+            // Company & bank from PI
             const piSnap = pi.companySnapshot;
             const liveCompany = order.company;
             companySnapshot = piSnap?.name ? piSnap : (liveCompany ? {
@@ -159,8 +181,10 @@
               gstNumber: liveCompany.gstNumber, logo: liveCompany.logo,
             } : companySnapshot);
             bankSnapshot = pi.selectedBankAccount ?? bankSnapshot;
+            // Preserve TI's own invoice date
+            invoiceDate = savedDate;
             recalculate();
-            Swal.fire({ title: "Synced from PI", icon: "info", text: "Items and company details updated from PI. Review and save.", timer: 3000, showConfirmButton: false });
+            Swal.fire({ title: "Synced from PI", icon: "info", text: "All data synced from PI. Invoice date preserved. Review and save.", timer: 3000, showConfirmButton: false });
           } else {
             populateFromInvoice(data);
           }
@@ -271,10 +295,6 @@
               <div>
                 <label class="form-label">Price Terms</label>
                 <input type="text" class="form-control" bind:value={priceTerms} placeholder="e.g. FOB, CIF" />
-              </div>
-              <div>
-                <label class="form-label">Swift Code</label>
-                <input type="text" class="form-control" bind:value={swiftCode} placeholder="SWIFT / BIC" />
               </div>
             </div>
           </div>

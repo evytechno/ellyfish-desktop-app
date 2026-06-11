@@ -357,6 +357,11 @@
     ...(currentUser?.role != "user"
       ? [
           {
+            key: "company",
+            label: "Company",
+            render: (val, row) => row?.company?.name ?? "-",
+          },
+          {
             key: "user",
             label: "User",
             render: (val, row) => (row?.user ? row.user.name : "-"),

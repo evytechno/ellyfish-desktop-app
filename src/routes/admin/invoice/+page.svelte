@@ -760,6 +760,11 @@
     ...(currentUser?.role != "user"
       ? [
           {
+            key: "company",
+            label: "Company",
+            render: (val, row) => row?.company?.name ?? "-",
+          },
+          {
             key: "user",
             label: "User",
             render: (val, row) => (row?.user ? row.user.name : "-"),
@@ -1409,21 +1414,6 @@
             />
             {#if fieldError("priceTerms")}
               <div class="invalid-feedback d-block">{fieldError("priceTerms")}</div>
-            {/if}
-          </div>
-          <div class="col-md-6">
-            <label class="form-label" for="swiftCode">SWIFT Code</label>
-            <input
-              type="text"
-              name="swiftCode"
-              class="form-control"
-              class:is-invalid={fieldError("swiftCode")}
-              bind:value={swiftCode}
-              id="swiftCode"
-              placeholder="SWIFT / BIC code"
-            />
-            {#if fieldError("swiftCode")}
-              <div class="invalid-feedback d-block">{fieldError("swiftCode")}</div>
             {/if}
           </div>
         </div>

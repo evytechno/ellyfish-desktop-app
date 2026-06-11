@@ -1,10 +1,11 @@
 <script>
-  import { isOnline, isServerReachable, isSlowNetwork, checkServer, startNetworkMonitor } from '$lib/stores/network';
-  import { onMount } from 'svelte';
+  import { isOnline, isServerReachable, isSlowNetwork, checkServer, startNetworkMonitor, stopNetworkMonitor } from '$lib/stores/network';
+  import { onMount, onDestroy } from 'svelte';
 
   let retrying = false;
 
   onMount(() => startNetworkMonitor());
+  onDestroy(() => stopNetworkMonitor());
 
   async function retry() {
     retrying = true;

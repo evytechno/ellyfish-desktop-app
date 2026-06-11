@@ -463,20 +463,6 @@
                   <div class="invalid-feedback d-block">{fieldError("priceTerms")}</div>
                 {/if}
               </div>
-              <div class="col-md-4">
-                <label class="form-label" for="swiftCode">SWIFT Code</label>
-                <input
-                  type="text"
-                  id="swiftCode"
-                  class="form-control"
-                  class:is-invalid={fieldError("swiftCode")}
-                  bind:value={swiftCode}
-                  placeholder="SWIFT / BIC code"
-                />
-                {#if fieldError("swiftCode")}
-                  <div class="invalid-feedback d-block">{fieldError("swiftCode")}</div>
-                {/if}
-              </div>
             </div>
           </div>
         </div>

@@ -17,6 +17,7 @@ isServerReachable.subscribe(v => (_reachable = v));
 isSlowNetwork.subscribe(v     => (_slow      = v));
 
 let _pollTimer = null;
+let _started   = false;
 
 /** Single health check — exported so the retry button can call it directly */
 export async function checkServer() {
@@ -35,9 +36,10 @@ export async function checkServer() {
     const elapsed   = Date.now() - start;
     const reachable = res.ok || res.status === 401 || res.status === 404;
 
-    isServerReachable.set(reachable);
+    if (reachable !== _reachable) isServerReachable.set(reachable);
     // Only mark slow when server is actually up
-    isSlowNetwork.set(reachable && elapsed > SLOW_THRESHOLD);
+    const slow = reachable && elapsed > SLOW_THRESHOLD;
+    if (slow !== _slow) isSlowNetwork.set(slow);
     return reachable;
   } catch {
     isServerReachable.set(false);
@@ -56,6 +58,9 @@ function scheduleNext() {
 }
 
 export function startNetworkMonitor() {
+  if (_started) return;
+  _started = true;
+
   // Browser online / offline events
   window.addEventListener('online', () => {
     isOnline.set(true);
@@ -72,6 +77,7 @@ export function startNetworkMonitor() {
 }
 
 export function stopNetworkMonitor() {
+  _started = false;
   if (_pollTimer) {
     clearTimeout(_pollTimer);
     _pollTimer = null;

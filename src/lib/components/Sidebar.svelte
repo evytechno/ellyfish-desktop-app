@@ -621,6 +621,22 @@
                       {/if}
                     </ul>
                   </li>
+                  {#if currentUser?.role === "master" || currentUser?.role === "admin"}
+                    <li class="menu-title"><span>REPORTS</span></li>
+                    <li>
+                      <ul>
+                        <li class:active={currentPath.startsWith("/admin/reports/user-activity")}>
+                          <a
+                            href="/admin/reports/user-activity"
+                            class:active={currentPath.startsWith("/admin/reports/user-activity")}
+                          >
+                            <i class="ti ti-chart-bar"></i><span>User Activity</span>
+                          </a>
+                        </li>
+                      </ul>
+                    </li>
+                  {/if}
+
                   {#if currentUser?.role === "master" || currentUser?.role != "user"}
                     <li class="menu-title"><span>COMMON</span></li>{/if}
                   <li>

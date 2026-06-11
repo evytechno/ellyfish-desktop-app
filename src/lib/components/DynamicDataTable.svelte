@@ -13,6 +13,8 @@
   export let serverMode = false;
   export let loading;
   export let headersItemShow = true;
+  export let selectable = false;      // show checkboxes in S.N. column
+  export let selectedIds = new Set(); // Set<number> of selected row ids
 
   const dispatch = createEventDispatcher();
 
@@ -143,13 +145,27 @@
   >
     <thead>
       <tr class="bg-gray-100 text-left text-gray-700 uppercase text-sm">
-        <th class="px-4 py-2 cursor-pointer whitespace-nowrap">S.N.</th>
+        <th class="px-4 py-2 cursor-pointer whitespace-nowrap">
+          {#if selectable}
+            <div class="flex items-center gap-2">
+              <input
+                type="checkbox"
+                class="form-check-input mt-0"
+                checked={paginated.length > 0 && paginated.every(r => selectedIds.has(r.id))}
+                on:change={() => dispatch('selectAll', { rows: paginated })}
+              />
+              S.N.
+            </div>
+          {:else}
+            S.N.
+          {/if}
+        </th>
         {#each columns as col}
           <th
             class="px-4 py-2 cursor-pointer whitespace-nowrap"
             on:click={() => sortBy(col.key)}
           >
-            {col.label}
+            {@html col.label}
             {#if sortColumn === col.key}
               {sortAsc ? " ▲" : " ▼"}
             {/if}
@@ -172,7 +188,19 @@
               class="px-4 py-2 border-red-500"
               class:border-l-4={row.deletedAt}
             >
-              {i + 1 + (currentPage - 1) * rowsPerPage}.
+              {#if selectable}
+                <div class="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    class="form-check-input mt-0"
+                    checked={selectedIds.has(row.id)}
+                    on:change={() => dispatch('selectRow', { id: row.id })}
+                  />
+                  {i + 1 + (currentPage - 1) * rowsPerPage}.
+                </div>
+              {:else}
+                {i + 1 + (currentPage - 1) * rowsPerPage}.
+              {/if}
               {#if row.deletedAt}
                 <span class="badge badge-outline-danger">
                   <i class="ti ti-trash"></i>

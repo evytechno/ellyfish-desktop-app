@@ -28,6 +28,7 @@
   let title = "";
   let orderId = null;
   let orderInitialTitle = "";
+  let linkedOrder = null;
   let companyId = null;
   let invoiceDate = null;
   let poDate = null;
@@ -134,11 +135,6 @@
 
   function goToStep2() {
     formErrors = {};
-    if (invoiceType === "order" && !orderId) {
-      formErrors.orderId = ["Order is required."];
-      scrollToId("field-order");
-      return;
-    }
     if (!companyId) {
       formErrors.companyId = ["Company is required."];
       scrollToId("field-company");
@@ -161,7 +157,6 @@
   async function handleSubmit(e) {
     e.preventDefault();
     formErrors = {};
-    if (invoiceType === "order" && !orderId) { formErrors.orderId = ["Order is required."]; return; }
     if (!companyId) { formErrors.companyId = ["Company is required."]; return; }
     if (items.length === 0) { Swal.fire("Warning!", "Please add at least one line item.", "warning"); return; }
     if (total === 0) { Swal.fire("Warning!", "Invoice total amount cannot be zero.", "warning"); return; }
@@ -177,7 +172,7 @@
       };
       if (invoiceDate) payload.invoiceDate = invoiceDate;
       if (poDate) payload.poDate = poDate;
-      if (invoiceType === "order") payload.orderId = orderId;
+      if (linkedOrder && orderId) payload.orderId = orderId;
 
       const data = await authApiFetch(`${API_ROUTES.ORDER_PAYMENT}/${invoiceId}`, {
         method: "PUT",
@@ -209,6 +204,7 @@
       title            = inv.title || "";
       orderId          = inv.orderId || null;
       orderInitialTitle = inv.order?.title || "";
+      if (inv.order) linkedOrder = { id: inv.order.id, title: inv.order.title, financialYear: inv.order.financialYear, pId: inv.order.pId };
       companyId        = inv.companyId || inv.company?.id || null;
       invoiceDate      = inv.invoiceDate ? inv.invoiceDate.split("T")[0] : null;
       poDate           = inv.poDate ? inv.poDate.split("T")[0] : null;
@@ -328,29 +324,23 @@
               <h6 class="mb-0 fw-semibold"><i class="ti ti-info-circle me-2 text-primary"></i>Basic Information</h6>
             </div>
             <div class="card-body">
-              <div class="mb-3 p-3 bg-light rounded d-flex gap-4 align-items-center">
-                <span class="fw-semibold small text-muted">Invoice Type:</span>
-                <label class="d-flex align-items-center gap-2 cursor-pointer mb-0">
-                  <input type="radio" name="invoiceType" value="order" bind:group={invoiceType} /> Linked to Order
-                </label>
-                <label class="d-flex align-items-center gap-2 cursor-pointer mb-0">
-                  <input type="radio" name="invoiceType" value="self" bind:group={invoiceType} /> Standalone
-                </label>
-              </div>
-
               <div class="grid grid-cols-3 gap-2">
-                {#if invoiceType === "order"}
-                  <div class="col-span-1" id="field-order">
-                    <label class="form-label">Order <span class="text-danger">*</span></label>
-                    <OrderSearchSelect
-                      isInvalid={!!formErrors.orderId}
-                      initialValue={orderId}
-                      initialTitle={orderInitialTitle}
-                      on:change={(e) => { orderId = e.detail.id; orderValueChange(e.detail.id); }}
-                    />
-                    {#if formErrors.orderId}
-                      <ul class="text-danger mt-1 text-xs"><li>{formErrors.orderId[0]}</li></ul>
-                    {/if}
+                {#if linkedOrder}
+                  <div class="col-span-1">
+                    <label class="form-label">Order</label>
+                    <div class="form-control d-flex align-items-center gap-2" style="background:#f8f9fa;cursor:default;">
+                      <i class="ti ti-file-description text-primary" style="font-size:15px;flex-shrink:0;"></i>
+                      <a href="/admin/order/{linkedOrder.id}" class="fw-semibold text-primary text-decoration-none text-truncate" style="font-size:13px;">
+                        {#if linkedOrder.financialYear && linkedOrder.pId}
+                          {linkedOrder.financialYear}/{String(linkedOrder.pId).padStart(6,"0")}
+                        {:else}
+                          Order #{linkedOrder.id}
+                        {/if}
+                        {#if linkedOrder.title}
+                          <span class="text-muted fw-normal ms-1">{linkedOrder.title}</span>
+                        {/if}
+                      </a>
+                    </div>
                   </div>
                 {:else}
                   <div class="col-span-1">
@@ -428,10 +418,6 @@
                   <input type="text" class="form-control" bind:value={priceTerms} placeholder="e.g. 30 days net" />
                 </div>
 
-                <div>
-                  <label class="form-label">Swift Code</label>
-                  <input type="text" class="form-control" bind:value={swiftCode} placeholder="e.g. HDFCINBB" />
-                </div>
               </div>
             </div>
           </div>

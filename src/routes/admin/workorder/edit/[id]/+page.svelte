@@ -22,6 +22,7 @@
   let workOrderType = "order";
   let title = null;
   let orderId = null;
+  let linkedOrder = null;
   let companyId = null;
   let workOrderDate = null;
   let orderNo = "";
@@ -70,11 +71,6 @@
 
   function goToStep2() {
     formErrors = {};
-    if (workOrderType === "order" && !orderId) {
-      formErrors.orderId = ["Order is required."];
-      scrollToId("field-order");
-      return;
-    }
     if (!companyId) {
       formErrors.companyId = ["Company is required."];
       scrollToId("field-company");
@@ -101,12 +97,7 @@
     if (workOrderDate) newWorkOrder.workOrderDate = workOrderDate;
     if (installationDate) newWorkOrder.installationDate = installationDate;
     newWorkOrder.companyId = companyId;
-    if (workOrderType == "order") {
-      newWorkOrder.orderId = orderId;
-      if (orderId == null) { formErrors.orderId = ["Order is required."]; loading = false; return; }
-    } else {
-      newWorkOrder.orderId = null;
-    }
+    if (linkedOrder && orderId) newWorkOrder.orderId = orderId;
     if (companyId == null) { formErrors.companyId = ["Company is required."]; loading = false; return; }
     if (items.length == 0) { Swal.fire("Warning!", "Please add at least one item.", "warning"); loading = false; return; }
 
@@ -143,6 +134,7 @@
       title = data?.title;
       orderId = data?.order?.id ?? null;
       selectedOrderTitle = data?.order?.title ?? "";
+      if (data?.order) linkedOrder = { id: data.order.id, title: data.order.title, financialYear: data.order.financialYear, pId: data.order.pId };
       companyId = data?.company?.id;
       if (data?.workOrderDate) workOrderDate = formatDateForInput(data.workOrderDate);
       if (data?.installationDate) installationDate = formatDateForInput(data.installationDate);
@@ -260,28 +252,23 @@
             <h6 class="mb-0 fw-semibold"><i class="ti ti-info-circle me-2 text-primary"></i>Basic Information</h6>
           </div>
           <div class="card-body">
-            <div class="mb-3 p-3 bg-light rounded d-flex gap-4 align-items-center">
-              <span class="fw-semibold small text-muted">Work Order Type:</span>
-              <label class="d-flex align-items-center gap-2 cursor-pointer mb-0">
-                <input type="radio" id="order" name="workOrderType" value="order" bind:group={workOrderType} />
-                <span>Linked to Order</span>
-              </label>
-              <label class="d-flex align-items-center gap-2 cursor-pointer mb-0">
-                <input type="radio" id="self" name="workOrderType" value="self" bind:group={workOrderType} />
-                <span>Standalone</span>
-              </label>
-            </div>
-
             <div class="grid grid-cols-3 gap-2">
-              {#if workOrderType == "order"}
-                <div class="col-span-2" id="field-order">
-                  <label class="form-label">Order <span class="text-danger">*</span></label>
-                  {#if !loadingData}
-                    <OrderSearchSelect id="orderId" initialValue={orderId} initialTitle={selectedOrderTitle}
-                      isInvalid={!!formErrors.orderId}
-                      on:change={(e) => { orderId = e.detail.id; orderValueChange(e.detail.id, e.detail.text); }} />
-                  {/if}
-                  {#if formErrors.orderId}<ul class="text-danger mt-1 text-xs"><li>{formErrors.orderId[0]}</li></ul>{/if}
+              {#if linkedOrder}
+                <div class="col-span-2">
+                  <label class="form-label">Order</label>
+                  <div class="form-control d-flex align-items-center gap-2" style="background:#f8f9fa;cursor:default;">
+                    <i class="ti ti-file-description text-primary" style="font-size:15px;flex-shrink:0;"></i>
+                    <a href="/admin/order/{linkedOrder.id}" class="fw-semibold text-primary text-decoration-none text-truncate" style="font-size:13px;">
+                      {#if linkedOrder.financialYear && linkedOrder.pId}
+                        {linkedOrder.financialYear}/{String(linkedOrder.pId).padStart(6,"0")}
+                      {:else}
+                        Order #{linkedOrder.id}
+                      {/if}
+                      {#if linkedOrder.title}
+                        <span class="text-muted fw-normal ms-1">{linkedOrder.title}</span>
+                      {/if}
+                    </a>
+                  </div>
                 </div>
               {:else}
                 <div class="col-span-2">

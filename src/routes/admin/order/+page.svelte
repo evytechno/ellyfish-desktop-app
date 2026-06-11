@@ -255,6 +255,7 @@
       listOrders = data.data;
       listTotalItems = data.total;
       listTotalPages = data.totalPages;
+      selectedOrders = new Set();
     } catch (error) {
       console.error("Fetch error:", error);
       errorHandle(error);
@@ -456,7 +457,10 @@
     }
   }
 
-  function generatePdf() {
+  function generatePdf() { generatePdfFromList(listOrders); }
+  function generateExcel() { generateExcelFromList(listOrders); }
+
+  function generatePdfFromList(orders) {
     function formatDate(date) {
       return new Date(date).toLocaleString("en-GB", {
         timeZone: "Asia/Kolkata",
@@ -470,6 +474,8 @@
       });
     }
 
+    const safeDate = (d) => (d ? formatDate(d) : "");
+
     const headers = [
       "Order ID",
       "Unique ID",
@@ -479,6 +485,7 @@
       "Assigned Users",
       "Description",
       "Price",
+      "Currency",
       "Price Terms",
       "Terms & Conditions",
       "Source",
@@ -492,7 +499,7 @@
 
     const body = [
       headers,
-      ...listOrders.map((order) => {
+      ...orders.map((order) => {
         const assignedUsers = (order?.assignedUsers || [])
           .map((user) => {
             const name = maskAssignedName(user, currentUser);
@@ -505,24 +512,24 @@
           .join(", ");
 
         return [
-          order?.id || "",
-          order?.financialYear + "/" + order?.pId || "",
+          String(order?.id ?? ""),
+          order?.financialYear && order?.pId ? `${order.financialYear}/${order.pId}` : "",
           order?.title || "",
           order?.category || "",
           order?.status || "",
           assignedUsers || "",
           order?.description || "",
-          order?.price || "",
+          order?.price != null ? String(order.price) : "",
           order?.currency || "INR",
           order?.priceTerms || "",
           order?.termsCondition || "",
           order?.source || "",
           order?.company || "",
           order?.gstNumber || "",
-          formatDate(order?.orderDate),
+          safeDate(order?.orderDate),
           orderClients || "",
-          formatDate(order?.createdAt),
-          formatDate(order?.updatedAt),
+          safeDate(order?.createdAt),
+          safeDate(order?.updatedAt),
         ];
       }),
     ];
@@ -570,7 +577,7 @@
     pdfMake.createPdf(docDefinition).download(fileName);
   }
 
-  function generateExcel() {
+  function generateExcelFromList(orders) {
     const headers = [
       "OrderID",
       "UniqueId",
@@ -591,7 +598,7 @@
       "CreatedAt",
       "UpdatedAt",
     ];
-    const newList = listOrders.map((order) => {
+    const newList = orders.map((order) => {
       const assignedUsers = (order?.assignedUsers || [])
         .map((user) => {
           const name = maskAssignedName(user, currentUser);
@@ -986,6 +993,75 @@
     // },
   ];
 
+  // ── Bulk selection ────────────────────────────────────────────────────────
+  let selectedOrders = new Set();
+
+  function toggleSelectOrder(id) {
+    const s = new Set(selectedOrders);
+    s.has(id) ? s.delete(id) : s.add(id);
+    selectedOrders = s;
+  }
+
+  function toggleSelectAll() {
+    if (selectedOrders.size === listOrders.length) {
+      selectedOrders = new Set();
+    } else {
+      selectedOrders = new Set(listOrders.map((o) => o.id));
+    }
+  }
+
+  function clearSelection() {
+    selectedOrders = new Set();
+  }
+
+
+  // ── Transfer modal ────────────────────────────────────────────────────────
+  let transferModalOpen = false;
+  let transferUserId = null;
+  let transferring = false;
+  let replaceUsers = false;
+
+  async function doTransfer() {
+    if (!transferUserId) return;
+    transferring = true;
+    try {
+      const res = await authApiFetch(API_ROUTES.ORDER + "/bulk-transfer", {
+        method: "PUT",
+        data: JSON.stringify({
+          orderIds: [...selectedOrders],
+          toUserId: Number(transferUserId),
+          replaceUsers,
+        }),
+      });
+      Swal.fire("Transferred!", res.message, "success");
+      transferModalOpen = false;
+      transferUserId = null;
+      clearSelection();
+      refreshPage();
+    } catch (e) {
+      errorHandle(e);
+    } finally {
+      transferring = false;
+    }
+  }
+
+  // ── Export selected orders ─────────────────────────────────────────────────
+  function getExportOrders() {
+    return selectedOrders.size > 0
+      ? listOrders.filter((o) => selectedOrders.has(o.id))
+      : listOrders;
+  }
+
+  function generatePdfSelected() {
+    const target = getExportOrders();
+    generatePdfFromList(target);
+  }
+
+  function generateExcelSelected() {
+    const target = getExportOrders();
+    generateExcelFromList(target);
+  }
+
   const viewRecord = async (id) => {
     goto("/admin/order/" + id);
   };
@@ -1272,6 +1348,30 @@
     {#if viewType == "grid" && filterReady}
       <OrderDragula {filterParams} {updateOrderStatus} />
     {:else}
+      <!-- Bulk action toolbar -->
+      {#if selectedOrders.size > 0 && ['master','admin'].includes(currentUser?.role)}
+        <div class="flex items-center gap-2 flex-wrap mb-2 px-1 py-2 bg-blue-50 border border-blue-200 rounded">
+          <span class="text-sm font-semibold text-blue-700">
+            <i class="ti ti-check me-1"></i>{selectedOrders.size} selected
+          </span>
+          <button
+            class="btn btn-sm btn-primary"
+            on:click={() => { transferUserId = null; replaceUsers = false; transferModalOpen = true; }}
+          >
+            <i class="ti ti-transfer me-1"></i>Transfer
+          </button>
+          <button class="btn btn-sm btn-outline-danger" on:click={generatePdfSelected}>
+            <i class="ti ti-file-type-pdf me-1"></i>PDF ({selectedOrders.size})
+          </button>
+          <button class="btn btn-sm btn-outline-success" on:click={generateExcelSelected}>
+            <i class="ti ti-file-type-xls me-1"></i>Excel ({selectedOrders.size})
+          </button>
+          <button class="btn btn-sm btn-outline-secondary ms-auto" on:click={clearSelection}>
+            <i class="ti ti-x me-1"></i>Clear
+          </button>
+        </div>
+      {/if}
+
       <!-- card start -->
       <div class="card border-0 rounded-0">
         <div class="card-body">
@@ -1286,6 +1386,19 @@
             rowsPerPage={listRowsPerPage}
             totalItems={listTotalItems}
             totalPages={listTotalPages}
+            selectable={['master','admin'].includes(currentUser?.role)}
+            selectedIds={selectedOrders}
+            on:selectRow={(e) => toggleSelectOrder(e.detail.id)}
+            on:selectAll={(e) => {
+              const allSelected = e.detail.rows.every(r => selectedOrders.has(r.id));
+              if (allSelected) {
+                e.detail.rows.forEach(r => selectedOrders.delete(r.id));
+                selectedOrders = new Set(selectedOrders);
+              } else {
+                e.detail.rows.forEach(r => selectedOrders.add(r.id));
+                selectedOrders = new Set(selectedOrders);
+              }
+            }}
             on:pageChange={(e) => { listCurrentPage = e.detail; fetchListOrders(); }}
             on:rowsPerPageChange={(e) => { listRowsPerPage = e.detail; listCurrentPage = 1; fetchListOrders(); }}
           />
@@ -1784,3 +1897,68 @@
   </div>
 </div>
 <!-- /Order Lists -->
+
+<!-- Transfer Modal -->
+{#if transferModalOpen}
+  <div class="modal show d-block" tabindex="-1" style="background:rgba(0,0,0,0.45);">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">
+            <i class="ti ti-transfer me-1"></i>Transfer {selectedOrders.size} Order{selectedOrders.size > 1 ? "s" : ""}
+          </h5>
+          <button
+            class="btn-close"
+            on:click={() => { transferModalOpen = false; transferUserId = null; replaceUsers = false; }}
+          ></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-sm text-muted mb-3">
+            Select a user to reassign the selected order{selectedOrders.size > 1 ? "s" : ""} to.
+          </p>
+          <label class="form-label">Transfer To</label>
+          <select bind:value={transferUserId} class="form-select mb-3">
+            <option value={null}>— Select User —</option>
+            {#each users.filter(u => u.status !== 'banned' && u.role !== 'master') as u}
+              <option value={u.id}>{u.name} ({u.role}{u.subRole ? ' · ' + u.subRole : ''})</option>
+            {/each}
+          </select>
+
+          <div class="form-check mb-1">
+            <input
+              class="form-check-input"
+              type="checkbox"
+              id="replaceUsersCheck"
+              bind:checked={replaceUsers}
+            />
+            <label class="form-check-label fw-semibold" for="replaceUsersCheck">
+              Replace existing assigned users
+            </label>
+          </div>
+          <p class="text-xs text-muted ms-4">
+            {#if replaceUsers}
+              <i class="ti ti-alert-triangle text-warning me-1"></i>
+              Current assignees will be <strong>removed</strong> and replaced with the selected user.
+            {:else}
+              <i class="ti ti-user-plus text-success me-1"></i>
+              Selected user will be <strong>added alongside</strong> existing assignees.
+            {/if}
+          </p>
+        </div>
+        <div class="modal-footer">
+          <button
+            class="btn btn-light"
+            on:click={() => { transferModalOpen = false; transferUserId = null; replaceUsers = false; }}
+          >Cancel</button>
+          <button
+            class="btn btn-primary"
+            disabled={!transferUserId || transferring}
+            on:click={doTransfer}
+          >
+            {transferring ? "Transferring..." : "Confirm Transfer"}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}

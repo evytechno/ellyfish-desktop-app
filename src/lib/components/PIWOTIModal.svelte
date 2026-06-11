@@ -708,10 +708,6 @@
                   <label class="form-label fw-semibold" style="font-size:12px;">Price Terms</label>
                   <input type="text" class="form-control form-control-sm" bind:value={priceTerms} placeholder="e.g. 30 days net" />
                 </div>
-                <div class="col-md-4">
-                  <label class="form-label fw-semibold" style="font-size:12px;">Swift Code</label>
-                  <input type="text" class="form-control form-control-sm" bind:value={swiftCode} placeholder="e.g. HDFCINBB" />
-                </div>
               </div>
 
               <!-- Bill To / Ship To -->
@@ -1071,10 +1067,6 @@
                 <div class="col-md-4">
                   <label class="form-label fw-semibold" style="font-size:12px;">Price Terms</label>
                   <input type="text" class="form-control form-control-sm" bind:value={priceTerms} placeholder="e.g. 30 days net" />
-                </div>
-                <div class="col-md-4">
-                  <label class="form-label fw-semibold" style="font-size:12px;">Swift Code</label>
-                  <input type="text" class="form-control form-control-sm" bind:value={swiftCode} placeholder="e.g. HDFCINBB" />
                 </div>
                 <div class="col-md-6">
                   <label class="form-label fw-semibold" style="font-size:12px;">Remarks</label>

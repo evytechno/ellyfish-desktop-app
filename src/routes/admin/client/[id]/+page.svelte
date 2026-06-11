@@ -93,13 +93,16 @@
     if (!editName) { formErrors.editName = ["Name is required."]; return; }
     editLoading = true;
     try {
+      const payload = { name: editName };
+      if (editGst)      payload.gstNumber  = editGst;
+      if (editEmail)    payload.email      = editEmail;
+      if (editMobile)   payload.mobile     = editMobile;
+      if (editWhatsapp) payload.whatsapp   = editWhatsapp;
+      if (editAddress)  payload.address    = editAddress;
+      if (editRemark)   payload.remark     = editRemark;
       const res = await authApiFetch(`${API_ROUTES.CLIENT}/${clientId}`, {
         method: "PUT",
-        data: JSON.stringify({
-          name: editName, gstNumber: editGst, email: editEmail,
-          mobile: editMobile, whatsapp: editWhatsapp,
-          address: editAddress, remark: editRemark,
-        }),
+        data: JSON.stringify(payload),
       });
       client = { ...client, ...res.data };
       Swal.fire("Saved!", "Client updated successfully.", "success");
@@ -155,9 +158,10 @@
     if (!editingContact?.name) return;
     editContactLoading = true;
     try {
+      const { id: _id, createdAt: _c, updatedAt: _u, deletedAt: _d, ...contactPayload } = editingContact;
       const res = await authApiFetch(`${API_ROUTES.CLIENT_CONTACT}/${editingContact.id}`, {
         method: "PUT",
-        data: JSON.stringify(editingContact),
+        data: JSON.stringify(contactPayload),
       });
       client.contacts = client.contacts.map(c => c.id === editingContact.id ? res.data : c);
       editingContact = null;

@@ -579,7 +579,7 @@
 
   function getAvatarText(title) {
     if (!title) return "";
-    const words = title.trim().split(" ");
+    const words = title.trim().split(/\s+/).filter(Boolean);
     if (words.length === 1) {
       return words[0][0].toUpperCase();
     }
@@ -3011,23 +3011,6 @@
                   </li>
                   <li class="nav-item" role="presentation">
                     <a
-                      href="#tab_5"
-                      data-bs-toggle="tab"
-                      aria-expanded="false"
-                      class="nav-link border-3"
-                      class:active={activeTab === "Email"}
-                      on:click|preventDefault={() => (activeTab = "Email")}
-                      aria-selected={activeTab === "Email"}
-                      tabindex="-1"
-                      role="tab"
-                    >
-                      <span class="d-md-inline-block">
-                        <i class="ti ti-mail-check me-1"></i>Email
-                      </span>
-                    </a>
-                  </li>
-                  <li class="nav-item" role="presentation">
-                    <a
                       href="#tab_6"
                       data-bs-toggle="tab"
                       aria-expanded="false"
@@ -3882,54 +3865,6 @@
                 <!-- /Chats -->
               {/if}
 
-              {#if activeTab === "Email"}
-                <!-- Email -->
-                <div class="tab-pane active show" id="tab_5">
-                  <div class="card">
-                    <div
-                      class="card-header d-flex align-items-center justify-content-between flex-wrap row-gap-3"
-                    >
-                      <h5 class="mb-1">Email</h5>
-                      <div class="d-inline-flex align-items-center">
-                        <a
-                          href="#tag"
-                          class="link-primary fw-medium"
-                          data-bs-toggle="tooltip"
-                          data-bs-placement="left"
-                          data-bs-custom-class="tooltip-dark"
-                          data-bs-original-title="There are no email accounts configured, Please configured your email account in order to Send/ Create EMails"
-                          ><i class="ti ti-circle-plus me-1"></i>Create Email</a
-                        >
-                      </div>
-                    </div>
-                    <div class="card-body">
-                      <div class="card border mb-0">
-                        <div class="card-body pb-0">
-                          <div class="row align-items-center">
-                            <div class="col-md-8">
-                              <div class="mb-3">
-                                <h6 class="mb-1">Manage Emails</h6>
-                                <p>
-                                  You can send and reply to emails directly via
-                                  this section.
-                                </p>
-                              </div>
-                            </div>
-                            <div class="col-md-4 text-md-end">
-                              <div class="mb-3">
-                                <a href="#create_email" class="btn btn-primary"
-                                  >Connect Account</a
-                                >
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <!-- /Email -->
-              {/if}
 
               {#if activeTab === "Client"}
                 <!-- Client -->

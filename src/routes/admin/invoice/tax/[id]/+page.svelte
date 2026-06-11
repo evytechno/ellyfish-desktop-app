@@ -293,7 +293,7 @@
                         {#if b?.bankName}<div>Bank Name : {b.bankName}</div>{/if}
                         {#if b?.branchAddress}<div>Bank Address : {b.branchAddress}</div>{/if}
                         {#if b?.accountNumber}<div>Account Number : {b.accountNumber}</div>{/if}
-                        {#if invoice?.swiftCode}<div>Swift Code : {invoice.swiftCode}</div>{/if}
+                        {#if invoice?.currency === "USD" && invoice?.swiftCode}<div>Swift Code : {invoice.swiftCode}</div>{/if}
                         {#if b?.ifscCode}<div>IFSC Code : {b.ifscCode}</div>{/if}
                       {/each}
                     </div>

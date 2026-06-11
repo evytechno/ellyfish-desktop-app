@@ -359,7 +359,7 @@
                         {#if b?.bankName}<div>Bank Name : {b.bankName}</div>{/if}
                         {#if b?.branchAddress || b?.bankAddress}<div>Bank Address : {b.branchAddress || b.bankAddress}</div>{/if}
                         {#if b?.accountNumber}<div>Account Number : {b.accountNumber}</div>{/if}
-                        {#if invoice?.swiftCode}<div>Swift Code : {invoice.swiftCode}</div>{/if}
+                        {#if invoice?.currency === "USD" && invoice?.swiftCode}<div>Swift Code : {invoice.swiftCode}</div>{/if}
                         {#if b?.ifscCode}<div>IFSC Code : {b.ifscCode}</div>{/if}
                       {/each}
                     </div>
@@ -416,7 +416,7 @@
 
               <!-- Bottom Action Bar -->
               <div class="no-print d-flex align-items-center justify-content-end gap-2 flex-wrap mt-4 pt-4 border-top">
-                <InvoiceExport {invoice} />
+                <!-- <InvoiceExport {invoice} /> -->
                 {#if workOrderCheckDone}
                   {#if workOrderId}
                     <a href="/admin/workorder/{workOrderId}" class="btn btn-success btn-sm">
