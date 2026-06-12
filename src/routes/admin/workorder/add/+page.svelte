@@ -27,7 +27,7 @@
   let orderId = null;
   let companyId = null;
   let workOrderDate = null;
-  let orderNo = "";
+
   let poNumber = "";
   let items = [];
   let remarks = "";
@@ -46,6 +46,16 @@
   let errorMessage = "";
   let woWarning = null;
   let formErrors = {};
+
+  const year2 = String(new Date().getFullYear()).slice(-2);
+  $: woNoPreview = companyId
+    ? (() => {
+        const c = companies.find(c => c.id === companyId);
+        if (!c) return "";
+        const prefix = c.name.trim().split(/\s+/)[0].toUpperCase().slice(0, 4);
+        return `${prefix}${year2}-**`;
+      })()
+    : "";
 
   const inCotermsArray = ["In India", "Outside India"];
   const inCotermsInArray = ["Ex", "Door Delivery", "Godown"];
@@ -82,7 +92,7 @@
       const check = await authApiFetch(`${API_ROUTES.WORK_ORDER}/check/${id}`);
       if (check.count > 0) {
         const labels = check.items
-          .map((w) => `WO ${w.financialYear}/${String(w.workOrderNo).padStart(6, "0")}`)
+          .map((w) => w.workOrderNo || `WO ${w.financialYear}`)
           .join(", ");
         woWarning = `This order already has ${check.count} work order(s): ${labels}`;
       }
@@ -98,7 +108,7 @@
     formErrors = {};
 
     const newWorkOrder = {
-      title, items, remarks, orderNo, poNumber, dispatchAddress,
+      title, items, remarks, poNumber, dispatchAddress,
       installationEngineer, dispatchPincode, packingType, packingCharges,
       inCoterms, inCotermsBy, transporterName, paymentMethod,
     };
@@ -188,7 +198,6 @@
       linkedOrder = { id: order.id, title: order.title, financialYear: order.financialYear, pId: order.pId };
       orderSelectKey++;
       poNumber = pi?.poNumber ?? "";
-      orderNo = pi?.invoiceNo ? String(pi.invoiceNo).padStart(6, "0") : "";
       remarks = pi?.remarks ?? "";
       if (pi?.items?.length) {
         items = pi.items.map((i) => ({ item: i.item ?? "", quantity: i.quantity ?? "0", unit: i.unit || "Pcs", price: 0, hsCode: "", total: 0 }));
@@ -214,7 +223,6 @@
       }
       title = inv.order?.title ?? inv.billToName ?? "";
       poNumber = inv.poNumber ?? "";
-      orderNo = inv.invoiceNo ? String(inv.invoiceNo).padStart(6, "0") : "";
       remarks = inv.remarks ?? "";
       const piItems = (inv.items ?? []).map((i) => ({ item: i.item ?? "", quantity: i.quantity ?? "0", unit: i.unit || "Pcs", price: 0, hsCode: i.hsCode ?? "", total: 0 }));
       const extraItems = (inv.extraItems ?? []).map((i) => ({ item: i.item ?? "", quantity: "0", unit: "Pcs", price: 0, hsCode: "", total: 0 }));
@@ -332,10 +340,10 @@
               </div>
 
               <div>
-                <label class="form-label">Work Order Number</label>
-                <input type="text" class="form-control" class:is-invalid={formErrors.orderNo} bind:value={orderNo} placeholder="Work Order Number" />
-                {#if formErrors.orderNo}<ul class="text-danger mt-1 text-xs"><li>{formErrors.orderNo[0]}</li></ul>{/if}
+                <label class="form-label">WO No. <span class="text-muted small">(Auto)</span></label>
+                <input type="text" class="form-control bg-light text-muted" readonly value={woNoPreview} placeholder="Select company first" />
               </div>
+
               <div>
                 <label class="form-label">Work Order Date</label>
                 <input type="date" class="form-control" bind:value={workOrderDate} />

@@ -936,7 +936,7 @@
         const ti = row.invoices?.[0];
         const piBtn = `<button onclick="window.__openPIWOTI('PI',${row.id})" class="btn btn-xs ${pi ? 'btn-soft-success' : 'btn-soft-secondary'} me-1" title="${pi ? `PI: ${pi.financialYear}/${String(pi.invoiceNo).padStart(6,'0')}` : 'Create PI'}">PI${pi ? ' ✓' : ''}</button>`;
         const woBtn = pi
-          ? `<button onclick="window.__openPIWOTI('WO',${row.id})" class="btn btn-xs ${wo ? 'btn-soft-success' : 'btn-soft-secondary'} me-1" title="${wo ? `WO: ${wo.financialYear}/${String(wo.workOrderNo).padStart(6,'0')}` : 'Create WO'}">WO${wo ? ' ✓' : ''}</button>`
+          ? `<button onclick="window.__openPIWOTI('WO',${row.id})" class="btn btn-xs ${wo ? 'btn-soft-success' : 'btn-soft-secondary'} me-1" title="${wo ? `WO: ${wo.workOrderNo}` : 'Create WO'}">WO${wo ? ' ✓' : ''}</button>`
           : `<span class="btn btn-xs btn-soft-secondary me-1 opacity-40" style="cursor:not-allowed" title="Create PI first">WO</span>`;
         const tiBtn = wo
           ? `<button onclick="window.__openPIWOTI('TI',${row.id})" class="btn btn-xs ${ti ? 'btn-soft-success' : 'btn-soft-secondary'}" title="${ti ? `TI: ${ti.financialYear}/${String(ti.invoiceNo).padStart(6,'0')}` : 'Create TI'}">TI${ti ? ' ✓' : ''}</button>`

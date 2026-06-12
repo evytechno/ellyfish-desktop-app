@@ -75,8 +75,16 @@
   let isOutOfIndia = false;
 
   // ── WO fields ─────────────────────────────────────────────────────────────
+  const _year2 = String(new Date().getFullYear()).slice(-2);
+  $: woNoPreview = (() => {
+    if (!companyId) return "";
+    const c = companies.find(c => c.id === companyId);
+    if (!c) return "";
+    const prefix = c.name.trim().split(/\s+/)[0].toUpperCase().slice(0, 4);
+    return `${prefix}${_year2}-**`;
+  })();
+
   let workOrderDate        = today();
-  let orderNo              = "";
   let woPoNumber           = "";
   let dispatchAddress      = "";
   let dispatchPincode      = "";
@@ -205,7 +213,7 @@
 
     } else if (type === "WO") {
       workOrderDate        = today();
-      orderNo              = ""; woPoNumber = "";
+      woPoNumber = "";
       dispatchAddress      = ""; dispatchPincode = "";
       transporterName      = "";
       packingType          = null; packingCharges = null;
@@ -392,7 +400,7 @@
       installationEngineer,
       // Only include date/optional fields when they have a value
       ...(workOrderDate    && { workOrderDate }),
-      ...(orderNo          && { orderNo }),
+
       ...(woPoNumber       && { poNumber: woPoNumber }),
       ...(installationDate && { installationDate }),
     };
@@ -453,7 +461,8 @@
   }
   function fmtRef(fy, no) {
     if (!fy || !no) return "—";
-    return `${fy} / ${String(no).padStart(6, "0")}`;
+    const display = /[a-zA-Z]/.test(String(no)) ? String(no) : String(no).padStart(6, "0");
+    return `${fy} / ${display}`;
   }
   function fmtCur(val, cur = "INR") {
     return new Intl.NumberFormat("en-IN", { style: "currency", currency: cur }).format(val || 0);
@@ -572,9 +581,9 @@
 
           {:else if type === "WO" && wo}
             <div class="row g-3 mb-3">
-              <div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">WO Number</div><div class="fw-semibold font-mono">{fmtRef(wo.financialYear, wo.workOrderNo)}</div></div>
+              <div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">WO Number</div><div class="fw-semibold font-mono">{wo.workOrderNo}</div></div>
               <div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Date</div><div>{fmtDate(wo.workOrderDate)}</div></div>
-              {#if wo.orderNo}<div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Order No.</div><div class="font-mono">{wo.orderNo}</div></div>{/if}
+              {#if wo.orderNo}<div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Ref. No.</div><div class="font-mono">{wo.orderNo}</div></div>{/if}
               {#if wo.poNumber}<div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">PO Number</div><div class="font-mono">{wo.poNumber}</div></div>{/if}
               {#if wo.dispatchAddress}<div class="col-12 col-md-6"><div class="text-muted" style="font-size:11px;">Dispatch Address</div><div>{wo.dispatchAddress} {wo.dispatchPincode || ""}</div></div>{/if}
               {#if wo.transporterName}<div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Transporter</div><div>{wo.transporterName}</div></div>{/if}
@@ -908,13 +917,14 @@
                   {#if formErrors.company}<div class="invalid-feedback">{formErrors.company}</div>{/if}
                 </div>
                 <div class="col-md-4">
+                  <label class="form-label fw-semibold" style="font-size:12px;">WO No. <span class="text-muted">(Auto)</span></label>
+                  <input type="text" class="form-control form-control-sm bg-light text-muted" readonly value={woNoPreview} placeholder="Select company first" />
+                </div>
+                <div class="col-md-4">
                   <label class="form-label fw-semibold" style="font-size:12px;">Work Order Date</label>
                   <input type="date" class="form-control form-control-sm" bind:value={workOrderDate} />
                 </div>
-                <div class="col-md-4">
-                  <label class="form-label fw-semibold" style="font-size:12px;">Order No.</label>
-                  <input type="text" class="form-control form-control-sm" bind:value={orderNo} placeholder="Work order number" />
-                </div>
+
                 <div class="col-md-4">
                   <label class="form-label fw-semibold" style="font-size:12px;">PO Number</label>
                   <input type="text" class="form-control form-control-sm" bind:value={woPoNumber} placeholder="PO Number" />
@@ -1041,7 +1051,7 @@
               {#if pi && wo}
                 <div class="alert alert-info py-2 px-3 mb-3 d-flex align-items-center gap-3 flex-wrap" style="font-size:12px;">
                   <i class="ti ti-info-circle"></i>
-                  <span>Pre-filled from <strong>PI {pi.financialYear}/{String(pi.invoiceNo).padStart(6,"0")}</strong> &amp; <strong>WO {wo.financialYear}/{String(wo.workOrderNo).padStart(6,"0")}</strong>. Quantities from Work Order, prices from PI.</span>
+                  <span>Pre-filled from <strong>PI {pi.financialYear}/{String(pi.invoiceNo).padStart(6,"0")}</strong> &amp; <strong>WO {wo.workOrderNo}</strong>. Quantities from Work Order, prices from PI.</span>
                 </div>
               {/if}
               <div class="row g-3">

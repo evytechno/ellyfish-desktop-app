@@ -173,7 +173,7 @@
         {#if pi}
           <button
             class="btn btn-xs flex-1 text-[10px] font-semibold {wo ? 'btn-soft-success' : 'btn-soft-secondary'}"
-            title={wo ? `WO: ${wo.financialYear}/${String(wo.workOrderNo).padStart(6,'0')}` : 'Create Work Order'}
+            title={wo ? `WO: ${wo.workOrderNo}` : 'Create Work Order'}
             on:click={(e) => openModal('WO', e)}
           >WO {wo ? '✓' : ''}</button>
         {:else}

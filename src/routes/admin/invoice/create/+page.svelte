@@ -80,7 +80,9 @@
 
   function formatDocRef(fy, num, pad = 6) {
     if (fy == null && num == null) return "—";
-    return `${fy ?? ""}/${String(num ?? "").padStart(pad, "0")}`;
+    const s = String(num ?? "");
+    const display = /[a-zA-Z]/.test(s) ? s : s.padStart(pad, "0");
+    return `${fy ?? ""}/${display}`;
   }
 
   function shipToChange(e) {

@@ -25,7 +25,7 @@
   let linkedOrder = null;
   let companyId = null;
   let workOrderDate = null;
-  let orderNo = "";
+
   let poNumber = "";
   let items = [];
   let remarks = "";
@@ -40,9 +40,39 @@
   let transporterName = "";
   let paymentMethod = null;
 
+  let workOrderNo = "";
+  let woNoWarning = "";
+  let woNoChecking = false;
+  const _year2 = String(new Date().getFullYear()).slice(-2);
+  $: woNoPrefix = (() => {
+    if (!companyId) return "";
+    const c = companies.find(c => c.id === companyId);
+    if (!c) return "";
+    return c.name.trim().split(/\s+/)[0].toUpperCase().slice(0, 4) + _year2 + "-";
+  })();
   let loading = false;
   let errorMessage = "";
   let formErrors = {};
+
+  let currentUser = null;
+  let isMaster = false;
+
+  let woNoTimer = null;
+  async function onWoNoInput() {
+    woNoWarning = "";
+    if (!workOrderNo) return;
+    clearTimeout(woNoTimer);
+    woNoTimer = setTimeout(async () => {
+      woNoChecking = true;
+      try {
+        const res = await authApiFetch(
+          `${API_ROUTES.WORK_ORDER}/check-no?value=${encodeURIComponent(workOrderNo)}&excludeId=${workOrderId}`
+        );
+        if (res.exists) woNoWarning = `"${workOrderNo}" is already used by another work order.`;
+      } catch (_) {}
+      woNoChecking = false;
+    }, 500);
+  }
 
   let workOrderId;
   $: workOrderId = $page.params.id;
@@ -90,10 +120,11 @@
     formErrors = {};
 
     const newWorkOrder = {
-      title, items, remarks, orderNo, poNumber, dispatchAddress,
+      title, items, remarks, poNumber, dispatchAddress,
       installationEngineer, dispatchPincode, packingType, packingCharges,
       inCoterms, inCotermsBy, transporterName, paymentMethod,
     };
+    if (isMaster && workOrderNo) newWorkOrder.workOrderNo = workOrderNo;
     if (workOrderDate) newWorkOrder.workOrderDate = workOrderDate;
     if (installationDate) newWorkOrder.installationDate = installationDate;
     newWorkOrder.companyId = companyId;
@@ -127,6 +158,8 @@
   }
 
   onMount(async () => {
+    currentUser = checkAuth();
+    isMaster = currentUser?.role === 'master';
     loadingData = true;
     try {
       const data = await authApiFetch(`${API_ROUTES.WORK_ORDER}/${workOrderId}`);
@@ -136,12 +169,18 @@
       selectedOrderTitle = data?.order?.title ?? "";
       if (data?.order) linkedOrder = { id: data.order.id, title: data.order.title, financialYear: data.order.financialYear, pId: data.order.pId };
       companyId = data?.company?.id;
+      const savedNo = data?.workOrderNo ?? "";
+      if (!savedNo && isMaster && data?.company) {
+        const prefix = data.company.name.trim().split(/\s+/)[0].toUpperCase().slice(0, 4);
+        workOrderNo = `${prefix}${_year2}-`;
+      } else {
+        workOrderNo = savedNo;
+      }
       if (data?.workOrderDate) workOrderDate = formatDateForInput(data.workOrderDate);
       if (data?.installationDate) installationDate = formatDateForInput(data.installationDate);
       dispatchAddress = data?.dispatchAddress;
       installationEngineer = data?.installationEngineer;
       poNumber = data?.poNumber;
-      orderNo = data?.orderNo;
       items = (data?.items || []).map(i => ({ ...i, unit: i.unit || "Pcs" }));
       remarks = data?.remarks;
       dispatchPincode = data?.dispatchPincode;
@@ -288,10 +327,28 @@
               </div>
 
               <div>
-                <label class="form-label">Work Order Number</label>
-                <input type="text" class="form-control" class:is-invalid={formErrors.orderNo} bind:value={orderNo} placeholder="Work Order Number" />
-                {#if formErrors.orderNo}<ul class="text-danger mt-1 text-xs"><li>{formErrors.orderNo[0]}</li></ul>{/if}
+                <label class="form-label">WO No.
+                  {#if !isMaster}<span class="text-muted small">(Auto)</span>{/if}
+                </label>
+                {#if isMaster}
+                  <input
+                    type="text"
+                    class="form-control"
+                    class:is-invalid={woNoWarning}
+                    bind:value={workOrderNo}
+                    on:input={onWoNoInput}
+                    placeholder={woNoPrefix ? `${woNoPrefix}**` : ""}
+                  />
+                  {#if woNoChecking}
+                    <small class="text-muted">Checking...</small>
+                  {:else if woNoWarning}
+                    <small class="text-danger">{woNoWarning}</small>
+                  {/if}
+                {:else}
+                  <input type="text" class="form-control bg-light text-muted" readonly value={workOrderNo} placeholder="—" />
+                {/if}
               </div>
+
               <div>
                 <label class="form-label">Work Order Date</label>
                 <input type="date" class="form-control" bind:value={workOrderDate} />

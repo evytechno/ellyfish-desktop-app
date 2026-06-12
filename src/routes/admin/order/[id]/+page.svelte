@@ -2396,9 +2396,7 @@
                           class="order-header-doc-link order-header-doc-link--success"
                         >
                           <i class="ti ti-file-description"></i>
-                          {order.workOrders[0].financialYear}/{String(
-                            order.workOrders[0].workOrderNo,
-                          ).padStart(6, "0")}
+                          {order.workOrders[0].workOrderNo}
                           {#if order.workOrders.length > 1}
                             <span class="badge bg-success ms-1 order-header-doc-badge"
                               >+{order.workOrders.length - 1}</span

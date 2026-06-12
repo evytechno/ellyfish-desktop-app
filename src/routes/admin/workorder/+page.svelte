@@ -318,15 +318,15 @@
   $: columns = [
     {
       key: "workOrderNo",
-      label: "Uniq No",
+      label: "WO No.",
       render: (val, row) => {
-        return `<a href="/admin/workorder/${row.id}"  class="flex items-center gap-1 text-danger">#${row?.workOrderNo?.toString().padStart(6, "0")}</a>`;
+        return `<a href="/admin/workorder/${row.id}" class="flex flex-col gap-0 text-danger">
+          <span>${row?.workOrderNo ? `#${row.workOrderNo}` : "—"}</span>
+          ${row?.orderNo ? `<span class="text-muted fw-normal" style="font-size:11px;">${row.orderNo}</span>` : ""}
+        </a>`;
       },
     },
-    {
-      key: "orderNo",
-      label: "Work Order No.",
-    },
+
     {
       key: "order",
       label: "Order",

@@ -103,7 +103,7 @@
           <div class="d-flex align-items-center gap-2">
             <h4 class="mb-0">Work Order</h4>
             {#if workOrder?.workOrderNo}
-              <span class="text-muted fw-normal fs-5">#{String(workOrder.workOrderNo).padStart(6, "0")}</span>
+              <span class="text-muted fw-normal fs-5">#{workOrder.workOrderNo}</span>
             {/if}
           </div>
           <nav aria-label="breadcrumb">
@@ -146,10 +146,14 @@
                 </div>
                 <hr />
                 <div class="grid grid-cols-2 gap-2">
-                  <div class="grid grid-cols-2 gap-2">
-                    <div class="font-medium">Work Order No. :</div>
-                    <div>{workOrder?.orderNo}</div>
-                  </div>
+
+                  {#if workOrder?.orderNo}
+                    <div class="grid grid-cols-2 gap-2">
+                      <div class="font-medium">Ref. No. :</div>
+                      <div>{workOrder.orderNo}</div>
+                    </div>
+                  {/if}
+
                   {#if workOrder?.workOrderDate}
                     <div class="grid grid-cols-2 gap-2">
                       <div class="font-medium">Date :</div>
@@ -177,9 +181,9 @@
                     </div>
                   {/if}
                   <div class="grid grid-cols-2 gap-2">
-                    <div class="font-medium">Uniq No. :</div>
+                    <div class="font-medium">WO No. :</div>
                     <div>
-                      #{workOrder?.workOrderNo?.toString().padStart(6, "0")}
+                      #{workOrder?.workOrderNo}
                     </div>
                   </div>
                   {#if workOrder?.dispatchAddress}

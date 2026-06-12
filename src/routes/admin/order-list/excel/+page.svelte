@@ -1052,7 +1052,7 @@
                       {#if pi}
                         <button
                           class="btn btn-xs text-[10px] font-semibold {wo ? 'btn-soft-success' : 'btn-soft-secondary'}"
-                          title={wo ? `WO: ${wo.financialYear}/${String(wo.workOrderNo).padStart(6,'0')}` : 'Create WO'}
+                          title={wo ? `WO: ${wo.workOrderNo}` : 'Create WO'}
                           on:click|stopPropagation={() => openPIWOTIModal('WO', order)}
                         >WO{wo ? ' ✓' : ''}</button>
                       {:else}
