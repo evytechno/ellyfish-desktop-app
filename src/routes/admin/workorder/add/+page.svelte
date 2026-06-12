@@ -8,6 +8,7 @@
   import Swal from "sweetalert2";
   import Loader from "$lib/components/Loader.svelte";
   import OrderSearchSelect from "$lib/components/OrderSearchSelect.svelte";
+  import TypeableSelect from "$lib/components/TypeableSelect.svelte";
   import { get } from "svelte/store";
   import { companiesAllStore } from "$lib/stores/dataStores";
   import { checkAuth } from "$lib/utils/auth";
@@ -377,11 +378,12 @@
               </div>
               <div>
                 <label class="form-label">Packing Type</label>
-                <select class="form-control" bind:value={packingType}>
-                  <option value={null}>Select Packing Type</option>
-                  <option value="Bubble Wrap">Bubble Wrap</option>
-                  <option value="Wooden Packing">Wooden Packing</option>
-                </select>
+                <TypeableSelect
+                  options={["Bubble Wrap", "Wooden Packing"]}
+                  value={packingType ?? ""}
+                  placeholder="Select Packing Type"
+                  on:change={(e) => (packingType = e.detail || null)}
+                />
               </div>
               {#if packingType === "Wooden Packing"}
                 <div>

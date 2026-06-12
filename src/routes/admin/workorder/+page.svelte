@@ -321,7 +321,7 @@
       label: "WO No.",
       render: (val, row) => {
         return `<a href="/admin/workorder/${row.id}" class="flex flex-col gap-0 text-danger">
-          <span>${row?.workOrderNo ? `#${row.workOrderNo}` : "—"}</span>
+          <span>${row?.workOrderNo ? row.workOrderNo : "—"}</span>
           ${row?.orderNo ? `<span class="text-muted fw-normal" style="font-size:11px;">${row.orderNo}</span>` : ""}
         </a>`;
       },

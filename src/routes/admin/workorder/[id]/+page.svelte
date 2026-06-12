@@ -103,7 +103,7 @@
           <div class="d-flex align-items-center gap-2">
             <h4 class="mb-0">Work Order</h4>
             {#if workOrder?.workOrderNo}
-              <span class="text-muted fw-normal fs-5">#{workOrder.workOrderNo}</span>
+              <span class="text-muted fw-normal fs-5">{workOrder.workOrderNo}</span>
             {/if}
           </div>
           <nav aria-label="breadcrumb">
@@ -147,12 +147,12 @@
                 <hr />
                 <div class="grid grid-cols-2 gap-2">
 
-                  {#if workOrder?.orderNo}
-                    <div class="grid grid-cols-2 gap-2">
-                      <div class="font-medium">Ref. No. :</div>
-                      <div>{workOrder.orderNo}</div>
+                  <div class="grid grid-cols-2 gap-2">
+                    <div class="font-medium">WO No. :</div>
+                    <div>
+                      {workOrder?.workOrderNo}
                     </div>
-                  {/if}
+                  </div>
 
                   {#if workOrder?.workOrderDate}
                     <div class="grid grid-cols-2 gap-2">
@@ -180,12 +180,12 @@
                       <div>{workOrder?.company?.name}</div>
                     </div>
                   {/if}
-                  <div class="grid grid-cols-2 gap-2">
-                    <div class="font-medium">WO No. :</div>
-                    <div>
-                      #{workOrder?.workOrderNo}
+                  {#if workOrder?.orderNo}
+                    <div class="grid grid-cols-2 gap-2">
+                      <div class="font-medium">Ref. No. :</div>
+                      <div>{workOrder.orderNo}</div>
                     </div>
-                  </div>
+                  {/if}
                   {#if workOrder?.dispatchAddress}
                     <div class="grid grid-cols-2 gap-2">
                       <div class="font-medium">Dispatch Address :</div>
