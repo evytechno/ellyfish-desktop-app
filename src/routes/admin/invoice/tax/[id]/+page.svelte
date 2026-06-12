@@ -99,6 +99,16 @@
 
 <svelte:head>
   <title>{pageTitle}</title>
+  <style>
+    @media print {
+      .no-print { display: none !important; }
+      .sidebar, aside, header.header, .main-wrapper > .header { display: none !important; }
+      .page-wrapper { padding: 0 !important; margin: 0 !important; }
+      .content { padding: 0 !important; margin: 0 !important; }
+      .card { margin: 0 !important; border: 0 !important; box-shadow: none !important; }
+      .card-body { margin: 0 !important; padding: 10mm !important; }
+    }
+  </style>
 </svelte:head>
 {#if loadingData}
   <Loader />

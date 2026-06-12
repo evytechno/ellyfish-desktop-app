@@ -87,6 +87,19 @@
   }
 </script>
 
+<svelte:head>
+  <style>
+    @media print {
+      .no-print { display: none !important; }
+      .sidebar, aside, header.header, .main-wrapper > .header { display: none !important; }
+      .page-wrapper { padding: 0 !important; margin: 0 !important; }
+      .content { padding: 0 !important; margin: 0 !important; }
+      .card { margin: 0 !important; border: 0 !important; box-shadow: none !important; }
+      .card-body { margin: 0 !important; padding: 10mm !important; }
+    }
+  </style>
+</svelte:head>
+
 {#if loadingData}
   <Loader />
 {/if}
@@ -165,7 +178,7 @@
                   {#if workOrder?.user}
                     <div class="grid grid-cols-2 gap-2">
                       <div class="font-medium">Order By :</div>
-                      <div>{workOrder?.user?.name}</div>
+                      <div>{workOrder?.orderByName || workOrder?.user?.name}</div>
                     </div>
                   {/if}
                   {#if workOrder?.poNumber}
@@ -343,29 +356,19 @@
     outline: none; background: #fff;
   }
   @media print {
-    @page {
-      padding: 5mm;
+    @page { margin: 0; size: A4; }
+    :global(*) {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      color-adjust: exact !important;
     }
-
-    .no-print {
-      display: none;
-      padding: 0;
-      margin: 0;
-    }
-    .pageHeader {
-      margin: 0 !important;
-      padding: 0 !important;
-    }
-    .card {
-      margin: 0;
-      border: 0;
-    }
-    .card-body {
-      margin: 0;
-    }
-    .content {
-      padding: 0;
-      margin: 0;
-    }
+    :global(.no-print) { display: none !important; }
+    :global(.sidebar), :global(aside), :global(header.header), :global(.main-wrapper > .header) { display: none !important; }
+    :global(.page-wrapper) { padding: 0 !important; margin: 0 !important; }
+    :global(.content) { padding: 0 !important; margin: 0 !important; }
+    :global(.card) { margin: 0 !important; border: 0 !important; box-shadow: none !important; }
+    :global(.card-body) { margin: 0 !important; padding: 10mm !important; }
+    table { page-break-inside: auto; }
+    tr { page-break-inside: avoid; }
   }
 </style>

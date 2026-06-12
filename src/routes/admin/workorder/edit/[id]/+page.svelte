@@ -32,6 +32,7 @@
   let remarks = "";
   let dispatchAddress = "";
   let installationDate = null;
+  let orderByName = "";
   let installationEngineer = "";
   let dispatchPincode = "";
   let packingType = null;
@@ -121,7 +122,7 @@
     formErrors = {};
 
     const newWorkOrder = {
-      title, items, remarks, poNumber, dispatchAddress,
+      title, items, remarks, poNumber, dispatchAddress, orderByName,
       installationEngineer, dispatchPincode, packingType, packingCharges,
       inCoterms, inCotermsBy, transporterName, paymentMethod,
     };
@@ -180,6 +181,7 @@
       if (data?.workOrderDate) workOrderDate = formatDateForInput(data.workOrderDate);
       if (data?.installationDate) installationDate = formatDateForInput(data.installationDate);
       dispatchAddress = data?.dispatchAddress;
+      orderByName = data?.orderByName ?? "";
       installationEngineer = data?.installationEngineer;
       poNumber = data?.poNumber;
       items = (data?.items || []).map(i => ({ ...i, unit: i.unit || "Pcs" }));
@@ -436,6 +438,10 @@
           </div>
           <div class="card-body">
             <div class="grid grid-cols-3 gap-2">
+              <div>
+                <label class="form-label">Order By</label>
+                <input type="text" class="form-control" bind:value={orderByName} placeholder="Order By Name" />
+              </div>
               <div>
                 <label class="form-label">Installation Engineer</label>
                 <input type="text" class="form-control" bind:value={installationEngineer} placeholder="Installation Engineer" />
