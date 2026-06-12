@@ -1,11 +1,11 @@
 {
-  "version": "1.0.45",
-  "notes": "## Elly Fish v1.0.45\n\nDownload the installer below to update.",
-  "pub_date": "2026-06-11T12:47:15.921Z",
+  "version": "1.0.46",
+  "notes": "## Elly Fish v1.0.46\n\nDownload the installer below to update.",
+  "pub_date": "2026-06-12T13:01:10.845Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUMUhqbWN6c3JKNDhjUUVjWmxZNmVWQnZUSEdxSkI1eEp6QzY3bkZsbFRkQ2tQSEcwZ2p3R0VFaWZWbVU4aStiMThSMGRDNVdZcWlHYjFnWVczYnJTcmhkcVcxbm1hZ0FjPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgxMTgyMDI3CWZpbGU6RWxseSBGaXNoXzEuMC40NV94NjQtc2V0dXAubnNpcy56aXAKbTJLeStYbml2cXVnem4raEdYcUtZSFk0dzFITXdBRGE1aXhaU05ZeU9xdngrYU1vR0JvTVFDdTJMNGxIZVpTRmM0NzM5aVlkTVlnV1RoOG4zOWtnQkE9PQo=",
-      "url": "https://github.com/evytechno/ellyfish-desktop-app/releases/download/v1.0.45/Elly.Fish_1.0.45_x64-setup.nsis.zip"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUMUhqbWN6c3JKNDh5ZFJsSFJRdFlQMmZ4d08xVVdXRFhRMThyZko4ZGovNXFQR1RXYzlsMlljS0QySGJuUjljYW5USXZoTkhjMjluZ2Q2MzBmV3lBTklXcFc2SFhkTEE0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgxMjY5MjY1CWZpbGU6RWxseSBGaXNoXzEuMC40Nl94NjQtc2V0dXAubnNpcy56aXAKY016YVVWbklzN3ZmRnBPbUNXdTZkVE8yQjBuSFJTTVN2UmFnRUE5LzBnSHJYMzBUZVQ5WGxoVDc1dHUvTG5yV3Z2WG00RXYycnF1M2lEOEtMK3BkQnc9PQo=",
+      "url": "https://github.com/evytechno/ellyfish-desktop-app/releases/download/v1.0.46/Elly.Fish_1.0.46_x64-setup.nsis.zip"
     }
   }
 }
