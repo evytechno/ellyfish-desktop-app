@@ -1,4 +1,4 @@
-<script>
+﻿<script>
   import { createEventDispatcher } from "svelte";
   import { authApiFetch } from "$lib/api/client";
   import { API_ROUTES } from "$lib/constants/apiRoutes";
@@ -7,14 +7,14 @@
   import { checkAuth } from "$lib/utils/auth";
   import Swal from "sweetalert2";
 
-  // ── Props ─────────────────────────────────────────────────────────────────
+  // â”€â”€ Props â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   export let open = false;
   export let type = "PI";   // "PI" | "WO" | "TI"
   export let order = null;
 
   const dispatch = createEventDispatcher();
 
-  // ── Derived ───────────────────────────────────────────────────────────────
+  // â”€â”€ Derived â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   $: pi  = order?.orderPayments?.[0] ?? null;
   $: wo  = order?.workOrders?.[0]   ?? null;
   $: ti  = order?.invoices?.[0]     ?? null;
@@ -28,7 +28,7 @@
     ? `/admin/workorder/${wo?.id}`
     : `/admin/invoice/tax/${ti?.id}`;
 
-  // ── Shared ────────────────────────────────────────────────────────────────
+  // â”€â”€ Shared â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   let step      = 1;
   let loading   = false;
   let formErrors = {};
@@ -37,9 +37,9 @@
   let bankAccounts       = [];
   let selectedBankAccount = null;
 
-  const unitOptions = ["Pcs", "Kg", "g", "L", "mL", "m", "cm", "Set", "Box", "Nos"];
+  const unitOptions = ["Pcs", "Kg", "g", "L", "mL", "m", "cm", "Set", "Box", "Nos", "Ton"];
 
-  // ── PI / TI fields ────────────────────────────────────────────────────────
+  // â”€â”€ PI / TI fields â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   let invoiceDate      = today();
   let piTitle          = "";
   let poNumber         = "";
@@ -74,7 +74,21 @@
   let taxItems   = [];
   let isOutOfIndia = false;
 
-  // ── WO fields ─────────────────────────────────────────────────────────────
+  // Tax slab selector
+  let taxCountry    = "India";
+  let taxState      = "Rajasthan";
+  let taxSlab       = null;
+
+  const indianStates = [
+    "Andhra Pradesh","Arunachal Pradesh","Assam","Bihar","Chhattisgarh","Goa","Gujarat",
+    "Haryana","Himachal Pradesh","Jharkhand","Karnataka","Kerala","Madhya Pradesh",
+    "Maharashtra","Manipur","Meghalaya","Mizoram","Nagaland","Odisha","Punjab","Rajasthan",
+    "Sikkim","Tamil Nadu","Telangana","Tripura","Uttar Pradesh","Uttarakhand","West Bengal",
+    "Andaman and Nicobar Islands","Chandigarh","Dadra and Nagar Haveli and Daman and Diu",
+    "Delhi","Jammu and Kashmir","Ladakh","Lakshadweep","Puducherry"
+  ];
+
+  // â”€â”€ WO fields â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const _year2 = String(new Date().getFullYear()).slice(-2);
   $: woNoPreview = (() => {
     if (!companyId) return "";
@@ -104,23 +118,23 @@
   const inCotermsOutsideArray = ["Ex", "FOB", "CIF"];
   const paymentMethodArray    = ["To Pay", "Paid"];
 
-  // ── Steps config ──────────────────────────────────────────────────────────
+  // â”€â”€ Steps config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   $: steps = type === "PI"
     ? ["Basic Info & Bill/Ship To", "Line Items", "Charges, Tax & Notes"]
     : type === "WO"
     ? ["Basic Info & Logistics", "Items & Remarks"]
     : ["Invoice Info & Bill/Ship To", "Items, Charges & Tax"];
 
-  // ── Totals (plain let — updated explicitly via recompute()) ──────────────
+  // â”€â”€ Totals (plain let â€” updated explicitly via recompute()) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   let itemsSubtotal = 0;
   let extraSubtotal = 0;
   let baseAmount    = 0;
   let taxTotal      = 0;
 
-  $: currencySymbol = currency === "USD" ? "$" : "₹";
+  $: currencySymbol = currency === "USD" ? "$" : "â‚¹";
 
   /**
-   * Explicit recompute — called after any change that affects totals.
+   * Explicit recompute â€” called after any change that affects totals.
    * Avoids Svelte reactive-ordering issues entirely.
    */
   function recompute() {
@@ -137,7 +151,7 @@
     return parseFloat(((baseAmount * (parseFloat(t.percentage) || 0)) / 100).toFixed(2));
   }
 
-  // ── Init on open ──────────────────────────────────────────────────────────
+  // â”€â”€ Init on open â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   $: if (open && order) init();
 
   function today() { return new Date().toISOString().split("T")[0]; }
@@ -158,8 +172,8 @@
     const parts = [];
     if (b.label)         parts.push(b.label);
     if (b.bankName)      parts.push(b.bankName);
-    if (b.accountNumber) parts.push(`(••••${String(b.accountNumber).slice(-4)})`);
-    return parts.join(" — ");
+    if (b.accountNumber) parts.push(`(â€¢â€¢â€¢â€¢${String(b.accountNumber).slice(-4)})`);
+    return parts.join(" â€” ");
   }
 
   function init() {
@@ -205,11 +219,11 @@
         : [{ item: "", quantity: 1, unit: "Pcs", unitPrice: 0, hsCode: "", total: 0 }];
       extraItems   = [];
       isOutOfIndia = false;
-      taxItems     = [
-        { item: "CGST", percentage: 9,  total: 0 },
-        { item: "SGST", percentage: 9,  total: 0 },
-        { item: "IGST", percentage: 18, total: 0 },
-      ];
+      taxCountry   = "India";
+      taxState     = "Rajasthan";
+      taxSlab      = 18;
+      taxItems     = [];
+      applyTaxSlab();
 
     } else if (type === "WO") {
       workOrderDate        = today();
@@ -258,19 +272,18 @@
       });
       extraItems   = (pi?.extraItems ?? []).map(i => ({ ...i }));
       isOutOfIndia = pi?.isOutOfIndia || false;
+      taxCountry   = pi?.country || (isOutOfIndia ? "Outside India" : "India");
+      taxState     = pi?.customerState || "Rajasthan";
+      taxSlab      = pi?.taxSlab || null;
       taxItems     = pi?.taxItems != null
         ? pi.taxItems.map(t => ({ item: t.item, percentage: t.percentage }))
-        : (isOutOfIndia ? [] : [
-            { item: "CGST", percentage: 9 },
-            { item: "SGST", percentage: 9 },
-            { item: "IGST", percentage: 18 },
-          ]);
+        : [];
     }
     // Always recompute totals after init so display is immediately correct
     recompute();
   }
 
-  // ── Item helpers ──────────────────────────────────────────────────────────
+  // â”€â”€ Item helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function updateItemTotal(i) {
     items = items.map((it, idx) => {
       if (idx !== i) return it;
@@ -287,6 +300,26 @@
   function removeExtra(i) { extraItems = extraItems.filter((_, idx) => idx !== i); recompute(); }
   function addTax()       { taxItems   = [...taxItems,   { item: "", percentage: 0 }]; recompute(); }
   function removeTax(i)   { taxItems   = taxItems.filter((_, idx) => idx !== i); recompute(); }
+
+  function applyTaxSlab() {
+    if (taxCountry === "Outside India") {
+      isOutOfIndia = true;
+      taxItems = [];
+    } else {
+      isOutOfIndia = false;
+      if (!taxSlab) { taxItems = []; recompute(); return; }
+      const slab = Number(taxSlab);
+      if (taxState === "Rajasthan") {
+        taxItems = [
+          { item: "CGST", percentage: slab / 2 },
+          { item: "SGST", percentage: slab / 2 },
+        ];
+      } else {
+        taxItems = [{ item: "IGST", percentage: slab }];
+      }
+    }
+    recompute();
+  }
 
   function toggleIndia(outOfIndia) {
     isOutOfIndia = outOfIndia;
@@ -311,10 +344,10 @@
     }
   }
 
-  // ── Step navigation ───────────────────────────────────────────────────────
+  // â”€â”€ Step navigation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function nextStep() {
     formErrors = {};
-    // TI uses companySnapshot from PI — no companyId needed
+    // TI uses companySnapshot from PI â€” no companyId needed
     if (type !== "TI" && !companyId) { formErrors.company = "Company is required."; return; }
 
     if (type === "PI" && step === 2) {
@@ -337,10 +370,10 @@
   }
   function prevStep() { step--; }
 
-  // ── Submit ────────────────────────────────────────────────────────────────
+  // â”€â”€ Submit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   async function submit() {
     formErrors = {};
-    // TI uses companySnapshot from PI — no companyId needed
+    // TI uses companySnapshot from PI â€” no companyId needed
     if (type !== "TI" && !companyId) { formErrors.company = "Company is required."; return; }
 
     if (type !== "WO") {
@@ -379,8 +412,10 @@
       extraItems,
       taxItems: taxItems.map(t => ({ ...t, total: taxItemTotal(t) })),
       isOutOfIndia,
+      country: taxCountry, customerState: taxCountry === "India" ? taxState : null, taxSlab: taxSlab || null,
       billToName, billToAddress, billToGSTNumber, billToMobile, billToEmail,
       shipToName, shipToAddress, shipToGSTNumber, shipToMobile, shipToEmail,
+      inCoterms, inCotermsBy,
     };
     if (invoiceDate) payload.invoiceDate = invoiceDate;
     if (poDate)      payload.poDate      = poDate;
@@ -435,8 +470,11 @@
       extraItems,
       taxItems: taxItems.map(t => ({ ...t, total: taxItemTotal(t) })),
       priceTerms, swiftCode, termsConditions, remarks,
+      isOutOfIndia,
+      country: taxCountry, customerState: taxCountry === "India" ? taxState : null, taxSlab: taxSlab || null,
       billToName, billToAddress, billToGSTNumber, billToMobile, billToEmail,
       shipToName, shipToAddress, shipToGSTNumber, shipToMobile, shipToEmail,
+      inCoterms, inCotermsBy,
       // Only send date fields when they have a value
       ...(invoiceDate && { invoiceDate }),
       ...(poNumber    && { poNumber }),
@@ -454,13 +492,13 @@
 
   function close() { dispatch("close"); }
 
-  // ── View helpers ──────────────────────────────────────────────────────────
+  // â”€â”€ View helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function fmtDate(d) {
-    if (!d) return "—";
+    if (!d) return "â€”";
     return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
   }
   function fmtRef(fy, no) {
-    if (!fy || !no) return "—";
+    if (!fy || !no) return "â€”";
     const display = /[a-zA-Z]/.test(String(no)) ? String(no) : String(no).padStart(6, "0");
     return `${fy} / ${display}`;
   }
@@ -481,7 +519,7 @@
       on:click|stopPropagation role="presentation"
     >
 
-      <!-- ── Header ─────────────────────────────────────────────────────── -->
+      <!-- â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
       <div class="flex items-center justify-between px-5 py-3 border-b border-gray-200 flex-shrink-0">
         <div class="flex items-center gap-2">
           <span class="badge text-xs font-bold px-2 py-1 rounded
@@ -498,7 +536,7 @@
         <button class="btn-close" style="font-size:11px;" on:click={close}></button>
       </div>
 
-      <!-- ── Step Indicator (create only) ──────────────────────────────── -->
+      <!-- â”€â”€ Step Indicator (create only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
       {#if isCreate}
         <div class="px-5 pt-3 pb-2 border-b border-gray-100 flex-shrink-0">
           <div class="d-flex align-items-center" style="gap:0;">
@@ -527,10 +565,10 @@
         </div>
       {/if}
 
-      <!-- ── Body ──────────────────────────────────────────────────────── -->
+      <!-- â”€â”€ Body â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
       <div class="flex-1 overflow-y-auto px-5 py-4">
 
-        <!-- ═══════════════ VIEW MODE ═══════════════ -->
+        <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• VIEW MODE â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
         {#if isView}
           {#if type === "PI" && pi}
             <div class="row g-3 mb-3">
@@ -648,10 +686,10 @@
             {/if}
           {/if}
 
-        <!-- ═══════════════ CREATE MODE ═══════════════ -->
+        <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• CREATE MODE â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
         {:else}
 
-          <!-- ════ PI STEPS ════ -->
+          <!-- â•â•â•â• PI STEPS â•â•â•â• -->
           {#if type === "PI"}
 
             <!-- Step 1: Basic Info & Bill/Ship To -->
@@ -662,7 +700,7 @@
                   <label class="form-label fw-semibold" style="font-size:12px;">Company <span class="text-danger">*</span></label>
                   <select class="form-select form-select-sm" class:is-invalid={formErrors.company}
                     bind:value={companyId} on:change={(e) => companyChange(e.target.value)}>
-                    <option value={null}>— Select Company —</option>
+                    <option value={null}>â€” Select Company â€”</option>
                     {#each companies as c}<option value={c.id}>{c.name}</option>{/each}
                   </select>
                   {#if formErrors.company}<div class="invalid-feedback">{formErrors.company}</div>{/if}
@@ -671,7 +709,7 @@
                   <label class="form-label fw-semibold" style="font-size:12px;">Bank Account</label>
                   <select class="form-select form-select-sm" bind:value={selectedBankAccount}
                     on:change={(e) => bankAccountChange(selectedBankAccount)}>
-                    <option value={null}>— Select Bank —</option>
+                    <option value={null}>â€” Select Bank â€”</option>
                     {#each bankAccounts as b}<option value={b}>{bankLabel(b)}</option>{/each}
                   </select>
                 </div>
@@ -690,8 +728,8 @@
                 <div class="col-md-4">
                   <label class="form-label fw-semibold" style="font-size:12px;">Currency</label>
                   <select class="form-select form-select-sm" bind:value={currency}>
-                    <option value="INR">INR — Indian Rupee (₹)</option>
-                    <option value="USD">USD — US Dollar ($)</option>
+                    <option value="INR">INR â€” Indian Rupee (â‚¹)</option>
+                    <option value="USD">USD â€” US Dollar ($)</option>
                   </select>
                 </div>
                 <div class="col-md-4">
@@ -716,6 +754,24 @@
                 <div class="col-md-4">
                   <label class="form-label fw-semibold" style="font-size:12px;">Price Terms</label>
                   <input type="text" class="form-control form-control-sm" bind:value={priceTerms} placeholder="e.g. 30 days net" />
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label fw-semibold" style="font-size:12px;">Incoterms</label>
+                  <select class="form-select form-select-sm" bind:value={inCoterms}>
+                    <option value={null}>— Select —</option>
+                    {#each inCotermsArray as c}<option>{c}</option>{/each}
+                  </select>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label fw-semibold" style="font-size:12px;">Incoterms By</label>
+                  <select class="form-select form-select-sm" bind:value={inCotermsBy}>
+                    <option value={null}>— Select —</option>
+                    {#if inCoterms === "Outside India"}
+                      {#each inCotermsOutsideArray as c}<option>{c}</option>{/each}
+                    {:else}
+                      {#each inCotermsInArray as c}<option>{c}</option>{/each}
+                    {/if}
+                  </select>
                 </div>
               </div>
 
@@ -784,7 +840,7 @@
                         </td>
                       </tr>
                     {:else}
-                      <tr><td colspan="8" class="text-center text-muted py-3">No items — click Add Item</td></tr>
+                      <tr><td colspan="8" class="text-center text-muted py-3">No items â€” click Add Item</td></tr>
                     {/each}
                     <tr class="table-light">
                       <td colspan="6" class="text-end fw-semibold px-3 py-2">Subtotal</td>
@@ -800,6 +856,7 @@
               <div class="row g-3">
                 <!-- Extra Charges -->
                 <div class="col-md-6">
+                  <div class="border rounded p-2">
                   <div class="d-flex align-items-center justify-content-between mb-2">
                     <span class="fw-semibold small text-uppercase text-muted">Extra Charges</span>
                     <button type="button" class="btn btn-xs btn-outline-secondary" on:click={addExtra}><i class="ti ti-plus me-1"></i>Add</button>
@@ -820,32 +877,63 @@
                       </tbody>
                     </table>
                   {/if}
+                  </div>
                 </div>
                 <!-- Tax Items -->
                 <div class="col-md-6">
+                  <div class="border rounded p-2">
                   <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-1">
                     <span class="fw-semibold small text-uppercase text-muted">Tax Items</span>
-                    <div class="d-flex align-items-center gap-2">
-                      <label class="d-flex align-items-center gap-1 mb-0" style="cursor:pointer;font-size:11px;">
-                        <input type="radio" name="piIndiaType" checked={!isOutOfIndia} on:change={() => toggleIndia(false)} />
-                        <span style="color:#2e7d32;font-weight:600;">In India</span>
-                      </label>
-                      <label class="d-flex align-items-center gap-1 mb-0" style="cursor:pointer;font-size:11px;">
-                        <input type="radio" name="piIndiaType" checked={isOutOfIndia} on:change={() => toggleIndia(true)} />
-                        <span style="color:#856404;font-weight:600;">Out of India</span>
-                      </label>
-                      {#if !isOutOfIndia}
-                      <button type="button" class="btn btn-xs btn-outline-secondary" on:click={addTax}><i class="ti ti-plus me-1"></i>Add</button>
-                      {/if}
-                    </div>
+                    {#if !isOutOfIndia && taxItems.length > 0}
+                    <button type="button" class="btn btn-xs btn-outline-secondary" on:click={addTax}><i class="ti ti-plus me-1"></i>Add</button>
+                    {/if}
                   </div>
+                  <!-- Country + State + Slab selectors -->
+                  <div class="d-flex align-items-center gap-1 mb-2 flex-wrap">
+                    <span class="fw-semibold small text-muted">Tax Region :</span>
+                  </div>
+                  <div class="row g-1 mb-2">
+                    <div class="col-12 col-sm-6">
+                      <select class="form-select form-select-sm" bind:value={taxCountry} on:change={applyTaxSlab}>
+                        <option value="India">India</option>
+                        <option value="Outside India">Outside India</option>
+                      </select>
+                    </div>
+                    {#if taxCountry === "India"}
+                    <div class="col-12 col-sm-6">
+                      <select class="form-select form-select-sm" bind:value={taxState} on:change={applyTaxSlab}>
+                        {#each indianStates as s}
+                          <option value={s}>{s}</option>
+                        {/each}
+                      </select>
+                    </div>
+                    {/if}
+                  </div>
+                  {#if taxCountry === "India"}
+                  <div class="d-flex gap-1 flex-wrap mb-2">
+                    {#each [5, 12, 18, 28] as slab}
+                      <button type="button"
+                        class="btn btn-sm {taxSlab === slab ? 'btn-primary' : 'btn-outline-secondary'}"
+                        style="min-width:48px;font-size:11px;"
+                        on:click={() => { taxSlab = slab; applyTaxSlab(); }}>
+                        {slab}%
+                      </button>
+                    {/each}
+                    {#if taxSlab}
+                    <button type="button" class="btn btn-sm btn-outline-danger" style="font-size:11px;"
+                      on:click={() => { taxSlab = null; taxItems = []; recompute(); }}>
+                      <i class="ti ti-x"></i>
+                    </button>
+                    {/if}
+                  </div>
+                  {/if}
                   {#if isOutOfIndia}
                     <div class="d-flex align-items-center justify-content-center p-3 rounded"
                       style="background:#fff3cd;border:1px dashed #ffc107;color:#856404;">
                       <i class="ti ti-world-off me-2"></i>
                       <span style="font-size:12px;font-weight:600;">Tax not applicable (Export)</span>
                     </div>
-                  {:else}
+                  {:else if taxItems.length > 0}
                     <table class="table table-sm table-bordered mb-0">
                       <thead class="table-light"><tr><th>Tax</th><th class="text-center" style="width:80px;">Rate %</th><th class="text-end" style="width:90px;">Amount</th><th style="width:36px;"></th></tr></thead>
                       <tbody>
@@ -859,7 +947,10 @@
                         {/each}
                       </tbody>
                     </table>
+                  {:else}
+                    <div class="text-muted text-center p-2" style="font-size:12px;">Select a tax slab above to auto-fill</div>
                   {/if}
+                  </div>
                 </div>
 
                 <!-- Discount + Total Label + Total Override + Grand Total -->
@@ -901,7 +992,7 @@
               </div>
             {/if}
 
-          <!-- ════ WO STEPS ════ -->
+          <!-- â•â•â•â• WO STEPS â•â•â•â• -->
           {:else if type === "WO"}
 
             <!-- Step 1: Basic Info & Logistics -->
@@ -911,7 +1002,7 @@
                 <div class="col-md-4">
                   <label class="form-label fw-semibold" style="font-size:12px;">Company <span class="text-danger">*</span></label>
                   <select class="form-select form-select-sm" class:is-invalid={formErrors.company} bind:value={companyId}>
-                    <option value={null}>— Select Company —</option>
+                    <option value={null}>â€” Select Company â€”</option>
                     {#each companies as c}<option value={c.id}>{c.name}</option>{/each}
                   </select>
                   {#if formErrors.company}<div class="invalid-feedback">{formErrors.company}</div>{/if}
@@ -948,7 +1039,7 @@
                 <div class="col-md-3">
                   <label class="form-label fw-semibold" style="font-size:12px;">Packing Type</label>
                   <select class="form-select form-select-sm" bind:value={packingType}>
-                    <option value={null}>— Select —</option>
+                    <option value={null}>â€” Select â€”</option>
                     <option value="Bubble Wrap">Bubble Wrap</option>
                     <option value="Wooden Packing">Wooden Packing</option>
                   </select>
@@ -957,23 +1048,23 @@
                   <div class="col-md-3">
                     <label class="form-label fw-semibold" style="font-size:12px;">Packing Charges</label>
                     <select class="form-select form-select-sm" bind:value={packingCharges}>
-                      <option value={null}>— Select —</option>
+                      <option value={null}>â€” Select â€”</option>
                       <option value="Paid">Paid</option>
                       <option value="Unpaid">Unpaid</option>
                     </select>
                   </div>
                 {/if}
                 <div class="col-md-3">
-                  <label class="form-label fw-semibold" style="font-size:12px;">In COTERMS</label>
+                  <label class="form-label fw-semibold" style="font-size:12px;">Incoterms</label>
                   <select class="form-select form-select-sm" bind:value={inCoterms}>
-                    <option value={null}>— Select —</option>
+                    <option value={null}>â€” Select â€”</option>
                     {#each inCotermsArray as c}<option>{c}</option>{/each}
                   </select>
                 </div>
                 <div class="col-md-3">
-                  <label class="form-label fw-semibold" style="font-size:12px;">In COTERMS By</label>
+                  <label class="form-label fw-semibold" style="font-size:12px;">Incoterms By</label>
                   <select class="form-select form-select-sm" bind:value={inCotermsBy}>
-                    <option value={null}>— Select —</option>
+                    <option value={null}>â€” Select â€”</option>
                     {#if inCoterms === "Outside India"}
                       {#each inCotermsOutsideArray as c}<option>{c}</option>{/each}
                     {:else}
@@ -984,7 +1075,7 @@
                 <div class="col-md-3">
                   <label class="form-label fw-semibold" style="font-size:12px;">Payment Method</label>
                   <select class="form-select form-select-sm" bind:value={woPaymentMethod}>
-                    <option value={null}>— Select —</option>
+                    <option value={null}>â€” Select â€”</option>
                     {#each paymentMethodArray as m}<option>{m}</option>{/each}
                   </select>
                 </div>
@@ -1031,7 +1122,7 @@
                         </td>
                       </tr>
                     {:else}
-                      <tr><td colspan="5" class="text-center text-muted py-3">No items — click Add Item</td></tr>
+                      <tr><td colspan="5" class="text-center text-muted py-3">No items â€” click Add Item</td></tr>
                     {/each}
                   </tbody>
                 </table>
@@ -1042,7 +1133,7 @@
               </div>
             {/if}
 
-          <!-- ════ TI STEPS ════ -->
+          <!-- â•â•â•â• TI STEPS â•â•â•â• -->
           {:else if type === "TI"}
 
             <!-- Step 1: Invoice Info & Bill/Ship To -->
@@ -1070,13 +1161,31 @@
                 <div class="col-md-4">
                   <label class="form-label fw-semibold" style="font-size:12px;">Currency</label>
                   <select class="form-select form-select-sm" bind:value={currency}>
-                    <option value="INR">INR — Indian Rupee (₹)</option>
-                    <option value="USD">USD — US Dollar ($)</option>
+                    <option value="INR">INR â€” Indian Rupee (â‚¹)</option>
+                    <option value="USD">USD â€” US Dollar ($)</option>
                   </select>
                 </div>
                 <div class="col-md-4">
                   <label class="form-label fw-semibold" style="font-size:12px;">Price Terms</label>
                   <input type="text" class="form-control form-control-sm" bind:value={priceTerms} placeholder="e.g. 30 days net" />
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label fw-semibold" style="font-size:12px;">Incoterms</label>
+                  <select class="form-select form-select-sm" bind:value={inCoterms}>
+                    <option value={null}>— Select —</option>
+                    {#each inCotermsArray as c}<option>{c}</option>{/each}
+                  </select>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label fw-semibold" style="font-size:12px;">Incoterms By</label>
+                  <select class="form-select form-select-sm" bind:value={inCotermsBy}>
+                    <option value={null}>— Select —</option>
+                    {#if inCoterms === "Outside India"}
+                      {#each inCotermsOutsideArray as c}<option>{c}</option>{/each}
+                    {:else}
+                      {#each inCotermsInArray as c}<option>{c}</option>{/each}
+                    {/if}
+                  </select>
                 </div>
                 <div class="col-md-6">
                   <label class="form-label fw-semibold" style="font-size:12px;">Remarks</label>
@@ -1161,6 +1270,7 @@
               <div class="row g-3">
                 <!-- Extra Charges -->
                 <div class="col-md-5">
+                  <div class="border rounded p-2">
                   <div class="d-flex align-items-center justify-content-between mb-2">
                     <span class="fw-semibold small text-uppercase text-muted">Extra Charges</span>
                     <button type="button" class="btn btn-xs btn-outline-secondary" on:click={addExtra}><i class="ti ti-plus me-1"></i>Add</button>
@@ -1181,12 +1291,15 @@
                       </tbody>
                     </table>
                   {/if}
+                  </div>
                 </div>
                 <!-- Tax Items -->
                 <div class="col-md-7">
+                  <div class="border rounded p-2">
                   <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-1">
                     <span class="fw-semibold small text-uppercase text-muted">Tax Items</span>
                     <div class="d-flex align-items-center gap-2">
+                      <span class="fw-semibold small text-muted">Tax Region :</span>
                       <label class="d-flex align-items-center gap-1 mb-0" style="cursor:pointer;font-size:11px;">
                         <input type="radio" name="tiIndiaType" checked={!isOutOfIndia} on:change={() => toggleIndia(false)} />
                         <span style="color:#2e7d32;font-weight:600;">In India</span>
@@ -1221,6 +1334,7 @@
                       </tbody>
                     </table>
                   {/if}
+                  </div>
                 </div>
 
                 <!-- Discount + Total Label + Override + Grand Total -->
@@ -1256,7 +1370,7 @@
         {/if}
       </div>
 
-      <!-- ── Footer ──────────────────────────────────────────────────────── -->
+      <!-- â”€â”€ Footer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
       <div class="flex items-center justify-between px-5 py-3 border-t border-gray-200 flex-shrink-0 gap-2 flex-shrink-0">
         {#if isView}
           <a href={detailUrl} class="btn btn-sm btn-primary"><i class="ti ti-external-link me-1"></i>Full Detail</a>
@@ -1278,7 +1392,7 @@
             {:else}
               <button type="button" class="btn btn-sm btn-success" disabled={loading} on:click={submit}>
                 {#if loading}
-                  <span class="spinner-border spinner-border-sm me-1"></span>Saving…
+                  <span class="spinner-border spinner-border-sm me-1"></span>Savingâ€¦
                 {:else}
                   <i class="ti ti-check me-1"></i>Create {type}
                 {/if}
@@ -1291,3 +1405,4 @@
     </div>
   </div>
 {/if}
+

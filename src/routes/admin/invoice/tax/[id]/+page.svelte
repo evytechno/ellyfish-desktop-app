@@ -221,6 +221,12 @@
                         <div>{invoice.priceTerms}</div>
                       </div>
                     {/if}
+                    {#if invoice?.inCoterms}
+                      <div class="flex items-center justify-between pb-1 px-0">
+                        <div>Incoterms</div>
+                        <div>{invoice.inCoterms}{invoice.inCotermsBy ? ` - ${invoice.inCotermsBy}` : ""}</div>
+                      </div>
+                    {/if}
                   </div>
                 </div>
 
@@ -249,23 +255,23 @@
 
                 <div>
                   <div class="table-responsive">
-                    <table class="w-full">
+                    <table class="w-full" style="table-layout:fixed;">
                       <thead class="bg-[#106ab0] text-white">
                         <tr>
-                          <th class="border p-2 text-white text-center">No.</th>
+                          <th class="border p-2 text-white text-center" style="width:44px;">No.</th>
                           <th class="border p-2 text-white">Name</th>
-                          <th class="border p-2 text-white text-center">Qty</th>
-                          <th class="border p-2 text-white text-center">Unit</th>
-                          <th class="border p-2 text-white text-center">Unit Price</th>
-                          <th class="border p-2 text-white text-center">HS Code</th>
-                          <th class="border p-2 text-white text-center">Total</th>
+                          <th class="border p-2 text-white text-center" style="width:55px;">Qty</th>
+                          <th class="border p-2 text-white text-center" style="width:55px;">Unit</th>
+                          <th class="border p-2 text-white text-center" style="width:100px;">Unit Price</th>
+                          <th class="border p-2 text-white text-center" style="width:80px;">HS Code</th>
+                          <th class="border p-2 text-white text-center" style="width:100px;">Total</th>
                         </tr>
                       </thead>
                       <tbody>
                         {#each invoice?.items ?? [] as item, index}
                           <tr>
                             <td class="border p-2 text-center">{index + 1}.</td>
-                            <td class="border p-2 capitalize">{item?.item}</td>
+                            <td class="border p-2 capitalize" style="word-break:break-word;overflow-wrap:break-word;">{item?.item}</td>
                             <td class="border p-2 text-center">{item?.quantity}</td>
                             <td class="border p-2 text-center">{item?.unit || "Pcs"}</td>
                             <td class="border p-2 text-center">

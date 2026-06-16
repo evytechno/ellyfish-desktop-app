@@ -55,6 +55,38 @@
   let currentUser;
   let query = null;
 
+  // ── Requirement inline edit ───────────────────────────────────────────────
+  let editingRequirement = false;
+  let requirementDraft = "";
+  let savingRequirement = false;
+
+  function startEditRequirement() {
+    requirementDraft = query?.description ?? "";
+    editingRequirement = true;
+  }
+
+  function cancelEditRequirement() {
+    editingRequirement = false;
+    requirementDraft = "";
+  }
+
+  async function saveRequirement() {
+    if (savingRequirement) return;
+    savingRequirement = true;
+    try {
+      await authApiFetch(`${API_ROUTES.QUERY}/${queryId}`, {
+        method: "PATCH",
+        data: JSON.stringify({ description: requirementDraft }),
+      });
+      query = { ...query, description: requirementDraft };
+      editingRequirement = false;
+    } catch {
+      // keep modal open on error
+    } finally {
+      savingRequirement = false;
+    }
+  }
+
   // Order drawer
   let orderDrawerOpen = false;
   let orderDrawerData = null;
@@ -3206,12 +3238,6 @@
 
 <div class="page-wrapper">
   <div class="content">
-    <div class="d-flex align-items-center gap-2 mb-3">
-      <button class="btn btn-sm btn-outline-secondary" on:click={() => history.back()}>
-        <i class="ti ti-arrow-left"></i> Back
-      </button>
-      <h4 class="fw-bold mb-0">Query Detail</h4>
-    </div>
 
     {#if loading}
       <div class="text-center py-5"><span class="spinner-border text-primary"></span></div>
@@ -3346,7 +3372,12 @@
             <div class="switch-bar" class:switch-bar--active={switching}></div>
 
             <!-- ── Card label ── -->
-            <div class="qd-card-label"><i class="ti ti-message-circle"></i>Query Detail</div>
+            <div class="qd-card-label d-flex align-items-center gap-2">
+              <button class="btn btn-sm btn-outline-secondary py-0 px-1" on:click={() => history.back()} title="Back">
+                <i class="ti ti-arrow-left"></i>
+              </button>
+              <span><i class="ti ti-message-circle"></i>Query Detail</span>
+            </div>
 
             <!-- ── Header: subject + status ── -->
             <div class="qd-header" class:qd-header--collapsed={qdCardCollapsed} style="cursor:pointer;" on:click={() => qdCardCollapsed = !qdCardCollapsed} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && (qdCardCollapsed = !qdCardCollapsed)}>
@@ -3365,12 +3396,31 @@
             <div transition:slide={{ duration: 250 }}>
 
             <!-- ── Requirement ── -->
-            {#if query.description}
-              <div class="qd-description">
-                <div class="qd-meta-label mb-1"><i class="ti ti-notes"></i> Requirement</div>
-                {query.description}
+            <div class="qd-description">
+              <div class="d-flex align-items-center justify-content-between mb-1">
+                <div class="qd-meta-label"><i class="ti ti-notes"></i> Requirement</div>
+                {#if !editingRequirement}
+                  <button class="btn btn-xs btn-outline-dark py-0 px-1" style="font-size:11px;" on:click={startEditRequirement}>
+                    <i class="ti ti-edit"></i> Edit
+                  </button>
+                {/if}
               </div>
-            {/if}
+              {#if editingRequirement}
+                <textarea
+                  class="form-control form-control-sm mb-2"
+                  rows="4"
+                  bind:value={requirementDraft}
+                  disabled={savingRequirement}
+                  placeholder="Describe your requirement in detail..."
+                ></textarea>
+                <div class="d-flex gap-2">
+                  <button class="btn btn-primary btn-sm" style="line-height:1.5;" on:click={saveRequirement} disabled={savingRequirement}>{savingRequirement ? "Saving..." : "Save"}</button>
+                  <button class="btn btn-outline-dark btn-sm" on:click={cancelEditRequirement} disabled={savingRequirement}>Cancel</button>
+                </div>
+              {:else}
+                <div style="white-space:pre-wrap;">{query.description || "—"}</div>
+              {/if}
+            </div>
 
             <!-- ── Tags: type + priority ── -->
             <div class="qd-tags">
@@ -5506,7 +5556,7 @@
     background: #fff;
     border-radius: 16px;
     box-shadow: 0 2px 16px rgba(0,0,0,0.08);
-    height: calc(100vh - 152px);
+    height: calc(100vh - 100px);
     min-height: 480px;
     overflow: hidden;
   }
@@ -6514,7 +6564,7 @@
   .query-left-col {
     display: flex;
     flex-direction: column;
-    height: calc(100vh - 152px);
+    height: calc(100vh - 100px);
     min-height: 480px;
     overflow: hidden;
   }
@@ -6740,7 +6790,7 @@
 
   /* ── Order Side Drawer ───────────────────────────────────────────── */
   .order-inline-panel {
-    height: calc(100vh - 152px);
+    height: calc(100vh - 100px);
     min-height: 480px;
     display: flex;
     flex-direction: column;

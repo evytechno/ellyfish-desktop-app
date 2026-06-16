@@ -1,4 +1,4 @@
-<script>
+﻿<script>
   import { onMount } from "svelte";
   import { page } from "$app/stores";
   import { goto } from "$app/navigation";
@@ -17,7 +17,7 @@
   let invoiceId;
   $: invoiceId = $page.params.id;
 
-  const unitOptions = ["Pcs", "Kg", "g", "L", "mL", "m", "cm", "Set", "Box", "Nos"];
+  const unitOptions = ["Pcs", "Kg", "g", "L", "mL", "m", "cm", "Set", "Box", "Nos", "Ton"];
 
   let invoiceDate = "";
   let title = "";
@@ -29,7 +29,23 @@
   let items = [];
   let extraItems = [];
   let taxItems = [];
+  let taxCountry = "India";
+  let taxState = "Rajasthan";
+  let taxSlab = null;
+  const indianStates = [
+    "Andhra Pradesh","Arunachal Pradesh","Assam","Bihar","Chhattisgarh","Goa","Gujarat",
+    "Haryana","Himachal Pradesh","Jharkhand","Karnataka","Kerala","Madhya Pradesh",
+    "Maharashtra","Manipur","Meghalaya","Mizoram","Nagaland","Odisha","Punjab","Rajasthan",
+    "Sikkim","Tamil Nadu","Telangana","Tripura","Uttar Pradesh","Uttarakhand","West Bengal",
+    "Andaman and Nicobar Islands","Chandigarh","Dadra and Nagar Haveli and Daman and Diu",
+    "Delhi","Jammu and Kashmir","Ladakh","Lakshadweep","Puducherry"
+  ];
   let priceTerms = "";
+  let inCoterms = null;
+  let inCotermsBy = null;
+  const inCotermsArray = ["In India", "Outside India"];
+  const inCotermsInArray = ["Ex", "Door Delivery", "Godown"];
+  const inCotermsOutsideArray = ["Ex", "FOB", "CIF"];
   let swiftCode = "";
   let termsConditions = "";
   let remarks = "";
@@ -74,6 +90,21 @@
 
   $: items, extraItems, taxItems, discount, recalculate();
 
+  function applyTaxSlab() {
+    if (taxCountry === "Outside India") {
+      taxItems = [];
+    } else {
+      if (!taxSlab) { taxItems = []; recalculate(); return; }
+      const slab = Number(taxSlab);
+      if (taxState === "Rajasthan") {
+        taxItems = [{ item: "CGST", percentage: slab / 2, total: 0 }, { item: "SGST", percentage: slab / 2, total: 0 }];
+      } else {
+        taxItems = [{ item: "IGST", percentage: slab, total: 0 }];
+      }
+    }
+    recalculate();
+  }
+
   function formatDateForInput(date) {
     if (!date) return "";
     return new Date(date).toISOString().split("T")[0];
@@ -104,7 +135,12 @@
     items = (data.items ?? []).map((i) => ({ ...i, unit: i.unit || "Pcs", price: i.price ?? i.unitPrice ?? 0 }));
     extraItems = (data.extraItems ?? []).map((i) => ({ ...i }));
     taxItems = (data.taxItems ?? []).map((t) => ({ ...t }));
+    taxCountry = data.country || "India";
+    taxState = data.customerState || "Rajasthan";
+    taxSlab = data.taxSlab || null;
     priceTerms = data.priceTerms ?? "";
+    inCoterms = data.inCoterms ?? null;
+    inCotermsBy = data.inCotermsBy ?? null;
     swiftCode = data.swiftCode ?? "";
     termsConditions = data.termsConditions ?? "";
     remarks = data.remarks ?? "";
@@ -146,6 +182,8 @@
             discount = pi.discount ?? 0;
             totalAmountTitle = pi.totalAmountTitle ?? "Total Amount";
             priceTerms = pi.priceTerms ?? "";
+            inCoterms = pi.inCoterms ?? null;
+            inCotermsBy = pi.inCotermsBy ?? null;
             swiftCode = pi.swiftCode ?? "";
             termsConditions = pi.termsConditions ?? "";
             remarks = pi.remarks ?? "";
@@ -161,6 +199,9 @@
             shipToEmail = pi.shipToEmail ?? "";
             extraItems = (pi.extraItems ?? []).map((i) => ({ ...i }));
             taxItems = (pi.taxItems ?? []).map((t) => ({ ...t }));
+            taxCountry = pi.country || "India";
+            taxState = pi.customerState || "Rajasthan";
+            taxSlab = pi.taxSlab || null;
             // Items: PI descriptions + WO quantities
             const piItems = pi.items ?? [];
             const woItems = wo.items ?? [];
@@ -209,7 +250,9 @@
       const payload = {
         invoiceDate, title, poNumber, currency, discount,
         totalAmountTitle, totalAmountValue, items, extraItems, taxItems,
-        priceTerms, swiftCode, termsConditions, remarks,
+        isOutOfIndia: taxCountry === "Outside India",
+        country: taxCountry, customerState: taxCountry === "India" ? taxState : null, taxSlab: taxSlab || null,
+        priceTerms, inCoterms, inCotermsBy, swiftCode, termsConditions, remarks,
         billToName, billToAddress, billToGSTNumber, billToMobile, billToEmail,
         shipToName, shipToAddress, shipToGSTNumber, shipToMobile, shipToEmail,
         ...(companySnapshot ? { companySnapshot } : {}),
@@ -288,13 +331,31 @@
               </div>
               <div>
                 <label class="form-label">Currency</label>
-                <select class="form-control" bind:value={currency}>
+                <select class="form-select" bind:value={currency}>
                   {#each currencies as c}<option value={c.code}>{c.code}</option>{/each}
                 </select>
               </div>
               <div>
                 <label class="form-label">Price Terms</label>
                 <input type="text" class="form-control" bind:value={priceTerms} placeholder="e.g. FOB, CIF" />
+              </div>
+              <div>
+                <label class="form-label">Incoterms</label>
+                <select class="form-select" bind:value={inCoterms}>
+                  <option value={null}>— Select —</option>
+                  {#each inCotermsArray as c}<option>{c}</option>{/each}
+                </select>
+              </div>
+              <div>
+                <label class="form-label">Incoterms By</label>
+                <select class="form-select" bind:value={inCotermsBy}>
+                  <option value={null}>— Select —</option>
+                  {#if inCoterms === "Outside India"}
+                    {#each inCotermsOutsideArray as c}<option>{c}</option>{/each}
+                  {:else}
+                    {#each inCotermsInArray as c}<option>{c}</option>{/each}
+                  {/if}
+                </select>
               </div>
             </div>
           </div>
@@ -402,14 +463,26 @@
 
         <!-- Extra Charges & Tax -->
         <div class="card border mb-3">
-          <div class="card-header py-2 bg-white">
+          <div class="card-header py-2 bg-white d-flex align-items-center justify-content-between flex-wrap gap-2">
             <h6 class="mb-0 fw-semibold"><i class="ti ti-receipt-tax me-2 text-primary"></i>Extra Charges & Tax</h6>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              <span class="fw-semibold small text-muted">Tax Region :</span>
+              <select class="form-select form-select-sm" style="width:auto;" bind:value={taxCountry} on:change={applyTaxSlab}>
+                <option value="India">India</option>
+                <option value="Outside India">Outside India</option>
+              </select>
+              {#if taxCountry === "India"}
+              <select class="form-select form-select-sm" style="width:auto;" bind:value={taxState} on:change={applyTaxSlab}>
+                {#each indianStates as s}<option value={s}>{s}</option>{/each}
+              </select>
+              {/if}
+            </div>
           </div>
           <div class="card-body">
             <div class="grid grid-cols-2 gap-2">
 
               <!-- Extra Charges -->
-              <div>
+              <div class="border rounded p-2">
                 <div class="d-flex align-items-center justify-content-between mb-3">
                   <span class="fw-semibold small text-uppercase text-muted">Extra Charges</span>
                   <button type="button" class="btn btn-xs btn-outline-secondary" on:click={addExtraItem}>
@@ -441,10 +514,35 @@
               </div>
 
               <!-- Tax Items -->
-              <div>
-                <div class="d-flex align-items-center justify-content-between mb-3">
+              <div class="border rounded p-2">
+                <div class="d-flex align-items-center justify-content-between mb-2">
                   <span class="fw-semibold small text-uppercase text-muted">Tax Items</span>
                 </div>
+                {#if taxCountry === "India"}
+                <div class="d-flex gap-1 flex-wrap mb-2">
+                  {#each [5, 12, 18, 28] as slab}
+                    <button type="button"
+                      class="btn btn-sm {taxSlab === slab ? 'btn-primary' : 'btn-outline-secondary'}"
+                      style="min-width:48px;font-size:11px;"
+                      on:click={() => { taxSlab = slab; applyTaxSlab(); }}>
+                      {slab}%
+                    </button>
+                  {/each}
+                  {#if taxSlab}
+                  <button type="button" class="btn btn-sm btn-outline-danger" style="font-size:11px;"
+                    on:click={() => { taxSlab = null; taxItems = []; recalculate(); }}>
+                    <i class="ti ti-x"></i>
+                  </button>
+                  {/if}
+                </div>
+                {/if}
+                {#if taxCountry === "Outside India"}
+                <div class="d-flex align-items-center justify-content-center p-3 rounded"
+                  style="background:#fff3cd;border:1px dashed #ffc107;color:#856404;">
+                  <i class="ti ti-world-off me-2"></i>
+                  <span class="small fw-semibold">Tax not applicable (Export)</span>
+                </div>
+                {:else if taxItems.length > 0}
                 <table class="table table-sm table-bordered mb-0">
                   <thead class="table-light">
                     <tr>
@@ -463,6 +561,9 @@
                     {/each}
                   </tbody>
                 </table>
+                {:else}
+                  <div class="text-muted text-center p-2" style="font-size:12px;">Select a tax slab above to auto-fill</div>
+                {/if}
               </div>
 
             </div>

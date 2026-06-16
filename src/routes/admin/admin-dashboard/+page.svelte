@@ -569,6 +569,9 @@
               <input type="date" bind:value={s3CustomStart} class="db-date" />
               <input type="date" bind:value={s3CustomEnd} class="db-date" />
             {/if}
+            <button class="db-refresh-btn" title="Refresh" on:click={fetchS3} disabled={s3Loading}>
+              <i class="ti ti-refresh" class:spin={s3Loading}></i>
+            </button>
           </div>
         </div>
         <div class="db-chips">
@@ -967,10 +970,12 @@
   /* ── Filters ── */
   .db-filters { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .db-select {
-    font-size: 12px; padding: 4px 8px; height: 30px;
+    font-size: 12px; padding: 4px 28px 4px 8px; height: 30px;
     border: 1px solid #dee2e6; border-radius: 6px;
-    background: #f8f9fa; color: #495057;
-    min-width: 100px; max-width: 150px;
+    background: #f8f9fa url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 8px center;
+    background-size: 12px;
+    -webkit-appearance: none; -moz-appearance: none; appearance: none;
+    color: #495057; min-width: 100px; max-width: 150px;
     cursor: pointer; outline: none;
   }
   .db-select:focus { border-color: #3b5bdb; box-shadow: 0 0 0 2px rgba(59,91,219,0.12); }
@@ -1075,6 +1080,17 @@
   .db-empty { text-align: center; padding: 32px; color: #adb5bd; font-size: 13px; }
 
   /* ── Skeleton loader ── */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin { animation: spin 0.7s linear infinite; display: inline-block; }
+  .db-refresh-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; padding: 0;
+    border: 1px solid #dee2e6; border-radius: 6px;
+    background: #fff; color: #495057; font-size: 14px;
+    cursor: pointer; transition: background 0.15s, color 0.15s;
+  }
+  .db-refresh-btn:hover:not(:disabled) { background: #f1f3f5; color: #3b5bdb; border-color: #3b5bdb; }
+  .db-refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   @keyframes skel-shimmer {
     0%   { background-position: -400px 0; }
     100% { background-position: 400px 0; }

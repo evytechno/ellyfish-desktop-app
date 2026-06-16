@@ -14,6 +14,7 @@
     saveToLocalStorage,
   } from "$lib/stores/dataStores";
   import { goto } from "$app/navigation";
+  import { page } from "$app/stores";
   import Loader from "$lib/components/Loader.svelte";
   let loadingData = true;
 
@@ -73,6 +74,11 @@
     selectedFilter = filterState.selectedFilter || "last7days";
     customStartDate = filterState.customStartDate || null;
     customEndDate = filterState.customEndDate || null;
+
+    if ($page.url.searchParams.get("refresh") === "1") {
+      refresh = true;
+      goto("/admin/workorder", { replaceState: true });
+    }
 
     fetchWorkOrders();
     getAllUsers();

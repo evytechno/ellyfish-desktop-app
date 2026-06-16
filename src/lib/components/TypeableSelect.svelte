@@ -7,6 +7,8 @@
   export let placeholder = "Select Option";
   // when true, options = [{label: string, options: string[]}]
   export let grouped = false;
+  // object mode: options = [{value: any, label: string}], emits the `value` field on change
+  export let objectMode = false;
 
   const dispatch = createEventDispatcher();
   let selectEl;
@@ -18,14 +20,19 @@
     await import("select2/dist/css/select2.min.css");
 
     jQuery(selectEl).select2({
-      tags: !grouped,
+      tags: !grouped && !objectMode,
       width: "100%",
       placeholder,
     });
 
     jQuery(selectEl).on("change", (e) => {
       const val = jQuery(e.target).val();
-      dispatch("change", val);
+      if (objectMode) {
+        const parsed = val === "" || val === null ? null : (isNaN(Number(val)) ? val : Number(val));
+        dispatch("change", parsed);
+      } else {
+        dispatch("change", val);
+      }
     });
 
     return () => {
@@ -33,12 +40,12 @@
     };
   });
 
-  $: if (!grouped && value && !options.includes(value)) {
+  $: if (!grouped && !objectMode && value && !options.includes(value)) {
     options = [...options, value];
   }
 </script>
 
-<select bind:this={selectEl} class="select form-control" {id} {value}>
+<select bind:this={selectEl} class="select form-control" {id} value={objectMode ? String(value ?? "") : value}>
   {#if grouped}
     <option value="" disabled selected>{placeholder}</option>
     {#each options as group}
@@ -47,6 +54,11 @@
           <option value={opt}>{opt}</option>
         {/each}
       </optgroup>
+    {/each}
+  {:else if objectMode}
+    <option value="">— {placeholder} —</option>
+    {#each options as opt}
+      <option value={String(opt.value)}>{opt.label}</option>
     {/each}
   {:else}
     <option value={null} disabled selected>{placeholder}</option>

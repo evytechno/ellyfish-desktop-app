@@ -1,4 +1,4 @@
-<script>
+﻿<script>
   import { onMount } from "svelte";
   import { page } from "$app/stores";
   import { goto } from "$app/navigation";
@@ -28,7 +28,23 @@
   let items = [];
   let extraItems = [];
   let taxItems = [];
+  let taxCountry = "India";
+  let taxState = "Rajasthan";
+  let taxSlab = null;
+  const indianStates = [
+    "Andhra Pradesh","Arunachal Pradesh","Assam","Bihar","Chhattisgarh","Goa","Gujarat",
+    "Haryana","Himachal Pradesh","Jharkhand","Karnataka","Kerala","Madhya Pradesh",
+    "Maharashtra","Manipur","Meghalaya","Mizoram","Nagaland","Odisha","Punjab","Rajasthan",
+    "Sikkim","Tamil Nadu","Telangana","Tripura","Uttar Pradesh","Uttarakhand","West Bengal",
+    "Andaman and Nicobar Islands","Chandigarh","Dadra and Nagar Haveli and Daman and Diu",
+    "Delhi","Jammu and Kashmir","Ladakh","Lakshadweep","Puducherry"
+  ];
   let priceTerms = "";
+  let inCoterms = null;
+  let inCotermsBy = null;
+  const inCotermsArray = ["In India", "Outside India"];
+  const inCotermsInArray = ["Ex", "Door Delivery", "Godown"];
+  const inCotermsOutsideArray = ["Ex", "FOB", "CIF"];
   let swiftCode = "";
   let termsConditions = "";
   let remarks = "";
@@ -45,11 +61,11 @@
   let shipToSameAsBillTo = false;
 
   const currencies = [
-    { code: "INR", symbol: "₹" },
+    { code: "INR", symbol: "â‚¹" },
     { code: "USD", symbol: "$" },
   ];
 
-  $: currencySymbol = currencies.find((c) => c.code === currency)?.symbol ?? "₹";
+  $: currencySymbol = currencies.find((c) => c.code === currency)?.symbol ?? "â‚¹";
   $: itemsSubtotal = items.reduce((s, i) => s + (parseFloat(i.total) || 0), 0);
   $: extraSubtotal = extraItems.reduce((s, i) => s + (parseFloat(i.total) || 0), 0);
   $: grandTotal = totalAmountValue;
@@ -73,13 +89,28 @@
 
   $: items, extraItems, taxItems, discount, recalculate();
 
+  function applyTaxSlab() {
+    if (taxCountry === "Outside India") {
+      taxItems = [];
+    } else {
+      if (!taxSlab) { taxItems = []; recalculate(); return; }
+      const slab = Number(taxSlab);
+      if (taxState === "Rajasthan") {
+        taxItems = [{ item: "CGST", percentage: slab / 2, total: 0 }, { item: "SGST", percentage: slab / 2, total: 0 }];
+      } else {
+        taxItems = [{ item: "IGST", percentage: slab, total: 0 }];
+      }
+    }
+    recalculate();
+  }
+
   function formatDateForInput(date) {
     if (!date) return "";
     return new Date(date).toISOString().split("T")[0];
   }
 
   function formatDocRef(fy, num, pad = 6) {
-    if (fy == null && num == null) return "—";
+    if (fy == null && num == null) return "â€”";
     const s = String(num ?? "");
     const display = /[a-zA-Z]/.test(s) ? s : s.padStart(pad, "0");
     return `${fy ?? ""}/${display}`;
@@ -179,7 +210,7 @@
       if (warnings.length > 0) {
         const result = await Swal.fire({
           title: "Review before continuing",
-          html: warnings.map((w) => `<div class="text-start mb-1">⚠️ ${w}</div>`).join(""),
+          html: warnings.map((w) => `<div class="text-start mb-1">âš ï¸ ${w}</div>`).join(""),
           icon: "warning",
           showCancelButton: true,
           confirmButtonText: "Proceed anyway",
@@ -197,6 +228,8 @@
       discount = pi.discount ?? 0;
       totalAmountTitle = pi.totalAmountTitle ?? "Total Amount";
       priceTerms = pi.priceTerms ?? "";
+      inCoterms = pi.inCoterms ?? null;
+      inCotermsBy = pi.inCotermsBy ?? null;
       swiftCode = pi.swiftCode ?? "";
       termsConditions = pi.termsConditions ?? "";
       remarks = pi.remarks ?? "";
@@ -212,6 +245,9 @@
       shipToEmail = pi.shipToEmail ?? "";
       extraItems = (pi.extraItems ?? []).map((i) => ({ ...i }));
       taxItems = (pi.taxItems ?? []).map((t) => ({ ...t }));
+      taxCountry = pi.country || (pi.isOutOfIndia ? "Outside India" : "India");
+      taxState = pi.customerState || "Rajasthan";
+      taxSlab = pi.taxSlab || null;
 
       items = piItems.map((piItem, idx) => {
         const woItem = woItems[idx];
@@ -225,7 +261,7 @@
         };
       });
 
-      // Invoice date: PI date → WO date → today
+      // Invoice date: PI date â†’ WO date â†’ today
       invoiceDate =
         formatDateForInput(pi.invoiceDate) ||
         formatDateForInput(workOrder.workOrderDate) ||
@@ -280,7 +316,11 @@
         items,
         extraItems,
         taxItems,
+        isOutOfIndia: taxCountry === "Outside India",
+        country: taxCountry, customerState: taxCountry === "India" ? taxState : null, taxSlab: taxSlab || null,
         priceTerms,
+        inCoterms,
+        inCotermsBy,
         swiftCode,
         termsConditions,
         remarks,
@@ -464,6 +504,24 @@
                 {#if fieldError("priceTerms")}
                   <div class="invalid-feedback d-block">{fieldError("priceTerms")}</div>
                 {/if}
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Incoterms</label>
+                <select class="form-select" bind:value={inCoterms}>
+                  <option value={null}>— Select —</option>
+                  {#each inCotermsArray as c}<option>{c}</option>{/each}
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Incoterms By</label>
+                <select class="form-select" bind:value={inCotermsBy}>
+                  <option value={null}>— Select —</option>
+                  {#if inCoterms === "Outside India"}
+                    {#each inCotermsOutsideArray as c}<option>{c}</option>{/each}
+                  {:else}
+                    {#each inCotermsInArray as c}<option>{c}</option>{/each}
+                  {/if}
+                </select>
               </div>
             </div>
           </div>
@@ -684,7 +742,7 @@
                       </td>
                       <td>
                         <select class="form-select form-select-sm border-0 shadow-none" bind:value={item.unit}>
-                          {#each ["Pcs","Kg","g","L","mL","m","cm","Set","Box","Nos"] as u}
+                          {#each ["Pcs","Kg","g","L","mL","m","cm","Set","Box","Nos", "Ton"] as u}
                             <option value={u}>{u}</option>
                           {/each}
                         </select>
@@ -787,10 +845,47 @@
 
         <!-- Tax -->
         <div class="card mb-3">
-          <div class="card-header">
+          <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
             <h6 class="mb-0"><i class="ti ti-receipt-tax me-2"></i>Tax</h6>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              <span class="fw-semibold small text-muted">Tax Region :</span>
+              <select class="form-select form-select-sm" style="width:auto;" bind:value={taxCountry} on:change={applyTaxSlab}>
+                <option value="India">India</option>
+                <option value="Outside India">Outside India</option>
+              </select>
+              {#if taxCountry === "India"}
+              <select class="form-select form-select-sm" style="width:auto;" bind:value={taxState} on:change={applyTaxSlab}>
+                {#each indianStates as s}<option value={s}>{s}</option>{/each}
+              </select>
+              {/if}
+            </div>
           </div>
           <div class="card-body">
+            {#if taxCountry === "India"}
+            <div class="d-flex gap-1 flex-wrap mb-3">
+              {#each [5, 12, 18, 28] as slab}
+                <button type="button"
+                  class="btn btn-sm {taxSlab === slab ? 'btn-primary' : 'btn-outline-secondary'}"
+                  style="min-width:48px;"
+                  on:click={() => { taxSlab = slab; applyTaxSlab(); }}>
+                  {slab}%
+                </button>
+              {/each}
+              {#if taxSlab}
+              <button type="button" class="btn btn-sm btn-outline-danger"
+                on:click={() => { taxSlab = null; taxItems = []; recalculate(); }}>
+                <i class="ti ti-x"></i>
+              </button>
+              {/if}
+            </div>
+            {/if}
+            {#if taxCountry === "Outside India"}
+            <div class="d-flex align-items-center justify-content-center p-3 rounded mb-2"
+              style="background:#fff3cd;border:1px dashed #ffc107;color:#856404;">
+              <i class="ti ti-world-off me-2"></i>
+              <span class="fw-semibold">Tax not applicable (Export)</span>
+            </div>
+            {:else if taxItems.length > 0}
             <div class="table-responsive">
               <table class="table table-bordered table-nowrap align-middle mb-2">
                 <thead class="table-light">
@@ -804,35 +899,14 @@
                 <tbody>
                   {#each taxItems as tax, i}
                     <tr>
+                      <td><input type="text" class="form-control form-control-sm" bind:value={tax.item} /></td>
+                      <td><input type="number" step="any" class="form-control form-control-sm" bind:value={tax.percentage} on:input={recalculate} /></td>
+                      <td class="text-end fw-medium">{currencySymbol} {(tax.total ?? 0).toFixed(2)}</td>
                       <td>
-                        <input type="text" class="form-control form-control-sm" bind:value={tax.item} />
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          step="any"
-                          class="form-control form-control-sm"
-                          bind:value={tax.percentage}
-                          on:input={recalculate}
-                        />
-                      </td>
-                      <td class="text-end fw-medium">
-                        {currencySymbol} {(tax.total ?? 0).toFixed(2)}
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          class="btn btn-icon btn-sm text-danger"
-                          on:click={() => removeTaxItem(i)}
-                          title="Remove"
-                        >
+                        <button type="button" class="btn btn-icon btn-sm text-danger" on:click={() => removeTaxItem(i)}>
                           <i class="ti ti-x"></i>
                         </button>
                       </td>
-                    </tr>
-                  {:else}
-                    <tr>
-                      <td colspan="4" class="text-center text-muted py-3">No tax rows</td>
                     </tr>
                   {/each}
                 </tbody>
@@ -841,6 +915,9 @@
             <button type="button" class="btn btn-sm btn-outline-primary" on:click={addTaxItem}>
               <i class="ti ti-plus me-1"></i>Add Tax
             </button>
+            {:else}
+            <div class="text-muted text-center p-2">Select a tax slab above to auto-fill</div>
+            {/if}
           </div>
         </div>
 
@@ -921,7 +998,7 @@
                     <div class="d-flex justify-content-between mb-2">
                       <span class="text-muted">Discount</span>
                       <span>
-                        − {currencySymbol}
+                        âˆ’ {currencySymbol}
                         {Number(discount).toLocaleString("en-IN", {
                           minimumFractionDigits: 2,
                         })}
@@ -961,7 +1038,7 @@
           <button class="btn btn-primary" type="submit" disabled={loading}>
             {#if loading}
               <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-              Creating…
+              Creatingâ€¦
             {:else}
               <i class="ti ti-check me-1"></i>Create Tax Invoice
             {/if}
@@ -971,3 +1048,4 @@
     {/if}
   </div>
 </div>
+

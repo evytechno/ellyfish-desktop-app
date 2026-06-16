@@ -13,6 +13,8 @@
   let formErrors = {};
   let taxInvoiceId = null;
   let taxCheckDone = false;
+  let piNumber = null;
+  let piId = null;
 
   let workOrderId;
   $: workOrderId = $page.params.id;
@@ -33,7 +35,9 @@
       if (workOrder?.order?.id) {
         const piList = await authApiFetch(`${API_ROUTES.ORDER_PAYMENT}/check/${workOrder.order.id}`);
         if (piList?.count > 0) {
-          const piId = piList.items[0].id;
+          piId = piList.items[0].id;
+          const pi = piList.items[0];
+          piNumber = String(pi.invoiceNo).padStart(6, "0");
           const res = await authApiFetch(`${API_ROUTES.INVOICE}/by-pi/${piId}`);
           taxInvoiceId = res?.taxInvoiceId ?? null;
         }
@@ -181,10 +185,16 @@
                       <div>{workOrder?.orderByName || workOrder?.user?.name}</div>
                     </div>
                   {/if}
-                  {#if workOrder?.poNumber}
+                  {#if piNumber}
                     <div class="grid grid-cols-2 gap-2">
-                      <div class="font-medium">PO Number :</div>
-                      <div>{workOrder?.poNumber}</div>
+                      <div class="font-medium">PI Number :</div>
+                      <div>
+                        {#if piId}
+                          <a href="/admin/invoice/{piId}">#{piNumber}</a>
+                        {:else}
+                          #{piNumber}
+                        {/if}
+                      </div>
                     </div>
                   {/if}
                   {#if workOrder?.company}
@@ -213,7 +223,7 @@
                   {/if}
                   {#if workOrder?.inCoterms}
                     <div class="grid grid-cols-2 gap-2">
-                      <div class="font-medium">In Coterms :</div>
+                      <div class="font-medium">Incoterms :</div>
                       <div>
                         {workOrder?.inCoterms} - {workOrder?.inCotermsBy}
                       </div>
@@ -247,7 +257,7 @@
                 <hr />
                 <div>
                   <div class="font-semibold mb-2">Description :</div>
-                  <table class="w-full border table-nowrap">
+                  <table class="w-full border" style="table-layout:fixed;">
                     <thead class="table-light border-bottom">
                       <tr>
                         <th class="p-2 text-center" style="width:44px;">Sr.</th>
@@ -260,7 +270,7 @@
                       {#each workOrder?.items as item, index}
                         <tr class="border-bottom item-row">
                           <td class="p-2 text-center">{index + 1}</td>
-                          <td class="p-2 capitalize">{item?.item}</td>
+                          <td class="p-2 capitalize" style="word-break:break-word;overflow-wrap:break-word;">{item?.item}</td>
 
                           <!-- Qty -->
                           <td class="p-2 text-center item-cell" on:click={() => startCellEdit(index, "quantity")}>
@@ -352,8 +362,11 @@
   .inline-cell-input {
     width: 100%; min-width: 55px; max-width: 110px;
     border: 1.5px solid #3b5bdb; border-radius: 4px;
-    padding: 2px 4px; font-size: inherit; text-align: center;
-    outline: none; background: #fff;
+    padding: 2px 24px 2px 4px; font-size: inherit; text-align: center;
+    outline: none;
+    background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%233b5bdb' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 6px center;
+    background-size: 11px;
+    -webkit-appearance: none; -moz-appearance: none; appearance: none;
   }
   @media print {
     @page { margin: 0; size: A4; }
