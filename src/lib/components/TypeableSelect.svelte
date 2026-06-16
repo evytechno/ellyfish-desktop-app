@@ -9,9 +9,11 @@
   export let grouped = false;
   // object mode: options = [{value: any, label: string}], emits the `value` field on change
   export let objectMode = false;
+  export let disabled = false;
 
   const dispatch = createEventDispatcher();
   let selectEl;
+  let jqSelect;
 
   onMount(async () => {
     const jQuery = (await import("jquery")).default;
@@ -19,13 +21,17 @@
     select2Module.default(jQuery);
     await import("select2/dist/css/select2.min.css");
 
-    jQuery(selectEl).select2({
+    jqSelect = jQuery(selectEl);
+
+    jqSelect.select2({
       tags: !grouped && !objectMode,
       width: "100%",
       placeholder,
     });
 
-    jQuery(selectEl).on("change", (e) => {
+    if (disabled) jqSelect.prop("disabled", true);
+
+    jqSelect.on("change", (e) => {
       const val = jQuery(e.target).val();
       if (objectMode) {
         const parsed = val === "" || val === null ? null : (isNaN(Number(val)) ? val : Number(val));
@@ -36,16 +42,24 @@
     });
 
     return () => {
-      jQuery(selectEl).select2("destroy");
+      jqSelect.select2("destroy");
     };
   });
+
+  // Sync select2 display when value changes from parent after initialization
+  $: if (jqSelect) {
+    const val = objectMode ? String(value ?? "") : (value ?? "");
+    if (jqSelect.val() !== val) {
+      jqSelect.val(val).trigger("change.select2");
+    }
+  }
 
   $: if (!grouped && !objectMode && value && !options.includes(value)) {
     options = [...options, value];
   }
 </script>
 
-<select bind:this={selectEl} class="select form-control" {id} value={objectMode ? String(value ?? "") : value}>
+<select bind:this={selectEl} class="select form-control" {id} {disabled} value={objectMode ? String(value ?? "") : value}>
   {#if grouped}
     <option value="" disabled selected>{placeholder}</option>
     {#each options as group}

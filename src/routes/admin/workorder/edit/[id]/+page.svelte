@@ -134,7 +134,21 @@
     if (workOrderDate) newWorkOrder.workOrderDate = workOrderDate;
     if (installationDate) newWorkOrder.installationDate = installationDate;
     newWorkOrder.companyId = companyId;
-    if (linkedOrder && orderId) newWorkOrder.orderId = orderId;
+    if (isMaster && workOrderType === 'self') {
+      // Without order — send null orderId, keep title
+      newWorkOrder.orderId = null;
+      newWorkOrder.title = title;
+      if (!title?.trim()) { formErrors.title = ["Title is required when no order is linked."]; loading = false; return; }
+    } else if (isMaster && workOrderType === 'order') {
+      // Order linked — send orderId, clear title
+      newWorkOrder.orderId = orderId ?? null;
+      delete newWorkOrder.title;
+    } else {
+      // Non-master fallback
+      if (linkedOrder && orderId) newWorkOrder.orderId = orderId;
+      else if (!linkedOrder) newWorkOrder.orderId = null;
+      if (!linkedOrder && !title?.trim()) { formErrors.title = ["Title is required when no order is linked."]; loading = false; return; }
+    }
     if (companyId == null) { formErrors.companyId = ["Company is required."]; loading = false; return; }
     if (items.length == 0) { Swal.fire("Warning!", "Please add at least one item.", "warning"); loading = false; return; }
 
@@ -169,6 +183,21 @@
     isMaster = currentUser?.role === 'master';
     loadingData = true;
     try {
+      // Load companies first so TypeableSelect has options before companyId is set
+      const cached = get(companiesAllStore);
+      if (cached && cached.length > 0) {
+        companies = cached;
+      } else {
+        try {
+          const companyData = await authApiFetch(API_ROUTES.COMPANY + "/all");
+          companies = companyData;
+          companiesAllStore.set(companyData);
+        } catch (_) {
+          errorMessage = "Failed to load company data.";
+        }
+      }
+
+      // Now load work order data — companies array is ready
       const data = await authApiFetch(`${API_ROUTES.WORK_ORDER}/${workOrderId}`);
       workOrderType = data?.order ? "order" : "self";
       title = data?.title;
@@ -176,6 +205,10 @@
       selectedOrderTitle = data?.order?.title ?? "";
       if (data?.order) linkedOrder = { id: data.order.id, title: data.order.title, financialYear: data.order.financialYear, pId: data.order.pId };
       companyId = data?.company?.id;
+      if (!companyId && currentUser?.companyId) {
+        const matched = companies.find(c => c.id === Number(currentUser.companyId));
+        if (matched) companyId = matched.id;
+      }
       const savedNo = data?.workOrderNo ?? "";
       if (!savedNo && isMaster && data?.company) {
         const prefix = data.company.name.trim().split(/\s+/)[0].toUpperCase().slice(0, 4);
@@ -202,30 +235,6 @@
       errorMessage = "Failed to load workorder data.";
     } finally {
       setTimeout(() => { loadingData = false; }, 500);
-    }
-  });
-
-  onMount(async () => {
-    const currentUser = checkAuth();
-    const cached = get(companiesAllStore);
-    if (cached && cached.length > 0) {
-      companies = cached;
-      if (!companyId && currentUser?.companyId) {
-        const matched = companies.find(c => c.id === Number(currentUser.companyId));
-        if (matched) companyId = matched.id;
-      }
-      return;
-    }
-    try {
-      const data = await authApiFetch(API_ROUTES.COMPANY + "/all");
-      companies = data;
-      companiesAllStore.set(data);
-      if (!companyId && currentUser?.companyId) {
-        const matched = companies.find(c => c.id === Number(currentUser.companyId));
-        if (matched) companyId = matched.id;
-      }
-    } catch (err) {
-      errorMessage = "Failed to load company data.";
     }
   });
 </script>
@@ -302,7 +311,57 @@
           </div>
           <div class="card-body">
             <div class="grid grid-cols-3 gap-2">
-              {#if linkedOrder}
+              {#if isMaster}
+                <div class="col-span-2">
+                  <!-- Radio toggle -->
+                  <label class="form-label fw-semibold">Work Order Type</label>
+                  <div class="d-flex gap-4 mb-2">
+                    <div class="form-check">
+                      <input
+                        class="form-check-input" type="radio" id="wo-type-order"
+                        value="order" bind:group={workOrderType}
+                      />
+                      <label class="form-check-label" for="wo-type-order">Link to Order</label>
+                    </div>
+                    <div class="form-check">
+                      <input
+                        class="form-check-input" type="radio" id="wo-type-self"
+                        value="self" bind:group={workOrderType}
+                      />
+                      <label class="form-check-label" for="wo-type-self">Without Order (Title only)</label>
+                    </div>
+                  </div>
+
+                  <!-- Order search — always mounted, hidden when not needed (select2 + {#if} clash) -->
+                  <div style:display={workOrderType === 'order' ? 'block' : 'none'}>
+                    <label class="form-label">Order</label>
+                    <OrderSearchSelect
+                      initialValue={orderId}
+                      initialTitle={selectedOrderTitle}
+                      on:change={(e) => {
+                        orderId = e.detail?.id ?? null;
+                        selectedOrderTitle = e.detail?.title ?? "";
+                        linkedOrder = e.detail ? { id: e.detail.id, title: e.detail.title, financialYear: e.detail.financialYear, pId: e.detail.pId } : null;
+                      }}
+                    />
+                  </div>
+
+                  <!-- Title input — shown when no order linked -->
+                  <div style:display={workOrderType === 'self' ? 'block' : 'none'}>
+                    <label class="form-label fw-semibold">
+                      Work Order Title / Description <span class="text-danger">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      class="form-control"
+                      class:is-invalid={formErrors.title}
+                      bind:value={title}
+                      placeholder="e.g. Hydraulic Press Assembly, Panel Wiring for ABC Ltd"
+                    />
+                    {#if formErrors.title}<ul class="text-danger mt-1 text-xs"><li>{formErrors.title[0]}</li></ul>{/if}
+                  </div>
+                </div>
+              {:else if linkedOrder}
                 <div class="col-span-2">
                   <label class="form-label">Order</label>
                   <div class="form-control d-flex align-items-center gap-2" style="background:#f8f9fa;cursor:default;">
@@ -351,6 +410,7 @@
                   options={companies.map(c => ({ value: c.id, label: c.name }))}
                   value={companyId}
                   placeholder="Search and select company..."
+                  disabled={true}
                   on:change={(e) => { companyId = e.detail; formErrors.companyId = null; }}
                 />
                 {#if formErrors.companyId}
