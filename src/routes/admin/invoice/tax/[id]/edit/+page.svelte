@@ -121,6 +121,24 @@
   function removeItem(i) { items = items.filter((_, idx) => idx !== i); }
   function addExtraItem() { extraItems = [...extraItems, { item: "", total: 0 }]; }
   function removeExtraItem(i) { extraItems = extraItems.filter((_, idx) => idx !== i); }
+  function addTaxItem() { taxItems = [...taxItems, { item: "", percentage: 0, total: 0 }]; recalculate(); }
+  function removeTaxItem(i) { taxItems = taxItems.filter((_, idx) => idx !== i); recalculate(); }
+
+  async function selectTaxSlab(slab) {
+    if (taxItems.length > 0 && taxSlab !== slab) {
+      const result = await Swal.fire({
+        title: "Replace Tax Items?",
+        text: "This will replace existing tax items with the selected slab. Continue?",
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "Yes, replace",
+        cancelButtonText: "Cancel",
+      });
+      if (!result.isConfirmed) return;
+    }
+    taxSlab = slab;
+    applyTaxSlab();
+  }
 
   function populateFromInvoice(data) {
     invoiceDate = formatDateForInput(data.invoiceDate) || new Date().toISOString().split("T")[0];
@@ -517,6 +535,9 @@
               <div class="border rounded p-2">
                 <div class="d-flex align-items-center justify-content-between mb-2">
                   <span class="fw-semibold small text-uppercase text-muted">Tax Items</span>
+                  <button type="button" class="btn btn-xs btn-outline-secondary" on:click={addTaxItem}>
+                    <i class="ti ti-plus me-1"></i>Add
+                  </button>
                 </div>
                 {#if taxCountry === "India"}
                 <div class="d-flex gap-1 flex-wrap mb-2">
@@ -524,7 +545,7 @@
                     <button type="button"
                       class="btn btn-sm {taxSlab === slab ? 'btn-primary' : 'btn-outline-secondary'}"
                       style="min-width:48px;font-size:11px;"
-                      on:click={() => { taxSlab = slab; applyTaxSlab(); }}>
+                      on:click={() => selectTaxSlab(slab)}>
                       {slab}%
                     </button>
                   {/each}
@@ -549,14 +570,20 @@
                       <th class="py-1 px-2">Tax Name</th>
                       <th class="py-1 px-2 text-center" style="width:90px">Rate (%)</th>
                       <th class="py-1 px-2 text-end" style="width:90px">Amount</th>
+                      <th style="width:36px;"></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {#each taxItems as tax}
+                    {#each taxItems as tax, i}
                       <tr>
                         <td class="p-1 align-middle">{tax.item}</td>
                         <td class="p-1"><input type="number" class="form-control form-control-sm border-0 shadow-none text-center" bind:value={tax.percentage} on:input={recalculate} /></td>
                         <td class="p-1 text-end fw-semibold align-middle small">{currencySymbol} {tax.total?.toFixed(2) ?? "0.00"}</td>
+                        <td class="p-1 text-center align-middle">
+                          <button type="button" class="btn btn-sm text-danger p-0" on:click={() => removeTaxItem(i)}>
+                            <i class="ti ti-x"></i>
+                          </button>
+                        </td>
                       </tr>
                     {/each}
                   </tbody>
