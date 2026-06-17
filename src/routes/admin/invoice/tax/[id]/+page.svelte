@@ -258,13 +258,13 @@
                     <table class="w-full" style="table-layout:fixed;">
                       <thead class="bg-[#106ab0] text-white">
                         <tr>
-                          <th class="border p-2 text-white text-center" style="width:44px;">No.</th>
-                          <th class="border p-2 text-white">Name</th>
+                          <th class="border p-2 text-white text-center" style="width:50px;">No.</th>
+                          <th class="border p-2 text-white" style="width:30%;">Name</th>
                           <th class="border p-2 text-white text-center" style="width:55px;">Qty</th>
                           <th class="border p-2 text-white text-center" style="width:55px;">Unit</th>
-                          <th class="border p-2 text-white text-center" style="width:100px;">Unit Price</th>
+                          <th class="border p-2 text-white text-center" style="min-width:80px;">Unit Price</th>
                           <th class="border p-2 text-white text-center" style="width:80px;">HS Code</th>
-                          <th class="border p-2 text-white text-center" style="width:100px;">Total</th>
+                          <th class="border p-2 text-white text-center" style="min-width:80px;">Total</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -274,14 +274,14 @@
                             <td class="border p-2 capitalize" style="word-break:break-word;overflow-wrap:break-word;">{item?.item}</td>
                             <td class="border p-2 text-center">{item?.quantity}</td>
                             <td class="border p-2 text-center">{item?.unit || "Pcs"}</td>
-                            <td class="border p-2 text-center">
+                            <td class="border p-2 text-center" style="white-space:nowrap;">
                               {currencies.find((c) => c.code === invoice?.currency)?.symbol}
-                              {(item?.price ?? item?.unitPrice ?? 0).toFixed(2)}/-
+                              {(item?.price ?? item?.unitPrice ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/-
                             </td>
                             <td class="border p-2 text-center">{item.hsCode ? item.hsCode : "-"}</td>
-                            <td class="border p-2 text-center">
+                            <td class="border p-2 text-center" style="white-space:nowrap;">
                               {currencies.find((c) => c.code === invoice?.currency)?.symbol}
-                              {((item?.total && item.total > 0) ? item.total : ((parseFloat(item?.quantity) || 0) * (parseFloat(item?.price ?? item?.unitPrice) || 0))).toFixed(2)}/-
+                              {((item?.total && item.total > 0) ? item.total : ((parseFloat(item?.quantity) || 0) * (parseFloat(item?.price ?? item?.unitPrice) || 0))).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/-
                             </td>
                           </tr>
                         {/each}
@@ -289,9 +289,9 @@
                           <tr>
                             <td class="border p-2 text-center">{(invoice?.items?.length ?? 0) + index1 + 1}.</td>
                             <td class="border p-2 capitalize" colspan="5">{item1?.item}</td>
-                            <td class="border p-2 text-center">
+                            <td class="border p-2 text-center" style="white-space:nowrap;">
                               {currencies.find((c) => c.code === invoice?.currency)?.symbol}
-                              {(item1?.total)?.toFixed(2)}/-
+                              {(item1?.total ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/-
                             </td>
                           </tr>
                         {/each}

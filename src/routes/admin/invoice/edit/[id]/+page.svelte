@@ -94,6 +94,22 @@
   function addTaxItem() { taxItems = [...taxItems, { item: "", percentage: 0, total: 0 }]; }
   function removeTaxItem(i) { taxItems = taxItems.filter((_, idx) => idx !== i); }
 
+  async function selectTaxSlab(slab) {
+    if (taxItems.length > 0 && taxSlab !== slab) {
+      const result = await Swal.fire({
+        title: "Replace Tax Items?",
+        text: "This will replace existing tax items with the selected slab. Continue?",
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "Yes, replace",
+        cancelButtonText: "Cancel",
+      });
+      if (!result.isConfirmed) return;
+    }
+    taxSlab = slab;
+    applyTaxSlab();
+  }
+
   function applyTaxSlab() {
     if (taxCountry === "Outside India") {
       isOutOfIndia = true;
@@ -112,6 +128,22 @@
       }
       recalculateTaxes();
     }
+  }
+
+  // Auto-set tax region when currency changes
+  let _currencyInitDone = false;
+  $: if (_currencyInitDone) {
+    if (currency === "USD") {
+      taxCountry = "Outside India";
+      taxSlab = null;
+      applyTaxSlab();
+    } else if (currency === "INR") {
+      taxCountry = "India";
+      taxSlab = null;
+      applyTaxSlab();
+    }
+  } else {
+    _currencyInitDone = true;
   }
 
   function toggleIndia(outOfIndia) {
@@ -670,11 +702,9 @@
                 <div class="border rounded p-2">
                   <div class="d-flex align-items-center justify-content-between mb-3">
                     <span class="fw-semibold small text-uppercase text-muted">Tax Items</span>
-                    {#if !isOutOfIndia && taxItems.length > 0}
                     <button type="button" class="btn btn-xs btn-outline-secondary" on:click={addTaxItem}>
                       <i class="ti ti-plus me-1"></i>Add
                     </button>
-                    {/if}
                   </div>
                   {#if taxCountry === "India"}
                   <div class="d-flex gap-1 flex-wrap mb-2">
@@ -682,7 +712,7 @@
                       <button type="button"
                         class="btn btn-sm {taxSlab === slab ? 'btn-primary' : 'btn-outline-secondary'}"
                         style="min-width:48px;font-size:11px;"
-                        on:click={() => { taxSlab = slab; applyTaxSlab(); }}>
+                        on:click={() => selectTaxSlab(slab)}>
                         {slab}%
                       </button>
                     {/each}

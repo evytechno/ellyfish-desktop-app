@@ -7,14 +7,14 @@
   import { checkAuth } from "$lib/utils/auth";
   import Swal from "sweetalert2";
 
-  // â”€â”€ Props â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Props ─────────────────────────────────────────────────────────────────
   export let open = false;
   export let type = "PI";   // "PI" | "WO" | "TI"
   export let order = null;
 
   const dispatch = createEventDispatcher();
 
-  // â”€â”€ Derived â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Derived ───────────────────────────────────────────────────────────────
   $: pi  = order?.orderPayments?.[0] ?? null;
   $: wo  = order?.workOrders?.[0]   ?? null;
   $: ti  = order?.invoices?.[0]     ?? null;
@@ -28,7 +28,7 @@
     ? `/admin/workorder/${wo?.id}`
     : `/admin/invoice/tax/${ti?.id}`;
 
-  // â”€â”€ Shared â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Shared ────────────────────────────────────────────────────────────────
   let step      = 1;
   let loading   = false;
   let formErrors = {};
@@ -39,7 +39,7 @@
 
   const unitOptions = ["Pcs", "Kg", "g", "L", "mL", "m", "cm", "Set", "Box", "Nos", "Ton"];
 
-  // â”€â”€ PI / TI fields â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── PI / TI fields ────────────────────────────────────────────────────────
   let invoiceDate      = today();
   let piTitle          = "";
   let poNumber         = "";
@@ -88,7 +88,7 @@
     "Delhi","Jammu and Kashmir","Ladakh","Lakshadweep","Puducherry"
   ];
 
-  // â”€â”€ WO fields â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── WO fields ─────────────────────────────────────────────────────────────
   const _year2 = String(new Date().getFullYear()).slice(-2);
   $: woNoPreview = (() => {
     if (!companyId) return "";
@@ -118,23 +118,23 @@
   const inCotermsOutsideArray = ["Ex", "FOB", "CIF"];
   const paymentMethodArray    = ["To Pay", "Paid"];
 
-  // â”€â”€ Steps config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Steps config ──────────────────────────────────────────────────────────
   $: steps = type === "PI"
     ? ["Basic Info & Bill/Ship To", "Line Items", "Charges, Tax & Notes"]
     : type === "WO"
     ? ["Basic Info & Logistics", "Items & Remarks"]
     : ["Invoice Info & Bill/Ship To", "Items, Charges & Tax"];
 
-  // â”€â”€ Totals (plain let â€” updated explicitly via recompute()) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Totals (plain let — updated explicitly via recompute()) ──────────────
   let itemsSubtotal = 0;
   let extraSubtotal = 0;
   let baseAmount    = 0;
   let taxTotal      = 0;
 
-  $: currencySymbol = currency === "USD" ? "$" : "â‚¹";
+  $: currencySymbol = currency === "USD" ? "$" : "₹";
 
   /**
-   * Explicit recompute â€” called after any change that affects totals.
+   * Explicit recompute — called after any change that affects totals.
    * Avoids Svelte reactive-ordering issues entirely.
    */
   function recompute() {
@@ -151,7 +151,7 @@
     return parseFloat(((baseAmount * (parseFloat(t.percentage) || 0)) / 100).toFixed(2));
   }
 
-  // â”€â”€ Init on open â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Init on open ──────────────────────────────────────────────────────────
   $: if (open && order) init();
 
   function today() { return new Date().toISOString().split("T")[0]; }
@@ -172,8 +172,8 @@
     const parts = [];
     if (b.label)         parts.push(b.label);
     if (b.bankName)      parts.push(b.bankName);
-    if (b.accountNumber) parts.push(`(â€¢â€¢â€¢â€¢${String(b.accountNumber).slice(-4)})`);
-    return parts.join(" â€” ");
+    if (b.accountNumber) parts.push(`(••••${String(b.accountNumber).slice(-4)})`);
+    return parts.join(" — ");
   }
 
   function init() {
@@ -283,7 +283,7 @@
     recompute();
   }
 
-  // â”€â”€ Item helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Item helpers ──────────────────────────────────────────────────────────
   function updateItemTotal(i) {
     items = items.map((it, idx) => {
       if (idx !== i) return it;
@@ -344,10 +344,10 @@
     }
   }
 
-  // â”€â”€ Step navigation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Step navigation ───────────────────────────────────────────────────────
   function nextStep() {
     formErrors = {};
-    // TI uses companySnapshot from PI â€” no companyId needed
+    // TI uses companySnapshot from PI — no companyId needed
     if (type !== "TI" && !companyId) { formErrors.company = "Company is required."; return; }
 
     if (type === "PI" && step === 2) {
@@ -370,10 +370,10 @@
   }
   function prevStep() { step--; }
 
-  // â”€â”€ Submit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Submit ────────────────────────────────────────────────────────────────
   async function submit() {
     formErrors = {};
-    // TI uses companySnapshot from PI â€” no companyId needed
+    // TI uses companySnapshot from PI — no companyId needed
     if (type !== "TI" && !companyId) { formErrors.company = "Company is required."; return; }
 
     if (type !== "WO") {
@@ -492,13 +492,13 @@
 
   function close() { dispatch("close"); }
 
-  // â”€â”€ View helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── View helpers ──────────────────────────────────────────────────────────
   function fmtDate(d) {
-    if (!d) return "â€”";
+    if (!d) return "—";
     return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
   }
   function fmtRef(fy, no) {
-    if (!fy || !no) return "â€”";
+    if (!fy || !no) return "—";
     const display = /[a-zA-Z]/.test(String(no)) ? String(no) : String(no).padStart(6, "0");
     return `${fy} / ${display}`;
   }
@@ -519,7 +519,7 @@
       on:click|stopPropagation role="presentation"
     >
 
-      <!-- â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
+      <!-- ── Header ─────────────────────────────────────────────────────── -->
       <div class="flex items-center justify-between px-5 py-3 border-b border-gray-200 flex-shrink-0">
         <div class="flex items-center gap-2">
           <span class="badge text-xs font-bold px-2 py-1 rounded
@@ -536,7 +536,7 @@
         <button class="btn-close" style="font-size:11px;" on:click={close}></button>
       </div>
 
-      <!-- â”€â”€ Step Indicator (create only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
+      <!-- ── Step Indicator (create only) ──────────────────────────────── -->
       {#if isCreate}
         <div class="px-5 pt-3 pb-2 border-b border-gray-100 flex-shrink-0">
           <div class="d-flex align-items-center" style="gap:0;">
@@ -565,7 +565,7 @@
         </div>
       {/if}
 
-      <!-- â”€â”€ Body â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
+      <!-- ── Body ──────────────────────────────────────────────────────── -->
       <div class="flex-1 overflow-y-auto px-5 py-4">
 
         <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• VIEW MODE â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
@@ -700,7 +700,7 @@
                   <label class="form-label fw-semibold" style="font-size:12px;">Company <span class="text-danger">*</span></label>
                   <select class="form-select form-select-sm" class:is-invalid={formErrors.company}
                     bind:value={companyId} on:change={(e) => companyChange(e.target.value)}>
-                    <option value={null}>â€” Select Company â€”</option>
+                    <option value={null}>— Select Company —</option>
                     {#each companies as c}<option value={c.id}>{c.name}</option>{/each}
                   </select>
                   {#if formErrors.company}<div class="invalid-feedback">{formErrors.company}</div>{/if}
@@ -709,7 +709,7 @@
                   <label class="form-label fw-semibold" style="font-size:12px;">Bank Account</label>
                   <select class="form-select form-select-sm" bind:value={selectedBankAccount}
                     on:change={(e) => bankAccountChange(selectedBankAccount)}>
-                    <option value={null}>â€” Select Bank â€”</option>
+                    <option value={null}>— Select Bank —</option>
                     {#each bankAccounts as b}<option value={b}>{bankLabel(b)}</option>{/each}
                   </select>
                 </div>
@@ -728,8 +728,8 @@
                 <div class="col-md-4">
                   <label class="form-label fw-semibold" style="font-size:12px;">Currency</label>
                   <select class="form-select form-select-sm" bind:value={currency}>
-                    <option value="INR">INR â€” Indian Rupee (â‚¹)</option>
-                    <option value="USD">USD â€” US Dollar ($)</option>
+                    <option value="INR">INR — Indian Rupee (₹)</option>
+                    <option value="USD">USD — US Dollar ($)</option>
                   </select>
                 </div>
                 <div class="col-md-4">
@@ -840,7 +840,7 @@
                         </td>
                       </tr>
                     {:else}
-                      <tr><td colspan="8" class="text-center text-muted py-3">No items â€” click Add Item</td></tr>
+                      <tr><td colspan="8" class="text-center text-muted py-3">No items — click Add Item</td></tr>
                     {/each}
                     <tr class="table-light">
                       <td colspan="6" class="text-end fw-semibold px-3 py-2">Subtotal</td>
@@ -1002,7 +1002,7 @@
                 <div class="col-md-4">
                   <label class="form-label fw-semibold" style="font-size:12px;">Company <span class="text-danger">*</span></label>
                   <select class="form-select form-select-sm" class:is-invalid={formErrors.company} bind:value={companyId}>
-                    <option value={null}>â€” Select Company â€”</option>
+                    <option value={null}>— Select Company —</option>
                     {#each companies as c}<option value={c.id}>{c.name}</option>{/each}
                   </select>
                   {#if formErrors.company}<div class="invalid-feedback">{formErrors.company}</div>{/if}
@@ -1039,7 +1039,7 @@
                 <div class="col-md-3">
                   <label class="form-label fw-semibold" style="font-size:12px;">Packing Type</label>
                   <select class="form-select form-select-sm" bind:value={packingType}>
-                    <option value={null}>â€” Select â€”</option>
+                    <option value={null}>— Select —</option>
                     <option value="Bubble Wrap">Bubble Wrap</option>
                     <option value="Wooden Packing">Wooden Packing</option>
                   </select>
@@ -1048,7 +1048,7 @@
                   <div class="col-md-3">
                     <label class="form-label fw-semibold" style="font-size:12px;">Packing Charges</label>
                     <select class="form-select form-select-sm" bind:value={packingCharges}>
-                      <option value={null}>â€” Select â€”</option>
+                      <option value={null}>— Select —</option>
                       <option value="Paid">Paid</option>
                       <option value="Unpaid">Unpaid</option>
                     </select>
@@ -1057,14 +1057,14 @@
                 <div class="col-md-3">
                   <label class="form-label fw-semibold" style="font-size:12px;">Incoterms</label>
                   <select class="form-select form-select-sm" bind:value={inCoterms}>
-                    <option value={null}>â€” Select â€”</option>
+                    <option value={null}>— Select —</option>
                     {#each inCotermsArray as c}<option>{c}</option>{/each}
                   </select>
                 </div>
                 <div class="col-md-3">
                   <label class="form-label fw-semibold" style="font-size:12px;">Incoterms By</label>
                   <select class="form-select form-select-sm" bind:value={inCotermsBy}>
-                    <option value={null}>â€” Select â€”</option>
+                    <option value={null}>— Select —</option>
                     {#if inCoterms === "Outside India"}
                       {#each inCotermsOutsideArray as c}<option>{c}</option>{/each}
                     {:else}
@@ -1075,7 +1075,7 @@
                 <div class="col-md-3">
                   <label class="form-label fw-semibold" style="font-size:12px;">Payment Method</label>
                   <select class="form-select form-select-sm" bind:value={woPaymentMethod}>
-                    <option value={null}>â€” Select â€”</option>
+                    <option value={null}>— Select —</option>
                     {#each paymentMethodArray as m}<option>{m}</option>{/each}
                   </select>
                 </div>
@@ -1122,7 +1122,7 @@
                         </td>
                       </tr>
                     {:else}
-                      <tr><td colspan="5" class="text-center text-muted py-3">No items â€” click Add Item</td></tr>
+                      <tr><td colspan="5" class="text-center text-muted py-3">No items — click Add Item</td></tr>
                     {/each}
                   </tbody>
                 </table>
@@ -1161,8 +1161,8 @@
                 <div class="col-md-4">
                   <label class="form-label fw-semibold" style="font-size:12px;">Currency</label>
                   <select class="form-select form-select-sm" bind:value={currency}>
-                    <option value="INR">INR â€” Indian Rupee (â‚¹)</option>
-                    <option value="USD">USD â€” US Dollar ($)</option>
+                    <option value="INR">INR — Indian Rupee (₹)</option>
+                    <option value="USD">USD — US Dollar ($)</option>
                   </select>
                 </div>
                 <div class="col-md-4">
@@ -1370,7 +1370,7 @@
         {/if}
       </div>
 
-      <!-- â”€â”€ Footer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
+      <!-- ── Footer ──────────────────────────────────────────────────────── -->
       <div class="flex items-center justify-between px-5 py-3 border-t border-gray-200 flex-shrink-0 gap-2 flex-shrink-0">
         {#if isView}
           <a href={detailUrl} class="btn btn-sm btn-primary"><i class="ti ti-external-link me-1"></i>Full Detail</a>
@@ -1392,7 +1392,7 @@
             {:else}
               <button type="button" class="btn btn-sm btn-success" disabled={loading} on:click={submit}>
                 {#if loading}
-                  <span class="spinner-border spinner-border-sm me-1"></span>Savingâ€¦
+                  <span class="spinner-border spinner-border-sm me-1"></span>Saving…
                 {:else}
                   <i class="ti ti-check me-1"></i>Create {type}
                 {/if}

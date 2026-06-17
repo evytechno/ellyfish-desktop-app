@@ -288,13 +288,13 @@
                   <table class="w-full" style="table-layout:fixed;">
                     <thead class="bg-[#106ab0] text-white">
                       <tr>
-                        <th class="border p-2 text-white text-center" style="width:44px;">No.</th>
-                        <th class="border p-2 text-white">Name</th>
+                        <th class="border p-2 text-white text-center" style="width:50px;">No.</th>
+                        <th class="border p-2 text-white" style="width:30%;">Name</th>
                         <th class="border p-2 text-white text-center" style="width:55px;">Qty</th>
                         <th class="border p-2 text-white text-center" style="width:55px;">Unit</th>
-                        <th class="border p-2 text-white text-center" style="width:100px;">Unit Price</th>
+                        <th class="border p-2 text-white text-center" style="min-width:80px;">Unit Price</th>
                         <th class="border p-2 text-white text-center" style="width:80px;">HS Code</th>
-                        <th class="border p-2 text-white text-center" style="width:100px;">Total</th>
+                        <th class="border p-2 text-white text-center" style="min-width:80px;">Total</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -327,12 +327,12 @@
                           </td>
 
                           <!-- Unit Price -->
-                          <td class="border p-2 text-center item-cell" on:click={() => startCellEdit(index, "unitPrice")}>
+                          <td class="border p-2 text-center item-cell" style="white-space:nowrap;" on:click={() => startCellEdit(index, "unitPrice")}>
                             {#if editingCell?.rowIndex === index && editingCell?.field === "unitPrice"}
                               <input class="inline-cell-input" type="number" min="0" bind:value={editingValue}
                                 on:blur={commitCell} on:keydown={handleCellKeydown} autofocus />
                             {:else}
-                              {sym}{item?.unitPrice?.toFixed(2) ?? item?.price?.toFixed(2) ?? "0.00"}/-
+                              {sym}{(item?.unitPrice ?? item?.price ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/-
                             {/if}
                           </td>
 
@@ -346,8 +346,8 @@
                             {/if}
                           </td>
 
-                          <td class="border p-2 text-center">
-                            {sym}{(item?.total ?? 0).toFixed(2)}/-
+                          <td class="border p-2 text-center" style="white-space:nowrap;">
+                            {sym}{(item?.total ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/-
                           </td>
                         </tr>
                       {/each}
@@ -355,9 +355,9 @@
                         <tr>
                           <td class="border p-2 text-center">{invoice?.items.length + index1 + 1}.</td>
                           <td class="border p-2 capitalize" colspan="5">{item1?.item}</td>
-                          <td class="border p-2 text-center">
+                          <td class="border p-2 text-center" style="white-space:nowrap;">
                             {currencies.find((c) => c.code === invoice?.currency)?.symbol}
-                            {(item1?.total ?? 0).toFixed(2)}/-
+                            {(item1?.total ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/-
                           </td>
                         </tr>
                       {/each}

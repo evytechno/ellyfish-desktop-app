@@ -23,7 +23,7 @@
   let fromOrder = false;
   let linkedOrder = null;
 
-  // â”€â”€ Form state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Form state ────────────────────────────────────────────────────────────
   let invoiceType = "order";
   let title = "";
   let orderId = null;
@@ -73,7 +73,7 @@
   let bankAccounts = [];
   let activeTab = 1;
 
-  // â”€â”€ Reactive calculations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Reactive calculations ─────────────────────────────────────────────────
   $: itemsSubtotal = items.reduce((s, i) => s + (i.total || 0), 0);
   $: subtotal = itemsSubtotal - discount;
   $: extratotal = extraItems.reduce((s, i) => s + (i.total || 0), 0);
@@ -100,6 +100,22 @@
   function addTaxItem() { taxItems = [...taxItems, { item: "", percentage: 0, total: 0 }]; }
   function removeTaxItem(i) { taxItems = taxItems.filter((_, idx) => idx !== i); }
 
+  async function selectTaxSlab(slab) {
+    if (taxItems.length > 0 && taxSlab !== slab) {
+      const result = await Swal.fire({
+        title: "Replace Tax Items?",
+        text: "This will replace existing tax items with the selected slab. Continue?",
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "Yes, replace",
+        cancelButtonText: "Cancel",
+      });
+      if (!result.isConfirmed) return;
+    }
+    taxSlab = slab;
+    applyTaxSlab();
+  }
+
   function applyTaxSlab() {
     if (taxCountry === "Outside India") {
       isOutOfIndia = true;
@@ -118,6 +134,22 @@
       }
       recalculateTaxes();
     }
+  }
+
+  // Auto-set tax region when currency changes
+  let _currencyInitDone = false;
+  $: if (_currencyInitDone) {
+    if (currency === "USD") {
+      taxCountry = "Outside India";
+      taxSlab = null;
+      applyTaxSlab();
+    } else if (currency === "INR") {
+      taxCountry = "India";
+      taxSlab = null;
+      applyTaxSlab();
+    }
+  } else {
+    _currencyInitDone = true;
   }
 
   function toggleIndia(outOfIndia) {
@@ -183,8 +215,8 @@
     const parts = [];
     if (b.label) parts.push(b.label);
     if (b.bankName) parts.push(b.bankName);
-    if (b.accountNumber) parts.push(`(â€¢â€¢â€¢â€¢${String(b.accountNumber).slice(-4)})`);
-    return parts.join(" â€” ");
+    if (b.accountNumber) parts.push(`(••••${String(b.accountNumber).slice(-4)})`);
+    return parts.join(" — ");
   }
 
   function scrollToId(id) {
@@ -387,7 +419,7 @@
                   <label class="form-label">Company <span class="text-danger">*</span></label>
                   <select class="form-select" class:is-invalid={formErrors.companyId}
                     bind:value={companyId} on:change={(e) => companyChange(e.target.value)}>
-                    <option value={null}>â€” Select company â€”</option>
+                    <option value={null}>— Select company —</option>
                     {#each companies as c}<option value={c.id}>{c.name}</option>{/each}
                   </select>
                   {#if formErrors.companyId}
@@ -398,7 +430,7 @@
                 <div>
                   <label class="form-label">Bank Account</label>
                   <select class="form-select" bind:value={selectedBankAccount}>
-                    <option value={null}>â€” Select bank â€”</option>
+                    <option value={null}>— Select bank —</option>
                     {#each bankAccounts as b}<option value={b}>{bankLabel(b)}</option>{/each}
                   </select>
                 </div>
@@ -421,8 +453,8 @@
                 <div>
                   <label class="form-label">Currency</label>
                   <select class="form-select" bind:value={currency}>
-                    <option value="INR">INR â€” Indian Rupee (â‚¹)</option>
-                    <option value="USD">USD â€” US Dollar ($)</option>
+                    <option value="INR">INR — Indian Rupee (₹)</option>
+                    <option value="USD">USD — US Dollar ($)</option>
                   </select>
                 </div>
 
@@ -713,11 +745,9 @@
                 <div class="border rounded p-2">
                   <div class="d-flex align-items-center justify-content-between mb-3">
                     <span class="fw-semibold small text-uppercase text-muted">Tax Items</span>
-                    {#if !isOutOfIndia && taxItems.length > 0}
                     <button type="button" class="btn btn-xs btn-outline-secondary" on:click={addTaxItem}>
                       <i class="ti ti-plus me-1"></i>Add
                     </button>
-                    {/if}
                   </div>
                   {#if taxCountry === "India"}
                   <div class="d-flex gap-1 flex-wrap mb-2">
@@ -725,7 +755,7 @@
                       <button type="button"
                         class="btn btn-sm {taxSlab === slab ? 'btn-primary' : 'btn-outline-secondary'}"
                         style="min-width:48px;font-size:11px;"
-                        on:click={() => { taxSlab = slab; applyTaxSlab(); }}>
+                        on:click={() => selectTaxSlab(slab)}>
                         {slab}%
                       </button>
                     {/each}

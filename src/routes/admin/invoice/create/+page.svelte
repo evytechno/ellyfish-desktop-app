@@ -61,11 +61,11 @@
   let shipToSameAsBillTo = false;
 
   const currencies = [
-    { code: "INR", symbol: "â‚¹" },
+    { code: "INR", symbol: "₹" },
     { code: "USD", symbol: "$" },
   ];
 
-  $: currencySymbol = currencies.find((c) => c.code === currency)?.symbol ?? "â‚¹";
+  $: currencySymbol = currencies.find((c) => c.code === currency)?.symbol ?? "₹";
   $: itemsSubtotal = items.reduce((s, i) => s + (parseFloat(i.total) || 0), 0);
   $: extraSubtotal = extraItems.reduce((s, i) => s + (parseFloat(i.total) || 0), 0);
   $: grandTotal = totalAmountValue;
@@ -110,7 +110,7 @@
   }
 
   function formatDocRef(fy, num, pad = 6) {
-    if (fy == null && num == null) return "â€”";
+    if (fy == null && num == null) return "—";
     const s = String(num ?? "");
     const display = /[a-zA-Z]/.test(s) ? s : s.padStart(pad, "0");
     return `${fy ?? ""}/${display}`;
@@ -379,6 +379,10 @@
         <a href="/admin/order/{orderId}" class="btn btn-outline-secondary btn-sm">
           <i class="ti ti-arrow-left me-1"></i>Back to Order
         </a>
+      {:else}
+        <button class="btn btn-outline-secondary btn-sm" on:click={() => window.history.back()}>
+          <i class="ti ti-arrow-left me-1"></i>Back
+        </button>
       {/if}
     </div>
 
@@ -1038,7 +1042,7 @@
           <button class="btn btn-primary" type="submit" disabled={loading}>
             {#if loading}
               <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-              Creatingâ€¦
+              Creating…
             {:else}
               <i class="ti ti-check me-1"></i>Create Tax Invoice
             {/if}

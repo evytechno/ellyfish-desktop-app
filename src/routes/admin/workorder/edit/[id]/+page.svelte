@@ -335,15 +335,29 @@
                   <!-- Order search — always mounted, hidden when not needed (select2 + {#if} clash) -->
                   <div style:display={workOrderType === 'order' ? 'block' : 'none'}>
                     <label class="form-label">Order</label>
-                    <OrderSearchSelect
-                      initialValue={orderId}
-                      initialTitle={selectedOrderTitle}
-                      on:change={(e) => {
-                        orderId = e.detail?.id ?? null;
-                        selectedOrderTitle = e.detail?.title ?? "";
-                        linkedOrder = e.detail ? { id: e.detail.id, title: e.detail.title, financialYear: e.detail.financialYear, pId: e.detail.pId } : null;
-                      }}
-                    />
+                    {#if isMaster}
+                      {#key orderId}
+                        <OrderSearchSelect
+                          initialValue={orderId}
+                          initialTitle={selectedOrderTitle}
+                          on:change={(e) => {
+                            orderId = e.detail?.id ?? null;
+                            selectedOrderTitle = e.detail?.title ?? "";
+                            linkedOrder = e.detail ? { id: e.detail.id, title: e.detail.title, financialYear: e.detail.financialYear, pId: e.detail.pId } : null;
+                          }}
+                        />
+                      {/key}
+                    {:else}
+                      <OrderSearchSelect
+                        initialValue={orderId}
+                        initialTitle={selectedOrderTitle}
+                        on:change={(e) => {
+                          orderId = e.detail?.id ?? null;
+                          selectedOrderTitle = e.detail?.title ?? "";
+                          linkedOrder = e.detail ? { id: e.detail.id, title: e.detail.title, financialYear: e.detail.financialYear, pId: e.detail.pId } : null;
+                        }}
+                      />
+                    {/if}
                   </div>
 
                   <!-- Title input — shown when no order linked -->
