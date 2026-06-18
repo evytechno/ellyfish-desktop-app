@@ -535,9 +535,11 @@
               <div class="border rounded p-2">
                 <div class="d-flex align-items-center justify-content-between mb-2">
                   <span class="fw-semibold small text-uppercase text-muted">Tax Items</span>
+                  {#if taxCountry !== "Outside India"}
                   <button type="button" class="btn btn-xs btn-outline-secondary" on:click={addTaxItem}>
                     <i class="ti ti-plus me-1"></i>Add
                   </button>
+                  {/if}
                 </div>
                 {#if taxCountry === "India"}
                 <div class="d-flex gap-1 flex-wrap mb-2">

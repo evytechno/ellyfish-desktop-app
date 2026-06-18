@@ -154,7 +154,7 @@
   // ── Init on open ──────────────────────────────────────────────────────────
   $: if (open && order) init();
 
-  function today() { return new Date().toISOString().split("T")[0]; }
+  function today() { return new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split("T")[0]; }
 
   function companyChange(id) {
     const c = companies.find(c => c.id == id);

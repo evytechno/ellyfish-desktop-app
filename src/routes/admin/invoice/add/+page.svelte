@@ -28,7 +28,7 @@
   let title = "";
   let orderId = null;
   let companyId = null;
-  let invoiceDate = new Date().toISOString().split("T")[0];
+  let invoiceDate = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split("T")[0];
   let poDate = null;
   let poNumber = "";
   let discount = 0;
@@ -745,9 +745,11 @@
                 <div class="border rounded p-2">
                   <div class="d-flex align-items-center justify-content-between mb-3">
                     <span class="fw-semibold small text-uppercase text-muted">Tax Items</span>
+                    {#if taxCountry !== "Outside India"}
                     <button type="button" class="btn btn-xs btn-outline-secondary" on:click={addTaxItem}>
                       <i class="ti ti-plus me-1"></i>Add
                     </button>
+                    {/if}
                   </div>
                   {#if taxCountry === "India"}
                   <div class="d-flex gap-1 flex-wrap mb-2">

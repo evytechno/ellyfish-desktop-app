@@ -265,7 +265,7 @@
       invoiceDate =
         formatDateForInput(pi.invoiceDate) ||
         formatDateForInput(workOrder.workOrderDate) ||
-        new Date().toISOString().split("T")[0];
+        new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split("T")[0];
 
       recalculate();
     } catch (err) {
