@@ -2729,7 +2729,7 @@
     if (!query) return false;
     if (isTelecaller(currentUser)) return query.status !== "closed" && query.status !== "resolved" && query.status !== "reopened";
     if (isTech(currentUser)) {
-      if (isSubQuery) return query.status !== "closed";
+      if (isSubQuery) return query.status !== "closed" && query.status !== "resolved" && query.status !== "reopened";
       return query.status === "in_progress" && query.assignedToId === currentUser?.id;
     }
     if (isTechHelper(currentUser)) return query.status === "in_progress" && query.assignedToId === currentUser?.id;
