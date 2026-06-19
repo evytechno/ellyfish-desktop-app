@@ -6,7 +6,7 @@
   import { ATTACHMENT_BASE_URL } from "$lib/constants/constants";
   import Loader from "$lib/components/Loader.svelte";
   import LightBox from "$lib/components/LightBox.svelte";
-  import { categoriesAllStore } from "$lib/stores/dataStores";
+  import { categoriesAllStore, companiesAllStore } from "$lib/stores/dataStores";
   import { get } from "svelte/store";
   import { orderExcelFilterStore } from "$lib/stores/filterStore";
   import { checkAuth } from "$lib/utils/auth";
@@ -27,24 +27,33 @@
   let orderBy = "createdAt";
   let filterStatus = "";
   let filterDateRange = "7d";
+  let customStartDate = "";
+  let customEndDate = "";
   let pageSize = 10;
   let filterUserId = "";
+  let filterCompanyId = "";
+  let filterCategory = "";
   let allUsers = [];
+  let allCompanies = [];
 
   const ORDER_BY_OPTIONS = [
     { value: "createdAt", label: "Date Created" },
     { value: "updatedAt", label: "Date Updated" },
+    { value: "orderDate", label: "Order Date" },
     { value: "title",     label: "Title" },
     { value: "status",    label: "Status" },
     { value: "pId",       label: "pId" },
   ];
 
   const DATE_RANGE_OPTIONS = [
-    { value: "all",  label: "All Time" },
-    { value: "7d",   label: "Last 7 Days" },
-    { value: "30d",  label: "Last 30 Days" },
-    { value: "3m",   label: "Last 3 Months" },
-    { value: "fy",   label: "This Financial Year" },
+    { value: "all",    label: "All Time" },
+    { value: "today",  label: "Today" },
+    { value: "yesterday", label: "Yesterday" },
+    { value: "7d",     label: "Last 7 Days" },
+    { value: "30d",    label: "Last 30 Days" },
+    { value: "3m",     label: "Last 3 Months" },
+    { value: "fy",     label: "This Financial Year" },
+    { value: "custom", label: "Custom Range" },
   ];
 
   const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
@@ -69,10 +78,18 @@
 
   function getDateRangeParams(range) {
     if (range === "all") return {};
+    if (range === "custom") {
+      if (!customStartDate || !customEndDate) return {};
+      const start = new Date(customStartDate); start.setHours(0, 0, 0, 0);
+      const end = new Date(customEndDate); end.setHours(23, 59, 59, 999);
+      return { startDate: start.toISOString(), endDate: end.toISOString() };
+    }
     const now = new Date();
     const end = new Date(now); end.setHours(23, 59, 59, 999);
     const start = new Date(now); start.setHours(0, 0, 0, 0);
-    if (range === "7d")  start.setDate(start.getDate() - 6);
+    if (range === "today") { /* start/end already today */ }
+    else if (range === "yesterday") { start.setDate(start.getDate() - 1); end.setDate(end.getDate() - 1); end.setHours(23, 59, 59, 999); }
+    else if (range === "7d")  start.setDate(start.getDate() - 6);
     else if (range === "30d") start.setDate(start.getDate() - 29);
     else if (range === "3m")  start.setMonth(start.getMonth() - 3);
     else if (range === "fy")  {
@@ -350,31 +367,80 @@
     finally { drawerLoading = false; }
   }
 
-  // ── column resize ────────────────────────────────────────
+  // ── column resize + visibility + reorder ────────────────
   const ALL_COLS = [
-    { key: "sno",     label: "#",           width: 50,  minWidth: 40 },
-    { key: "pId",     label: "Order No.",   width: 80,  minWidth: 60 },
-    { key: "inqCode", label: "Inq. Code",   width: 100, minWidth: 70 },
-    { key: "title",   label: "Title",       width: 160, minWidth: 80 },
-    { key: "company", label: "Company",     width: 100, minWidth: 80 },
-    { key: "mobile",  label: "Mobile",      width: 100, minWidth: 80 },
-    { key: "name",    label: "Client Name",  width: 120, minWidth: 80 },
-    { key: "address", label: "City",         width: 100, minWidth: 80 },
-    { key: "chats",   label: "Chats",       width: 220, minWidth: 160 },
-    { key: "attach",  label: "Attachments", width: 200, minWidth: 140 },
-    { key: "remind",  label: "Reminders",   width: 200, minWidth: 140 },
-    { key: "status",  label: "Status",      width: 140, minWidth: 100 },
-    { key: "user",    label: "Sales User",  width: 110, minWidth: 80,  masterOnly: true },
-    { key: "date",    label: "Date",        width: 110, minWidth: 80 },
-    { key: "actions", label: "PI / WO / TI", width: 150, minWidth: 120 },
+    { key: "sno",     label: "#",            width: 50,  minWidth: 40,  visible: true },
+    { key: "pId",     label: "Order No.",    width: 80,  minWidth: 60,  visible: true },
+    { key: "inqCode", label: "Inq. Code",    width: 100, minWidth: 70,  visible: true },
+    { key: "title",   label: "Title",        width: 160, minWidth: 80,  visible: true },
+    { key: "company", label: "Company",      width: 100, minWidth: 80,  visible: true },
+    { key: "mobile",  label: "Mobile",       width: 100, minWidth: 80,  visible: true },
+    { key: "name",    label: "Client Name",  width: 120, minWidth: 80,  visible: true },
+    { key: "address", label: "City",         width: 100, minWidth: 80,  visible: true },
+    { key: "chats",   label: "Chats",        width: 220, minWidth: 160, visible: true },
+    { key: "attach",  label: "Attachments",  width: 200, minWidth: 140, visible: true },
+    { key: "remind",  label: "Reminders",    width: 200, minWidth: 140, visible: true },
+    { key: "status",  label: "Status",       width: 140, minWidth: 100, visible: true },
+    { key: "user",    label: "Sales User",   width: 110, minWidth: 80,  visible: true, masterOnly: true },
+    { key: "date",    label: "Date",         width: 110, minWidth: 80,  visible: true },
+    { key: "actions", label: "PI / WO / TI", width: 150, minWidth: 120, visible: true },
   ];
   const DEFAULT_COLS = ALL_COLS.filter(c => !c.masterOnly || isMaster);
   let cols = DEFAULT_COLS.map(c => ({ ...c }));
   let resizing = null;
 
+  // ── column panel (show/hide + reorder) ──────────────────
+  let colPanelOpen  = false;
+  let dragColIdx    = null;
+  let dragOverColIdx = null;
+
+  const COL_PREFS_KEY = 'orderExcelCols';
+
+  function saveColPrefs() {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(COL_PREFS_KEY, JSON.stringify(
+      cols.map(c => ({ key: c.key, visible: c.visible, width: c.width }))
+    ));
+  }
+
+  function loadColPrefs() {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      const saved = JSON.parse(localStorage.getItem(COL_PREFS_KEY) || 'null');
+      if (!saved) return;
+      const base = DEFAULT_COLS.map(b => {
+        const s = saved.find(x => x.key === b.key);
+        return s ? { ...b, visible: s.visible, width: s.width } : b;
+      });
+      // restore order from saved
+      base.sort((a, b) => {
+        const ai = saved.findIndex(s => s.key === a.key);
+        const bi = saved.findIndex(s => s.key === b.key);
+        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+      });
+      cols = base;
+    } catch {}
+  }
+
+  function onPanelDragStart(i)  { dragColIdx = i; }
+  function onPanelDragOver(i)   { dragOverColIdx = i; }
+  function onPanelDrop(i) {
+    if (dragColIdx === null || dragColIdx === i) { dragColIdx = null; dragOverColIdx = null; return; }
+    const reordered = [...cols];
+    const [moved] = reordered.splice(dragColIdx, 1);
+    reordered.splice(i, 0, moved);
+    cols = reordered;
+    dragColIdx = null; dragOverColIdx = null;
+    saveColPrefs();
+  }
+
   function startResize(e, idx) {
+    // idx is index in visibleCols; find in cols
+    const key = visibleCols[idx]?.key;
+    const realIdx = cols.findIndex(c => c.key === key);
+    if (realIdx === -1) return;
     e.preventDefault();
-    resizing = { colIdx: idx, startX: e.clientX, startWidth: cols[idx].width };
+    resizing = { colIdx: realIdx, startX: e.clientX, startWidth: cols[realIdx].width };
     window.addEventListener("mousemove", onResize);
     window.addEventListener("mouseup", stopResize);
   }
@@ -389,23 +455,33 @@
     resizing = null;
     window.removeEventListener("mousemove", onResize);
     window.removeEventListener("mouseup", stopResize);
+    saveColPrefs();
   }
-  function resetColWidths() { cols = DEFAULT_COLS.map(c => ({ ...c })); }
+  function resetColWidths() {
+    cols = DEFAULT_COLS.map(c => ({ ...c }));
+    localStorage.removeItem(COL_PREFS_KEY);
+    colPanelOpen = false;
+  }
 
   function saveFilterStore() {
-    orderExcelFilterStore.set({ searchTerm, filterStatus, filterDateRange, filterUserId, orderBy, pageSize });
+    orderExcelFilterStore.set({ searchTerm, filterStatus, filterDateRange, customStartDate, customEndDate, filterUserId, filterCompanyId, filterCategory, orderBy, pageSize });
   }
 
   // ── lifecycle ────────────────────────────────────────────
   onMount(async () => {
+    loadColPrefs();
     const saved = $orderExcelFilterStore;
     if (saved && Object.keys(saved).length > 0) {
-      if (saved.searchTerm    !== undefined) searchTerm    = saved.searchTerm;
-      if (saved.filterStatus  !== undefined) filterStatus  = saved.filterStatus;
+      if (saved.searchTerm      !== undefined) searchTerm      = saved.searchTerm;
+      if (saved.filterStatus    !== undefined) filterStatus    = saved.filterStatus;
       if (saved.filterDateRange !== undefined) filterDateRange = saved.filterDateRange;
-      if (saved.filterUserId  !== undefined) filterUserId  = saved.filterUserId;
-      if (saved.orderBy       !== undefined) orderBy       = saved.orderBy;
-      if (saved.pageSize      !== undefined) pageSize      = saved.pageSize;
+      if (saved.customStartDate !== undefined) customStartDate = saved.customStartDate;
+      if (saved.customEndDate   !== undefined) customEndDate   = saved.customEndDate;
+      if (saved.filterUserId    !== undefined) filterUserId    = saved.filterUserId;
+      if (saved.filterCompanyId !== undefined) filterCompanyId = saved.filterCompanyId;
+      if (saved.filterCategory  !== undefined) filterCategory  = saved.filterCategory;
+      if (saved.orderBy         !== undefined) orderBy         = saved.orderBy;
+      if (saved.pageSize        !== undefined) pageSize        = saved.pageSize;
     }
     if (isMaster || currentUser?.role === "admin") {
       try {
@@ -413,11 +489,21 @@
         allUsers = Array.isArray(res) ? res : (res.data || []);
       } catch (e) { console.error(e); }
     }
+    try {
+      const cached = get(companiesAllStore);
+      if (cached && cached.length > 0) { allCompanies = cached; }
+      else {
+        const res = await authApiFetch(`${API_ROUTES.COMPANY}/all`, { method: "GET" });
+        allCompanies = Array.isArray(res) ? res : (res.data || []);
+        companiesAllStore.set(allCompanies);
+      }
+    } catch (e) { console.error(e); }
     fetchOrders();
   });
 
   // ── API ──────────────────────────────────────────────────
   async function fetchOrders(page = 1) {
+    if (filterDateRange === "custom" && (!customStartDate || !customEndDate)) return;
     loadingData = true;
     currentPage = page;
     expandedRow = null;
@@ -429,8 +515,10 @@
         limit: String(pageSize),
         page: String(page),
         full: 'true',
-        ...(filterStatus   && { status: filterStatus }),
-        ...(filterUserId   && { byUserId: filterUserId }),
+        ...(filterStatus      && { status: filterStatus }),
+        ...(filterUserId      && { byUserId: filterUserId }),
+        ...(filterCompanyId   && { byCompanyId: filterCompanyId }),
+        ...(filterCategory    && { category: filterCategory }),
         ...dateParams,
       });
       const res = await authApiFetch(`${API_ROUTES.ORDER}?${q}`, { method: "GET" });
@@ -571,9 +659,12 @@
     finally { refresh = false; }
   }
 
+  $: visibleCols = cols.filter(c => c.visible !== false);
   $: pageNumbers = Array.from({ length: totalPages }, (_, i) => i + 1);
-  $: snoWidth = cols[0]?.width ?? 50;
-  $: dateRangeLabel = DATE_RANGE_OPTIONS.find(d => d.value === filterDateRange)?.label || "All Time";
+  $: snoWidth = visibleCols.find(c => c.key === 'sno')?.width ?? 50;
+  $: dateRangeLabel = filterDateRange === "custom" && customStartDate && customEndDate
+    ? `${customStartDate} to ${customEndDate}`
+    : DATE_RANGE_OPTIONS.find(d => d.value === filterDateRange)?.label || "All Time";
 </script>
 
 <div class="page-wrapper">
@@ -616,14 +707,31 @@
         />
       </div>
       <!-- Date Range -->
-      <select class="form-select" style="width:155px;" bind:value={filterDateRange} on:change={() => { saveFilterStore(); fetchOrders(1); }}>
+      <select class="form-select" style="width:160px;" bind:value={filterDateRange} on:change={() => { saveFilterStore(); fetchOrders(1); }}>
         {#each DATE_RANGE_OPTIONS as opt}
           <option value={opt.value}>{opt.label}</option>
         {/each}
       </select>
+      <!-- Custom date range inputs -->
+      {#if filterDateRange === "custom"}
+        <input
+          type="date"
+          class="form-control"
+          style="width:145px;"
+          bind:value={customStartDate}
+          on:change={() => { saveFilterStore(); fetchOrders(1); }}
+        />
+        <input
+          type="date"
+          class="form-control"
+          style="width:145px;"
+          bind:value={customEndDate}
+          on:change={() => { saveFilterStore(); fetchOrders(1); }}
+        />
+      {/if}
       <!-- Status filter -->
       <select class="form-select" style="width:155px;" bind:value={filterStatus} on:change={() => { saveFilterStore(); fetchOrders(1); }}>
-        <option value="">Select Status</option>
+        <option value="">All Status</option>
         {#each STATUS_OPTIONS as s}<option value={s}>{$statusNamesStore[s]?.name ?? s}</option>{/each}
       </select>
       <!-- User filter (master / admin only) -->
@@ -635,16 +743,75 @@
           {/each}
         </select>
       {/if}
+      <!-- Company filter (master / admin only) -->
+      {#if (isMaster || currentUser?.role === "admin") && allCompanies.length > 0}
+        <select class="form-select" style="width:165px;" bind:value={filterCompanyId} on:change={() => { saveFilterStore(); fetchOrders(1); }}>
+          <option value="">All Companies</option>
+          {#each allCompanies as c}
+            <option value={String(c.id)}>{c.name}</option>
+          {/each}
+        </select>
+      {/if}
+      <!-- Category filter -->
+      <input
+        type="text"
+        class="form-control"
+        style="width:140px;"
+        placeholder="Category..."
+        bind:value={filterCategory}
+        on:keydown={(e) => { if (e.key === "Enter") { saveFilterStore(); fetchOrders(1); } }}
+      />
       <!-- Sort -->
       <select class="form-select" style="width:155px;" bind:value={orderBy} on:change={() => { saveFilterStore(); fetchOrders(1); }}>
         {#each ORDER_BY_OPTIONS as opt}
           <option value={opt.value}>{opt.label}</option>
         {/each}
       </select>
-      <!-- Reset columns -->
-      <button class="btn btn-outline-light shadow" on:click={resetColWidths} title="Reset column widths">
-        <i class="ti ti-layout-columns me-1"></i>Reset Columns
-      </button>
+      <!-- Columns panel -->
+      <div class="position-relative">
+        <button class="btn btn-outline-light shadow" on:click={() => colPanelOpen = !colPanelOpen} title="Show/hide & reorder columns">
+          <i class="ti ti-columns me-1"></i>Columns
+          {#if cols.some(c => c.visible === false)}
+            <span class="badge bg-warning text-dark ms-1" style="font-size:9px;">{cols.filter(c => c.visible === false).length} hidden</span>
+          {/if}
+        </button>
+        {#if colPanelOpen}
+          <div class="fixed inset-0 z-[98]" on:click={() => colPanelOpen = false}></div>
+          <div class="position-absolute bg-white border rounded shadow-lg z-[99]" style="top:42px;right:0;width:230px;max-height:380px;display:flex;flex-direction:column;">
+            <div class="px-3 py-2 border-bottom d-flex justify-content-between align-items-center bg-gray-50">
+              <span class="text-xs font-semibold text-gray-600">Columns</span>
+              <span class="text-[10px] text-gray-400">Drag to reorder</span>
+            </div>
+            <div style="overflow-y:auto;flex:1;">
+              {#each cols as col, i}
+                <div
+                  draggable="true"
+                  on:dragstart={() => onPanelDragStart(i)}
+                  on:dragover|preventDefault={() => onPanelDragOver(i)}
+                  on:drop|preventDefault={() => onPanelDrop(i)}
+                  on:dragend={() => { dragColIdx = null; dragOverColIdx = null; }}
+                  class="d-flex align-items-center gap-2 px-3 py-1.5 border-bottom cursor-grab"
+                  style="background:{dragOverColIdx === i ? '#eff6ff' : 'white'}; border-left:{dragOverColIdx === i ? '2px solid #3b82f6' : '2px solid transparent'};"
+                >
+                  <i class="ti ti-grip-vertical text-gray-300 text-xs flex-shrink-0"></i>
+                  <input
+                    type="checkbox"
+                    class="form-check-input m-0 flex-shrink-0"
+                    bind:checked={col.visible}
+                    on:change={() => { cols = [...cols]; saveColPrefs(); }}
+                  />
+                  <span class="text-xs flex-1 truncate" style="opacity:{col.visible === false ? 0.4 : 1};">{col.label}</span>
+                </div>
+              {/each}
+            </div>
+            <div class="px-3 py-2 border-top">
+              <button class="btn btn-sm btn-outline-secondary w-100" on:click={resetColWidths}>
+                <i class="ti ti-refresh me-1"></i>Reset to Default
+              </button>
+            </div>
+          </div>
+        {/if}
+      </div>
       <!-- Refresh -->
       <a
         href="#refresh"
@@ -667,16 +834,16 @@
 
       <!-- Grid -->
       <div class="overflow-auto rounded-top" style="max-height:calc(100vh - 230px);">
-        <table class="border-collapse text-xs" style="table-layout:fixed; width:{cols.reduce((s,c)=>s+c.width,0)}px;">
+        <table class="border-collapse text-xs" style="table-layout:fixed; width:{visibleCols.reduce((s,c)=>s+c.width,0)}px;">
           <colgroup>
-            {#each cols as col}
+            {#each visibleCols as col}
               <col style="width:{col.width}px; min-width:{col.minWidth}px;" />
             {/each}
           </colgroup>
 
           <thead>
             <tr>
-              {#each cols as col, i}
+              {#each visibleCols as col, i}
                 <th
                   class="p-0 border border-gray-200 bg-gray-100 sticky top-0 z-10 whitespace-nowrap text-xs font-semibold select-none"
                   class:sticky-th-sno={col.key === 'sno'}
@@ -718,366 +885,319 @@
               {@const isAddressSaving = savingCell?.orderId === order.id && savingCell?.field === "address"}
 
               <tr class="excel-row cursor-pointer" style="background:{rowBg};" on:click={() => toggleRow(order.id)}>
+                {#each visibleCols as col}
 
-                <!-- S.No -->
-                <td class="px-2 py-2 border border-gray-100 align-middle text-xs overflow-hidden h-[54px] text-center sticky-td-sno" style="background:{rowBg};">
-                  <div class="flex flex-col items-center justify-center gap-0.5">
-                    <span>{(currentPage - 1) * pageSize + i + 1}</span>
-                    {#if isExp}
-                      <i class="ti ti-chevron-up text-blue-500" style="font-size:11px;line-height:1;"></i>
-                    {/if}
-                  </div>
-                </td>
-
-                <!-- pId -->
-                <td class="px-2 py-2 border border-gray-100 align-middle text-xs overflow-hidden h-[54px] sticky-td-pid" style="background:{rowBg}; left:{snoWidth}px;" on:click|stopPropagation>
-                  <a
-                    href="/admin/order/{order.id}"
-                    class="text-blue-600 no-underline font-semibold text-xs hover:underline"
-                    on:click|preventDefault={() => goto(`/admin/order/${order.id}`)}
-                  >#{order.pId || order.id}</a>
-                  {#if order.workOrderNumber}
-                    <div class="mt-0.5 text-[10px] text-gray-500 truncate">{order.workOrderNumber}</div>
-                  {/if}
-                </td>
-
-                <!-- Inq. Code -->
-                <td class="px-2 py-2 border border-gray-100 align-middle text-xs overflow-hidden h-[54px]" style="background:{rowBg};">
-                  {#if order.inqCode}
-                    <span class="font-mono text-[11px] text-gray-700">{order.inqCode}</span>
-                  {:else}
-                    <span class="text-gray-300">—</span>
-                  {/if}
-                </td>
-
-                <!-- Title -->
-                <td
-                  class="px-2 py-2 border text-xs overflow-hidden h-[54px] align-middle group"
-                  class:cursor-text={isExp}
-                  class:border-blue-400={isTitleEdit}
-                  class:border-gray-100={!isTitleEdit}
-                  title={isTitleEdit ? "" : (order.title || "")}
-                  on:click={(e) => { if (!isExp) return; e.stopPropagation(); if (!isTitleEdit) startEdit(e, order.id, "title", order.title); }}
-                >
-                  {#if isTitleEdit}
-                    <input
-                      id="cell-input-{order.id}-title"
-                      class="w-full h-full text-xs bg-transparent outline-none border-none p-0 leading-normal"
-                      bind:value={editingValue}
-                      on:keydown={onCellKeydown}
-                      on:blur={saveEdit}
-                      on:click|stopPropagation
-                    />
-                  {:else if isTitleSaving}
-                    <div class="flex items-center gap-1 text-gray-400"><span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span> <span class="truncate">{order.title || "-"}</span></div>
-                  {:else}
-                    <div class="line-clamp-2 break-words leading-normal" class:group-hover:text-blue-600={isExp}>{order.title || "-"}</div>
-                  {/if}
-                </td>
-
-                <!-- Company -->
-                <td
-                  class="px-2 py-2 border text-xs h-[54px] align-middle group"
-                  class:cursor-text={isExp}
-                  class:border-blue-400={isCompanyEdit}
-                  class:border-gray-100={!isCompanyEdit}
-                  on:click={(e) => { if (!isExp) return; e.stopPropagation(); if (!isCompanyEdit) startEdit(e, order.id, "company", order.company); }}
-                >
-                  {#if isCompanyEdit}
-                    <input id="cell-input-{order.id}-company" class="w-full text-xs bg-transparent outline-none border-none p-0" bind:value={editingValue} on:keydown={onCellKeydown} on:blur={saveEdit} on:click|stopPropagation />
-                  {:else if isCompanySaving}
-                    <div class="flex items-center gap-1 text-gray-400"><span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span> <span class="truncate">{order.company || "-"}</span></div>
-                  {:else}
-                    <div class="truncate" class:group-hover:text-blue-600={isExp}>{order.company || "-"}</div>
-                  {/if}
-                </td>
-
-                <!-- Mobile -->
-                <td
-                  class="px-2 py-2 border text-xs h-[54px] align-middle group"
-                  class:cursor-text={isExp}
-                  class:border-blue-400={isMobileEdit}
-                  class:border-gray-100={!isMobileEdit}
-                  on:click={(e) => { if (!isExp) return; e.stopPropagation(); if (!isMobileEdit) startEdit(e, order.id, "mobile", order.orderClients?.[0]?.mobile); }}
-                >
-                  {#if isMobileEdit}
-                    <input id="cell-input-{order.id}-mobile" class="w-full text-xs bg-transparent outline-none border-none p-0" bind:value={editingValue} on:keydown={onCellKeydown} on:blur={saveEdit} on:click|stopPropagation />
-                  {:else if isMobileSaving}
-                    <div class="flex items-center gap-1 text-gray-400"><span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span> <span class="truncate">{order.orderClients?.[0]?.mobile || "-"}</span></div>
-                  {:else if isExp}
-                    <div class="truncate group-hover:text-blue-600">{order.orderClients?.[0]?.mobile || "-"}</div>
-                  {:else}
-                    <div class="truncate text-gray-500 tracking-wider">{maskMobile(order.orderClients?.[0]?.mobile)}</div>
-                  {/if}
-                </td>
-
-                <!-- Client Name -->
-                <td
-                  class="px-2 py-2 border text-xs h-[54px] align-middle group"
-                  class:cursor-text={isExp}
-                  class:border-blue-400={isNameEdit}
-                  class:border-gray-100={!isNameEdit}
-                  on:click={(e) => { if (!isExp) return; e.stopPropagation(); if (!isNameEdit) startEdit(e, order.id, "name", order.orderClients?.[0]?.name); }}
-                >
-                  {#if isNameEdit}
-                    <input id="cell-input-{order.id}-name" class="w-full text-xs bg-transparent outline-none border-none p-0" bind:value={editingValue} on:keydown={onCellKeydown} on:blur={saveEdit} on:click|stopPropagation />
-                  {:else if isNameSaving}
-                    <div class="flex items-center gap-1 text-gray-400"><span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span> <span class="truncate">{order.orderClients?.[0]?.name || "-"}</span></div>
-                  {:else}
-                    <div class="truncate">{order.orderClients?.[0]?.name || "-"}</div>
-                  {/if}
-                </td>
-
-                <!-- Address / City -->
-                <td
-                  class="px-2 py-2 border text-xs h-[54px] align-middle group"
-                  class:cursor-text={isExp}
-                  class:border-blue-400={isAddressEdit}
-                  class:border-gray-100={!isAddressEdit}
-                  title={isExp && !isAddressEdit ? (order.orderClients?.[0]?.address || "") : ""}
-                  on:click={(e) => { if (!isExp) return; e.stopPropagation(); if (!isAddressEdit) startEdit(e, order.id, "address", order.orderClients?.[0]?.address); }}
-                >
-                  {#if isAddressEdit}
-                    <input id="cell-input-{order.id}-address" class="w-full text-xs bg-transparent outline-none border-none p-0" bind:value={editingValue} on:keydown={onCellKeydown} on:blur={saveEdit} on:click|stopPropagation />
-                  {:else if isAddressSaving}
-                    <div class="flex items-center gap-1 text-gray-400"><span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span> <span class="truncate">{order.orderClients?.[0]?.address || "-"}</span></div>
-                  {:else if isExp}
-                    <!-- Expanded: show full address, editable -->
-                    <div class="truncate group-hover:text-blue-600">{order.orderClients?.[0]?.address || "-"}</div>
-                  {:else}
-                    <!-- Collapsed: show city only -->
-                    <div class="truncate text-gray-700">{extractCity(order.orderClients?.[0]?.address)}</div>
-                  {/if}
-                </td>
-
-                <!-- Chats -->
-                <td class="px-2 py-2 border border-gray-100 text-xs overflow-visible align-top h-[54px]" on:click|stopPropagation>
-                  {#if !isExp}
-                    <div class="text-xs cursor-pointer text-gray-600 max-w-full" on:click={() => toggleRow(order.id)}>
-                      {#if lastChat}
-                        <div class="flex items-center gap-1 mb-0.5">
-                          {#each normalizeTypes(lastChat.type) as nt}
-                            <span class="rounded px-1 py-0 text-[9px] font-semibold flex-shrink-0" style={chatTypeBadgeStyle(nt)}>{nt}</span>
-                          {/each}
-                          <div class="truncate"><b>{maskAssignedName(lastChat.user, currentUser) || ""}:</b> {lastChat.message || ""}</div>
-                        </div>
-                        <div class="text-[10px] text-gray-400 mt-px whitespace-nowrap">{formatDateTime(lastChat.createdAt)}</div>
-                      {:else}
-                        <span class="text-gray-400 italic text-[11px]">No chats</span>
-                      {/if}
+                  {#if col.key === 'sno'}
+                  <!-- S.No -->
+                  <td class="px-2 py-2 border border-gray-100 align-middle text-xs overflow-hidden h-[54px] text-center sticky-td-sno" style="background:{rowBg};">
+                    <div class="flex flex-col items-center justify-center gap-0.5">
+                      <span>{(currentPage - 1) * pageSize + i + 1}</span>
+                      {#if isExp}<i class="ti ti-chevron-up text-blue-500" style="font-size:11px;line-height:1;"></i>{/if}
                     </div>
-                  {:else}
-                    <div id="chat-scroll-{order.id}" class="max-h-[90px] overflow-y-auto border border-gray-100 rounded p-1 bg-white text-[11px]">
-                      {#each chats as c}
-                        <div class="py-0.5 border-b border-gray-100 last:border-b-0 break-words">
-                          <div class="flex items-center gap-1 flex-wrap">
-                            {#each normalizeTypes(c.type) as nt}
+                  </td>
+
+                  {:else if col.key === 'pId'}
+                  <!-- pId -->
+                  <td class="px-2 py-2 border border-gray-100 align-middle text-xs overflow-hidden h-[54px] sticky-td-pid" style="background:{rowBg}; left:{snoWidth}px;" on:click|stopPropagation>
+                    <a href="/admin/order/{order.id}" class="text-blue-600 no-underline font-semibold text-xs hover:underline"
+                      on:click|preventDefault={() => goto(`/admin/order/${order.id}`)}>#{order.pId || order.id}</a>
+                    {#if order.workOrderNumber}<div class="mt-0.5 text-[10px] text-gray-500 truncate">{order.workOrderNumber}</div>{/if}
+                  </td>
+
+                  {:else if col.key === 'inqCode'}
+                  <!-- Inq. Code -->
+                  <td class="px-2 py-2 border border-gray-100 align-middle text-xs overflow-hidden h-[54px]" style="background:{rowBg};">
+                    {#if order.inqCode}<span class="font-mono text-[11px] text-gray-700">{order.inqCode}</span>
+                    {:else}<span class="text-gray-300">—</span>{/if}
+                  </td>
+
+                  {:else if col.key === 'title'}
+                  <!-- Title -->
+                  <td class="px-2 py-2 border text-xs overflow-hidden h-[54px] align-middle group"
+                    class:cursor-text={isExp} class:border-blue-400={isTitleEdit} class:border-gray-100={!isTitleEdit}
+                    title={isTitleEdit ? "" : (order.title || "")}
+                    on:click={(e) => { if (!isExp) return; e.stopPropagation(); if (!isTitleEdit) startEdit(e, order.id, "title", order.title); }}>
+                    {#if isTitleEdit}
+                      <input id="cell-input-{order.id}-title" class="w-full h-full text-xs bg-transparent outline-none border-none p-0 leading-normal"
+                        bind:value={editingValue} on:keydown={onCellKeydown} on:blur={saveEdit} on:click|stopPropagation />
+                    {:else if isTitleSaving}
+                      <div class="flex items-center gap-1 text-gray-400"><span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span> <span class="truncate">{order.title || "-"}</span></div>
+                    {:else}
+                      <div class="line-clamp-2 break-words leading-normal" class:group-hover:text-blue-600={isExp}>{order.title || "-"}</div>
+                    {/if}
+                  </td>
+
+                  {:else if col.key === 'company'}
+                  <!-- Company -->
+                  <td class="px-2 py-2 border text-xs h-[54px] align-middle group"
+                    class:cursor-text={isExp} class:border-blue-400={isCompanyEdit} class:border-gray-100={!isCompanyEdit}
+                    on:click={(e) => { if (!isExp) return; e.stopPropagation(); if (!isCompanyEdit) startEdit(e, order.id, "company", order.company); }}>
+                    {#if isCompanyEdit}
+                      <input id="cell-input-{order.id}-company" class="w-full text-xs bg-transparent outline-none border-none p-0" bind:value={editingValue} on:keydown={onCellKeydown} on:blur={saveEdit} on:click|stopPropagation />
+                    {:else if isCompanySaving}
+                      <div class="flex items-center gap-1 text-gray-400"><span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span> <span class="truncate">{order.company || "-"}</span></div>
+                    {:else}
+                      <div class="truncate" class:group-hover:text-blue-600={isExp}>{order.company || "-"}</div>
+                    {/if}
+                  </td>
+
+                  {:else if col.key === 'mobile'}
+                  <!-- Mobile -->
+                  <td class="px-2 py-2 border text-xs h-[54px] align-middle group"
+                    class:cursor-text={isExp} class:border-blue-400={isMobileEdit} class:border-gray-100={!isMobileEdit}
+                    on:click={(e) => { if (!isExp) return; e.stopPropagation(); if (!isMobileEdit) startEdit(e, order.id, "mobile", order.orderClients?.[0]?.mobile); }}>
+                    {#if isMobileEdit}
+                      <input id="cell-input-{order.id}-mobile" class="w-full text-xs bg-transparent outline-none border-none p-0" bind:value={editingValue} on:keydown={onCellKeydown} on:blur={saveEdit} on:click|stopPropagation />
+                    {:else if isMobileSaving}
+                      <div class="flex items-center gap-1 text-gray-400"><span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span> <span class="truncate">{order.orderClients?.[0]?.mobile || "-"}</span></div>
+                    {:else if isExp}
+                      <div class="truncate group-hover:text-blue-600">{order.orderClients?.[0]?.mobile || "-"}</div>
+                    {:else}
+                      <div class="truncate text-gray-500 tracking-wider">{maskMobile(order.orderClients?.[0]?.mobile)}</div>
+                    {/if}
+                  </td>
+
+                  {:else if col.key === 'name'}
+                  <!-- Client Name -->
+                  <td class="px-2 py-2 border text-xs h-[54px] align-middle group"
+                    class:cursor-text={isExp} class:border-blue-400={isNameEdit} class:border-gray-100={!isNameEdit}
+                    on:click={(e) => { if (!isExp) return; e.stopPropagation(); if (!isNameEdit) startEdit(e, order.id, "name", order.orderClients?.[0]?.name); }}>
+                    {#if isNameEdit}
+                      <input id="cell-input-{order.id}-name" class="w-full text-xs bg-transparent outline-none border-none p-0" bind:value={editingValue} on:keydown={onCellKeydown} on:blur={saveEdit} on:click|stopPropagation />
+                    {:else if isNameSaving}
+                      <div class="flex items-center gap-1 text-gray-400"><span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span> <span class="truncate">{order.orderClients?.[0]?.name || "-"}</span></div>
+                    {:else}
+                      <div class="truncate">{order.orderClients?.[0]?.name || "-"}</div>
+                    {/if}
+                  </td>
+
+                  {:else if col.key === 'address'}
+                  <!-- Address / City -->
+                  <td class="px-2 py-2 border text-xs h-[54px] align-middle group"
+                    class:cursor-text={isExp} class:border-blue-400={isAddressEdit} class:border-gray-100={!isAddressEdit}
+                    title={isExp && !isAddressEdit ? (order.orderClients?.[0]?.address || "") : ""}
+                    on:click={(e) => { if (!isExp) return; e.stopPropagation(); if (!isAddressEdit) startEdit(e, order.id, "address", order.orderClients?.[0]?.address); }}>
+                    {#if isAddressEdit}
+                      <input id="cell-input-{order.id}-address" class="w-full text-xs bg-transparent outline-none border-none p-0" bind:value={editingValue} on:keydown={onCellKeydown} on:blur={saveEdit} on:click|stopPropagation />
+                    {:else if isAddressSaving}
+                      <div class="flex items-center gap-1 text-gray-400"><span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span> <span class="truncate">{order.orderClients?.[0]?.address || "-"}</span></div>
+                    {:else if isExp}
+                      <div class="truncate group-hover:text-blue-600">{order.orderClients?.[0]?.address || "-"}</div>
+                    {:else}
+                      <div class="truncate text-gray-700">{extractCity(order.orderClients?.[0]?.address)}</div>
+                    {/if}
+                  </td>
+
+                  {:else if col.key === 'chats'}
+                  <!-- Chats -->
+                  <td class="px-2 py-2 border border-gray-100 text-xs overflow-visible align-top h-[54px]" on:click|stopPropagation>
+                    {#if !isExp}
+                      <div class="text-xs cursor-pointer text-gray-600 max-w-full" on:click={() => toggleRow(order.id)}>
+                        {#if lastChat}
+                          <div class="flex items-center gap-1 mb-0.5">
+                            {#each normalizeTypes(lastChat.type) as nt}
                               <span class="rounded px-1 py-0 text-[9px] font-semibold flex-shrink-0" style={chatTypeBadgeStyle(nt)}>{nt}</span>
                             {/each}
-                            <span><b>{maskAssignedName(c.user, currentUser) || ""}:</b> {c.message}</span>
+                            <div class="truncate"><b>{maskAssignedName(lastChat.user, currentUser) || ""}:</b> {lastChat.message || ""}</div>
                           </div>
-                          <div class="text-[10px] text-gray-400 mt-px">{formatDateTime(c.createdAt)}</div>
-                        </div>
-                      {/each}
-                      {#if chats.length === 0}<div class="text-gray-400 italic text-[11px]">No chats yet</div>{/if}
-                    </div>
-                    <div class="flex gap-1 mt-1 flex-wrap">
-                      {#each CHAT_TYPES as t}
-                        <button
-                          type="button"
-                          class="btn btn-xs py-0 px-1 text-[10px] {(chatTypeInput[order.id] || []).includes(t) ? CHAT_TYPE_COLORS[t] : 'btn-outline-secondary'}"
-                          on:click|stopPropagation={() => {
-                            const cur = chatTypeInput[order.id] || [];
-                            chatTypeInput[order.id] = cur.includes(t) ? cur.filter(x => x !== t) : [...cur, t];
-                          }}
-                        >{t}</button>
-                      {/each}
-                      <button
-                        type="button"
-                        class="btn btn-xs py-0 px-1 text-[10px] {(chatTypeInput[order.id] || []).length === CHAT_TYPES.length ? 'btn-dark' : 'btn-outline-secondary'}"
-                        on:click|stopPropagation={() => {
-                          chatTypeInput[order.id] = (chatTypeInput[order.id] || []).length === CHAT_TYPES.length ? [] : [...CHAT_TYPES];
-                        }}
-                      >All</button>
-                    </div>
-                    <div class="flex gap-1 mt-1">
-                      <input class="form-control form-control-sm !text-[11px]" placeholder="Message..."
-                        bind:value={chatMsg[order.id]}
-                        on:keydown={(e) => e.key === "Enter" && sendChat(order.id)}
-                        on:click|stopPropagation />
-                      <button class="btn btn-sm btn-primary" on:click|stopPropagation={() => sendChat(order.id)}>↵</button>
-                    </div>
-                  {/if}
-                </td>
-
-                <!-- Attachments -->
-                <td class="px-2 py-2 border border-gray-100 text-xs overflow-visible align-top h-[54px]" on:click|stopPropagation>
-                  {#if !isExp}
-                    <div class="text-xs cursor-pointer text-gray-600 max-w-full" on:click={() => toggleRow(order.id)}>
-                      {#if lastAttach}
-                        {@const pf = previewFile(lastAttach)}
-                        {#if pf}
-                          {#if fileIsImage(pf)}
-                            <div class="flex items-center gap-1">
-                              <img src={fileUrl(pf)} alt="" class="h-7 w-7 object-cover rounded border border-gray-200 flex-shrink-0" />
-                              <div class="min-w-0">
-                                <div class="truncate text-[11px]">{fileName(pf)}</div>
-                                <div class="text-[10px] text-gray-400">{formatDateTime(lastAttach.createdAt)}</div>
-                              </div>
+                          <div class="text-[10px] text-gray-400 mt-px whitespace-nowrap">{formatDateTime(lastChat.createdAt)}</div>
+                        {:else}<span class="text-gray-400 italic text-[11px]">No chats</span>{/if}
+                      </div>
+                    {:else}
+                      <div id="chat-scroll-{order.id}" class="max-h-[90px] overflow-y-auto border border-gray-100 rounded p-1 bg-white text-[11px]">
+                        {#each chats as c}
+                          <div class="py-0.5 border-b border-gray-100 last:border-b-0 break-words">
+                            <div class="flex items-center gap-1 flex-wrap">
+                              {#each normalizeTypes(c.type) as nt}
+                                <span class="rounded px-1 py-0 text-[9px] font-semibold flex-shrink-0" style={chatTypeBadgeStyle(nt)}>{nt}</span>
+                              {/each}
+                              <span><b>{maskAssignedName(c.user, currentUser) || ""}:</b> {c.message}</span>
                             </div>
-                          {:else}
-                            <div class="truncate">{fileTypeIcon(pf)} {fileName(pf)}</div>
-                            <div class="text-[10px] text-gray-400 mt-px whitespace-nowrap">{formatDateTime(lastAttach.createdAt)}</div>
-                          {/if}
-                        {/if}
-                      {:else}
-                        <span class="text-gray-400 italic text-[11px]">No attachments</span>
-                      {/if}
-                    </div>
-                  {:else}
-                    <div id="attach-scroll-{order.id}" class="max-h-[110px] overflow-y-auto border border-gray-100 rounded p-1 bg-white text-[11px]">
-                      {#each attachments as a}
-                        {@const aImgUrls = (a.files || []).filter(fileIsImage).map(fileUrl)}
-                        {#each (a.files || []) as f}
-                          {@const fImgIdx = aImgUrls.indexOf(fileUrl(f))}
-                          <div class="py-1 border-b border-gray-100 last:border-b-0">
-                            {#if fileIsImage(f)}
-                              <div class="flex items-center gap-1.5">
-                                <button class="flex-shrink-0 focus:outline-none" on:click|stopPropagation={() => openLightbox(aImgUrls, fImgIdx)} title="View image">
-                                  <img src={fileUrl(f)} alt="" class="h-9 w-9 object-cover rounded border border-gray-200 hover:opacity-80 transition-opacity" />
-                                </button>
-                                <div class="min-w-0 flex-1">
-                                  <div class="truncate text-[11px]">{fileName(f)}</div>
-                                  <div class="text-[10px] text-gray-400">{formatDateTime(a.createdAt)}</div>
-                                  <button class="text-[10px] text-blue-500 hover:underline" on:click|stopPropagation={() => openLightbox(aImgUrls, fImgIdx)}>View</button>
+                            <div class="text-[10px] text-gray-400 mt-px">{formatDateTime(c.createdAt)}</div>
+                          </div>
+                        {/each}
+                        {#if chats.length === 0}<div class="text-gray-400 italic text-[11px]">No chats yet</div>{/if}
+                      </div>
+                      <div class="flex gap-1 mt-1 flex-wrap">
+                        {#each CHAT_TYPES as t}
+                          <button type="button"
+                            class="btn btn-xs py-0 px-1 text-[10px] {(chatTypeInput[order.id] || []).includes(t) ? CHAT_TYPE_COLORS[t] : 'btn-outline-secondary'}"
+                            on:click|stopPropagation={() => { const cur = chatTypeInput[order.id] || []; chatTypeInput[order.id] = cur.includes(t) ? cur.filter(x => x !== t) : [...cur, t]; }}
+                          >{t}</button>
+                        {/each}
+                        <button type="button"
+                          class="btn btn-xs py-0 px-1 text-[10px] {(chatTypeInput[order.id] || []).length === CHAT_TYPES.length ? 'btn-dark' : 'btn-outline-secondary'}"
+                          on:click|stopPropagation={() => { chatTypeInput[order.id] = (chatTypeInput[order.id] || []).length === CHAT_TYPES.length ? [] : [...CHAT_TYPES]; }}
+                        >All</button>
+                      </div>
+                      <div class="flex gap-1 mt-1">
+                        <input class="form-control form-control-sm !text-[11px]" placeholder="Message..."
+                          bind:value={chatMsg[order.id]}
+                          on:keydown={(e) => e.key === "Enter" && sendChat(order.id)}
+                          on:click|stopPropagation />
+                        <button class="btn btn-sm btn-primary" on:click|stopPropagation={() => sendChat(order.id)}>↵</button>
+                      </div>
+                    {/if}
+                  </td>
+
+                  {:else if col.key === 'attach'}
+                  <!-- Attachments -->
+                  <td class="px-2 py-2 border border-gray-100 text-xs overflow-visible align-top h-[54px]" on:click|stopPropagation>
+                    {#if !isExp}
+                      <div class="text-xs cursor-pointer text-gray-600 max-w-full" on:click={() => toggleRow(order.id)}>
+                        {#if lastAttach}
+                          {@const pf = previewFile(lastAttach)}
+                          {#if pf}
+                            {#if fileIsImage(pf)}
+                              <div class="flex items-center gap-1">
+                                <img src={fileUrl(pf)} alt="" class="h-7 w-7 object-cover rounded border border-gray-200 flex-shrink-0" />
+                                <div class="min-w-0">
+                                  <div class="truncate text-[11px]">{fileName(pf)}</div>
+                                  <div class="text-[10px] text-gray-400">{formatDateTime(lastAttach.createdAt)}</div>
                                 </div>
                               </div>
                             {:else}
-                              <div class="flex items-center gap-1.5">
-                                <span class="text-base flex-shrink-0">{fileTypeIcon(f)}</span>
-                                <div class="min-w-0 flex-1">
-                                  <a href={fileUrl(f)} target="_blank" class="truncate block text-blue-500 hover:underline" on:click|stopPropagation>
-                                    {fileName(f)}
-                                  </a>
-                                  <div class="text-[10px] text-gray-400">{formatDateTime(a.createdAt)}</div>
-                                </div>
-                              </div>
+                              <div class="truncate">{fileTypeIcon(pf)} {fileName(pf)}</div>
+                              <div class="text-[10px] text-gray-400 mt-px whitespace-nowrap">{formatDateTime(lastAttach.createdAt)}</div>
                             {/if}
+                          {/if}
+                        {:else}<span class="text-gray-400 italic text-[11px]">No attachments</span>{/if}
+                      </div>
+                    {:else}
+                      <div id="attach-scroll-{order.id}" class="max-h-[110px] overflow-y-auto border border-gray-100 rounded p-1 bg-white text-[11px]">
+                        {#each attachments as a}
+                          {@const aImgUrls = (a.files || []).filter(fileIsImage).map(fileUrl)}
+                          {#each (a.files || []) as f}
+                            {@const fImgIdx = aImgUrls.indexOf(fileUrl(f))}
+                            <div class="py-1 border-b border-gray-100 last:border-b-0">
+                              {#if fileIsImage(f)}
+                                <div class="flex items-center gap-1.5">
+                                  <button class="flex-shrink-0 focus:outline-none" on:click|stopPropagation={() => openLightbox(aImgUrls, fImgIdx)}>
+                                    <img src={fileUrl(f)} alt="" class="h-9 w-9 object-cover rounded border border-gray-200 hover:opacity-80 transition-opacity" />
+                                  </button>
+                                  <div class="min-w-0 flex-1">
+                                    <div class="truncate text-[11px]">{fileName(f)}</div>
+                                    <div class="text-[10px] text-gray-400">{formatDateTime(a.createdAt)}</div>
+                                    <button class="text-[10px] text-blue-500 hover:underline" on:click|stopPropagation={() => openLightbox(aImgUrls, fImgIdx)}>View</button>
+                                  </div>
+                                </div>
+                              {:else}
+                                <div class="flex items-center gap-1.5">
+                                  <span class="text-base flex-shrink-0">{fileTypeIcon(f)}</span>
+                                  <div class="min-w-0 flex-1">
+                                    <a href={fileUrl(f)} target="_blank" class="truncate block text-blue-500 hover:underline" on:click|stopPropagation>{fileName(f)}</a>
+                                    <div class="text-[10px] text-gray-400">{formatDateTime(a.createdAt)}</div>
+                                  </div>
+                                </div>
+                              {/if}
+                            </div>
+                          {/each}
+                        {/each}
+                        {#if attachments.length === 0}<div class="text-gray-400 italic text-[11px]">No files yet</div>{/if}
+                      </div>
+                      <label class="btn btn-sm btn-outline-secondary mt-1 cursor-pointer !text-[11px]">
+                        + Upload
+                        <input type="file" class="hidden" on:change={(e) => handleFileUpload(order.id, e)} on:click|stopPropagation />
+                      </label>
+                    {/if}
+                  </td>
+
+                  {:else if col.key === 'remind'}
+                  <!-- Reminders -->
+                  <td class="px-2 py-2 border border-gray-100 text-xs overflow-visible align-top h-[54px]" on:click|stopPropagation>
+                    {#if !isExp}
+                      <div class="text-xs cursor-pointer text-gray-600 max-w-full" on:click={() => toggleRow(order.id)}>
+                        {#if lastRemind}
+                          <div class="truncate">🔔 {lastRemind.message || ""}</div>
+                          <div class="text-[10px] text-gray-400 mt-px whitespace-nowrap">{formatDateTime(lastRemind.reminderTime || lastRemind.createdAt)}</div>
+                        {:else}<span class="text-gray-400 italic text-[11px]">No reminders</span>{/if}
+                      </div>
+                    {:else}
+                      <div id="remind-scroll-{order.id}" class="max-h-[90px] overflow-y-auto border border-gray-100 rounded p-1 bg-white text-[11px]">
+                        {#each reminders as r}
+                          <div class="py-0.5 border-b border-gray-100 last:border-b-0 break-words">
+                            <div>🔔 {r.message || ""}</div>
+                            {#if r.reminderTime}<div class="text-[10px] text-orange-500 mt-px">🕐 {formatDateTime(r.reminderTime)}</div>{/if}
+                            <div class="text-[10px] text-gray-400">{formatDateTime(r.createdAt)}</div>
                           </div>
                         {/each}
-                      {/each}
-                      {#if attachments.length === 0}<div class="text-gray-400 italic text-[11px]">No files yet</div>{/if}
-                    </div>
-                    <label class="btn btn-sm btn-outline-secondary mt-1 cursor-pointer !text-[11px]">
-                      + Upload
-                      <input type="file" class="hidden" on:change={(e) => handleFileUpload(order.id, e)} on:click|stopPropagation />
-                    </label>
-                  {/if}
-                </td>
-
-                <!-- Reminders -->
-                <td class="px-2 py-2 border border-gray-100 text-xs overflow-visible align-top h-[54px]" on:click|stopPropagation>
-                  {#if !isExp}
-                    <div class="text-xs cursor-pointer text-gray-600 max-w-full" on:click={() => toggleRow(order.id)}>
-                      {#if lastRemind}
-                        <div class="truncate">🔔 {lastRemind.message || ""}</div>
-                        <div class="text-[10px] text-gray-400 mt-px whitespace-nowrap">{formatDateTime(lastRemind.reminderTime || lastRemind.createdAt)}</div>
-                      {:else}
-                        <span class="text-gray-400 italic text-[11px]">No reminders</span>
-                      {/if}
-                    </div>
-                  {:else}
-                    <div id="remind-scroll-{order.id}" class="max-h-[90px] overflow-y-auto border border-gray-100 rounded p-1 bg-white text-[11px]">
-                      {#each reminders as r}
-                        <div class="py-0.5 border-b border-gray-100 last:border-b-0 break-words">
-                          <div>🔔 {r.message || ""}</div>
-                          {#if r.reminderTime}
-                            <div class="text-[10px] text-orange-500 mt-px">🕐 {formatDateTime(r.reminderTime)}</div>
-                          {/if}
-                          <div class="text-[10px] text-gray-400">{formatDateTime(r.createdAt)}</div>
-                        </div>
-                      {/each}
-                      {#if reminders.length === 0}<div class="text-gray-400 italic text-[11px]">No reminders yet</div>{/if}
-                    </div>
-                    <div class="mt-1" on:click|stopPropagation>
-                      <input type="datetime-local" class="form-control form-control-sm !text-[11px] mb-1"
-                        bind:value={reminderTimeInput[order.id]} on:click|stopPropagation />
-                      <div class="flex gap-1">
-                        <input class="form-control form-control-sm !text-[11px]" placeholder="Message..."
-                          bind:value={reminderInput[order.id]}
-                          on:keydown={(e) => e.key === "Enter" && addReminder(order.id)}
-                          on:click|stopPropagation />
-                        <button class="btn btn-sm btn-warning" on:click|stopPropagation={() => addReminder(order.id)}>+</button>
+                        {#if reminders.length === 0}<div class="text-gray-400 italic text-[11px]">No reminders yet</div>{/if}
                       </div>
-                    </div>
-                  {/if}
-                </td>
+                      <div class="mt-1" on:click|stopPropagation>
+                        <input type="datetime-local" class="form-control form-control-sm !text-[11px] mb-1"
+                          bind:value={reminderTimeInput[order.id]} on:click|stopPropagation />
+                        <div class="flex gap-1">
+                          <input class="form-control form-control-sm !text-[11px]" placeholder="Message..."
+                            bind:value={reminderInput[order.id]}
+                            on:keydown={(e) => e.key === "Enter" && addReminder(order.id)}
+                            on:click|stopPropagation />
+                          <button class="btn btn-sm btn-warning" on:click|stopPropagation={() => addReminder(order.id)}>+</button>
+                        </div>
+                      </div>
+                    {/if}
+                  </td>
 
-                <!-- Status -->
-                <td class="px-2 py-2 border border-gray-100 align-middle text-xs h-[54px]" on:click|stopPropagation>
-                  <select
-                    class="status-select w-full rounded-full border-0 text-[11px] font-medium px-2 py-0.5 cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-300"
-                    style={statusStyle(order.status)}
-                    value={order.status}
-                    on:change={(e) => updateStatus(order.id, e.target.value)}
-                  >
-                    {#each STATUS_OPTIONS as s}
-                      <option value={s}>{$statusNamesStore[s]?.name ?? s}</option>
-                    {/each}
-                  </select>
-                </td>
+                  {:else if col.key === 'status'}
+                  <!-- Status -->
+                  <td class="px-2 py-2 border border-gray-100 align-middle text-xs h-[54px]" on:click|stopPropagation>
+                    <select class="status-select w-full rounded-full border-0 text-[11px] font-medium px-2 py-0.5 cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-300"
+                      style={statusStyle(order.status)} value={order.status}
+                      on:change={(e) => updateStatus(order.id, e.target.value)}>
+                      {#each STATUS_OPTIONS as s}
+                        <option value={s}>{$statusNamesStore[s]?.name ?? s}</option>
+                      {/each}
+                    </select>
+                  </td>
 
-                <!-- Sales User (master only) -->
-                {#if isMaster}
+                  {:else if col.key === 'user'}
+                  <!-- Sales User -->
                   <td class="px-2 py-2 border border-gray-100 align-middle text-xs h-[54px] truncate">
                     {maskAssignedName(order.assignedUsers?.find(u => u.role === "user"), currentUser) || "-"}
                   </td>
-                {/if}
 
-                <!-- Date -->
-                <td class="px-2 py-2 border border-gray-100 align-middle text-xs h-[54px] truncate">{formatDate(order.createdAt)}</td>
+                  {:else if col.key === 'date'}
+                  <!-- Date -->
+                  <td class="px-2 py-2 border border-gray-100 align-middle text-xs h-[54px] truncate">{formatDate(order.createdAt)}</td>
 
-                <!-- PI / WO / TI -->
-                <td class="px-2 py-2 border border-gray-100 align-middle text-xs h-[54px]" on:click|stopPropagation>
-                  {#if order.status === "Deal Won"}
-                    {@const pi = order.orderPayments?.[0]}
-                    {@const wo = order.workOrders?.[0]}
-                    {@const ti = order.invoices?.[0]}
-                    <div class="flex gap-1">
-                      <button
-                        class="btn btn-xs text-[10px] font-semibold {pi ? 'btn-soft-success' : 'btn-soft-secondary'}"
-                        title={pi ? `PI: ${pi.financialYear}/${String(pi.invoiceNo).padStart(6,'0')}` : 'Create PI'}
-                        on:click|stopPropagation={() => openPIWOTIModal('PI', order)}
-                      >PI{pi ? ' ✓' : ''}</button>
-                      {#if pi}
-                        <button
-                          class="btn btn-xs text-[10px] font-semibold {wo ? 'btn-soft-success' : 'btn-soft-secondary'}"
-                          title={wo ? `WO: ${wo.workOrderNo}` : 'Create WO'}
-                          on:click|stopPropagation={() => openPIWOTIModal('WO', order)}
-                        >WO{wo ? ' ✓' : ''}</button>
-                      {:else}
-                        <span class="btn btn-xs btn-soft-secondary text-[10px] font-semibold opacity-40" style="cursor:not-allowed" title="Create PI first">WO</span>
-                      {/if}
-                      {#if wo}
-                        <button
-                          class="btn btn-xs text-[10px] font-semibold {ti ? 'btn-soft-success' : 'btn-soft-secondary'}"
-                          title={ti ? `TI: ${ti.financialYear}/${String(ti.invoiceNo).padStart(6,'0')}` : 'Create TI'}
-                          on:click|stopPropagation={() => openPIWOTIModal('TI', order)}
-                        >TI{ti ? ' ✓' : ''}</button>
-                      {:else}
-                        <span class="btn btn-xs btn-soft-secondary text-[10px] font-semibold opacity-40" style="cursor:not-allowed" title="Create WO first">TI</span>
-                      {/if}
-                    </div>
-                  {:else}
-                    <span class="text-gray-300">—</span>
+                  {:else if col.key === 'actions'}
+                  <!-- PI / WO / TI -->
+                  <td class="px-2 py-2 border border-gray-100 align-middle text-xs h-[54px]" on:click|stopPropagation>
+                    {#if order.status === "Deal Won"}
+                      {@const pi = order.orderPayments?.[0]}
+                      {@const wo = order.workOrders?.[0]}
+                      {@const ti = order.invoices?.[0]}
+                      <div class="flex gap-1">
+                        <button class="btn btn-xs text-[10px] font-semibold {pi ? 'btn-soft-success' : 'btn-soft-secondary'}"
+                          title={pi ? `PI: ${pi.financialYear}/${String(pi.invoiceNo).padStart(6,'0')}` : 'Create PI'}
+                          on:click|stopPropagation={() => openPIWOTIModal('PI', order)}>PI{pi ? ' ✓' : ''}</button>
+                        {#if pi}
+                          <button class="btn btn-xs text-[10px] font-semibold {wo ? 'btn-soft-success' : 'btn-soft-secondary'}"
+                            title={wo ? `WO: ${wo.workOrderNo}` : 'Create WO'}
+                            on:click|stopPropagation={() => openPIWOTIModal('WO', order)}>WO{wo ? ' ✓' : ''}</button>
+                        {:else}
+                          <span class="btn btn-xs btn-soft-secondary text-[10px] font-semibold opacity-40" style="cursor:not-allowed" title="Create PI first">WO</span>
+                        {/if}
+                        {#if wo}
+                          <button class="btn btn-xs text-[10px] font-semibold {ti ? 'btn-soft-success' : 'btn-soft-secondary'}"
+                            title={ti ? `TI: ${ti.financialYear}/${String(ti.invoiceNo).padStart(6,'0')}` : 'Create TI'}
+                            on:click|stopPropagation={() => openPIWOTIModal('TI', order)}>TI{ti ? ' ✓' : ''}</button>
+                        {:else}
+                          <span class="btn btn-xs btn-soft-secondary text-[10px] font-semibold opacity-40" style="cursor:not-allowed" title="Create WO first">TI</span>
+                        {/if}
+                      </div>
+                    {:else}
+                      <span class="text-gray-300">—</span>
+                    {/if}
+                  </td>
+
                   {/if}
-                </td>
+                {/each}
               </tr>
             {/each}
 
             {#if orders.length === 0}
               <tr>
-                <td colspan={cols.length} class="text-center py-4 text-gray-400">No orders found</td>
+                <td colspan={visibleCols.length} class="text-center py-4 text-gray-400">No orders found</td>
               </tr>
             {/if}
           </tbody>

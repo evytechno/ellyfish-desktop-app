@@ -10,6 +10,17 @@
   import { statusNamesStore } from "$lib/stores/statusNames";
   import Loader from "$lib/components/Loader.svelte";
   import Swal from "sweetalert2";
+  import { goto } from "$app/navigation";
+
+  function goToActivity(params) {
+    const q = new URLSearchParams({ tab: "order" });
+    if (params.chatType) q.set("chatType", params.chatType);
+    if (params.userId)   q.set("byUserId", params.userId);
+    if (s3Filter)        q.set("filter", s3Filter);
+    if (s3CustomStart)   q.set("start", s3CustomStart);
+    if (s3CustomEnd)     q.set("end", s3CustomEnd);
+    goto(`/admin/history?${q.toString()}`);
+  }
 
   let currentUser;
   let loadingData = true;
@@ -651,11 +662,11 @@
                 {#each s3Data as row}
                   <tr>
                     <td class="fw-medium">{row.userName}</td>
-                    <td class="text-center">{#if row.call > 0}<span class="db-badge db-badge--green">{row.call}</span>{:else}<span class="text-muted">—</span>{/if}</td>
-                    <td class="text-center">{#if row.whatsapp > 0}<span class="db-badge db-badge--teal">{row.whatsapp}</span>{:else}<span class="text-muted">—</span>{/if}</td>
-                    <td class="text-center">{#if row.email > 0}<span class="db-badge db-badge--blue">{row.email}</span>{:else}<span class="text-muted">—</span>{/if}</td>
-                    <td class="text-center">{#if row.all > 0}<span class="db-badge db-badge--gray">{row.all}</span>{:else}<span class="text-muted">—</span>{/if}</td>
-                    <td class="text-center"><span class="db-badge db-badge--purple">{row.total}</span></td>
+                    <td class="text-center">{#if row.call > 0}<button class="db-badge db-badge--green border-0 cursor-pointer" on:click={() => goToActivity({ chatType: 'Call', userId: row.userId })}>{row.call}</button>{:else}<span class="text-muted">—</span>{/if}</td>
+                    <td class="text-center">{#if row.whatsapp > 0}<button class="db-badge db-badge--teal border-0 cursor-pointer" on:click={() => goToActivity({ chatType: 'WhatsApp', userId: row.userId })}>{row.whatsapp}</button>{:else}<span class="text-muted">—</span>{/if}</td>
+                    <td class="text-center">{#if row.email > 0}<button class="db-badge db-badge--blue border-0 cursor-pointer" on:click={() => goToActivity({ chatType: 'Email', userId: row.userId })}>{row.email}</button>{:else}<span class="text-muted">—</span>{/if}</td>
+                    <td class="text-center">{#if row.all > 0}<button class="db-badge db-badge--gray border-0 cursor-pointer" on:click={() => goToActivity({ userId: row.userId })}>{row.all}</button>{:else}<span class="text-muted">—</span>{/if}</td>
+                    <td class="text-center"><button class="db-badge db-badge--purple border-0 cursor-pointer" on:click={() => goToActivity({ userId: row.userId })}>{row.total}</button></td>
                     <td class="text-center">{#if row.orderCount > 0}<span class="db-badge db-badge--orange">{row.orderCount}</span>{:else}<span class="text-muted">—</span>{/if}</td>
                   </tr>
                 {/each}
