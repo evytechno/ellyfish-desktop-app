@@ -2,8 +2,9 @@
   import { onMount } from "svelte";
   import jQuery from "jquery";
   import { goto } from "$app/navigation";
-  import { clearUser } from "../../stores/userStore";
-  import { checkAuth, logoutUser } from "$lib/utils/auth";
+  import { clearUser, setUser } from "../../stores/userStore";
+  import { checkAuth, logoutUser, getAvailableRoles, getRolePermissions, saveSession } from "$lib/utils/auth";
+  import { apiFetch } from "$lib/api/client";
   import Swal from "sweetalert2";
   import Notification from "./Notification.svelte";
   import { ATTACHMENT_BASE_URL } from "$lib/constants/constants";
@@ -18,10 +19,20 @@
   let setting;
 
   let currentUser;
+  let availableRoles = [];
+  let rolePermissions = null;
+
+  const SUBROLE_LABELS = { telecaller: "Telecaller", tech: "Tech", tech_helper: "Tech Helper" };
+
+  function roleBadgeLabel(r) {
+    const sub = rolePermissions?.[r]?.subRole;
+    return sub ? `${r} (${SUBROLE_LABELS[sub] ?? sub})` : r;
+  }
+
   onMount(() => {
     currentUser = checkAuth();
-    if (!currentUser) {
-    }
+    availableRoles = getAvailableRoles();
+    rolePermissions = getRolePermissions();
     fetchSetting();
   });
 
@@ -61,6 +72,43 @@
         logoutUser();
         Swal.fire("Success!", "Sign out successfully.", "success");
         goto("/login");
+      }
+    });
+  };
+
+  const switchRole = () => {
+    const otherRoles = availableRoles.filter(r => r !== currentUser?.role);
+    const targetRole = otherRoles.length === 1 ? otherRoles[0] : null;
+
+    Swal.fire({
+      title: "Switch Role",
+      text: targetRole
+        ? `Switch to ${targetRole}?`
+        : "You will be taken to the role selection screen.",
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: "Switch",
+    }).then(async (result) => {
+      if (!result.isConfirmed) return;
+
+      if (targetRole) {
+        // Only 2 roles — switch directly without select-role page
+        try {
+          const data = await apiFetch(API_ROUTES.SELECT_ROLE, {
+            method: "POST",
+            data: JSON.stringify({ userId: Number(currentUser?.id), selectedRole: targetRole }),
+          });
+          await saveSession(data);
+          setUser(data.user);
+          await Swal.fire("Success!", `Switched to ${targetRole}.`, "success");
+          window.location.href = "/admin/dashboard";
+        } catch (error) {
+          errorHandle(error);
+        }
+      } else {
+        // 3+ roles — go to select-role page
+        localStorage.setItem("pending_user_id", String(currentUser?.id));
+        goto("/select-role");
       }
     });
   };
@@ -642,7 +690,17 @@
             />
             <div class="ms-2">
               <p class="fw-medium text-dark mb-0">{currentUser?.name}</p>
-              <span class="d-block fs-13">{currentUser?.role}</span>
+              <span class="d-block fs-13 text-muted">
+                <span class="text-xs" style="font-size:10px;opacity:0.7;">Active:</span>
+                <span class="text-capitalize fw-semibold ms-1">{currentUser?.role}{currentUser?.subRole ? ` (${currentUser.subRole})` : ''}</span>
+              </span>
+              {#if availableRoles.length > 1}
+                <span class="d-flex flex-wrap gap-1 mt-1">
+                  {#each availableRoles as r}
+                    <span class="badge text-capitalize" style="font-size:10px; background-color:{r === currentUser?.role ? '#405189' : '#6c757d'}; color:#fff;">{roleBadgeLabel(r)}</span>
+                  {/each}
+                </span>
+              {/if}
             </div>
           </div>
 
@@ -651,6 +709,21 @@
             <i class="ti ti-user-circle me-1 align-middle"></i>
             <span class="align-middle">Profile</span>
           </a>
+
+          <!-- Switch Role — only for users with multiple roles -->
+          {#if availableRoles.length > 1}
+            <button on:click={() => switchRole()} class="dropdown-item text-primary d-flex flex-column align-items-start">
+              <span>
+                <i class="ti ti-switch-horizontal me-1 fs-17 align-middle"></i>
+                <span class="align-middle">Switch Role</span>
+              </span>
+              <span class="d-flex flex-wrap gap-1 mt-1 ms-4">
+                {#each availableRoles.filter(r => r !== currentUser?.role) as r}
+                  <span class="badge" style="font-size:10px; background-color:#6c757d; color:#fff;">{roleBadgeLabel(r)}</span>
+                {/each}
+              </span>
+            </button>
+          {/if}
 
           <!-- Item-->
           <div class="pt-2 mt-2 border-top">

@@ -101,8 +101,13 @@
       key: "role",
       label: "Role",
       render: (val, row) => {
-        const sub = row?.subRole ? ` <span class="text-muted small">(${row.subRole})</span>` : "";
-        return `<div class="capitalize">${row?.role}${sub}</div>`;
+        const roles = row?.roles && row.roles.length > 0 ? row.roles : [row?.role];
+        const badges = roles.map((r) => {
+          const isPrimary = r === row?.role;
+          const sub = (r === "user" && row?.subRole) ? ` <span style="font-size:10px;opacity:0.75">(${row.subRole})</span>` : "";
+          return `<span class="badge ${isPrimary ? 'bg-primary' : 'bg-secondary'} me-1 text-capitalize">${r}${sub}</span>`;
+        }).join("");
+        return `<div class="d-flex flex-wrap gap-1">${badges}</div>`;
       },
     },
     {

@@ -1,5 +1,6 @@
 export const API_ROUTES = {
   LOGIN: `auth/login`,
+  SELECT_ROLE: `auth/select-role`,
   USER: `users`,
   COMPANY: `companies`,
   CATEGORY: `categories`,

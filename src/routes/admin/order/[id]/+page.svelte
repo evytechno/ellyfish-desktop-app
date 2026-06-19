@@ -12,6 +12,20 @@
   import Loader from "$lib/components/Loader.svelte";
   import { statusNamesStore } from "$lib/stores/statusNames";
   import TypeableSelect from "$lib/components/TypeableSelect.svelte";
+  import PIWOTIModal from "$lib/components/PIWOTIModal.svelte";
+
+  let piwotiOpen = false;
+  let piwotiType = "PI";
+
+  async function onPIWOTIRefresh() {
+    try {
+      const updated = await authApiFetch(`${API_ROUTES.ORDER}/${orderId}`);
+      order.orderPayments = updated.orderPayments ?? [];
+      order.workOrders    = updated.workOrders    ?? [];
+      order.invoices      = updated.invoices      ?? [];
+      order = { ...order };
+    } catch {}
+  }
   let loadingData = true;
   import { usersAllStore, categoriesAllStore } from "$lib/stores/dataStores";
   import { ATTACHMENT_BASE_URL } from "$lib/constants/constants";
@@ -2377,12 +2391,12 @@
                           {/if}
                         </a>
                       {:else}
-                        <a
-                          href="/admin/invoice?fromOrder={order?.id}"
-                          class="order-header-doc-action"
+                        <button
+                          class="order-header-doc-action border-0 bg-transparent p-0"
+                          on:click={() => { piwotiType = 'PI'; piwotiOpen = true; }}
                         >
                           <i class="ti ti-plus me-1"></i>Create
-                        </a>
+                        </button>
                       {/if}
                     </div>
 
@@ -2404,12 +2418,12 @@
                           {/if}
                         </a>
                       {:else if order?.orderPayments?.length > 0}
-                        <a
-                          href="/admin/workorder/add?fromOrder={order?.id}"
-                          class="order-header-doc-action"
+                        <button
+                          class="order-header-doc-action border-0 bg-transparent p-0"
+                          on:click={() => { piwotiType = 'WO'; piwotiOpen = true; }}
                         >
                           <i class="ti ti-plus me-1"></i>Create
-                        </a>
+                        </button>
                       {:else}
                         <span class="order-header-doc-muted">
                           <i class="ti ti-lock me-1"></i>Needs PI
@@ -2441,12 +2455,12 @@
                           {/if}
                         </a>
                       {:else if order?.orderPayments?.length > 0 && order?.workOrders?.length > 0}
-                        <a
-                          href="/admin/invoice/tax?fromOrder={order?.id}"
-                          class="order-header-doc-action order-header-doc-action--warning"
+                        <button
+                          class="order-header-doc-action order-header-doc-action--warning border-0 bg-transparent p-0"
+                          on:click={() => { piwotiType = 'TI'; piwotiOpen = true; }}
                         >
                           <i class="ti ti-plus me-1"></i>Create
-                        </a>
+                        </button>
                       {:else}
                         <span class="order-header-doc-muted">
                           <i class="ti ti-lock me-1"></i>Needs PI &amp; WO
@@ -6278,6 +6292,14 @@
 </div>
 
 <!-- /Create Client -->
+
+<PIWOTIModal
+  open={piwotiOpen}
+  type={piwotiType}
+  order={order}
+  on:close={() => piwotiOpen = false}
+  on:refresh={onPIWOTIRefresh}
+/>
 
 <style>
   .order-header-card {

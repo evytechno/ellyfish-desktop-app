@@ -1,6 +1,6 @@
 import { secureStorage } from './secureStorage';
 
-const TOKEN_KEYS = ['access_token', 'refresh_token', 'user', 'statusNames', 'device_name'];
+const TOKEN_KEYS = ['access_token', 'refresh_token', 'user', 'statusNames', 'device_name', 'pending_user_id', 'available_roles', 'role_permissions'];
 
 export const checkAuth = () => {
   // Still read from localStorage for sync check (tokens mirrored there for quick access)
@@ -41,6 +41,44 @@ export const saveSession = async (data) => {
   localStorage.setItem('access_token',  data.access_token);
   localStorage.setItem('refresh_token', data.refresh_token);
   localStorage.setItem('user',          JSON.stringify(data.user));
+
+  // Store available roles and permissions for Switch Role button / role picker
+  const userRoles = data.user?.roles ?? [data.user?.role];
+  localStorage.setItem('available_roles', JSON.stringify(userRoles));
+  if (data.user?.rolePermissions) {
+    localStorage.setItem('role_permissions', JSON.stringify(data.user.rolePermissions));
+  }
+};
+
+/**
+ * Save pending role selection state (between login and role picker)
+ */
+export const savePendingRoleSelection = (userId, roles, rolePermissions) => {
+  localStorage.setItem('pending_user_id',  String(userId));
+  localStorage.setItem('available_roles',  JSON.stringify(roles));
+  if (rolePermissions) {
+    localStorage.setItem('role_permissions', JSON.stringify(rolePermissions));
+  }
+};
+
+/**
+ * Clear pending role selection state
+ */
+export const clearPendingRoleSelection = () => {
+  localStorage.removeItem('pending_user_id');
+};
+
+/**
+ * Get available roles for the current session (for Switch Role button)
+ */
+export const getAvailableRoles = () => {
+  try { return JSON.parse(localStorage.getItem('available_roles') || '[]'); }
+  catch { return []; }
+};
+
+export const getRolePermissions = () => {
+  try { return JSON.parse(localStorage.getItem('role_permissions') || 'null'); }
+  catch { return null; }
 };
 
 /**

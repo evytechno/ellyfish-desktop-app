@@ -223,6 +223,22 @@
     }
     document.addEventListener("orderStatusChanged", handleStatusChanged);
 
+    // Refresh a single card after PI/WO/TI creation from OrderCard
+    async function handleRefreshOrder(e) {
+      const { orderId } = e.detail;
+      try {
+        const updated = await authApiFetch(`${API_ROUTES.ORDER}/${orderId}`);
+        const status = updated.status;
+        if (!columnState[status]) return;
+        columnState[status] = {
+          ...columnState[status],
+          orders: columnState[status].orders.map(o => o.id === updated.id ? updated : o),
+        };
+        columnState = { ...columnState };
+      } catch {}
+    }
+    document.addEventListener("refreshOrder", handleRefreshOrder);
+
     // Dragula setup
     if (typeof window !== "undefined") {
       globalThis.global = globalThis;

@@ -1,7 +1,7 @@
 <script>
   import { setUser } from "../../lib/stores/userStore";
   import { onMount } from "svelte";
-  import { checkAuth, saveSession, restoreSession } from "$lib/utils/auth";
+  import { checkAuth, saveSession, restoreSession, savePendingRoleSelection } from "$lib/utils/auth";
   import { secureStorage } from "$lib/utils/secureStorage";
 
   import { goto } from "$app/navigation";
@@ -150,11 +150,6 @@
           deviceName: localStorage.getItem("device_name") || null,
         }),
       });
-      Swal.fire("Success!", "Sign in successfully.", "success");
-      // Store tokens securely
-      await saveSession(data);
-      setUser(data.user);
-
       // Remember last email + password if checked
       if (rememberMe) {
         localStorage.setItem("last_email", email);
@@ -163,6 +158,18 @@
         localStorage.removeItem("last_email");
         await secureStorage.delete("last_password");
       }
+
+      // Multi-role: show role picker before issuing token
+      if (data.requireRoleSelection) {
+        savePendingRoleSelection(data.userId, data.roles, data.rolePermissions);
+        goto("/select-role");
+        return;
+      }
+
+      Swal.fire("Success!", "Sign in successfully.", "success");
+      // Store tokens securely
+      await saveSession(data);
+      setUser(data.user);
 
       goto("/admin/dashboard");
     } catch (error) {

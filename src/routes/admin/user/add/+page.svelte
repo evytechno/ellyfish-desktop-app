@@ -17,94 +17,100 @@
   let mobile = "";
   let whatsapp = "";
   let password = "";
-  let role = "user";
-  let subRole = null;
-  let orderAccess = true;
+  let selectedRoles = ["user"];
   let companyId = null;
   let loginStartTime = "09:00";
   let loginEndTime = "18:10";
   let loading = false;
   let errorMessage = "";
-
   let companies = [];
-
-  // Field-specific error messages
   let formErrors = {};
+
+  // Per-role permissions state
+  // rolePerms[role] = { subRole, orderAccess, queryAccessTelecaller, queryAccessTech, queryAccessTechHelper }
+  let rolePerms = {
+    admin:   { subRole: null, orderAccess: true, queryAccessTelecaller: true, queryAccessTech: true, queryAccessTechHelper: true },
+    manager: { subRole: null, orderAccess: true, queryAccessTelecaller: true, queryAccessTech: true, queryAccessTechHelper: true },
+    user:    { subRole: null, orderAccess: true, queryAccessTelecaller: true, queryAccessTech: true, queryAccessTechHelper: true },
+  };
+
+  const availableRoles = ["admin", "manager", "user"];
 
   let currentUser;
   onMount(async () => {
     currentUser = checkAuth();
     if (currentUser?.role === "user") {
       loadingData = false;
-      loading = false;
-      Swal.fire({
-        icon: "warning",
-        title: "Access Denied",
-        text: "You are not authorized to view this page.",
-        confirmButtonText: "Go Back",
-      }).then(() => {
-        window.history.back();
-      });
+      Swal.fire({ icon: "warning", title: "Access Denied", text: "You are not authorized.", confirmButtonText: "Go Back" }).then(() => window.history.back());
       return;
     }
     getAllCompanies();
-    setTimeout(() => {
-      loadingData = false;
-    }, 500);
+    setTimeout(() => { loadingData = false; }, 500);
   });
+
+  function toggleRole(role) {
+    if (selectedRoles.includes(role)) {
+      if (selectedRoles.length === 1) return; // must have at least one
+      selectedRoles = selectedRoles.filter(r => r !== role);
+    } else {
+      selectedRoles = [...selectedRoles, role];
+    }
+  }
 
   async function handleSubmit(event) {
     event.preventDefault();
     errorMessage = "";
     loading = true;
-    formErrors = {}; // Reset previous errors
+    formErrors = {};
 
-    const newUser = { name, email, password, mobile, whatsapp, role,
-      subRole: role === "user" ? (subRole || null) : null,
-      orderAccess: (role === "user" && (subRole === "tech" || subRole === "tech_helper")) ? orderAccess : true,
-      loginStartTime: loginStartTime || null,
-      loginEndTime: loginEndTime || null,
-    };
-    if (companyId != null) {
-      newUser.company = companyId;
-    }
     if (companyId == null) {
       formErrors.companyId = ["Company is required."];
       loading = false;
       return;
     }
 
-    try {
-      const data = await authApiFetch(API_ROUTES.USER, {
-        method: "POST",
-        data: JSON.stringify(newUser),
-      });
+    // Build rolePermissions from UI state
+    const rolePermissions = {};
+    for (const r of selectedRoles) {
+      rolePermissions[r] = { ...rolePerms[r] };
+      if (r !== "user") rolePermissions[r].subRole = null;
+    }
 
+    const primaryRole = selectedRoles[0];
+    const primaryPerms = rolePermissions[primaryRole];
+
+    const newUser = {
+      name, email, password, mobile, whatsapp,
+      role: primaryRole,
+      subRole: primaryPerms.subRole ?? null,
+      orderAccess: primaryPerms.orderAccess,
+      queryAccessTelecaller: primaryPerms.queryAccessTelecaller,
+      queryAccessTech: primaryPerms.queryAccessTech,
+      queryAccessTechHelper: primaryPerms.queryAccessTechHelper,
+      roles: selectedRoles,
+      rolePermissions,
+      company: companyId,
+      loginStartTime: loginStartTime || null,
+      loginEndTime: loginEndTime || null,
+    };
+
+    try {
+      const data = await authApiFetch(API_ROUTES.USER, { method: "POST", data: JSON.stringify(newUser) });
       Swal.fire("Success!", data.message, "success");
       goto("/admin/user");
     } catch (error) {
       loading = false;
       const validationErrors = errorHandle(error);
-
-      if (validationErrors && typeof validationErrors === "object") {
-        formErrors = validationErrors;
-      } else {
-        errorMessage = "An unexpected error occurred.";
-      }
+      if (validationErrors && typeof validationErrors === "object") formErrors = validationErrors;
+      else errorMessage = "An unexpected error occurred.";
     } finally {
-      console.log("formErrors : ", formErrors);
-
       loading = false;
     }
   }
 
   async function getAllCompanies() {
     const cached = get(companiesAllStore);
-    if (cached && cached.length > 0) {
-      companies = cached;
-      loadingData = false;
-      return;
-    }
+    if (cached && cached.length > 0) { companies = cached; loadingData = false; return; }
     loadingData = true;
     try {
       const data = await authApiFetch(API_ROUTES.COMPANY + "/all");
@@ -113,17 +119,13 @@
     } catch (err) {
       errorMessage = "Failed to load company data.";
     } finally {
-      setTimeout(() => {
-        loadingData = false;
-      }, 500);
+      setTimeout(() => { loadingData = false; }, 500);
     }
   }
-  const roles = ["admin", "manager", "user"];
 </script>
 
-{#if loadingData}
-  <Loader />
-{/if}
+{#if loadingData}<Loader />{/if}
+
 <div class="page-wrapper">
   <div class="content pb-0">
     <div class="mb-4">
@@ -148,210 +150,145 @@
       <div class="card-body">
         <form on:submit={handleSubmit} class="needs-validation" novalidate>
           <div class="grid grid-cols-3 gap-4">
+            <!-- Basic fields -->
             <div>
-              <label class="form-label" for="name"
-                >Name <span class="text-danger">*</span></label
-              >
-              <input
-                class="form-control"
-                class:is-invalid={formErrors.name}
-                type="text"
-                bind:value={name}
-                placeholder="Name"
-                id="name"
-                required
-              />
-              {#if formErrors.name}
-                <ul class="text-danger mt-1 text-xs capitalize">
-                  <li>{formErrors.name[0]}</li>
-                </ul>
-              {/if}
+              <label class="form-label" for="name">Name <span class="text-danger">*</span></label>
+              <input class="form-control" class:is-invalid={formErrors.name} type="text" bind:value={name} placeholder="Name" id="name" required />
+              {#if formErrors.name}<ul class="text-danger mt-1 text-xs capitalize"><li>{formErrors.name[0]}</li></ul>{/if}
             </div>
             <div>
-              <label class="form-label" for="email"
-                >Email <span class="text-danger">*</span></label
-              >
-              <input
-                class="form-control"
-                class:is-invalid={formErrors.email}
-                type="email"
-                bind:value={email}
-                placeholder="email"
-                id="email"
-                required
-              />
-              {#if formErrors.email}
-                <ul class="text-danger mt-1 text-xs capitalize">
-                  <li>{formErrors.email[0]}</li>
-                </ul>
-              {/if}
+              <label class="form-label" for="email">Email <span class="text-danger">*</span></label>
+              <input class="form-control" class:is-invalid={formErrors.email} type="email" bind:value={email} placeholder="email" id="email" required />
+              {#if formErrors.email}<ul class="text-danger mt-1 text-xs capitalize"><li>{formErrors.email[0]}</li></ul>{/if}
             </div>
             <div>
               <label class="form-label" for="mobile">Mobile</label>
-              <input
-                class="form-control"
-                class:is-invalid={formErrors.mobile}
-                type="text"
-                bind:value={mobile}
-                placeholder="Mobile"
-                id="mobile"
-                required
-              />
-              {#if formErrors.mobile}
-                <ul class="text-danger mt-1 text-xs capitalize">
-                  <li>{formErrors.mobile[0]}</li>
-                </ul>
-              {/if}
+              <input class="form-control" type="text" bind:value={mobile} placeholder="Mobile" id="mobile" />
             </div>
             <div>
               <label class="form-label" for="whatsapp">Whatsapp</label>
-              <input
-                class="form-control"
-                class:is-invalid={formErrors.whatsapp}
-                type="text"
-                bind:value={whatsapp}
-                placeholder="Whatsapp"
-                id="whatsapp"
-                required
-              />
-              {#if formErrors.whatsapp}
-                <ul class="text-danger mt-1 text-xs capitalize">
-                  <li>{formErrors.whatsapp[0]}</li>
-                </ul>
-              {/if}
+              <input class="form-control" type="text" bind:value={whatsapp} placeholder="Whatsapp" id="whatsapp" />
             </div>
             <div>
-              <label class="form-label" for="companyId">
-                Company <span class="text-danger">*</span>
-              </label>
-              <select
-                name="companyId"
-                id="companyId"
-                class="select form-control"
-                class:is-invalid={formErrors.companyId}
-                bind:value={companyId}
-                required
-              >
+              <label class="form-label" for="companyId">Company <span class="text-danger">*</span></label>
+              <select name="companyId" id="companyId" class="select form-control" class:is-invalid={formErrors.companyId} bind:value={companyId} required>
                 <option value={null}>Select Company</option>
                 {#each companies as company}
                   <option value={company?.id}>{company?.name}</option>
                 {/each}
               </select>
-              {#if formErrors.companyId}
-                <ul class="text-danger mt-1 text-xs capitalize">
-                  <li>{formErrors.companyId[0]}</li>
-                </ul>
-              {/if}
+              {#if formErrors.companyId}<ul class="text-danger mt-1 text-xs capitalize"><li>{formErrors.companyId[0]}</li></ul>{/if}
             </div>
             <div>
-              <label class="form-label" for="role">
-                Role <span class="text-danger">*</span>
-              </label>
-              <select
-                name="role"
-                id="role"
-                class="select form-control"
-                class:is-invalid={formErrors.role}
-                bind:value={role}
-                required
-              >
-                <option value={null}>Select Role</option>
-                {#each roles as role}
-                  {#if role != currentUser?.role}
-                    <option value={role}>{role}</option>
-                  {/if}
-                {/each}
-              </select>
-              {#if formErrors.role}
-                <ul class="text-danger mt-1 text-xs capitalize">
-                  <li>{formErrors.role[0]}</li>
-                </ul>
-              {/if}
-            </div>
-            {#if role === "user"}
-              <div>
-                <label class="form-label" for="subRole">Sub Role</label>
-                <select
-                  name="subRole"
-                  id="subRole"
-                  class="select form-control"
-                  bind:value={subRole}
-                >
-                  <option value={null}>None</option>
-                  <option value="telecaller">Telecaller</option>
-                  <option value="tech">Tech</option>
-                  <option value="tech_helper">Tech Helper</option>
-                </select>
-                {#if subRole === "tech" || subRole === "tech_helper"}
-                  <div class="d-flex align-items-center gap-2 mt-2">
-                    <div class="form-check form-switch mb-0">
-                      <input
-                        class="form-check-input"
-                        type="checkbox"
-                        id="orderAccess"
-                        bind:checked={orderAccess}
-                      />
-                      <label class="form-check-label" for="orderAccess">
-                        Order Access
-                      </label>
-                    </div>
-                    <span class="text-muted small">(allow this user to manage orders)</span>
-                  </div>
-                {/if}
-              </div>
-            {/if}
-            <div>
-              <label class="form-label" for="password"
-                >Password <span class="text-danger">*</span></label
-              >
-              <input
-                class="form-control"
-                class:is-invalid={formErrors.password}
-                type="password"
-                bind:value={password}
-                placeholder="Password"
-                id="password"
-                required
-              />
-              {#if formErrors.password}
-                <ul class="text-danger mt-1 text-xs capitalize">
-                  <li>{formErrors.password[0]}</li>
-                </ul>
-              {/if}
+              <label class="form-label" for="password">Password <span class="text-danger">*</span></label>
+              <input class="form-control" class:is-invalid={formErrors.password} type="password" bind:value={password} placeholder="Password" id="password" required />
+              {#if formErrors.password}<ul class="text-danger mt-1 text-xs capitalize"><li>{formErrors.password[0]}</li></ul>{/if}
             </div>
             <div>
               <label class="form-label" for="loginStartTime">Login Start Time</label>
-              <input
-                class="form-control"
-                class:is-invalid={formErrors.loginStartTime}
-                type="time"
-                bind:value={loginStartTime}
-                id="loginStartTime"
-              />
+              <input class="form-control" type="time" bind:value={loginStartTime} id="loginStartTime" />
               <small class="text-muted">Leave blank to use default (09:00)</small>
-              {#if formErrors.loginStartTime}
-                <ul class="text-danger mt-1 text-xs capitalize">
-                  <li>{formErrors.loginStartTime[0]}</li>
-                </ul>
-              {/if}
             </div>
             <div>
               <label class="form-label" for="loginEndTime">Login End Time</label>
-              <input
-                class="form-control"
-                class:is-invalid={formErrors.loginEndTime}
-                type="time"
-                bind:value={loginEndTime}
-                id="loginEndTime"
-              />
+              <input class="form-control" type="time" bind:value={loginEndTime} id="loginEndTime" />
               <small class="text-muted">Leave blank to use default (18:10)</small>
-              {#if formErrors.loginEndTime}
-                <ul class="text-danger mt-1 text-xs capitalize">
-                  <li>{formErrors.loginEndTime[0]}</li>
-                </ul>
-              {/if}
             </div>
           </div>
+
+          <!-- Roles multi-select -->
+          <div class="mt-4">
+            <label class="form-label">Roles <span class="text-danger">*</span></label>
+            <div class="d-flex gap-3 flex-wrap">
+              {#each availableRoles as role}
+                {#if role !== currentUser?.role}
+                  <div class="form-check">
+                    <input
+                      class="form-check-input"
+                      type="checkbox"
+                      id="role_{role}"
+                      checked={selectedRoles.includes(role)}
+                      on:change={() => toggleRole(role)}
+                    />
+                    <label class="form-check-label text-capitalize" for="role_{role}">{role}</label>
+                  </div>
+                {/if}
+              {/each}
+            </div>
+            <small class="text-muted">Select one or more roles. First selected role is the primary role.</small>
+          </div>
+
+          <!-- Per-role permission sections — all boxes in one row -->
+          {#if selectedRoles.length > 0}
+            <div class="mt-3 grid grid-cols-3 gap-3">
+              {#each selectedRoles as role}
+                <div class="role-perms-box">
+                  <div class="role-perms-title">
+                    <i class="ti ti-shield-check me-1"></i>
+                    <span class="text-capitalize">{role}</span> Permissions
+                  </div>
+
+                  <!-- user role: subRole + orderAccess -->
+                  {#if role === "user"}
+                    <div class="mt-2">
+                      <label class="form-label" for="subRole_{role}">Sub Role</label>
+                      <select id="subRole_{role}" class="select form-control" bind:value={rolePerms[role].subRole}>
+                        <option value={null}>None</option>
+                        <option value="telecaller">Telecaller</option>
+                        <option value="tech">Tech</option>
+                        <option value="tech_helper">Tech Helper</option>
+                      </select>
+                    </div>
+                    {#if rolePerms[role].subRole === "tech" || rolePerms[role].subRole === "tech_helper"}
+                      <div class="perm-row mt-2">
+                        <span class="perm-label">Order Access</span>
+                        <div class="form-check form-switch mb-0">
+                          <input class="form-check-input" type="checkbox" id="orderAccess_{role}" bind:checked={rolePerms[role].orderAccess} />
+                          <label class="form-check-label" for="orderAccess_{role}">{rolePerms[role].orderAccess ? "Allowed" : "Blocked"}</label>
+                        </div>
+                      </div>
+                    {/if}
+                  {/if}
+
+                  <!-- admin/manager: query access (master only) -->
+                  {#if (role === "admin" || role === "manager") && currentUser?.role === "master"}
+                    <div class="mt-2 d-flex flex-column gap-2">
+                      <div class="perm-row">
+                        <div>
+                          <div class="perm-label">View Telecaller Info</div>
+                          <div class="perm-desc">Can see telecaller names in queries, chat &amp; stats</div>
+                        </div>
+                        <div class="form-check form-switch mb-0">
+                          <input class="form-check-input" type="checkbox" id="qat_{role}" bind:checked={rolePerms[role].queryAccessTelecaller} />
+                          <label class="form-check-label" for="qat_{role}">{rolePerms[role].queryAccessTelecaller ? "Allowed" : "Blocked"}</label>
+                        </div>
+                      </div>
+                      <div class="perm-row">
+                        <div>
+                          <div class="perm-label">View Tech Info</div>
+                          <div class="perm-desc">Can see tech names in queries, chat &amp; stats</div>
+                        </div>
+                        <div class="form-check form-switch mb-0">
+                          <input class="form-check-input" type="checkbox" id="qatech_{role}" bind:checked={rolePerms[role].queryAccessTech} />
+                          <label class="form-check-label" for="qatech_{role}">{rolePerms[role].queryAccessTech ? "Allowed" : "Blocked"}</label>
+                        </div>
+                      </div>
+                      <div class="perm-row">
+                        <div>
+                          <div class="perm-label">View Tech Helper Info</div>
+                          <div class="perm-desc">Can see tech helper names in queries, chat &amp; stats</div>
+                        </div>
+                        <div class="form-check form-switch mb-0">
+                          <input class="form-check-input" type="checkbox" id="qatHelper_{role}" bind:checked={rolePerms[role].queryAccessTechHelper} />
+                          <label class="form-check-label" for="qatHelper_{role}">{rolePerms[role].queryAccessTechHelper ? "Allowed" : "Blocked"}</label>
+                        </div>
+                      </div>
+                    </div>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          {/if}
 
           <div class="flex justify-end mt-4">
             <button class="btn btn-primary" type="submit" disabled={loading}>
@@ -363,3 +300,38 @@
     </div>
   </div>
 </div>
+
+<style>
+  .role-perms-box {
+    background: #f8f9ff;
+    border: 1px solid #d0d7f5;
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .role-perms-title {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #3b5bdb;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .perm-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #fff;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 8px 12px;
+  }
+  .perm-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #333;
+  }
+  .perm-desc {
+    font-size: 11px;
+    color: #888;
+    margin-top: 1px;
+  }
+</style>

@@ -16,40 +16,63 @@
   let users = [];
   let mounted = false;
 
+  const LS_KEY = "admin_dashboard_filters";
+
+  function loadFilters() {
+    try {
+      const saved = localStorage.getItem(LS_KEY);
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  }
+
+  function saveFilters() {
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify({
+        s1SubRole, s1Filter, s1CustomStart, s1CustomEnd, s1ByUserId,
+        s2Filter, s2CustomStart, s2CustomEnd, s2Status, s2SubRole, s2ByUserId,
+        s3Filter, s3CustomStart, s3CustomEnd, s3SubRole, s3ByUserId,
+        s4Filter, s4CustomStart, s4CustomEnd, s4SubRole, s4ByUserId,
+        s5Filter, s5CustomStart, s5CustomEnd, s5SubRole, s5ByUserId,
+      }));
+    } catch {}
+  }
+
+  const _f = loadFilters();
+
   // Section 1 — Role-wise sales
-  let s1SubRole = "telecaller";
-  let s1Filter = "today";
-  let s1CustomStart = "";
-  let s1CustomEnd = "";
-  let s1ByUserId = "";
+  let s1SubRole = _f.s1SubRole ?? "telecaller";
+  let s1Filter = _f.s1Filter ?? "today";
+  let s1CustomStart = _f.s1CustomStart ?? "";
+  let s1CustomEnd = _f.s1CustomEnd ?? "";
+  let s1ByUserId = _f.s1ByUserId ?? "";
   let s1Data = [];
   let s1Loading = false;
 
   // Section 2 — Category-wise sales
-  let s2Filter = "last7days";
-  let s2CustomStart = "";
-  let s2CustomEnd = "";
-  let s2Status = "";
-  let s2SubRole = "";
-  let s2ByUserId = "";
+  let s2Filter = _f.s2Filter ?? "last7days";
+  let s2CustomStart = _f.s2CustomStart ?? "";
+  let s2CustomEnd = _f.s2CustomEnd ?? "";
+  let s2Status = _f.s2Status ?? "";
+  let s2SubRole = _f.s2SubRole ?? "";
+  let s2ByUserId = _f.s2ByUserId ?? "";
   let s2Data = [];
   let s2Loading = false;
 
   // Section 3 — Contact report
-  let s3Filter = "last7days";
-  let s3CustomStart = "";
-  let s3CustomEnd = "";
-  let s3SubRole = "";
-  let s3ByUserId = "";
+  let s3Filter = _f.s3Filter ?? "last7days";
+  let s3CustomStart = _f.s3CustomStart ?? "";
+  let s3CustomEnd = _f.s3CustomEnd ?? "";
+  let s3SubRole = _f.s3SubRole ?? "";
+  let s3ByUserId = _f.s3ByUserId ?? "";
   let s3Data = [];
   let s3Loading = false;
 
   // Section 4 — Last activity
-  let s4Filter = "today";
-  let s4CustomStart = "";
-  let s4CustomEnd = "";
-  let s4SubRole = "";
-  let s4ByUserId = "";
+  let s4Filter = _f.s4Filter ?? "today";
+  let s4CustomStart = _f.s4CustomStart ?? "";
+  let s4CustomEnd = _f.s4CustomEnd ?? "";
+  let s4SubRole = _f.s4SubRole ?? "";
+  let s4ByUserId = _f.s4ByUserId ?? "";
   let s4Data = [];
   let s4Total = 0;
   let s4Page = 1;
@@ -58,11 +81,11 @@
   let s4Loading = false;
 
   // Section 5 — Category × Status breakdown
-  let s5Filter = "last7days";
-  let s5CustomStart = "";
-  let s5CustomEnd = "";
-  let s5SubRole = "";
-  let s5ByUserId = "";
+  let s5Filter = _f.s5Filter ?? "last7days";
+  let s5CustomStart = _f.s5CustomStart ?? "";
+  let s5CustomEnd = _f.s5CustomEnd ?? "";
+  let s5SubRole = _f.s5SubRole ?? "";
+  let s5ByUserId = _f.s5ByUserId ?? "";
   let s5Data = [];
   let s5Loading = false;
 
@@ -258,11 +281,11 @@
   });
 
   // ── reactivity ────────────────────────────────────────────────────────────
-  $: if (mounted) { s1SubRole; s1Filter; s1CustomStart; s1CustomEnd; s1ByUserId; fetchS1(); }
-  $: if (mounted) { s2SubRole; s2ByUserId; s2Filter; s2CustomStart; s2CustomEnd; s2Status; fetchS2(); }
-  $: if (mounted) { s3SubRole; s3ByUserId; s3Filter; s3CustomStart; s3CustomEnd; fetchS3(); }
-  $: if (mounted) { s4SubRole; s4ByUserId; s4Filter; s4CustomStart; s4CustomEnd; s4Page; fetchS4(); }
-  $: if (mounted) { s5SubRole; s5ByUserId; s5Filter; s5CustomStart; s5CustomEnd; fetchS5(); }
+  $: if (mounted) { s1SubRole; s1Filter; s1CustomStart; s1CustomEnd; s1ByUserId; saveFilters(); fetchS1(); }
+  $: if (mounted) { s2SubRole; s2ByUserId; s2Filter; s2CustomStart; s2CustomEnd; s2Status; saveFilters(); fetchS2(); }
+  $: if (mounted) { s3SubRole; s3ByUserId; s3Filter; s3CustomStart; s3CustomEnd; saveFilters(); fetchS3(); }
+  $: if (mounted) { s4SubRole; s4ByUserId; s4Filter; s4CustomStart; s4CustomEnd; s4Page; saveFilters(); fetchS4(); }
+  $: if (mounted) { s5SubRole; s5ByUserId; s5Filter; s5CustomStart; s5CustomEnd; saveFilters(); fetchS5(); }
 
   // ── computed ──────────────────────────────────────────────────────────────
   $: s1Total      = s1Data.reduce((s, r) => s + r.orderCount, 0);
@@ -621,6 +644,7 @@
                   <th class="text-center"><i class="ti ti-mail text-primary"></i></th>
                   <th class="text-center"><i class="ti ti-message text-secondary"></i></th>
                   <th class="text-center">Total</th>
+                  <th class="text-center"><i class="ti ti-shopping-cart text-warning"></i> Orders</th>
                 </tr>
               </thead>
               <tbody>
@@ -632,6 +656,7 @@
                     <td class="text-center">{#if row.email > 0}<span class="db-badge db-badge--blue">{row.email}</span>{:else}<span class="text-muted">—</span>{/if}</td>
                     <td class="text-center">{#if row.all > 0}<span class="db-badge db-badge--gray">{row.all}</span>{:else}<span class="text-muted">—</span>{/if}</td>
                     <td class="text-center"><span class="db-badge db-badge--purple">{row.total}</span></td>
+                    <td class="text-center">{#if row.orderCount > 0}<span class="db-badge db-badge--orange">{row.orderCount}</span>{:else}<span class="text-muted">—</span>{/if}</td>
                   </tr>
                 {/each}
               </tbody>
@@ -643,6 +668,7 @@
                   <td class="text-center fw-bold">{s3Data.reduce((s,r)=>s+r.email,0)||"—"}</td>
                   <td class="text-center fw-bold">{s3Data.reduce((s,r)=>s+r.all,0)||"—"}</td>
                   <td class="text-center"><span class="db-badge db-badge--purple">{s3GrandTotal}</span></td>
+                  <td class="text-center fw-bold">{s3Data.reduce((s,r)=>s+(r.orderCount||0),0)||"—"}</td>
                 </tr>
               </tfoot>
             </table>
@@ -1054,6 +1080,7 @@
   .db-badge--yellow { background: #fff9db; color: #f08c00; }
   .db-badge--red    { background: #fff5f5; color: #e03131; }
   .db-badge--gray   { background: #f1f3f5; color: #495057; }
+  .db-badge--orange { background: #fff4e6; color: #e8590c; }
 
   /* ── Progress bar ── */
   .db-bar-cell { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }

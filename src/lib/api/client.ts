@@ -1,6 +1,13 @@
 import axios, { AxiosRequestConfig } from "axios";
 import { logoutUser } from "../utils/auth";
 import { goto } from "$app/navigation";
+import { AUTH_REDIRECT_ERROR } from "../utils/errorHandle";
+
+function throwAuthRedirect(): never {
+  const err = new Error("Session expired. Redirecting to login.");
+  (err as any).code = AUTH_REDIRECT_ERROR;
+  throw err;
+}
 
 const BASE_URL = import.meta.env.VITE_PUBLIC_API_URL;
 
@@ -130,12 +137,12 @@ export async function authApiFetch(
         } catch {
           logoutUser();
           goto("/login");
-          return;
+          throwAuthRedirect();
         }
       } else {
         logoutUser();
         goto("/login");
-        return;
+        throwAuthRedirect();
       }
     }
 

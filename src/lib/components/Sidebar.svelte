@@ -606,18 +606,6 @@
                             >
                           </a>
                         </li>
-                        <li
-                          class:active={currentPath.startsWith("/admin/stock")}
-                        >
-                          <a
-                            href="/admin/stock"
-                            class:active={currentPath.startsWith(
-                              "/admin/stock",
-                            )}
-                          >
-                            <i class="ti ti-package"></i><span>Stock</span>
-                          </a>
-                        </li>
                       {/if}
                     </ul>
                   </li>
