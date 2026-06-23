@@ -562,15 +562,11 @@
                         </li>
                         {#if currentUser?.role === "master"}
                           <li
-                            class:active={currentPath.startsWith(
-                              "/admin/client",
-                            )}
+                            class:active={currentPath.startsWith("/admin/client") && !currentPath.startsWith("/admin/client-visit")}
                           >
                             <a
                               href="/admin/client"
-                              class:active={currentPath.startsWith(
-                                "/admin/client",
-                              )}
+                              class:active={currentPath.startsWith("/admin/client") && !currentPath.startsWith("/admin/client-visit")}
                             >
                               <i class="ti ti-building-store"></i><span>Clients</span>
                             </a>
@@ -588,6 +584,20 @@
                             )}
                           >
                             <i class="ti ti-file-description"></i><span>Work Order</span>
+                          </a>
+                        </li>
+                        <li
+                          class:active={currentPath.startsWith(
+                            "/admin/client-visit",
+                          )}
+                        >
+                          <a
+                            href="/admin/client-visit"
+                            class:active={currentPath.startsWith(
+                              "/admin/client-visit",
+                            )}
+                          >
+                            <i class="ti ti-map-pin"></i><span>Client Visits</span>
                           </a>
                         </li>
                         <li

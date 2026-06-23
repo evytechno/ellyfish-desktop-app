@@ -363,6 +363,135 @@
   let raisingQuery = false;
   let queryError = "";
 
+  // ── Order Visits ────────────────────────────────────────────────────────────
+  let orderVisits = [];
+
+  async function loadOrderVisits() {
+    if (!orderId) return;
+    try {
+      const res = await authApiFetch(`${API_ROUTES.CLIENT_VISIT}?orderId=${orderId}&limit=50`);
+      orderVisits = res?.data ?? [];
+    } catch (_) {}
+  }
+
+  // ── Visit List Modal ────────────────────────────────────────────────────────
+  let showVisitListModal = false;
+
+  // ── Create Visit Modal ──────────────────────────────────────────────────────
+  let showVisitModal = false;
+  let visitLoading = false;
+  let visitError = "";
+  let visitFormErrors = {};
+  let visitType = "outgoing";
+  let visitDate = new Date().toISOString().slice(0, 10);
+  let visitStartTime = "";
+  let visitEndTime = "";
+  let visitTransport = "";
+  let visitPurpose = "";
+  let visitOutcome = "";
+  let visitNextFollowUp = "";
+  let visitFeedback = "";
+  let visitNotes = "";
+  let visitTerms = "";
+  let visitClientContacts = [];
+  let visitSelectedContactIds = [];
+  let visitAttendees = [];
+  let visitCompanies = [];
+  let visitCompanyId = "";
+
+  async function openVisitModal() {
+    if (!order?.clientId) {
+      Swal.fire({
+        icon: "warning",
+        title: "No Client Linked",
+        text: "Please link a client to this order before creating a visit.",
+        confirmButtonText: "Link Client",
+        showCancelButton: true,
+        cancelButtonText: "Cancel",
+      }).then((r) => { if (r.isConfirmed) showChangeClientModal = true; });
+      return;
+    }
+    visitError = "";
+    visitFormErrors = {};
+    visitType = "outgoing";
+    visitDate = new Date().toISOString().slice(0, 10);
+    visitStartTime = ""; visitEndTime = ""; visitTransport = "";
+    visitPurpose = ""; visitOutcome = ""; visitNextFollowUp = "";
+    visitFeedback = ""; visitNotes = ""; visitTerms = "";
+    visitClientContacts = []; visitSelectedContactIds = [];
+    visitAttendees = [];
+    visitCompanyId = "";
+    showVisitModal = true;
+    try {
+      const [cc, comps] = await Promise.all([
+        authApiFetch(`${API_ROUTES.CLIENT_CONTACT}/by-client/${order.clientId}`),
+        authApiFetch(API_ROUTES.COMPANY + "/all"),
+      ]);
+      visitClientContacts = cc?.data ?? cc ?? [];
+      visitCompanies = comps || [];
+      if (currentUser?.companyId) {
+        const match = visitCompanies.find((c) => c.id === Number(currentUser.companyId));
+        if (match) visitCompanyId = String(match.id);
+      }
+      if (!visitCompanyId && visitCompanies.length === 1) visitCompanyId = String(visitCompanies[0].id);
+    } catch (_) {}
+  }
+
+  function toggleVisitContact(id) {
+    if (visitSelectedContactIds.includes(id))
+      visitSelectedContactIds = visitSelectedContactIds.filter((x) => x !== id);
+    else visitSelectedContactIds = [...visitSelectedContactIds, id];
+  }
+
+  function addVisitAttendee() { visitAttendees = [...visitAttendees, { userId: "", isLead: false }]; }
+  function removeVisitAttendee(i) { visitAttendees = visitAttendees.filter((_, idx) => idx !== i); }
+
+  async function submitVisitModal() {
+    visitError = "";
+    visitFormErrors = {};
+    if (!visitCompanyId) { visitFormErrors.companyId = "Company is required."; return; }
+    if (!visitPurpose.trim()) { visitFormErrors.purpose = "Purpose is required."; return; }
+    visitLoading = true;
+    try {
+      const payload = {
+        visitType,
+        visitDate,
+        startTime: visitStartTime || undefined,
+        endTime: visitEndTime || undefined,
+        transportMedium: visitTransport || undefined,
+        companyId: Number(visitCompanyId),
+        clientId: order?.clientId || undefined,
+        orderId: Number(orderId),
+        clientContactIds: visitSelectedContactIds,
+        purpose: visitPurpose.trim(),
+        outcome: visitOutcome || undefined,
+        nextFollowUpDate: visitNextFollowUp || undefined,
+        clientFeedback: visitFeedback || undefined,
+        notes: visitNotes || undefined,
+        terms: visitTerms || undefined,
+        attendees: visitAttendees.filter((a) => a.userId).map((a) => ({ userId: Number(a.userId), isLead: a.isLead })),
+      };
+      const res = await authApiFetch(API_ROUTES.CLIENT_VISIT, { method: "POST", data: payload });
+      const newId = res?.data?.id ?? res?.id;
+      showVisitModal = false;
+      loadOrderVisits();
+      Swal.fire({
+        icon: "success",
+        title: "Visit Created!",
+        html: `Visit saved. <a href="/admin/client-visit/edit/${newId}">Add job details</a> from the visit page.`,
+        timer: 3500,
+        showConfirmButton: true,
+        confirmButtonText: "Go to Visit",
+      }).then((r) => { if (r.isConfirmed && newId) goto(`/admin/client-visit/edit/${newId}`); });
+    } catch (err) {
+      const e = errorHandle(err);
+      if (e && typeof e === "object") visitFormErrors = e;
+      else visitError = "Failed to save visit. Please try again.";
+    } finally {
+      visitLoading = false;
+    }
+  }
+
   function openQueryModal() {
     if (!querySubject.trim()) querySubject = order?.title ?? "";
     showQueryModal = true;
@@ -506,6 +635,8 @@
       });
 
       loadingData = false; // page renders now — user sees content
+
+      loadOrderVisits();
 
       // ── Wave 2: Load all heavy relations in parallel ─────────────────────
       const [chats, attachments, reminders, clients, contacts, activities, childOrders] =
@@ -2135,18 +2266,34 @@
   <!-- Start Content -->
   <div class="content pb-0">
     <!-- Page Header -->
-    <div
-      class="d-flex align-items-center justify-content-between gap-2 mb-4 flex-wrap"
-    >
-      <div>
-        <h4 class="mb-1">Order</h4>
-        <nav aria-label="breadcrumb">
-          <ol class="breadcrumb mb-0 p-0">
-            <li class="breadcrumb-item"><a href="/admin/dashboard">Home</a></li>
-            <li class="breadcrumb-item"><a href="/admin/order">Orders</a></li>
-            <li class="breadcrumb-item active" aria-current="page">Order</li>
-          </ol>
-        </nav>
+    <div class="d-flex align-items-center justify-content-between gap-2 mb-1 flex-wrap">
+      <div class="d-flex align-items-center gap-3">
+        <button class="btn btn-outline-secondary btn-sm" on:click={() => history.length > 2 ? history.back() : goto("/admin/order")}>
+          <i class="ti ti-arrow-left me-1"></i>Back
+        </button>
+        <div>
+          <h4 class="mb-1">{order?.title || "Order"}</h4>
+          <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0 p-0">
+              <li class="breadcrumb-item"><a href="/admin/dashboard">Home</a></li>
+              <li class="breadcrumb-item"><a href="/admin/order">Orders</a></li>
+              <li class="breadcrumb-item active" aria-current="page">{order?.title || "Order"}</li>
+            </ol>
+          </nav>
+        </div>
+      </div>
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <button class="btn btn-warning" on:click={() => deleteOrder(order?.id)}>
+          <i class="ti ti-archive me-1"></i>Archive Order
+        </button>
+        <a href="#offcanvas_add" class="btn btn-primary" data-bs-toggle="offcanvas" data-bs-target="#offcanvas_add">
+          <i class="ti ti-square-rounded-plus-filled me-1"></i>Edit Order
+        </a>
+        {#if currentUser?.subRole === "telecaller" || (currentUser?.role === "user" && !currentUser?.subRole)}
+          <button class="btn btn-info text-white" on:click={openQueryModal}>
+            <i class="ti ti-help-circle me-1"></i>Raise Query
+          </button>
+        {/if}
       </div>
     </div>
     <!-- End Page Header -->
@@ -2156,36 +2303,7 @@
         <div class="row">
           <div class="col-md-12">
             <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
-              <div>
-                <button
-                  on:click={() =>
-                    history.length > 2 ? history.back() : goto("/admin/order")}
-                >
-                  <i class="ti ti-arrow-narrow-left me-1"></i>Back to Orders
-                </button>
-              </div>
-              <div class="flex items-center gap-2 flex-wrap">
-                <button
-                  class="btn btn-secondary"
-                  on:click={() => deleteOrder(order?.id)}
-                >
-                  <i class="ti ti-archive me-1"></i>Archive Order
-                </button>
-                <a
-                  href="#offcanvas_add"
-                  class="btn btn-primary"
-                  data-bs-toggle="offcanvas"
-                  data-bs-target="#offcanvas_add"
-                >
-                  <i class="ti ti-square-rounded-plus-filled me-1"></i>Edit
-                  Order
-                </a>
-                {#if currentUser?.subRole === "telecaller" || (currentUser?.role === "user" && !currentUser?.subRole)}
-                  <button class="btn btn-warning" on:click={openQueryModal}>
-                    <i class="ti ti-help-circle me-1"></i>Raise Query
-                  </button>
-                {/if}
-              </div>
+              <div></div>
             </div>
 
             <!-- Raise Query Modal -->
@@ -2465,6 +2583,24 @@
                         <span class="order-header-doc-muted">
                           <i class="ti ti-lock me-1"></i>Needs PI &amp; WO
                         </span>
+                      {/if}
+                    </div>
+
+                    <div class="order-header-doc-item ms-auto d-flex align-items-center gap-2">
+                      {#if orderVisits.length === 0}
+                        <button class="btn btn-success btn-sm" on:click={openVisitModal}>
+                          <i class="ti ti-map-pin me-1"></i>Create Visit
+                        </button>
+                      {:else}
+                        <button class="btn btn-outline-success btn-sm" on:click={() => showVisitListModal = true}>
+                          <i class="ti ti-map-pin me-1"></i>Visit #{orderVisits[0].id}
+                          {#if orderVisits.length > 1}
+                            <span class="badge bg-success ms-1">+{orderVisits.length - 1}</span>
+                          {/if}
+                        </button>
+                        <button class="btn btn-success btn-sm" on:click={openVisitModal} title="Add another visit">
+                          <i class="ti ti-plus"></i>
+                        </button>
                       {/if}
                     </div>
                   </div>
@@ -2779,6 +2915,30 @@
                             >
                               <i class="ti ti-x"></i>
                             </button>
+                          </div>
+                        </div>
+                      {/each}
+                    {:else if order.orderClients?.filter(oc =>
+                        !oc.deletedAt &&
+                        !order.orderContacts?.some(linked =>
+                          (linked.clientContact?.mobile && linked.clientContact.mobile === oc.mobile) ||
+                          (linked.clientContact?.name?.toLowerCase() === oc.name?.toLowerCase())
+                        )
+                      ).length > 0}
+                      <!-- Show unmatched orderClients not already in formal contacts -->
+                      {#each order.orderClients.filter(oc =>
+                        !oc.deletedAt &&
+                        !order.orderContacts?.some(linked =>
+                          (linked.clientContact?.mobile && linked.clientContact.mobile === oc.mobile) ||
+                          (linked.clientContact?.name?.toLowerCase() === oc.name?.toLowerCase())
+                        )
+                      ) as oc}
+                        <div class="order-sidebar-contact-item d-flex align-items-start gap-2 py-1">
+                          <i class="ti ti-user text-muted mt-1" style="font-size:13px;"></i>
+                          <div style="font-size:13px;">
+                            <div class="fw-semibold">{oc.name || "—"}</div>
+                            {#if oc.mobile}<div class="text-muted" style="font-size:12px;">📞 {oc.mobile}</div>{/if}
+                            {#if oc.email}<div class="text-muted" style="font-size:12px;">✉ {oc.email}</div>{/if}
                           </div>
                         </div>
                       {/each}
@@ -5734,6 +5894,234 @@
           <button type="button" class="btn btn-primary" on:click={saveEditClient} disabled={savingClient}>
             {#if savingClient}<span class="spinner-border spinner-border-sm me-1"></span>{/if}
             Save
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if showVisitListModal}
+  <div
+    class="modal fade show d-block"
+    tabindex="-1"
+    role="dialog"
+    style="background:rgba(0,0,0,0.5);"
+    on:click|self={() => (showVisitListModal = false)}
+  >
+    <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="ti ti-map-pin me-2 text-success"></i>Visits for This Order <span class="badge bg-success ms-1">{orderVisits.length}</span></h5>
+          <button type="button" class="btn-close" on:click={() => (showVisitListModal = false)}></button>
+        </div>
+        <div class="modal-body p-0">
+          <div class="table-responsive">
+            <table class="table table-hover mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th class="px-3 text-center">#</th>
+                  <th>Type</th>
+                  <th>Date</th>
+                  <th>Purpose</th>
+                  <th>Outcome</th>
+                  <th>Attendees</th>
+                  <th class="text-end px-3">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each orderVisits as v, i}
+                  <tr>
+                    <td class="px-3 fw-semibold text-center">{i + 1}</td>
+                    <td>
+                      <span class="badge {v.visitType === 'incoming' ? 'bg-primary' : 'bg-warning text-dark'}">
+                        {v.visitType}
+                      </span>
+                    </td>
+                    <td class="small">{v.visitDate ? new Date(v.visitDate).toLocaleDateString('en-IN') : '—'}</td>
+                    <td class="small">{v.purpose || '—'}</td>
+                    <td class="small">{v.outcome || '—'}</td>
+                    <td class="small">{v.attendees?.length ?? 0}</td>
+                    <td class="text-end px-3">
+                      <div class="d-inline-flex gap-2">
+                        <a href="/admin/client-visit/{v.id}" class="btn btn-sm btn-outline-primary" title="View">
+                          <i class="ti ti-eye"></i>
+                        </a>
+                        <a href="/admin/client-visit/edit/{v.id}" class="btn btn-sm btn-outline-warning" title="Edit">
+                          <i class="ti ti-edit"></i>
+                        </a>
+                      </div>
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" on:click={() => (showVisitListModal = false)}>Close</button>
+          <button type="button" class="btn btn-success" on:click={() => { showVisitListModal = false; openVisitModal(); }}>
+            <i class="ti ti-plus me-1"></i>Add Visit
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if showVisitModal}
+  <div
+    class="modal fade show d-block"
+    tabindex="-1"
+    role="dialog"
+    style="background:rgba(0,0,0,0.5);overflow-y:auto;"
+    on:click|self={() => (showVisitModal = false)}
+  >
+    <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="ti ti-map-pin me-2 text-success"></i>Create Visit for This Order</h5>
+          <button type="button" class="btn-close" on:click={() => (showVisitModal = false)}></button>
+        </div>
+        <div class="modal-body">
+
+          {#if visitError}
+            <div class="alert alert-danger py-2 mb-3">{visitError}</div>
+          {/if}
+
+          <div class="row g-3">
+
+            <!-- Visit Type -->
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Visit Type <span class="text-danger">*</span></label>
+              <select class="form-select" bind:value={visitType}>
+                <option value="outgoing">Outgoing</option>
+                <option value="incoming">Incoming</option>
+              </select>
+            </div>
+
+            <!-- Visit Date -->
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Visit Date <span class="text-danger">*</span></label>
+              <input type="date" class="form-control" bind:value={visitDate} />
+            </div>
+
+            <!-- Start Date Time -->
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Start Date &amp; Time</label>
+              <input type="datetime-local" class="form-control" bind:value={visitStartTime} />
+            </div>
+
+            <!-- End Date Time -->
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">End Date &amp; Time</label>
+              <input type="datetime-local" class="form-control" bind:value={visitEndTime} />
+            </div>
+
+            <!-- Transport + Company -->
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Transport Medium</label>
+              <input type="text" class="form-control" bind:value={visitTransport} placeholder="e.g. Car, Train, Bike..." />
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Company <span class="text-danger">*</span></label>
+              <select class="form-select" class:is-invalid={visitFormErrors.companyId} bind:value={visitCompanyId}>
+                <option value="">Select company...</option>
+                {#each visitCompanies as c}
+                  <option value={String(c.id)}>{c.name}</option>
+                {/each}
+              </select>
+              {#if visitFormErrors.companyId}<div class="invalid-feedback">{visitFormErrors.companyId}</div>{/if}
+            </div>
+
+            <!-- Purpose -->
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Purpose <span class="text-danger">*</span></label>
+              <textarea class="form-control" class:is-invalid={visitFormErrors.purpose} rows="2" bind:value={visitPurpose} placeholder="Reason for the visit..."></textarea>
+              {#if visitFormErrors.purpose}<div class="invalid-feedback">{visitFormErrors.purpose}</div>{/if}
+            </div>
+
+            <!-- Outcome -->
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Outcome</label>
+              <textarea class="form-control" rows="2" bind:value={visitOutcome} placeholder="Result of the visit..."></textarea>
+            </div>
+
+            <!-- Client Contacts -->
+            {#if visitClientContacts.length > 0}
+              <div class="col-12">
+                <label class="form-label fw-semibold">Client Contacts Met</label>
+                <div class="d-flex flex-wrap gap-2">
+                  {#each visitClientContacts as cc}
+                    <button
+                      type="button"
+                      class="btn btn-sm {visitSelectedContactIds.includes(cc.id) ? 'btn-primary' : 'btn-outline-secondary'}"
+                      on:click={() => toggleVisitContact(cc.id)}
+                    >
+                      <i class="ti ti-user me-1"></i>{cc.name}{cc.designation ? ` (${cc.designation})` : ""}
+                    </button>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+
+            <!-- Attendees -->
+            <div class="col-12">
+              <label class="form-label fw-semibold">Team Attendees</label>
+              {#each visitAttendees as att, i}
+                <div class="d-flex gap-2 mb-2 align-items-center">
+                  <select class="form-select form-select-sm" bind:value={att.userId}>
+                    <option value="">Select user...</option>
+                    {#each users as u}
+                      <option value={u.id}>{u.name}</option>
+                    {/each}
+                  </select>
+                  <div class="form-check form-check-inline mb-0 text-nowrap">
+                    <input class="form-check-input" type="checkbox" id="lead_{i}" bind:checked={att.isLead} />
+                    <label class="form-check-label small" for="lead_{i}">Lead</label>
+                  </div>
+                  <button type="button" class="btn btn-sm btn-outline-danger" on:click={() => removeVisitAttendee(i)}>
+                    <i class="ti ti-x"></i>
+                  </button>
+                </div>
+              {/each}
+              <button type="button" class="btn btn-sm btn-outline-secondary mt-1" on:click={addVisitAttendee}>
+                <i class="ti ti-plus me-1"></i>Add Attendee
+              </button>
+            </div>
+
+            <!-- Follow-up Date -->
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Next Follow-up Date</label>
+              <input type="date" class="form-control" bind:value={visitNextFollowUp} />
+            </div>
+
+            <!-- Client Feedback -->
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Client Feedback</label>
+              <input type="text" class="form-control" bind:value={visitFeedback} placeholder="Client's feedback..." />
+            </div>
+
+            <!-- Notes -->
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Internal Notes</label>
+              <textarea class="form-control" rows="2" bind:value={visitNotes} placeholder="Internal notes..."></textarea>
+            </div>
+
+            <!-- Terms -->
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Terms Discussed</label>
+              <textarea class="form-control" rows="2" bind:value={visitTerms} placeholder="Terms discussed during visit..."></textarea>
+            </div>
+
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" on:click={() => (showVisitModal = false)}>Cancel</button>
+          <button type="button" class="btn btn-success" on:click={submitVisitModal} disabled={visitLoading}>
+            {#if visitLoading}<span class="spinner-border spinner-border-sm me-1"></span>{/if}
+            Save Visit
           </button>
         </div>
       </div>

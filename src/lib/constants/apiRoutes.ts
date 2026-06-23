@@ -24,4 +24,5 @@ export const API_ROUTES = {
   CLIENT_CONTACT: `client-contacts`,
   ORDER_CONTACT: `order-contacts`,
   WARNING: `warnings`,
+  CLIENT_VISIT: `client-visits`,
 };

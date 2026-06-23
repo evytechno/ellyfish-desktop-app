@@ -249,6 +249,9 @@
         <button class="btn btn-outline-light shadow" on:click={() => window.history.back()}>
           <i class="ti ti-arrow-left me-1"></i>Back
         </button>
+        <a href="/admin/client-visit/add?clientId={clientId}" class="btn btn-success shadow">
+          <i class="ti ti-map-pin me-1"></i>Create Visit
+        </a>
         {#if canEdit}
           <button class="btn btn-outline-danger shadow" on:click={deleteClient}>
             <i class="ti ti-archive me-1"></i>Archive

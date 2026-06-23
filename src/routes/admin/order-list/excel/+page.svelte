@@ -185,11 +185,65 @@
     savingCell = { orderId, field };
     try {
       if (isClientField) {
-        const clientId = order.orderClients?.[0]?.id;
-        if (clientId) {
-          await authApiFetch(`${API_ROUTES.ORDER_CLIENT}/${clientId}`, {
+        const orderClientId = order.orderClients?.[0]?.id;
+        // Always update orderClients row if exists
+        if (orderClientId) {
+          await authApiFetch(`${API_ROUTES.ORDER_CLIENT}/${orderClientId}`, {
             method: "PUT",
             data: JSON.stringify({ [field]: savedValue }),
+          });
+        }
+
+        if (order.client) {
+          // Find existing orderContact → clientContact for this order
+          const existingOrderContact = order.orderContacts?.[0];
+          const existingClientContactId = existingOrderContact?.clientContact?.id;
+
+          if (existingClientContactId) {
+            // UPDATE existing clientContact
+            await authApiFetch(`${API_ROUTES.CLIENT_CONTACT}/${existingClientContactId}`, {
+              method: "PUT",
+              data: JSON.stringify({ [field]: savedValue }),
+            });
+          } else {
+            // No clientContact yet — CREATE one + link as orderContact
+            const contactRes = await authApiFetch(API_ROUTES.CLIENT_CONTACT, {
+              method: "POST",
+              data: JSON.stringify({
+                clientId: order.client.id,
+                name: field === "name" ? savedValue : (order.orderClients?.[0]?.name || order.client.name),
+                mobile: field === "mobile" ? savedValue : (order.orderClients?.[0]?.mobile || ""),
+              }),
+            });
+            const newContact = contactRes.data ?? contactRes;
+            if (newContact?.id) {
+              await authApiFetch(API_ROUTES.ORDER_CONTACT, {
+                method: "POST",
+                data: JSON.stringify({ orderId, clientContactId: newContact.id }),
+              });
+              // Also create orderClient row if missing
+              if (!orderClientId) {
+                await authApiFetch(API_ROUTES.ORDER_CLIENT, {
+                  method: "POST",
+                  data: JSON.stringify({
+                    orderId,
+                    name: newContact.name,
+                    mobile: newContact.mobile || "",
+                    address: order.client.address || "",
+                  }),
+                });
+              }
+            }
+          }
+        } else if (!orderClientId) {
+          // No client linked, no orderClient row — create orderClient only
+          await authApiFetch(API_ROUTES.ORDER_CLIENT, {
+            method: "POST",
+            data: JSON.stringify({
+              orderId,
+              name: field === "name" ? savedValue : "",
+              mobile: field === "mobile" ? savedValue : "",
+            }),
           });
         }
       } else {
@@ -659,6 +713,241 @@
     finally { refresh = false; }
   }
 
+  // ── Link Client Modal ────────────────────────────────────
+  let showLinkClientModal = false;
+  let linkClientOrderId = null;
+  let linkClientOrder = null; // full order object
+  let linkClientSearch = "";
+  let linkClientResults = [];
+  let linkClientSelected = null;
+  let linkClientSearching = false;
+  let linkingClient = false;
+  let linkClientDebounce;
+  let showCreateClientForm = false;
+  let newClientForm = { name: "", mobile: "", email: "", address: "" };
+  // for "client linked, pick/add contact" mode
+  let selectedContactId = null;
+  let showAddContactForm = false;
+  let newContactForm = { name: "", mobile: "", email: "" };
+  // legacy orderClients migration (pre-checked)
+  let legacyChecked = [];
+
+  function openLinkClientModal(e, order) {
+    e.stopPropagation();
+    linkClientOrderId = order.id;
+    linkClientOrder = order;
+    linkClientSearch = "";
+    linkClientResults = [];
+    linkClientSelected = null;
+    showCreateClientForm = false;
+    showAddContactForm = false;
+    selectedContactId = null;
+    newClientForm = { name: "", mobile: "", email: "", address: "" };
+    newContactForm = { name: "", mobile: "", email: "" };
+    // pre-check all existing orderClients
+    legacyChecked = (order.orderClients || []).filter(oc => !oc.deletedAt).map(oc => oc.id);
+    showLinkClientModal = true;
+  }
+
+  function closeLinkClientModal() {
+    showLinkClientModal = false;
+    linkClientOrderId = null;
+    linkClientOrder = null;
+    linkClientSelected = null;
+    linkClientSearch = "";
+    linkClientResults = [];
+    showCreateClientForm = false;
+    showAddContactForm = false;
+    selectedContactId = null;
+    legacyChecked = [];
+    newClientForm = { name: "", mobile: "", email: "", address: "" };
+    newContactForm = { name: "", mobile: "", email: "" };
+  }
+
+  $: legacyContacts = (linkClientOrder?.orderClients || []).filter(oc => !oc.deletedAt);
+
+  async function migrateLegacyContacts(client) {
+    const toMigrate = legacyContacts.filter(oc => legacyChecked.includes(oc.id));
+    for (const oc of toMigrate) {
+      try {
+        const contactRes = await authApiFetch(API_ROUTES.CLIENT_CONTACT, {
+          method: "POST",
+          data: JSON.stringify({
+            clientId: client.id,
+            name: oc.name,
+            mobile: oc.mobile || undefined,
+            ...(oc.email ? { email: oc.email } : {}),
+            designation: oc.designation || undefined,
+            address: oc.address || undefined,
+          }),
+        });
+        const contact = contactRes.data ?? contactRes;
+        await authApiFetch(API_ROUTES.ORDER_CONTACT, {
+          method: "POST",
+          data: JSON.stringify({ orderId: linkClientOrderId, clientContactId: contact.id }),
+        });
+      } catch (e) { console.error("migrate failed:", oc.name, e); }
+    }
+  }
+
+  // Mode detection
+  $: linkedClient = linkClientOrder?.client ?? null;
+  $: linkedClientContacts = linkedClient?.contacts ?? [];
+
+  // ── Inline contact (cell-level, no modal) ───────────────
+  let inlineContactName = {};   // { [orderId]: string }
+  let inlineContactMobile = {}; // { [orderId]: string }
+  let savingInlineContact = {}; // { [orderId]: boolean }
+
+  async function saveInlineContact(order) {
+    const name = (inlineContactName[order.id] || "").trim();
+    if (!name || savingInlineContact[order.id]) return;
+    savingInlineContact[order.id] = true;
+    try {
+      const clientId = order.client?.id;
+      const mobile = (inlineContactMobile[order.id] || "").trim();
+      // Check if contact with same mobile already exists → update, else create
+      const existing = order.client?.contacts?.find(c => mobile && c.mobile === mobile);
+      if (!existing && clientId) {
+        await authApiFetch(API_ROUTES.CLIENT_CONTACT, {
+          method: "POST",
+          data: JSON.stringify({ clientId, name, mobile: mobile || "" }),
+        });
+      }
+      // Create orderClient row
+      await authApiFetch(API_ROUTES.ORDER_CLIENT, {
+        method: "POST",
+        data: JSON.stringify({ orderId: order.id, name, mobile: mobile || "" }),
+      });
+      inlineContactName[order.id] = "";
+      inlineContactMobile[order.id] = "";
+      await refreshOrder(order.id);
+    } catch (err) { console.error(err); }
+    finally { savingInlineContact[order.id] = false; }
+  }
+
+  async function searchLinkClients(q) {
+    if (!q || q.length < 1) { linkClientResults = []; return; }
+    linkClientSearching = true;
+    try {
+      const res = await authApiFetch(`${API_ROUTES.CLIENT}?search=${encodeURIComponent(q)}&limit=20`);
+      linkClientResults = res.data ?? res ?? [];
+    } catch (_) { linkClientResults = []; }
+    finally { linkClientSearching = false; }
+  }
+
+  function onLinkClientSearchInput(e) {
+    linkClientSearch = e.target.value;
+    linkClientSelected = null;
+    clearTimeout(linkClientDebounce);
+    linkClientDebounce = setTimeout(() => searchLinkClients(linkClientSearch), 300);
+  }
+
+  async function confirmLinkClient() {
+    if (!linkClientOrderId) return;
+    linkingClient = true;
+    try {
+      let clientId = null;
+      let clientName = "";
+      let contactData = {};
+
+      if (linkedClient) {
+        // Mode: client already linked — pick existing contact or add new one
+        clientId = linkedClient.id;
+        clientName = linkedClient.name;
+        if (showAddContactForm) {
+          if (!newContactForm.name.trim()) { linkingClient = false; return; }
+          // Create new contact for this client
+          const created = await authApiFetch(API_ROUTES.CLIENT_CONTACT, {
+            method: "POST",
+            data: JSON.stringify({
+              clientId,
+              name: newContactForm.name.trim(),
+              mobile: newContactForm.mobile || "",
+              ...(newContactForm.email ? { email: newContactForm.email } : {}),
+            }),
+          });
+          contactData = {
+            name: newContactForm.name.trim(),
+            mobile: newContactForm.mobile || "",
+            ...(newContactForm.email ? { email: newContactForm.email } : {}),
+          };
+        } else {
+          // Pick selected existing contact
+          const contact = linkedClientContacts.find(c => c.id === selectedContactId) ?? linkedClientContacts[0] ?? {};
+          contactData = {
+            name: contact.name || linkedClient.name,
+            mobile: contact.mobile || "",
+            ...(contact.email ? { email: contact.email } : {}),
+          };
+        }
+      } else if (showCreateClientForm) {
+        if (!newClientForm.name.trim()) { linkingClient = false; return; }
+        const created = await authApiFetch(API_ROUTES.CLIENT, {
+          method: "POST",
+          data: JSON.stringify({
+            name: newClientForm.name.trim(),
+            address: newClientForm.address || "",
+          }),
+        });
+        clientId = created?.id ?? created?.data?.id;
+        // Create contact separately
+        if (clientId && (newClientForm.mobile || newClientForm.email)) {
+          await authApiFetch(API_ROUTES.CLIENT_CONTACT, {
+            method: "POST",
+            data: JSON.stringify({
+              clientId,
+              name: newClientForm.name.trim(),
+              mobile: newClientForm.mobile || "",
+              ...(newClientForm.email ? { email: newClientForm.email } : {}),
+            }),
+          });
+        }
+        clientName = newClientForm.name.trim();
+        contactData = {
+          name: newClientForm.name.trim(),
+          mobile: newClientForm.mobile || "",
+          address: newClientForm.address || "",
+          ...(newClientForm.email ? { email: newClientForm.email } : {}),
+        };
+      } else {
+        if (!linkClientSelected) { linkingClient = false; return; }
+        const c = linkClientSelected;
+        const contact = c.contacts?.[0] ?? {};
+        clientId = c.id;
+        clientName = c.name;
+        contactData = {
+          name: contact.name || c.name,
+          designation: contact.designation || "",
+          mobile: contact.mobile || "",
+          alternateMobile: contact.alternateMobile || "",
+          whatsapp: contact.whatsapp || "",
+          address: c.address || "",
+          ...(contact.email ? { email: contact.email } : {}),
+        };
+      }
+
+      await authApiFetch(API_ROUTES.ORDER_CLIENT, {
+        method: "POST",
+        data: JSON.stringify({ orderId: linkClientOrderId, ...contactData }),
+      });
+      if (!linkedClient) {
+        await authApiFetch(`${API_ROUTES.ORDER}/${linkClientOrderId}`, {
+          method: "PUT",
+          data: JSON.stringify({ company: clientName, ...(clientId ? { clientId } : {}) }),
+        });
+        // migrate pre-checked orderClients into formal contacts
+        if (legacyChecked.length > 0) {
+          const resolvedClient = linkClientSelected ?? { id: clientId, name: clientName };
+          await migrateLegacyContacts(resolvedClient);
+        }
+      }
+      await refreshOrder(linkClientOrderId);
+      closeLinkClientModal();
+    } catch (err) { console.error(err); }
+    finally { linkingClient = false; }
+  }
+
   $: visibleCols = cols.filter(c => c.visible !== false);
   $: pageNumbers = Array.from({ length: totalPages }, (_, i) => i + 1);
   $: snoWidth = visibleCols.find(c => c.key === 'sno')?.width ?? 50;
@@ -959,15 +1248,30 @@
 
                   {:else if col.key === 'name'}
                   <!-- Client Name -->
+                  {@const hasOrderClient = order.orderClients?.length > 0}
+                  {@const hasLinkedClient = !!order.client}
+                  {@const displayName = order.orderClients?.[0]?.name || order.client?.name || ""}
                   <td class="px-2 py-2 border text-xs h-[54px] align-middle group"
-                    class:cursor-text={isExp} class:border-blue-400={isNameEdit} class:border-gray-100={!isNameEdit}
-                    on:click={(e) => { if (!isExp) return; e.stopPropagation(); if (!isNameEdit) startEdit(e, order.id, "name", order.orderClients?.[0]?.name); }}>
+                    class:cursor-text={isExp && hasOrderClient} class:border-blue-400={isNameEdit} class:border-gray-100={!isNameEdit}
+                    on:click={(e) => { if (!isExp || !hasOrderClient) return; e.stopPropagation(); if (!isNameEdit) startEdit(e, order.id, "name", order.orderClients?.[0]?.name); }}>
                     {#if isNameEdit}
                       <input id="cell-input-{order.id}-name" class="w-full text-xs bg-transparent outline-none border-none p-0" bind:value={editingValue} on:keydown={onCellKeydown} on:blur={saveEdit} on:click|stopPropagation />
                     {:else if isNameSaving}
-                      <div class="flex items-center gap-1 text-gray-400"><span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span> <span class="truncate">{order.orderClients?.[0]?.name || "-"}</span></div>
+                      <div class="flex items-center gap-1 text-gray-400"><span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span> <span class="truncate">{displayName || "-"}</span></div>
+                    {:else if !hasOrderClient && hasLinkedClient}
+                      <!-- Client linked but no orderClient row — type in Mobile column to auto-create -->
+                      <div class="flex flex-col gap-0.5">
+                        <span class="truncate text-gray-700 text-[11px] font-semibold">{order.client.name}</span>
+                        <span class="text-[10px] text-orange-500 italic">Enter mobile to save</span>
+                      </div>
+                    {:else if !hasOrderClient && !hasLinkedClient}
+                      <div class="flex items-center gap-1 flex-wrap" on:click|stopPropagation>
+                        <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded" style="background:#fff3cd;color:#856404;">⚠ No Client</span>
+                        <button class="btn btn-xs text-[10px] py-0 px-1.5" style="background:#e8f4fd;color:#0d6efd;border:1px solid #b6d4fe;"
+                          on:click={(e) => openLinkClientModal(e, order)}>+ Link</button>
+                      </div>
                     {:else}
-                      <div class="truncate">{order.orderClients?.[0]?.name || "-"}</div>
+                      <div class="truncate">{displayName || "-"}</div>
                     {/if}
                   </td>
 
@@ -1406,6 +1710,190 @@
 </div>
 
 <LightBox bind:data={lightboxImages} startIndex={lightboxStart} />
+
+<!-- Link Client Modal -->
+{#if showLinkClientModal}
+  <div class="fixed inset-0 bg-black/40 z-[1060] flex items-center justify-center">
+    <div class="bg-white rounded-xl shadow-xl z-[1061] w-full max-w-md mx-3 overflow-hidden" on:click|stopPropagation>
+      <div class="d-flex align-items-center justify-content-between px-4 py-3 border-bottom">
+        <h6 class="mb-0 fw-semibold">
+          {#if linkedClient}
+            {linkedClientContacts.length > 0 ? "Select Contact" : "Add Contact"}
+            <span class="text-muted fw-normal" style="font-size:12px;"> — {linkedClient.name}</span>
+          {:else}
+            Link Client to Order
+          {/if}
+        </h6>
+        <button class="btn-close" on:click={closeLinkClientModal}></button>
+      </div>
+      <div class="p-4">
+
+        {#if linkedClient}
+          <!-- MODE 2 & 3: Client already linked -->
+          {#if linkedClientContacts.length > 0 && !showAddContactForm}
+            <!-- MODE 2: Has contacts — pick one -->
+            <div class="mb-3">
+              <div class="text-muted mb-2" style="font-size:12px;">Select a contact to use for this order:</div>
+              <div class="border rounded" style="max-height:220px;overflow-y:auto;">
+                {#each linkedClientContacts as contact}
+                  <button type="button" class="d-block w-100 text-start px-3 py-2"
+                    style="background:{selectedContactId === contact.id ? '#e8f4fd' : 'white'};border:none;border-bottom:1px solid #f0f0f0;"
+                    on:click={() => selectedContactId = contact.id}>
+                    <div class="fw-semibold" style="font-size:13px;">{contact.name}</div>
+                    {#if contact.mobile}<div class="text-muted" style="font-size:11px;">📞 {contact.mobile}</div>{/if}
+                    {#if contact.email}<div class="text-muted" style="font-size:11px;">✉ {contact.email}</div>{/if}
+                  </button>
+                {/each}
+              </div>
+              <button class="btn btn-link btn-sm p-0 mt-2" style="font-size:12px;" on:click={() => showAddContactForm = true}>
+                <i class="ti ti-plus me-1"></i>Add new contact instead
+              </button>
+            </div>
+          {:else}
+            <!-- MODE 3: No contacts or adding new contact -->
+            <div class="rounded p-3 mb-3" style="background:#f8f9fa;border:1px solid #e9ecef;">
+              <div class="fw-semibold mb-3" style="font-size:13px;color:#185FA5;">
+                <i class="ti ti-user-plus me-1"></i>New Contact for {linkedClient.name}
+              </div>
+              <div class="mb-2">
+                <label class="form-label mb-1" style="font-size:12px;font-weight:600;">Name <span class="text-danger">*</span></label>
+                <input type="text" class="form-control form-control-sm" placeholder="Contact name" bind:value={newContactForm.name} autofocus />
+              </div>
+              <div class="mb-2">
+                <label class="form-label mb-1" style="font-size:12px;font-weight:600;">Mobile</label>
+                <input type="text" class="form-control form-control-sm" placeholder="Mobile number" bind:value={newContactForm.mobile} />
+              </div>
+              <div class="mb-1">
+                <label class="form-label mb-1" style="font-size:12px;font-weight:600;">Email</label>
+                <input type="email" class="form-control form-control-sm" placeholder="Email address" bind:value={newContactForm.email} />
+              </div>
+            </div>
+            {#if linkedClientContacts.length > 0}
+              <button class="btn btn-link btn-sm p-0 text-muted" style="font-size:12px;" on:click={() => showAddContactForm = false}>
+                ← Back to contacts
+              </button>
+            {/if}
+          {/if}
+
+        {:else}
+          <!-- MODE 1: No client linked — search / create -->
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <label class="form-label fw-semibold mb-0" style="font-size:13px;">Search Client</label>
+            {#if !showCreateClientForm}
+              <button class="btn btn-sm btn-outline-primary" style="font-size:12px;" on:click={() => { showCreateClientForm = true; newClientForm.name = linkClientSearch; }}>
+                <i class="ti ti-plus me-1"></i>New Client
+              </button>
+            {/if}
+          </div>
+
+          {#if legacyContacts.length > 0}
+            <div class="rounded p-3 mb-3" style="background:#fffbea;border:1px solid #fde68a;">
+              <div class="fw-semibold mb-2" style="font-size:12px;color:#92400e;">
+                <i class="ti ti-users me-1"></i>Existing contacts — will be migrated on link:
+              </div>
+              {#each legacyContacts as oc}
+                <label class="d-flex align-items-center gap-2 mb-1 cursor-pointer" style="font-size:12px;">
+                  <input type="checkbox"
+                    checked={legacyChecked.includes(oc.id)}
+                    on:change={() => {
+                      if (legacyChecked.includes(oc.id)) legacyChecked = legacyChecked.filter(id => id !== oc.id);
+                      else legacyChecked = [...legacyChecked, oc.id];
+                    }}
+                  />
+                  <span class="fw-semibold">{oc.name}</span>
+                  {#if oc.mobile}<span class="text-muted">· {oc.mobile}</span>{/if}
+                </label>
+              {/each}
+            </div>
+          {/if}
+
+          <div class="position-relative mb-3">
+            <input type="text" class="form-control" placeholder="Type client name..."
+              value={linkClientSearch} on:input={onLinkClientSearchInput} autofocus />
+            {#if linkClientSearching}
+              <div class="position-absolute top-50 end-0 translate-middle-y pe-3">
+                <span class="spinner-border spinner-border-sm text-muted"></span>
+              </div>
+            {/if}
+          </div>
+
+          {#if !showCreateClientForm}
+            {#if linkClientResults.length > 0}
+              <div class="border rounded mb-3" style="max-height:200px;overflow-y:auto;">
+                {#each linkClientResults as client}
+                  <button type="button" class="d-block w-100 text-start px-3 py-2"
+                    style="background:{linkClientSelected?.id === client.id ? '#e8f4fd' : 'white'};border:none;border-bottom:1px solid #f0f0f0;"
+                    on:click={() => { linkClientSelected = client; linkClientSearch = client.name; linkClientResults = []; }}>
+                    <div class="fw-semibold" style="font-size:13px;">{client.name}</div>
+                    {#if client.contacts?.length}
+                      <div class="text-muted" style="font-size:11px;">{client.contacts.map(c => c.name).join(", ")}</div>
+                    {/if}
+                    {#if client.address}
+                      <div class="text-muted" style="font-size:11px;">{client.address}</div>
+                    {/if}
+                  </button>
+                {/each}
+              </div>
+            {:else if linkClientSearch.length > 0 && !linkClientSearching}
+              <div class="text-center py-3">
+                <div class="text-muted" style="font-size:13px;">No clients found for "<strong>{linkClientSearch}</strong>"</div>
+              </div>
+            {/if}
+            {#if linkClientSelected}
+              <div class="rounded p-3 mb-3" style="background:#f0fdf4;border:1px solid #bbf7d0;">
+                <div class="fw-semibold text-success" style="font-size:13px;">✓ Selected: {linkClientSelected.name}</div>
+                {#if linkClientSelected.contacts?.[0]}
+                  <div class="text-muted mt-1" style="font-size:12px;">
+                    Contact: {linkClientSelected.contacts[0].name}
+                    {#if linkClientSelected.contacts[0].mobile} · {linkClientSelected.contacts[0].mobile}{/if}
+                  </div>
+                {/if}
+              </div>
+            {/if}
+          {:else}
+            <!-- Inline Create Client Form -->
+            <div class="rounded p-3 mb-2" style="background:#f8f9fa;border:1px solid #e9ecef;">
+              <div class="fw-semibold mb-3" style="font-size:13px;color:#185FA5;">
+                <i class="ti ti-user-plus me-1"></i>Create New Client
+              </div>
+              <div class="mb-2">
+                <label class="form-label mb-1" style="font-size:12px;font-weight:600;">Name <span class="text-danger">*</span></label>
+                <input type="text" class="form-control form-control-sm" placeholder="Client / Company name" bind:value={newClientForm.name} />
+              </div>
+              <div class="mb-2">
+                <label class="form-label mb-1" style="font-size:12px;font-weight:600;">Mobile</label>
+                <input type="text" class="form-control form-control-sm" placeholder="Mobile number" bind:value={newClientForm.mobile} />
+              </div>
+              <div class="mb-2">
+                <label class="form-label mb-1" style="font-size:12px;font-weight:600;">Email</label>
+                <input type="email" class="form-control form-control-sm" placeholder="Email address" bind:value={newClientForm.email} />
+              </div>
+              <div class="mb-1">
+                <label class="form-label mb-1" style="font-size:12px;font-weight:600;">Address</label>
+                <input type="text" class="form-control form-control-sm" placeholder="Address / City" bind:value={newClientForm.address} />
+              </div>
+            </div>
+            <button class="btn btn-link btn-sm p-0 text-muted" style="font-size:12px;" on:click={() => showCreateClientForm = false}>
+              ← Back to search
+            </button>
+          {/if}
+        {/if}
+
+      </div>
+      <div class="d-flex justify-content-end gap-2 px-4 py-3 border-top">
+        <button class="btn btn-secondary btn-sm" on:click={closeLinkClientModal}>Cancel</button>
+        <button class="btn btn-primary btn-sm" disabled={linkingClient || (
+            linkedClient
+              ? (showAddContactForm || linkedClientContacts.length === 0) ? !newContactForm.name.trim() : !selectedContactId
+              : showCreateClientForm ? !newClientForm.name.trim() : !linkClientSelected
+          )} on:click={confirmLinkClient}>
+          {#if linkingClient}<span class="spinner-border spinner-border-sm me-1"></span>{/if}
+          {linkedClient ? (showAddContactForm || linkedClientContacts.length === 0 ? "Add & Link" : "Use Contact") : showCreateClientForm ? "Create & Link" : "Link Client"}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <style>
   /* parent-hover → child filter: can't be done in Tailwind */
