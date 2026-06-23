@@ -57,7 +57,9 @@
   // expenses
   let expenses = [];
   let loadingExpenses = false;
-  let expenseForm = { title: "", companyId: "", items: [{ description: "", amount: 0 }], remarks: "" };
+  let expenseForm = { title: "", companyId: "", items: [{ item: "", price: 0 }], remarks: "" };
+  let expenseFiles = [];
+  let expenseLightbox = null;
   let addingExpense = false;
 
   function toDatetimeLocal(val) {
@@ -230,9 +232,9 @@
     } catch (_) { Swal.fire("Error", "Failed to remove.", "error"); }
   }
 
-  function addExpenseItem() { expenseForm.items = [...expenseForm.items, { description: "", amount: 0 }]; }
+  function addExpenseItem() { expenseForm.items = [...expenseForm.items, { item: "", price: 0 }]; }
   function removeExpenseItem(i) { expenseForm.items = expenseForm.items.filter((_, idx) => idx !== i); }
-  $: totalExpenseAmount = expenseForm.items.reduce((s, it) => s + (parseFloat(it.amount) || 0), 0);
+  $: totalExpenseAmount = expenseForm.items.reduce((s, it) => s + (parseFloat(it.price) || 0), 0);
 
   async function handleAddExpense() {
     if (!expenseForm.title) { Swal.fire("Error", "Title is required.", "error"); return; }
@@ -242,17 +244,19 @@
       fd.append("title", expenseForm.title);
       fd.append("companyId", String(expenseForm.companyId));
       fd.append("clientVisitId", String(visitId));
-      fd.append("items", JSON.stringify(expenseForm.items.filter((it) => it.description)));
+      fd.append("items", JSON.stringify(expenseForm.items.filter((it) => it.item)));
       if (expenseForm.remarks) fd.append("remarks", expenseForm.remarks);
+      for (const file of expenseFiles) fd.append("files", file);
       await authApiFetch(API_ROUTES.USER_PAYMENT, { method: "POST", data: fd });
       await loadExpenses();
-      expenseForm = { title: "", companyId: expenseForm.companyId, items: [{ description: "", amount: 0 }], remarks: "" };
+      expenseForm = { title: "", companyId: expenseForm.companyId, items: [{ item: "", price: 0 }], remarks: "" };
+      expenseFiles = [];
       showAddExpenseForm = false;
     } catch (_) { Swal.fire("Error", "Failed to save expense.", "error"); }
     finally { addingExpense = false; }
   }
 
-  async function handleAddContact() {
+  async function handleAddContact(keepOpen = false) {
     addContactError = "";
     if (!newContact.name.trim()) { addContactError = "Contact name is required."; return; }
     addingContact = true;
@@ -270,7 +274,7 @@
       clientContacts = [...clientContacts, saved];
       selectedContactIds = [...selectedContactIds, saved.id];
       newContact = { name: "", designation: "", mobile: "" };
-      showAddContact = false;
+      if (!keepOpen) showAddContact = false;
     } catch (_) {
       addContactError = "Failed to save contact. Please try again.";
     } finally {
@@ -283,7 +287,7 @@
     else selectedContactIds = [...selectedContactIds, id];
   }
 
-  function expTotal(items) { return (items ?? []).reduce((s, it) => s + (parseFloat(it.amount) || 0), 0); }
+  function expTotal(items) { return (items ?? []).reduce((s, it) => s + (parseFloat(it.price ?? it.amount) || 0), 0); }
   $: grandTotalExpenses = expenses.reduce((s, exp) => s + expTotal(exp.items), 0);
 
   let showAddExpenseForm = false;
@@ -424,7 +428,10 @@
                         </div>
                       </div>
                       <div class="d-flex gap-2">
-                        <button type="button" class="btn btn-sm btn-primary" disabled={addingContact} on:click={handleAddContact}>
+                        <button type="button" class="btn btn-sm btn-outline-primary" disabled={addingContact} on:click={() => handleAddContact(true)}>
+                          {addingContact ? "Saving..." : "Save & Add More"}
+                        </button>
+                        <button type="button" class="btn btn-sm btn-primary" disabled={addingContact} on:click={() => handleAddContact(false)}>
                           <i class="ti ti-check me-1"></i>{addingContact ? "Saving..." : "Save & Select"}
                         </button>
                         <button type="button" class="btn btn-sm btn-outline-secondary"
@@ -702,6 +709,7 @@
                     <th>Remarks</th>
                     <th>Date</th>
                     <th>Added By</th>
+                    <th>Bills</th>
                     <th class="text-end">Total</th>
                     <th style="width:60px;"></th>
                   </tr>
@@ -711,10 +719,27 @@
                     <tr>
                       <td class="text-muted" style="font-size:13px;">{i + 1}</td>
                       <td style="font-size:14px;">{exp.title}</td>
-                      <td class="text-muted" style="font-size:13px;">{(exp.items ?? []).map((it) => `${it.description} ₹${parseFloat(it.amount||0).toFixed(0)}`).join(" · ") || "—"}</td>
+                      <td class="text-muted" style="font-size:13px;">{(exp.items ?? []).map((it) => `${it.item ?? it.description ?? ""} ₹${parseFloat(it.price ?? it.amount ?? 0).toFixed(0)}`).join(" · ") || "—"}</td>
                       <td class="text-muted" style="font-size:13px;">{exp.remarks || "—"}</td>
                       <td class="text-muted" style="font-size:13px;">{exp.createdAt ? new Date(exp.createdAt).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : "—"}</td>
                       <td class="text-muted" style="font-size:13px;">{exp.user?.name ?? "—"}</td>
+                      <td>
+                        {#if exp.images?.length > 0}
+                          <div class="d-flex flex-wrap gap-1">
+                            {#each exp.images as img}
+                              <button type="button" class="btn btn-link p-0" on:click={() => expenseLightbox = img.url} title={img.originalName}>
+                                {#if img.mimeType?.startsWith('image/')}
+                                  <img src={img.url} alt={img.originalName} style="width:36px;height:36px;object-fit:cover;border-radius:4px;border:1px solid #dee2e6;" />
+                                {:else}
+                                  <span class="badge bg-secondary" style="font-size:11px;"><i class="ti ti-file me-1"></i>PDF</span>
+                                {/if}
+                              </button>
+                            {/each}
+                          </div>
+                        {:else}
+                          <span class="text-muted" style="font-size:12px;">—</span>
+                        {/if}
+                      </td>
                       <td class="text-end fw-semibold">₹{expTotal(exp.items).toLocaleString('en-IN')}</td>
                       <td>
                         <button class="btn btn-sm btn-outline-danger px-2 py-1" on:click={() => deleteExpense(exp.id)} title="Delete">
@@ -726,7 +751,7 @@
                 </tbody>
                 <tfoot class="table-light">
                   <tr>
-                    <td colspan="6" class="fw-semibold text-end" style="font-size:13px;">Grand Total</td>
+                    <td colspan="7" class="fw-semibold text-end" style="font-size:13px;">Grand Total</td>
                     <td class="text-end fw-bold" style="font-size:14px;">₹{grandTotalExpenses.toLocaleString('en-IN')}</td>
                     <td></td>
                   </tr>
@@ -762,12 +787,12 @@
           {#each expenseForm.items as item, i}
             <div class="row g-2 mb-2 align-items-center">
               <div class="col-md-6">
-                <input type="text" class="form-control" placeholder="Description (Fuel, Toll, Food, Hotel...)" bind:value={item.description} />
+                <input type="text" class="form-control" placeholder="Description (Fuel, Toll, Food, Hotel...)" bind:value={item.item} />
               </div>
               <div class="col-md-4">
                 <div class="input-group">
                   <span class="input-group-text">₹</span>
-                  <input type="number" class="form-control" placeholder="Amount (₹)" bind:value={item.amount} min="0" />
+                  <input type="number" class="form-control" placeholder="Amount (₹)" bind:value={item.price} min="0" />
                 </div>
               </div>
               <div class="col-md-2">
@@ -785,6 +810,25 @@
             <span class="fw-semibold">Total: ₹{totalExpenseAmount.toLocaleString('en-IN')}</span>
           </div>
 
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Bill Images <span class="text-muted fw-normal" style="font-size:12px;">(optional, max 10)</span></label>
+            <input type="file" class="form-control" accept="image/*,.pdf" multiple
+              on:change={(e) => { expenseFiles = Array.from(e.target.files); }} />
+            {#if expenseFiles.length > 0}
+              <div class="d-flex flex-wrap gap-2 mt-2">
+                {#each expenseFiles as file, i}
+                  <div class="d-flex align-items-center gap-1 border rounded px-2 py-1" style="font-size:12px;background:#f8f9fa;">
+                    <i class="ti ti-file me-1"></i>{file.name}
+                    <button type="button" class="btn btn-link p-0 text-danger ms-1" style="font-size:12px;"
+                      on:click={() => { expenseFiles = expenseFiles.filter((_, idx) => idx !== i); }}>
+                      <i class="ti ti-x"></i>
+                    </button>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          </div>
+
           <button type="button" class="btn btn-success" disabled={addingExpense} on:click={handleAddExpense}>
             <i class="ti ti-plus me-1"></i>{addingExpense ? "Saving..." : "Save Expense"}
           </button>
@@ -795,3 +839,19 @@
     {/if}
   </div>
 </div>
+
+{#if expenseLightbox}
+  <div class="modal show d-block" tabindex="-1" style="background:rgba(0,0,0,0.75);z-index:9999;" on:click={() => expenseLightbox = null}>
+    <div class="modal-dialog modal-dialog-centered modal-lg" on:click|stopPropagation>
+      <div class="modal-content">
+        <div class="modal-header py-2">
+          <h6 class="modal-title mb-0">Bill Image</h6>
+          <button type="button" class="btn-close" on:click={() => expenseLightbox = null}></button>
+        </div>
+        <div class="modal-body text-center p-2">
+          <img src={expenseLightbox} alt="Bill" style="max-width:100%;max-height:80vh;object-fit:contain;" />
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}

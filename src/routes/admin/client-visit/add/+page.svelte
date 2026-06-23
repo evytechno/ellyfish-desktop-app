@@ -189,7 +189,7 @@
     }
   }
 
-  async function ncAddContact() {
+  async function ncAddContact(keepOpen = false) {
     addContactError = "";
     if (!newContact.name.trim()) { addContactError = "Contact name is required."; return; }
     addingContact = true;
@@ -207,7 +207,7 @@
       clientContacts = [...clientContacts, saved];
       selectedContactIds = [...selectedContactIds, saved.id];
       newContact = { name: "", designation: "", mobile: "" };
-      showAddContact = false;
+      if (!keepOpen) showAddContact = false;
     } catch (_) {
       addContactError = "Failed to save contact. Please try again.";
     } finally {
@@ -485,7 +485,10 @@
                         </div>
                       </div>
                       <div class="d-flex gap-2">
-                        <button type="button" class="btn btn-sm btn-primary" disabled={addingContact} on:click={ncAddContact}>
+                        <button type="button" class="btn btn-sm btn-outline-primary" disabled={addingContact} on:click={() => ncAddContact(true)}>
+                          {addingContact ? "Saving..." : "Save & Add More"}
+                        </button>
+                        <button type="button" class="btn btn-sm btn-primary" disabled={addingContact} on:click={() => ncAddContact(false)}>
                           <i class="ti ti-check me-1"></i>{addingContact ? "Saving..." : "Save & Select"}
                         </button>
                         <button type="button" class="btn btn-sm btn-outline-secondary"

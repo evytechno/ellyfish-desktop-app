@@ -52,7 +52,7 @@
   }
 
   $: totalJobCost = (visit?.jobs ?? []).reduce((s, j) => s + (parseFloat(j.cost) || 0), 0);
-  $: totalExpenses = expenses.reduce((s, e) => s + (e.items ?? []).reduce((es, it) => es + (parseFloat(it.amount) || 0), 0), 0);
+  $: totalExpenses = expenses.reduce((s, e) => s + (e.items ?? []).reduce((es, it) => es + (parseFloat(it.price ?? it.amount) || 0), 0), 0);
 
   const outcomeColors = { Positive: "bg-success", Negative: "bg-danger", Pending: "bg-warning text-dark", "No Response": "bg-secondary" };
 </script>
@@ -312,10 +312,10 @@
             </thead>
             <tbody>
               {#each expenses as exp}
-                {@const et = (exp.items ?? []).reduce((s, it) => s + (parseFloat(it.amount) || 0), 0)}
+                {@const et = (exp.items ?? []).reduce((s, it) => s + (parseFloat(it.price ?? it.amount) || 0), 0)}
                 <tr>
                   <td style="font-size:13px;">{exp.title}</td>
-                  <td style="font-size:12px;color:#6c757d;">{(exp.items ?? []).map((it) => `${it.description} ₹${parseFloat(it.amount||0).toFixed(0)}`).join(" · ") || "—"}</td>
+                  <td style="font-size:12px;color:#6c757d;">{(exp.items ?? []).map((it) => `${it.item ?? it.description ?? ""} ₹${parseFloat(it.price ?? it.amount ?? 0).toFixed(0)}`).join(" · ") || "—"}</td>
                   <td class="text-end fw-semibold" style="font-size:13px;">₹{et.toLocaleString('en-IN')}</td>
                   <td style="font-size:12px;color:#6c757d;">{exp.user?.name ?? "—"}</td>
                 </tr>

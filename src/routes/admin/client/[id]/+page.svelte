@@ -115,11 +115,13 @@
     }
   }
 
-  async function addContact(e) {
+  let addMoreLoading = false;
+
+  async function addContact(e, keepOpen = false) {
     e.preventDefault();
     contactFormErrors = {};
     if (!contactName) { contactFormErrors.contactName = ["Name is required."]; return; }
-    contactFormLoading = true;
+    if (keepOpen) addMoreLoading = true; else contactFormLoading = true;
     try {
       const res = await authApiFetch(API_ROUTES.CLIENT_CONTACT, {
         method: "POST",
@@ -135,17 +137,21 @@
         }),
       });
       client.contacts = [...(client.contacts || []), res.data];
-      // Reset form
       contactName = ""; contactDesignation = ""; contactMobile = "";
       contactEmail = ""; contactWhatsapp = ""; contactAltMobile = ""; contactAddress = "";
-      showContactForm = false;
-      Swal.fire("Success!", "Contact added.", "success");
+      if (keepOpen) {
+        Swal.fire({ toast: true, position: "top-end", icon: "success", title: "Contact saved!", showConfirmButton: false, timer: 1500 });
+      } else {
+        showContactForm = false;
+        Swal.fire("Success!", "Contact added.", "success");
+      }
     } catch (error) {
       const errs = errorHandle(error);
       if (errs && typeof errs === "object") contactFormErrors = errs;
       else Swal.fire("Error!", "Failed to add contact.", "error");
     } finally {
       contactFormLoading = false;
+      addMoreLoading = false;
     }
   }
 
@@ -420,7 +426,10 @@
                 </div>
                 <div class="flex justify-end gap-2 mt-3">
                   <button type="button" class="btn btn-light btn-sm" on:click={() => showContactForm = false}>Cancel</button>
-                  <button type="submit" class="btn btn-primary btn-sm" disabled={contactFormLoading}>
+                  <button type="button" class="btn btn-outline-primary btn-sm" disabled={addMoreLoading || contactFormLoading} on:click={(e) => addContact(e, true)}>
+                    {addMoreLoading ? "Saving..." : "Save & Add More"}
+                  </button>
+                  <button type="submit" class="btn btn-primary btn-sm" disabled={contactFormLoading || addMoreLoading}>
                     {contactFormLoading ? "Saving..." : "Add Contact"}
                   </button>
                 </div>

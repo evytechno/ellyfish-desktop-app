@@ -1682,6 +1682,7 @@
   let acAltMobile = "";
   let acAddress = "";
   let acLoading = false;
+  let acMoreLoading = false;
   let acFormErrors = {};
 
   function openAddContactModal() {
@@ -1697,13 +1698,13 @@
     showAddContactModal = true;
   }
 
-  async function submitAddContact() {
+  async function submitAddContact(keepOpen = false) {
     acFormErrors = {};
     if (!acName.trim()) {
       acFormErrors.acName = "Name is required.";
       return;
     }
-    acLoading = true;
+    if (keepOpen) acMoreLoading = true; else acLoading = true;
     try {
       // 1. Create ClientContact under existing linked client
       const contactRes = await authApiFetch(API_ROUTES.CLIENT_CONTACT, {
@@ -1744,14 +1745,21 @@
       };
       order.groupedActivities = addActivityToGroupedActivities(newActivity);
 
-      showAddContactModal = false;
-      Swal.fire("Success!", `Contact "${newContact.name}" added.`, "success");
+      if (keepOpen) {
+        acName = ""; acDesignation = ""; acMobile = "";
+        acEmail = ""; acWhatsapp = ""; acAltMobile = ""; acAddress = "";
+        Swal.fire({ toast: true, position: "top-end", icon: "success", title: `"${newContact.name}" saved!`, showConfirmButton: false, timer: 1500 });
+      } else {
+        showAddContactModal = false;
+        Swal.fire("Success!", `Contact "${newContact.name}" added.`, "success");
+      }
     } catch (error) {
       const errs = errorHandle(error);
       if (errs && typeof errs === "object") acFormErrors = errs;
       else Swal.fire("Error!", "Failed to add contact.", "error");
     } finally {
       acLoading = false;
+      acMoreLoading = false;
     }
   }
 
@@ -2508,13 +2516,17 @@
                             >
                           {/if}
                         </a>
-                      {:else}
+                      {:else if ['Deal Won', 'Dispatched', 'Completed'].includes(order.status)}
                         <button
                           class="order-header-doc-action border-0 bg-transparent p-0"
                           on:click={() => { piwotiType = 'PI'; piwotiOpen = true; }}
                         >
                           <i class="ti ti-plus me-1"></i>Create
                         </button>
+                      {:else}
+                        <span class="order-header-doc-muted" title="Requires Deal Won status">
+                          <i class="ti ti-lock me-1"></i>Needs Deal Won
+                        </span>
                       {/if}
                     </div>
 
@@ -5445,9 +5457,17 @@
           >
           <button
             type="button"
+            class="btn btn-outline-primary"
+            on:click={() => submitAddContact(true)}
+            disabled={acLoading || acMoreLoading}
+          >
+            {acMoreLoading ? "Saving..." : "Save & Add More"}
+          </button>
+          <button
+            type="button"
             class="btn btn-primary"
-            on:click={submitAddContact}
-            disabled={acLoading}
+            on:click={() => submitAddContact()}
+            disabled={acLoading || acMoreLoading}
           >
             {acLoading ? "Saving..." : "Add Contact"}
           </button>
