@@ -20,6 +20,7 @@
   let totalItems = 0;
   let search = "";
   let searchTimeout;
+  let trashBin = false;
 
   function saveFilterStore() {
     taxInvoiceFilterStore.set({ search, currentPage, rowsPerPage });
@@ -61,6 +62,7 @@
         page: String(currentPage),
         limit: String(rowsPerPage),
         ...(search ? { search } : {}),
+        ...(trashBin ? { withDeleted: "true" } : {}),
       });
       const data = await authApiFetch(`${API_ROUTES.INVOICE}?${params}`);
       invoices = data.data ?? [];
@@ -70,6 +72,12 @@
     } finally {
       setTimeout(() => { loadingData = false; }, 300);
     }
+  }
+
+  function toggleTrash(value) {
+    trashBin = value;
+    currentPage = 1;
+    fetchInvoices();
   }
 
   function handleSearch(e) {
@@ -128,11 +136,13 @@
       return;
     }
     const result = await Swal.fire({
-      title: "Delete Confirmation",
-      text: "Are you sure you want to delete this tax invoice?",
+      title: trashBin ? "Permanent Delete" : "Delete Confirmation",
+      text: trashBin
+        ? "This will permanently delete the tax invoice. This cannot be undone."
+        : "Are you sure you want to delete this tax invoice?",
       icon: "warning",
       showCancelButton: true,
-      confirmButtonText: "Yes, delete it!",
+      confirmButtonText: trashBin ? "Yes, delete permanently!" : "Yes, delete it!",
     });
     if (!result.isConfirmed) return;
     try {
@@ -145,26 +155,35 @@
     }
   }
 
-  const actions = [
-    {
-      label: "View",
-      icon: "ti ti-eye",
-      onClick: (id) => goto(`/admin/invoice/tax/${id}`),
-      color: "btn-soft-primary",
-    },
-    {
-      label: "Edit",
-      icon: "ti ti-edit",
-      onClick: (id) => goto(`/admin/invoice/tax/${id}/edit`),
-      color: "btn-soft-info",
-    },
-    {
-      label: "Delete",
-      icon: "ti ti-trash",
-      onClick: (id) => deleteRecord(id),
-      color: "btn-soft-danger",
-    },
-  ];
+  $: actions = trashBin
+    ? [
+        {
+          label: "Delete",
+          icon: "ti ti-trash",
+          onClick: (id) => deleteRecord(id),
+          color: "btn-soft-danger",
+        },
+      ]
+    : [
+        {
+          label: "View",
+          icon: "ti ti-eye",
+          onClick: (id) => goto(`/admin/invoice/tax/${id}`),
+          color: "btn-soft-primary",
+        },
+        {
+          label: "Edit",
+          icon: "ti ti-edit",
+          onClick: (id) => goto(`/admin/invoice/tax/${id}/edit`),
+          color: "btn-soft-info",
+        },
+        {
+          label: "Delete",
+          icon: "ti ti-trash",
+          onClick: (id) => deleteRecord(id),
+          color: "btn-soft-danger",
+        },
+      ];
 </script>
 
 {#if loadingData}
@@ -199,7 +218,22 @@
             placeholder="Search invoices..."
             on:input={handleSearch}
           />
+          {#if trashBin}
+            <button class="btn btn-outline-secondary d-flex align-items-center gap-1" on:click={() => toggleTrash(false)}>
+              <i class="ti ti-arrow-left"></i> Back to Invoices
+            </button>
+          {:else}
+            <button class="btn btn-outline-danger d-flex align-items-center gap-1" on:click={() => toggleTrash(true)}>
+              <i class="ti ti-trash"></i> Trash
+            </button>
+          {/if}
         </div>
+
+        {#if trashBin}
+          <div class="alert alert-warning py-2 mb-3">
+            <i class="ti ti-trash me-1"></i> Showing deleted tax invoices. Deleting here is <strong>permanent</strong>.
+          </div>
+        {/if}
 
         <DynamicDataTable
           loading={loadingData}
