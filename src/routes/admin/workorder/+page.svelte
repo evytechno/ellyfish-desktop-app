@@ -338,7 +338,7 @@
       label: "Order",
       render: (val, row) => {
         if (row?.order?.id) {
-          const label = row.order.title || `Order #${row.order.id}`;
+          const label = row.order.pId ? `#${row.order.pId} - ${row.order.title || ""}` : (row.order.title || `Order #${row.order.id}`);
           return `<a href="/admin/order/${row.order.id}" class="text-primary text-truncate d-block" style="max-width:280px" title="${label}">${label}</a>`;
         }
         return `<span class="text-muted">${row?.title || "-"}</span>`;
@@ -587,10 +587,15 @@
               </button>
             </div>
           {/if}
-          <a href="/admin/workorder/add" class="btn btn-primary">
-            <i class="ti ti-square-rounded-plus-filled me-1"></i>Add New Work
-            Order
-          </a>
+          {#if currentUser?.role === "master" || currentUser?.role === "admin"}
+            <a href="/admin/workorder/add" class="btn btn-primary">
+              <i class="ti ti-square-rounded-plus-filled me-1"></i>Add New Work Order
+            </a>
+          {:else}
+            <button class="btn btn-primary" disabled title="Only Admin can create work orders">
+              <i class="ti ti-square-rounded-plus-filled me-1"></i>Add New Work Order
+            </button>
+          {/if}
         </div>
       {/if}
     </div>

@@ -436,7 +436,7 @@
                                 "/admin/order/" + notification?.order?.id
                               )}
                               class="text-dark fw-medium cursor-pointer"
-                              >{notification?.order?.title}</button
+                              >{notification?.order?.pId ? `#${notification.order.pId} - ${notification.order.title || ""}` : (notification?.order?.title || "")}</button
                             >' for “<span class="text-dark"
                               >{notification?.message}</span
                             >”

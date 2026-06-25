@@ -536,7 +536,8 @@
       key: "title",
       label: "Title",
       render: (val, row) => {
-        return `<a href="/admin/order/${row.id}" class="flex items-center gap-1"><div class="max-w-[300px] truncate">${row?.title}</div></a>`;
+        const label = row?.pId ? `#${row.pId} - ${row?.title || ""}` : (row?.title || "");
+        return `<a href="/admin/order/${row.id}" class="flex items-center gap-1"><div class="max-w-[300px] truncate">${label}</div></a>`;
       },
     },
     {

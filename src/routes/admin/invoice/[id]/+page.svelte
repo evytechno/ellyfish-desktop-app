@@ -7,6 +7,7 @@
   import Loader from "$lib/components/Loader.svelte";
   import InvoiceExport from "$lib/components/InvoiceExport.svelte";
   import { ATTACHMENT_BASE_URL } from "$lib/constants/constants";
+  import PIWOTIModal from "$lib/components/PIWOTIModal.svelte";
 
   let loadingData = true;
   let errorMessage = "";
@@ -17,8 +18,40 @@
   let workOrderId = null;
   let workOrderCheckDone = false;
 
+  // Modal state
+  let piwotiOpen = false;
+  let piwotiType = "WO";
+  let modalOrder = null;
+
   let invoiceId;
   $: invoiceId = $page.params.id;
+
+  async function loadOrderForModal(orderId) {
+    try {
+      const data = await authApiFetch(`${API_ROUTES.ORDER}/${orderId}/basic`);
+      modalOrder = data;
+    } catch {
+      modalOrder = null;
+    }
+  }
+
+  async function onPIWOTIRefresh() {
+    if (!invoice?.order?.id) return;
+    try {
+      const data = await authApiFetch(`${API_ROUTES.ORDER}/${invoice.order.id}/basic`);
+      modalOrder = data;
+      workOrderId = data.workOrders?.[0]?.id ?? null;
+      taxInvoiceId = data.invoices?.[0]?.id ?? null;
+    } catch {}
+    workOrderCheckDone = true;
+    taxCheckDone = true;
+  }
+
+  function openModal(type) {
+    piwotiType = type;
+    piwotiOpen = true;
+    if (!modalOrder && invoice?.order?.id) loadOrderForModal(invoice.order.id);
+  }
 
   onMount(async () => {
     loadingData = true;
@@ -439,9 +472,9 @@
                       <i class="ti ti-clipboard me-1"></i>View Work Order
                     </a>
                   {:else}
-                    <a href="/admin/workorder/add?fromInvoice={invoiceId}" class="btn btn-success btn-sm">
+                    <button class="btn btn-success btn-sm" on:click={() => openModal('WO')}>
                       <i class="ti ti-clipboard-plus me-1"></i>Create Work Order
-                    </a>
+                    </button>
                   {/if}
                 {/if}
                 {#if taxCheckDone}
@@ -450,9 +483,9 @@
                       <i class="ti ti-file-invoice me-1"></i>View Tax Invoice
                     </a>
                   {:else if invoice?.order?.id}
-                    <a href="/admin/invoice/tax?fromOrder={invoice.order.id}" class="btn btn-warning btn-sm">
+                    <button class="btn btn-warning btn-sm" on:click={() => openModal('TI')}>
                       <i class="ti ti-file-plus me-1"></i>Create Tax Invoice
-                    </a>
+                    </button>
                   {/if}
                 {/if}
                 <button class="btn btn-primary btn-sm" on:click={() => window.print()}>
@@ -472,6 +505,15 @@
 
   </div>
 </div>
+
+<PIWOTIModal
+  open={piwotiOpen}
+  type={piwotiType}
+  order={modalOrder}
+  preferredCompanyId={invoice?.company?.id}
+  on:close={() => piwotiOpen = false}
+  on:refresh={onPIWOTIRefresh}
+/>
 
 <style>
   .item-cell { cursor: pointer; }

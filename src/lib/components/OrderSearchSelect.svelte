@@ -47,7 +47,7 @@
             success({
               results: (data.data || []).map((o) => ({
                 id: String(o.id),
-                text: o.title,
+                text: o.pId ? `#${o.pId} - ${o.title || ""}` : (o.title || ""),
               })),
             });
           } catch (e) {

@@ -273,7 +273,7 @@
       invoiceType      = inv.orderId ? "order" : "self";
       title            = inv.title || "";
       orderId          = inv.orderId || null;
-      orderInitialTitle = inv.order?.title || "";
+      orderInitialTitle = inv.order ? (inv.order.pId ? `#${inv.order.pId} - ${inv.order.title || ""}` : (inv.order.title || "")) : "";
       if (inv.order) linkedOrder = { id: inv.order.id, title: inv.order.title, financialYear: inv.order.financialYear, pId: inv.order.pId };
       companyId        = inv.companyId || inv.company?.id || null;
       invoiceDate      = inv.invoiceDate ? inv.invoiceDate.split("T")[0] : null;

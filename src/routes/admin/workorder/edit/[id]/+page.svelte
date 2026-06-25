@@ -202,7 +202,7 @@
       workOrderType = data?.order ? "order" : "self";
       title = data?.title;
       orderId = data?.order?.id ?? null;
-      selectedOrderTitle = data?.order?.title ?? "";
+      selectedOrderTitle = data?.order ? (data.order.pId ? `#${data.order.pId} - ${data.order.title || ""}` : (data.order.title ?? "")) : "";
       if (data?.order) linkedOrder = { id: data.order.id, title: data.order.title, financialYear: data.order.financialYear, pId: data.order.pId };
       companyId = data?.company?.id;
       if (!companyId && currentUser?.companyId) {
@@ -342,7 +342,7 @@
                           initialTitle={selectedOrderTitle}
                           on:change={(e) => {
                             orderId = e.detail?.id ?? null;
-                            selectedOrderTitle = e.detail?.title ?? "";
+                            selectedOrderTitle = e.detail?.pId ? `#${e.detail.pId} - ${e.detail.title || ""}` : (e.detail?.title ?? "");
                             linkedOrder = e.detail ? { id: e.detail.id, title: e.detail.title, financialYear: e.detail.financialYear, pId: e.detail.pId } : null;
                           }}
                         />

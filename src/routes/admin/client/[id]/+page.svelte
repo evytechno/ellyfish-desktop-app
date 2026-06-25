@@ -563,7 +563,7 @@
                     {#each client.orders as order}
                       <tr class="border-t hover:bg-gray-50">
                         <td class="px-4 py-2 text-muted small">{order.pId}</td>
-                        <td class="px-4 py-2 fw-semibold">{order.title}</td>
+                        <td class="px-4 py-2 fw-semibold">{order.pId ? `#${order.pId} - ${order.title || ""}` : (order.title || "-")}</td>
                         <td class="px-4 py-2">
                           <span class="badge bg-secondary">{$statusNamesStore[order.status]?.name ?? order.status}</span>
                         </td>

@@ -411,7 +411,7 @@
                 {order.financialYear}/{String(order.pId ?? "").padStart(6, "0")}
               </a>
               {#if order.title}
-                <div class="small text-muted text-truncate">{order.title}</div>
+                <div class="small text-muted text-truncate">{order.pId ? `#${order.pId} - ${order.title}` : order.title}</div>
               {/if}
             </div>
             <div class="col-md-4">

@@ -11,6 +11,7 @@
   export let open = false;
   export let type = "PI";   // "PI" | "WO" | "TI"
   export let order = null;
+  export let preferredCompanyId = null;
 
   const dispatch = createEventDispatcher();
 
@@ -184,8 +185,9 @@
 
     const currentUser = checkAuth();
     companies = get(companiesAllStore) || [];
-    if (!companyId && currentUser?.companyId) {
-      const m = companies.find(c => c.id === Number(currentUser.companyId));
+    const targetCompanyId = preferredCompanyId || currentUser?.companyId;
+    if (!companyId && targetCompanyId) {
+      const m = companies.find(c => c.id === Number(targetCompanyId));
       if (m) { companyId = m.id; companyChange(m.id); }
     }
 

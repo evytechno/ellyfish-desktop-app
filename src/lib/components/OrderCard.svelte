@@ -79,8 +79,8 @@
         <h6 class="fw-medium fs-14 mb-0 truncate space-y-1.5">
           <a
             href={`/admin/order/${order?.id}`}
-            title={order?.title}
-            class="capitalize">{order?.title}</a
+            title={order?.pId ? `#${order.pId} - ${order?.title || ""}` : order?.title}
+            class="capitalize">{order?.pId ? `#${order.pId} - ${order?.title || ""}` : order?.title}</a
           >
           <div class="text-[8px] text-[#e41f07]">
             #{order?.pId?.toString().padStart(6, "0")} ({order?.workOrderNumber}){order?.inqCode ? ` · ${order.inqCode}` : ""}

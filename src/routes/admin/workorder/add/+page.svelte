@@ -203,7 +203,7 @@
       orderId = order.id;
       workOrderType = "order";
       title = order.title ?? "";
-      orderInitialTitle = order.title ?? "";
+      orderInitialTitle = order.pId ? `#${order.pId} - ${order.title || ""}` : (order.title ?? "");
       linkedOrder = { id: order.id, title: order.title, financialYear: order.financialYear, pId: order.pId };
       orderSelectKey++;
       poNumber = pi?.poNumber ?? "";
@@ -225,7 +225,7 @@
       if (inv.order?.id) {
         orderId = inv.order.id;
         workOrderType = "order";
-        orderInitialTitle = inv.order.title ?? "";
+        orderInitialTitle = inv.order.pId ? `#${inv.order.pId} - ${inv.order.title || ""}` : (inv.order.title ?? "");
         orderSelectKey++;
       } else {
         workOrderType = "self";

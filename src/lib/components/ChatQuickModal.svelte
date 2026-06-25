@@ -148,7 +148,7 @@
       <div class="flex items-center justify-between px-4 py-3" style="border-bottom:2px solid #e5e7eb;">
         <div class="min-w-0">
           <div class="text-sm font-semibold text-gray-800 truncate">Add Chat</div>
-          <div class="text-[11px] text-gray-400 truncate">{order.title || ""}</div>
+          <div class="text-[11px] text-gray-400 truncate">{order?.pId ? `#${order.pId} - ${order.title || ""}` : (order.title || "")}</div>
         </div>
         <button
           class="text-gray-400 hover:text-gray-600 ms-2 flex-shrink-0"

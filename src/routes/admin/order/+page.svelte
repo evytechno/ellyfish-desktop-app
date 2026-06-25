@@ -858,7 +858,8 @@
           row?.pId ? `#${String(row.pId).padStart(6, "0")}` : null,
           row?.inqCode ? row.inqCode : null,
         ].filter(Boolean).join(" · ");
-        return `<a href="/admin/order/${row.id}" class="flex flex-col gap-0.5"><div class="max-w-[300px] truncate">${row?.title}</div>${sub ? `<div class="text-[10px] text-[#e41f07] font-mono">${sub}</div>` : ""}</a>`;
+        const label = row?.pId ? `#${row.pId} - ${row?.title || ""}` : (row?.title || "");
+        return `<a href="/admin/order/${row.id}" class="flex flex-col gap-0.5"><div class="max-w-[300px] truncate">${label}</div>${sub ? `<div class="text-[10px] text-[#e41f07] font-mono">${sub}</div>` : ""}</a>`;
       },
     },
     {

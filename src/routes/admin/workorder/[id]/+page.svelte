@@ -5,6 +5,8 @@
   import { API_ROUTES } from "$lib/constants/apiRoutes";
   import Loader from "$lib/components/Loader.svelte";
   import { ATTACHMENT_BASE_URL } from "$lib/constants/constants";
+  import PIWOTIModal from "$lib/components/PIWOTIModal.svelte";
+
   let loadingData = true;
 
   let errorMessage = "";
@@ -16,8 +18,31 @@
   let piNumber = null;
   let piId = null;
 
+  // Modal state
+  let piwotiOpen = false;
+  let modalOrder = null;
+
   let workOrderId;
   $: workOrderId = $page.params.id;
+
+  async function loadOrderForModal(orderId) {
+    try {
+      const data = await authApiFetch(`${API_ROUTES.ORDER}/${orderId}/basic`);
+      modalOrder = data;
+    } catch {
+      modalOrder = null;
+    }
+  }
+
+  async function onPIWOTIRefresh() {
+    if (!workOrder?.order?.id) return;
+    try {
+      const data = await authApiFetch(`${API_ROUTES.ORDER}/${workOrder.order.id}/basic`);
+      modalOrder = data;
+      taxInvoiceId = data.invoices?.[0]?.id ?? null;
+    } catch {}
+    taxCheckDone = true;
+  }
 
   onMount(async () => {
     loadingData = true;
@@ -332,9 +357,9 @@
                       <i class="ti ti-file-invoice me-1"></i>View Tax Invoice
                     </a>
                   {:else}
-                    <a href="/admin/invoice/create?fromOrder={workOrder.order.id}" class="btn btn-warning btn-sm">
+                    <button class="btn btn-warning btn-sm" on:click={() => { piwotiOpen = true; if (!modalOrder) loadOrderForModal(workOrder.order.id); }}>
                       <i class="ti ti-file-plus me-1"></i>Create Tax Invoice
-                    </a>
+                    </button>
                   {/if}
                 {/if}
                 <button class="btn btn-primary btn-sm" on:click={() => window.print()}>
@@ -355,6 +380,14 @@
   </div>
   <!-- End Content -->
 </div>
+
+<PIWOTIModal
+  open={piwotiOpen}
+  type="TI"
+  order={modalOrder}
+  on:close={() => piwotiOpen = false}
+  on:refresh={onPIWOTIRefresh}
+/>
 
 <style>
   .item-cell { cursor: pointer; }

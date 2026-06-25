@@ -437,7 +437,7 @@
       key: "order",
       label: "Order",
       render: (val, row) =>
-        `<a href="/admin/order/${row?.order?.id}" class="flex items-center gap-1"><div class="max-w-[300px] truncate">${row?.order?.title ?? "-"}</div></a>`,
+        `<a href="/admin/order/${row?.order?.id}" class="flex items-center gap-1"><div class="max-w-[300px] truncate">${row?.order?.pId ? `#${row.order.pId} - ${row.order.title || ""}` : (row?.order?.title ?? "-")}</div></a>`,
     },
     {
       key: "description",

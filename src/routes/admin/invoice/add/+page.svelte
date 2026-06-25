@@ -295,7 +295,7 @@
       fromOrder = true;
       try {
         const order = await authApiFetch(`${API_ROUTES.ORDER}/${fromOrderId}/basic`);
-        orderInitialTitle = order?.title ?? "";
+        orderInitialTitle = order?.pId ? `#${order.pId} - ${order.title || ""}` : (order?.title ?? "");
         linkedOrder = { id: order.id, title: order.title, financialYear: order.financialYear, pId: order.pId };
       } catch {}
       await orderValueChange(orderId);

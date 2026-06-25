@@ -733,7 +733,7 @@
       label: "Order",
       render: (val, row) => {
         if (row?.order?.id) {
-          const label = row.order.title || `Order #${row.order.id}`;
+          const label = row.order.pId ? `#${row.order.pId} - ${row.order.title || ""}` : (row.order.title || `Order #${row.order.id}`);
           return `<a href="/admin/order/${row.order.id}" class="text-primary text-truncate d-block" style="max-width:280px" title="${label}">${label}</a>`;
         }
         return `<span class="text-muted">${row?.title || "-"}</span>`;
@@ -813,7 +813,7 @@
       updateInvoice = newInvoice;
       title = newInvoice?.title;
       orderId = newInvoice?.order ? newInvoice?.order?.id : null;
-      selectedOrderTitle = newInvoice?.order?.title ?? "";
+      selectedOrderTitle = newInvoice?.order ? (newInvoice.order.pId ? `#${newInvoice.order.pId} - ${newInvoice.order.title || ""}` : (newInvoice.order.title ?? "")) : "";
       orderSelectKey++;
       companyId = newInvoice?.company?.id;
       if (newInvoice?.invoiceDate) {
@@ -1106,9 +1106,15 @@
               </button>
             </div>
           {/if}
-          <a href="/admin/invoice/add" class="btn btn-primary">
-            <i class="ti ti-square-rounded-plus-filled me-1"></i>Add New Invoice
-          </a>
+          {#if currentUser?.role === "master" || currentUser?.role === "admin"}
+            <a href="/admin/invoice/add" class="btn btn-primary">
+              <i class="ti ti-square-rounded-plus-filled me-1"></i>Add New Invoice
+            </a>
+          {:else}
+            <button class="btn btn-primary" disabled title="Only Admin can create invoices">
+              <i class="ti ti-square-rounded-plus-filled me-1"></i>Add New Invoice
+            </button>
+          {/if}
         </div>
       {/if}
     </div>

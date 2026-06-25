@@ -1,5 +1,6 @@
 <script>
   import { onMount, onDestroy, createEventDispatcher } from 'svelte';
+  import { open } from '@tauri-apps/api/shell';
 
   export let value = '';         // HTML string (two-way bindable via on:change)
   export let placeholder = 'Enter description…';
@@ -34,6 +35,18 @@
     if (value) {
       quill.clipboard.dangerouslyPasteHTML(value);
     }
+
+    // Open links in system browser
+    quill.root.addEventListener('click', (e) => {
+      const a = e.target.closest('a');
+      if (!a) return;
+      const href = a.getAttribute('href');
+      if (href && (href.startsWith('http://') || href.startsWith('https://'))) {
+        e.preventDefault();
+        e.stopPropagation();
+        open(href);
+      }
+    });
 
     // Emit changes upward
     quill.on('text-change', () => {
