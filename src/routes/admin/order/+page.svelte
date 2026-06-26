@@ -1027,11 +1027,15 @@
   $: hasSameCompanyConflict = (() => {
     if (!transferUserId) return false;
     const toUser = users.find(u => u.id === transferUserId);
-    if (!toUser?.company?.id) return false;
+    const toCompanyId = toUser?.company?.id ?? toUser?.companyId ?? null;
+    if (!toCompanyId) return false;
     const selected = listOrders.filter(o => selectedOrders.has(o.id));
     return selected.some(o =>
       o.status === 'Deal Lost' &&
-      (o.assignedUsers || []).some(u => u.companyId === toUser.company.id || u.company?.id === toUser.company.id)
+      (o.assignedUsers || []).some(u => {
+        const uCompanyId = u.companyId ?? u.company?.id ?? null;
+        return uCompanyId && uCompanyId === toCompanyId;
+      })
     );
   })();
 
