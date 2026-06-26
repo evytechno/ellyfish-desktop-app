@@ -1020,7 +1020,20 @@
   let transferModalOpen = false;
   let transferUserId = null;
   let transferring = false;
-  let replaceUsers = false;
+  let replaceUsers = true;
+  let overrideSameCompany = false;
+
+  // Detect if selected Deal Lost orders conflict with toUser's company
+  $: hasSameCompanyConflict = (() => {
+    if (!transferUserId) return false;
+    const toUser = users.find(u => u.id === transferUserId);
+    if (!toUser?.company?.id) return false;
+    const selected = listOrders.filter(o => selectedOrders.has(o.id));
+    return selected.some(o =>
+      o.status === 'Deal Lost' &&
+      (o.assignedUsers || []).some(u => u.companyId === toUser.company.id || u.company?.id === toUser.company.id)
+    );
+  })();
 
   async function doTransfer() {
     if (!transferUserId) return;
@@ -1032,6 +1045,7 @@
           orderIds: [...selectedOrders],
           toUserId: Number(transferUserId),
           replaceUsers,
+          overrideSameCompany: hasSameCompanyConflict ? overrideSameCompany : false,
         }),
       });
       const hasSkipped = res.skipped && res.skipped.length > 0;
@@ -1284,31 +1298,25 @@
               </select>
             </div>
           {/if}
-          {#if currentUser?.role != "user"}
-            <div class="flex items-center gap-2 flex-wrap">
-              <select bind:value={filterStatus} class="form-select">
-                <option value={null}>Select Status</option>
-                {#each allStatuses as status}
-                  <option value={status}>{$statusNamesStore[status]?.name ?? status}</option>
-                {/each}
-              </select>
+          <div class="flex items-center gap-2 flex-wrap">
+            <select bind:value={filterStatus} class="form-select">
+              <option value={null}>All Status</option>
+              {#each allStatuses as status}
+                <option value={status}>{$statusNamesStore[status]?.name ?? status}</option>
+              {/each}
+            </select>
+          </div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <div class="position-relative">
+              <input
+                type="text"
+                value={filterCategory}
+                on:input={(e) => handleCategoryChange(e.target.value)}
+                class="form-control"
+                placeholder="Category.."
+              />
             </div>
-          {/if}
-          {#if currentUser?.role != "user"}
-            <div class="flex items-center gap-2 flex-wrap">
-              <div>
-                <div class=" position-relative">
-                  <input
-                    type="text"
-                    value={filterCategory}
-                    on:input={(e) => handleCategoryChange(e.target.value)}
-                    class="form-control"
-                    placeholder="Category.."
-                  />
-                </div>
-              </div>
-            </div>
-          {/if}
+          </div>
         </div>
         <div class="flex items-center gap-2 flex-wrap">
           {#if currentUser?.role != "user"}
@@ -1364,7 +1372,7 @@
           </span>
           <button
             class="btn btn-sm btn-primary"
-            on:click={() => { transferUserId = null; replaceUsers = false; transferModalOpen = true; }}
+            on:click={() => { transferUserId = null; replaceUsers = true; overrideSameCompany = false; transferModalOpen = true; }}
           >
             <i class="ti ti-transfer me-1"></i>Transfer
           </button>
@@ -1917,7 +1925,7 @@
           </h5>
           <button
             class="btn-close"
-            on:click={() => { transferModalOpen = false; transferUserId = null; replaceUsers = false; }}
+            on:click={() => { transferModalOpen = false; transferUserId = null; replaceUsers = true; overrideSameCompany = false; }}
           ></button>
         </div>
         <div class="modal-body">
@@ -1952,15 +1960,38 @@
               Selected user will be <strong>added alongside</strong> existing assignees.
             {/if}
           </p>
+
+          {#if hasSameCompanyConflict}
+            <div class="form-check mb-1 mt-2">
+              <input
+                class="form-check-input"
+                type="checkbox"
+                id="overrideSameCompanyCheck"
+                bind:checked={overrideSameCompany}
+              />
+              <label class="form-check-label fw-semibold text-warning" for="overrideSameCompanyCheck">
+                Allow same company transfer
+              </label>
+            </div>
+            <p class="text-xs text-muted ms-4">
+              {#if overrideSameCompany}
+                <i class="ti ti-alert-triangle text-warning me-1"></i>
+                Deal Lost order will be transferred to a user from the <strong>same company</strong>.
+              {:else}
+                <i class="ti ti-ban text-danger me-1"></i>
+                Transfer blocked — Deal Lost order cannot go to the same company. Check above to override.
+              {/if}
+            </p>
+          {/if}
         </div>
         <div class="modal-footer">
           <button
             class="btn btn-light"
-            on:click={() => { transferModalOpen = false; transferUserId = null; replaceUsers = false; }}
+            on:click={() => { transferModalOpen = false; transferUserId = null; replaceUsers = true; overrideSameCompany = false; }}
           >Cancel</button>
           <button
             class="btn btn-primary"
-            disabled={!transferUserId || transferring}
+            disabled={!transferUserId || transferring || (hasSameCompanyConflict && !overrideSameCompany)}
             on:click={doTransfer}
           >
             {transferring ? "Transferring..." : "Confirm Transfer"}

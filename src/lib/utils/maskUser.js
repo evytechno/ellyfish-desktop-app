@@ -12,3 +12,17 @@ export function maskAssignedName(assignedUser, currentUser) {
       ? 'User' : (assignedUser?.name ?? '');
   return assignedUser?.name ?? '';
 }
+
+/**
+ * For activity/chat/file/reminder authors:
+ * - admin/master/manager → always see real name
+ * - user role → only see their own name; others show as "User"
+ */
+export function maskAuthorName(authorUser, currentUser) {
+  if (!currentUser) return authorUser?.name ?? '';
+  if (['master', 'admin', 'manager'].includes(currentUser.role)) return authorUser?.name ?? '';
+  if (currentUser.role === 'user') {
+    return authorUser?.id === currentUser.id ? (authorUser?.name ?? '') : 'User';
+  }
+  return authorUser?.name ?? '';
+}

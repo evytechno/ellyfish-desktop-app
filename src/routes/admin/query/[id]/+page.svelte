@@ -23,6 +23,7 @@
   import Swal from "sweetalert2";
   import LightBox from "$lib/components/LightBox.svelte";
   import DOMPurify from "dompurify";
+  import { open as openExternal } from '@tauri-apps/api/shell';
 
   function isHtml(str) {
     return str ? /<[a-z][\s\S]*>/i.test(str) : false;
@@ -1459,6 +1460,21 @@
 
   // ── Description field copy enhancer ─────────────────────────────────────
   let descEl;
+
+  afterUpdate(() => {
+    if (!descEl) return;
+    descEl.querySelectorAll('a[href]').forEach(a => {
+      if (a.__externalHandled) return;
+      a.__externalHandled = true;
+      a.addEventListener('click', (e) => {
+        const href = a.getAttribute('href');
+        if (href && (href.startsWith('http') || href.startsWith('www'))) {
+          e.preventDefault();
+          openExternal(href.startsWith('www') ? 'https://' + href : href);
+        }
+      });
+    });
+  });
 
   // Exposed globally so injected buttons can call it
   if (typeof window !== 'undefined') {

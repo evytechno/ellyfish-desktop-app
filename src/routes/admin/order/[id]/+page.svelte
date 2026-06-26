@@ -1,5 +1,5 @@
 <script>
-  import { onDestroy, onMount } from "svelte";
+  import { onDestroy, onMount, afterUpdate } from "svelte";
   import { afterNavigate } from "$app/navigation";
   import { slide } from "svelte/transition";
   import { goto } from "$app/navigation";
@@ -32,9 +32,28 @@
   import { get } from "svelte/store";
   import LightBox from "$lib/components/LightBox.svelte";
   import { checkAuth } from "$lib/utils/auth";
-  import { maskAssignedName as _maskAssignedName } from '$lib/utils/maskUser';
+  import { maskAssignedName as _maskAssignedName, maskAuthorName as _maskAuthorName } from '$lib/utils/maskUser';
   import QuillEditor from "$lib/components/QuillEditor.svelte";
   import DOMPurify from "dompurify";
+  import { open as openExternal } from '@tauri-apps/api/shell';
+
+  let descCollapsed = true;
+  let orderDescEl;
+
+  afterUpdate(() => {
+    if (!orderDescEl) return;
+    orderDescEl.querySelectorAll('a[href]').forEach(a => {
+      if (a.__externalHandled) return;
+      a.__externalHandled = true;
+      a.addEventListener('click', (e) => {
+        const href = a.getAttribute('href');
+        if (href && (href.startsWith('http') || href.startsWith('www'))) {
+          e.preventDefault();
+          openExternal(href.startsWith('www') ? 'https://' + href : href);
+        }
+      });
+    });
+  });
 
   function isHtml(str) {
     return str ? /<[a-z][\s\S]*>/i.test(str) : false;
@@ -337,6 +356,10 @@
   /** Returns the display name for an assigned user based on the viewer's role/subRole. */
   function maskAssignedName(assignedUser) {
     return _maskAssignedName(assignedUser, currentUser);
+  }
+
+  function maskAuthorName(authorUser) {
+    return _maskAuthorName(authorUser, currentUser);
   }
 
   // Related Queries
@@ -2280,7 +2303,6 @@
           <i class="ti ti-arrow-left me-1"></i>Back
         </button>
         <div>
-          <h4 class="mb-1">{order?.title || "Order"}</h4>
           <nav aria-label="breadcrumb">
             <ol class="breadcrumb mb-0 p-0">
               <li class="breadcrumb-item"><a href="/admin/dashboard">Home</a></li>
@@ -2619,6 +2641,7 @@
                 </div>
               </div>
             </div>
+
             <!-- /Contact User -->
           </div>
 
@@ -3125,8 +3148,34 @@
                   </div>
                 </div>
 
+                <!-- Description Section -->
+                {#if order?.description}
+                  <div class="order-sidebar-section" style="border-bottom:none;">
+                    <div
+                      class="order-sidebar-section-head"
+                      style="cursor:pointer;"
+                      on:click={() => (descCollapsed = !descCollapsed)}
+                    >
+                      <i class="ti ti-align-left"></i>
+                      <span>Description</span>
+                      <i class="ti {descCollapsed ? 'ti-chevron-down' : 'ti-chevron-up'} ms-auto text-muted" style="font-size:12px;"></i>
+                    </div>
+                    {#if !descCollapsed}
+                      <div bind:this={orderDescEl} style="font-size:12px;line-height:1.6;padding:8px 12px;max-height:350px;overflow-y:auto;overflow-x:auto;">
+                        {#if isHtml(order.description)}
+                          {@html safeHtml(order.description)}
+                        {:else}
+                          <pre style="white-space:pre-wrap;font-family:inherit;margin:0;">{order.description}</pre>
+                        {/if}
+                      </div>
+                    {/if}
+                  </div>
+                {/if}
+                <!-- /Description Section -->
+
               </div>
             </div>
+
           </div>
           <!-- /Contact Sidebar -->
 
@@ -3614,7 +3663,7 @@
                                     </span>
                                     <div>
                                       <h6 class="fw-medium fs-14 mb-1">
-                                        {maskAssignedName(attachment?.user)}
+                                        {maskAuthorName(attachment?.user)}
                                       </h6>
                                       <p class="mb-0 fs-13">
                                         {attachment?.createdAt &&
@@ -3935,7 +3984,7 @@
                                   </span>
                                   <p class="mb-0">
                                     <span class="text-dark fw-medium"
-                                      >{maskAssignedName(chat?.user)}</span
+                                      >{maskAuthorName(chat?.user)}</span
                                     >
                                     {#each normalizeTypes(chat?.type) as nt}
                                       <span class="badge ms-1 {nt === 'Call' ? 'bg-primary' : nt === 'WhatsApp' ? 'bg-success' : 'bg-warning text-dark'}" style="font-size:10px;">
@@ -4240,7 +4289,7 @@
 
                                   <div>
                                     <h6 class="fw-medium fs-14 mb-1">
-                                      {maskAssignedName(reminder?.user)}
+                                      {maskAuthorName(reminder?.user)}
                                     </h6>
                                     <p class="mb-0 fs-13">
                                       {reminder?.createdAt &&
