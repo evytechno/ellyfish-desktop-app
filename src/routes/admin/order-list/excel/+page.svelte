@@ -372,9 +372,40 @@
 
   let categories = [];
 
-  onMount(() => {
-    const cached = get(categoriesAllStore);
-    categories = (cached && cached.length > 0) ? cached : [];
+  onMount(async () => {
+    const categoriesCached = get(categoriesAllStore);
+    categories = (categoriesCached && categoriesCached.length > 0) ? categoriesCached : [];
+
+    loadColPrefs();
+    const saved = $orderExcelFilterStore;
+    if (saved && Object.keys(saved).length > 0) {
+      if (saved.searchTerm      !== undefined) searchTerm      = saved.searchTerm;
+      if (saved.filterStatus    !== undefined) filterStatus    = saved.filterStatus;
+      if (saved.filterDateRange !== undefined) filterDateRange = saved.filterDateRange;
+      if (saved.customStartDate !== undefined) customStartDate = saved.customStartDate;
+      if (saved.customEndDate   !== undefined) customEndDate   = saved.customEndDate;
+      if (saved.filterUserId    !== undefined) filterUserId    = saved.filterUserId;
+      if (saved.filterCompanyId !== undefined) filterCompanyId = saved.filterCompanyId;
+      if (saved.filterCategory  !== undefined) filterCategory  = saved.filterCategory;
+      if (saved.orderBy         !== undefined) orderBy         = saved.orderBy;
+      if (saved.pageSize        !== undefined) pageSize        = saved.pageSize;
+    }
+    if (isMaster || currentUser?.role === "admin") {
+      try {
+        const res = await authApiFetch(`${API_ROUTES.USER}/all`, { method: "GET" });
+        allUsers = Array.isArray(res) ? res : (res.data || []);
+      } catch (e) { console.error(e); }
+    }
+    try {
+      const cached = get(companiesAllStore);
+      if (cached && cached.length > 0) { allCompanies = cached; }
+      else {
+        const res = await authApiFetch(`${API_ROUTES.COMPANY}/all`, { method: "GET" });
+        allCompanies = Array.isArray(res) ? res : (res.data || []);
+        companiesAllStore.set(allCompanies);
+      }
+    } catch (e) { console.error(e); }
+    fetchOrders();
   });
 
   function openDrawer() {
@@ -520,40 +551,6 @@
   function saveFilterStore() {
     orderExcelFilterStore.set({ searchTerm, filterStatus, filterDateRange, customStartDate, customEndDate, filterUserId, filterCompanyId, filterCategory, orderBy, pageSize });
   }
-
-  // ── lifecycle ────────────────────────────────────────────
-  onMount(async () => {
-    loadColPrefs();
-    const saved = $orderExcelFilterStore;
-    if (saved && Object.keys(saved).length > 0) {
-      if (saved.searchTerm      !== undefined) searchTerm      = saved.searchTerm;
-      if (saved.filterStatus    !== undefined) filterStatus    = saved.filterStatus;
-      if (saved.filterDateRange !== undefined) filterDateRange = saved.filterDateRange;
-      if (saved.customStartDate !== undefined) customStartDate = saved.customStartDate;
-      if (saved.customEndDate   !== undefined) customEndDate   = saved.customEndDate;
-      if (saved.filterUserId    !== undefined) filterUserId    = saved.filterUserId;
-      if (saved.filterCompanyId !== undefined) filterCompanyId = saved.filterCompanyId;
-      if (saved.filterCategory  !== undefined) filterCategory  = saved.filterCategory;
-      if (saved.orderBy         !== undefined) orderBy         = saved.orderBy;
-      if (saved.pageSize        !== undefined) pageSize        = saved.pageSize;
-    }
-    if (isMaster || currentUser?.role === "admin") {
-      try {
-        const res = await authApiFetch(`${API_ROUTES.USER}/all`, { method: "GET" });
-        allUsers = Array.isArray(res) ? res : (res.data || []);
-      } catch (e) { console.error(e); }
-    }
-    try {
-      const cached = get(companiesAllStore);
-      if (cached && cached.length > 0) { allCompanies = cached; }
-      else {
-        const res = await authApiFetch(`${API_ROUTES.COMPANY}/all`, { method: "GET" });
-        allCompanies = Array.isArray(res) ? res : (res.data || []);
-        companiesAllStore.set(allCompanies);
-      }
-    } catch (e) { console.error(e); }
-    fetchOrders();
-  });
 
   // ── API ──────────────────────────────────────────────────
   async function fetchOrders(page = 1) {

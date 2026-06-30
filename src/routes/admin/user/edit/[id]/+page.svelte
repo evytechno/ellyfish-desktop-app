@@ -25,6 +25,10 @@
   let formErrors = {};
   let companies = [];
 
+  // Allowed sales users (master setting for admin users)
+  let salesUsersGroups = {}; // { telecaller: [{id,name}], tech: [...], manager: [...] }
+  let allowedSalesUserIds = null; // null = no restriction
+
   // Per-role permissions
   let rolePerms = {
     admin:   { subRole: null, orderAccess: true, queryAccessTelecaller: true, queryAccessTech: true, queryAccessTechHelper: true },
@@ -55,6 +59,7 @@
       companyId = data?.company?.id || null;
       loginStartTime = data.loginStartTime || "09:00";
       loginEndTime = data.loginEndTime || "18:10";
+      allowedSalesUserIds = data.allowedSalesUserIds ?? null;
 
       // Load roles
       selectedRoles = data.roles && data.roles.length > 0 ? data.roles : [data.role ?? "user"];
@@ -85,7 +90,38 @@
       setTimeout(() => { loadingData = false; }, 500);
     }
     getAllCompanies();
+    if (currentUser?.role === "master") loadSalesUsers();
   });
+
+  async function loadSalesUsers() {
+    try {
+      const data = await authApiFetch(`${API_ROUTES.USER}/sales-users`);
+      salesUsersGroups = data;
+    } catch (_) {}
+  }
+
+  function toggleSalesUser(id) {
+    if (!allowedSalesUserIds) {
+      allowedSalesUserIds = [id];
+    } else if (allowedSalesUserIds.includes(id)) {
+      const updated = allowedSalesUserIds.filter(x => x !== id);
+      allowedSalesUserIds = updated.length ? updated : null;
+    } else {
+      allowedSalesUserIds = [...allowedSalesUserIds, id];
+    }
+  }
+
+  function toggleGroup(users) {
+    const ids = users.map(u => u.id);
+    const allSelected = ids.every(id => allowedSalesUserIds?.includes(id));
+    if (allSelected) {
+      const updated = (allowedSalesUserIds ?? []).filter(id => !ids.includes(id));
+      allowedSalesUserIds = updated.length ? updated : null;
+    } else {
+      const merged = [...new Set([...(allowedSalesUserIds ?? []), ...ids])];
+      allowedSalesUserIds = merged;
+    }
+  }
 
   function toggleRole(role) {
     if (selectedRoles.includes(role)) {
@@ -131,6 +167,7 @@
       company: companyId,
       loginStartTime: loginStartTime || null,
       loginEndTime: loginEndTime || null,
+      allowedSalesUserIds: currentUser?.role === "master" && selectedRoles.includes("admin") ? (allowedSalesUserIds ?? null) : undefined,
     };
 
     try {
@@ -321,6 +358,49 @@
             </div>
           {/if}
 
+          {#if currentUser?.role === "master" && selectedRoles.includes("admin")}
+            <div class="mt-4">
+              <label class="form-label fw-bold">Allowed Sales Users</label>
+              <div class="text-muted small mb-2">
+                {#if !allowedSalesUserIds}
+                  No restriction — admin sees all users' data.
+                {:else}
+                  Restricted to {allowedSalesUserIds.length} selected user(s).
+                {/if}
+              </div>
+              <div class="allowed-users-box">
+                {#each Object.entries(salesUsersGroups) as [group, users]}
+                  {#if users.length > 0}
+                    <div class="mb-3">
+                      <div class="d-flex align-items-center gap-2 mb-1">
+                        <input
+                          type="checkbox"
+                          id="group_{group}"
+                          checked={users.every(u => allowedSalesUserIds?.includes(u.id))}
+                          indeterminate={users.some(u => allowedSalesUserIds?.includes(u.id)) && !users.every(u => allowedSalesUserIds?.includes(u.id))}
+                          on:change={() => toggleGroup(users)}
+                          class="form-check-input mt-0"
+                        />
+                        <label for="group_{group}" class="group-label text-capitalize">{group}</label>
+                      </div>
+                      <div class="ps-4 d-flex flex-wrap gap-2">
+                        {#each users as user}
+                          <label class="user-chip" class:selected={allowedSalesUserIds?.includes(user.id)}>
+                            <input type="checkbox" class="d-none" checked={allowedSalesUserIds?.includes(user.id)} on:change={() => toggleSalesUser(user.id)} />
+                            {user.name}
+                          </label>
+                        {/each}
+                      </div>
+                    </div>
+                  {/if}
+                {/each}
+                {#if Object.keys(salesUsersGroups).length === 0}
+                  <p class="text-muted small">No sales users found.</p>
+                {/if}
+              </div>
+            </div>
+          {/if}
+
           <div class="flex justify-end mt-4">
             <button class="btn btn-primary" type="submit" disabled={loading}>
               {loading ? "Submitting..." : "Submit"}
@@ -364,5 +444,36 @@
     font-size: 11px;
     color: #888;
     margin-top: 1px;
+  }
+  .allowed-users-box {
+    background: #f8f9ff;
+    border: 1px solid #d0d7f5;
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .group-label {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: #3b5bdb;
+    cursor: pointer;
+  }
+  .user-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 20px;
+    border: 1px solid #ced4da;
+    background: #fff;
+    font-size: 12.5px;
+    cursor: pointer;
+    transition: all 0.15s;
+    user-select: none;
+  }
+  .user-chip.selected {
+    background: #3b5bdb;
+    border-color: #3b5bdb;
+    color: #fff;
   }
 </style>

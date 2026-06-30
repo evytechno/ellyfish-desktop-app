@@ -314,9 +314,10 @@
     }
   }
 
-  onMount(() => {
+  onMount(async () => {
     fetchEmployees();
     if (order?.workOrderNumber) fetchDispatch();
+    // orderUpdate();
   });
 
   // ── Tab state ────────────────────────────────────────────
@@ -798,9 +799,6 @@
   //   }
   // }
 
-  onMount(async () => {
-    // orderUpdate();
-  });
 </script>
 
 <!-- ── Loading ───────────────────────────────────────────── -->

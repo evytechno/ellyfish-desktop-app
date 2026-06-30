@@ -34,6 +34,127 @@
     availableRoles = getAvailableRoles();
     rolePermissions = getRolePermissions();
     fetchSetting();
+
+    const $ = jQuery;
+
+    // Apply saved sidebar state; default to collapsed (mini-sidebar)
+    const sidebarState = localStorage.getItem("screenModeNightTokenState");
+    if (sidebarState === "night") {
+      $("body").removeClass("mini-sidebar");
+      $("#toggle_btn, #toggle_btn2").addClass("active");
+      $(".header-left").addClass("active");
+    } else {
+      $("body").addClass("mini-sidebar");
+      $("#toggle_btn, #toggle_btn2").removeClass("active");
+      $(".header-left").removeClass("active");
+    }
+
+    const collapseHeader = $("#collapse-header");
+    if (collapseHeader.length > 0) {
+      document
+        .getElementById("collapse-header")
+        .addEventListener("click", function () {
+          this.classList.toggle("active");
+          document.body.classList.toggle("header-collapse");
+        });
+    }
+
+    // $(document).on("click", function (e) {
+    //   const dropdown = $(".profile-dropdown");
+    //   const menu = dropdown.find(".dropdown-menu");
+
+    //   if (dropdown.is(e.target) || dropdown.has(e.target).length > 0) {
+    //     menu.toggleClass("show");
+    //   } else {
+    //     menu.removeClass("show");
+    //   }
+    // });
+
+    $(document).on("click", "#toggle_btn, #toggle_btn2", function () {
+      const body = $("body");
+      const html = $("html");
+      const isMini = body.hasClass("mini-sidebar");
+      const isFullWidth = html.attr("data-layout") === "full-width";
+      const isHidden = html.attr("data-layout") === "hidden";
+
+      if (isMini) {
+        body.removeClass("mini-sidebar");
+        $(this).addClass("active");
+        localStorage.setItem("screenModeNightTokenState", "night");
+        setTimeout(() => $(".header-left").addClass("active"), 100);
+      } else {
+        body.addClass("mini-sidebar");
+        $(this).removeClass("active");
+        localStorage.removeItem("screenModeNightTokenState");
+        setTimeout(() => $(".header-left").removeClass("active"), 100);
+      }
+
+      if (isFullWidth) {
+        body.addClass("full-width").removeClass("mini-sidebar");
+        $(".sidebar-overlay").addClass("opened");
+        $(document).on("click", ".sidebar-close", () =>
+          $("body").removeClass("full-width"),
+        );
+      } else {
+        body.removeClass("full-width");
+      }
+
+      if (isHidden) {
+        body.toggleClass("hidden-layout").removeClass("mini-sidebar");
+        $(document).on("click", ".sidebar-close", () =>
+          $("body").removeClass("full-width"),
+        );
+      }
+
+      return false;
+    });
+
+    $(".btnFullscreen").on("click", () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen();
+      } else {
+        if (document.exitFullscreen) document.exitFullscreen();
+      }
+    });
+
+    $(".theme-image").on("click", function () {
+      $(".theme-image").removeClass("active");
+      $(this).addClass("active");
+    });
+
+    checkAndStartTimer();
+
+    setTimeout(() => {
+      firstLoad = true;
+    }, 500);
+
+    const modalEl = document.getElementById("order_lists");
+    if (modalEl) {
+      // Restore scroll when modal closes normally
+      modalEl.addEventListener("hidden.bs.modal", () => {
+        document.body.style.overflow = "";
+        document.body.style.paddingRight = "";
+        document.body.classList.remove("modal-open");
+      });
+
+      // Intercept order link clicks — close modal first, then navigate
+      modalEl.addEventListener("click", (e) => {
+        const link = e.target.closest("a[data-order-href]");
+        if (!link) return;
+        e.preventDefault();
+        const href = link.getAttribute("data-order-href");
+        // click the existing close button to let Bootstrap close properly
+        const closeBtn = modalEl.querySelector("[data-bs-dismiss='modal']");
+        if (closeBtn) closeBtn.click();
+        // after animation completes, navigate
+        setTimeout(() => {
+          document.body.style.overflow = "";
+          document.body.style.paddingRight = "";
+          document.body.classList.remove("modal-open");
+          goto(href);
+        }, 300);
+      });
+    }
   });
 
   async function fetchSetting() {
@@ -141,95 +262,6 @@
     });
   };
 
-  onMount(() => {
-    const $ = jQuery;
-
-    // Apply saved sidebar state; default to collapsed (mini-sidebar)
-    const sidebarState = localStorage.getItem("screenModeNightTokenState");
-    if (sidebarState === "night") {
-      $("body").removeClass("mini-sidebar");
-      $("#toggle_btn, #toggle_btn2").addClass("active");
-      $(".header-left").addClass("active");
-    } else {
-      $("body").addClass("mini-sidebar");
-      $("#toggle_btn, #toggle_btn2").removeClass("active");
-      $(".header-left").removeClass("active");
-    }
-
-    const collapseHeader = $("#collapse-header");
-    if (collapseHeader.length > 0) {
-      document
-        .getElementById("collapse-header")
-        .addEventListener("click", function () {
-          this.classList.toggle("active");
-          document.body.classList.toggle("header-collapse");
-        });
-    }
-
-    // $(document).on("click", function (e) {
-    //   const dropdown = $(".profile-dropdown");
-    //   const menu = dropdown.find(".dropdown-menu");
-
-    //   if (dropdown.is(e.target) || dropdown.has(e.target).length > 0) {
-    //     menu.toggleClass("show");
-    //   } else {
-    //     menu.removeClass("show");
-    //   }
-    // });
-
-    $(document).on("click", "#toggle_btn, #toggle_btn2", function () {
-      const body = $("body");
-      const html = $("html");
-      const isMini = body.hasClass("mini-sidebar");
-      const isFullWidth = html.attr("data-layout") === "full-width";
-      const isHidden = html.attr("data-layout") === "hidden";
-
-      if (isMini) {
-        body.removeClass("mini-sidebar");
-        $(this).addClass("active");
-        localStorage.setItem("screenModeNightTokenState", "night");
-        setTimeout(() => $(".header-left").addClass("active"), 100);
-      } else {
-        body.addClass("mini-sidebar");
-        $(this).removeClass("active");
-        localStorage.removeItem("screenModeNightTokenState");
-        setTimeout(() => $(".header-left").removeClass("active"), 100);
-      }
-
-      if (isFullWidth) {
-        body.addClass("full-width").removeClass("mini-sidebar");
-        $(".sidebar-overlay").addClass("opened");
-        $(document).on("click", ".sidebar-close", () =>
-          $("body").removeClass("full-width"),
-        );
-      } else {
-        body.removeClass("full-width");
-      }
-
-      if (isHidden) {
-        body.toggleClass("hidden-layout").removeClass("mini-sidebar");
-        $(document).on("click", ".sidebar-close", () =>
-          $("body").removeClass("full-width"),
-        );
-      }
-
-      return false;
-    });
-
-    $(".btnFullscreen").on("click", () => {
-      if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen();
-      } else {
-        if (document.exitFullscreen) document.exitFullscreen();
-      }
-    });
-
-    $(".theme-image").on("click", function () {
-      $(".theme-image").removeClass("active");
-      $(this).addClass("active");
-    });
-  });
-
   let timerText = "";
   let intervalId;
 
@@ -301,10 +333,6 @@
     goto("/login");
   }
 
-  onMount(() => {
-    checkAndStartTimer();
-  });
-
   let firstLoad = false;
   let inquiryOrders = [];
   let loadingData = true;
@@ -316,39 +344,6 @@
   let totalItems = 0;
   let totalPages = 1;
   let openModal = false;
-  onMount(() => {
-    setTimeout(() => {
-      firstLoad = true;
-    }, 500);
-
-    const modalEl = document.getElementById("order_lists");
-    if (modalEl) {
-      // Restore scroll when modal closes normally
-      modalEl.addEventListener("hidden.bs.modal", () => {
-        document.body.style.overflow = "";
-        document.body.style.paddingRight = "";
-        document.body.classList.remove("modal-open");
-      });
-
-      // Intercept order link clicks — close modal first, then navigate
-      modalEl.addEventListener("click", (e) => {
-        const link = e.target.closest("a[data-order-href]");
-        if (!link) return;
-        e.preventDefault();
-        const href = link.getAttribute("data-order-href");
-        // click the existing close button to let Bootstrap close properly
-        const closeBtn = modalEl.querySelector("[data-bs-dismiss='modal']");
-        if (closeBtn) closeBtn.click();
-        // after animation completes, navigate
-        setTimeout(() => {
-          document.body.style.overflow = "";
-          document.body.style.paddingRight = "";
-          document.body.classList.remove("modal-open");
-          goto(href);
-        }, 300);
-      });
-    }
-  });
 
   let debounceTimeout;
   // Used only by the modal input — auto-fetch on type

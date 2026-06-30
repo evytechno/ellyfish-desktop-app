@@ -20,9 +20,6 @@
 
   import { checkAuth } from "$lib/utils/auth";
   let currentUser = null;
-  onMount(() => {
-    currentUser = checkAuth();
-  });
 
   let workorders = [];
   let orders = [];
@@ -64,6 +61,8 @@
   import { get } from "svelte/store";
   let firstLoad = false;
   onMount(() => {
+    currentUser = checkAuth();
+
     const filterState = $workOrderFilterStore;
 
     userId = filterState.userId || null;

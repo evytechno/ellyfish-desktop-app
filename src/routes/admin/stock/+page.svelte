@@ -9,12 +9,6 @@
   import DynamicDataTable from "$lib/components/DynamicDataTable.svelte";
   import { checkAuth } from "$lib/utils/auth";
   let currentUser = null;
-  onMount(() => {
-    currentUser = checkAuth();
-    if (currentUser?.role != "user") {
-      viewType = "list";
-    }
-  });
 
   let loadingData = true;
 
@@ -53,7 +47,12 @@
   import { orderActivityFilterStore } from "$lib/stores/filterStore";
   import { get } from "svelte/store";
   let firstLoad = false;
-  onMount(() => {
+  onMount(async () => {
+    currentUser = checkAuth();
+    if (currentUser?.role != "user") {
+      viewType = "list";
+    }
+
     const filterState = $orderActivityFilterStore;
 
     userId = filterState.userId || null;
@@ -68,6 +67,36 @@
     setTimeout(() => {
       firstLoad = true;
     }, 500);
+
+    {
+      const cachedUsers = get(usersAllStore);
+      if (cachedUsers && cachedUsers.length > 0) {
+        users = cachedUsers;
+      } else {
+        try {
+          const data = await authApiFetch(API_ROUTES.USER + "/all");
+          users = data;
+          usersAllStore.set(data);
+        } catch (err) {
+          errorMessage = "Failed to load user data.";
+        }
+      }
+    }
+
+    {
+      const cachedCompanies = get(companiesAllStore);
+      if (cachedCompanies && cachedCompanies.length > 0) {
+        companies = cachedCompanies;
+      } else {
+        try {
+          const data = await authApiFetch(API_ROUTES.COMPANY + "/all");
+          companies = data;
+          companiesAllStore.set(data);
+        } catch (err) {
+          errorMessage = "Failed to load company data.";
+        }
+      }
+    }
   });
 
   let refresh = false;
@@ -118,48 +147,6 @@
       }, 500);
     }
   }
-
-  onMount(async () => {
-    const cached = get(usersAllStore);
-    if (cached && cached.length > 0) {
-      users = cached;
-      loadingData = false;
-      return;
-    }
-    loadingData = true;
-    try {
-      const data = await authApiFetch(API_ROUTES.USER + "/all");
-      users = data;
-      usersAllStore.set(data);
-    } catch (err) {
-      errorMessage = "Failed to load user data.";
-    } finally {
-      setTimeout(() => {
-        loadingData = false;
-      }, 500);
-    }
-  });
-
-  onMount(async () => {
-    const cached = get(companiesAllStore);
-    if (cached && cached.length > 0) {
-      companies = cached;
-      loadingData = false;
-      return;
-    }
-    loadingData = true;
-    try {
-      const data = await authApiFetch(API_ROUTES.COMPANY + "/all");
-      companies = data;
-      companiesAllStore.set(data);
-    } catch (err) {
-      errorMessage = "Failed to load company data.";
-    } finally {
-      setTimeout(() => {
-        loadingData = false;
-      }, 500);
-    }
-  });
 
   let debounceTimeout;
   function handleSearchChange(value) {

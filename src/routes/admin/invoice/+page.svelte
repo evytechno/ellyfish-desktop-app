@@ -21,8 +21,34 @@
 
   import { checkAuth } from "$lib/utils/auth";
   let currentUser = null;
-  onMount(() => {
+  onMount(async () => {
     currentUser = checkAuth();
+
+    const filterState = $invoiceFilterStore;
+
+    userId = filterState.userId || null;
+    byCompanyId = filterState.byCompanyId || null;
+    searchTerm = filterState.searchTerm || "";
+    currentPage = filterState.currentPage || 1;
+    rowsPerPage = filterState.rowsPerPage || 10;
+    selectedFilter = filterState.selectedFilter || "last7days";
+    customStartDate = filterState.customStartDate || null;
+    customEndDate = filterState.customEndDate || null;
+
+    fetchOrderPayments();
+
+    setTimeout(() => {
+      firstLoad = true;
+    }, 500);
+
+    fetchSetting();
+    fetchAllCompanies();
+    fetchAllUsers();
+
+    const fromOrderId = $page.url.searchParams.get("fromOrder");
+    if (fromOrderId) {
+      goto(`/admin/invoice/add?fromOrder=${fromOrderId}`);
+    }
   });
 
   let invoices = [];
@@ -97,24 +123,6 @@
   import { invoiceFilterStore } from "$lib/stores/filterStore";
   import { get } from "svelte/store";
   let firstLoad = false;
-  onMount(() => {
-    const filterState = $invoiceFilterStore;
-
-    userId = filterState.userId || null;
-    byCompanyId = filterState.byCompanyId || null;
-    searchTerm = filterState.searchTerm || "";
-    currentPage = filterState.currentPage || 1;
-    rowsPerPage = filterState.rowsPerPage || 10;
-    selectedFilter = filterState.selectedFilter || "last7days";
-    customStartDate = filterState.customStartDate || null;
-    customEndDate = filterState.customEndDate || null;
-
-    fetchOrderPayments();
-
-    setTimeout(() => {
-      firstLoad = true;
-    }, 500);
-  });
 
   let refresh = false;
   let debounceRefreshTimeout;
@@ -521,17 +529,6 @@
     }
   }
 
-  onMount(() => {
-    fetchSetting();
-    fetchAllCompanies();
-    fetchAllUsers();
-  });
-
-  onMount(async () => {
-    const fromOrderId = $page.url.searchParams.get("fromOrder");
-    if (!fromOrderId) return;
-    goto(`/admin/invoice/add?fromOrder=${fromOrderId}`);
-  });
 
   async function fetchAllUsers() {
     if (!refresh) {

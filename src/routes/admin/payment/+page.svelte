@@ -19,9 +19,6 @@
 
   import { checkAuth } from "$lib/utils/auth";
   let currentUser = null;
-  onMount(() => {
-    currentUser = checkAuth();
-  });
 
   let payments = [];
   let companies = [];
@@ -62,6 +59,8 @@
   import { get } from "svelte/store";
   let firstLoad = false;
   onMount(() => {
+    currentUser = checkAuth();
+
     const filterState = $paymentFilterStore;
 
     userId = filterState.userId || null;

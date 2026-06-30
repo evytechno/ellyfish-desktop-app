@@ -15,12 +15,6 @@
   } from "$lib/stores/dataStores";
   import { statusNamesStore } from "$lib/stores/statusNames";
   let currentUser = null;
-  onMount(() => {
-    currentUser = checkAuth();
-    if (currentUser?.role != "user") {
-      viewType = "list";
-    }
-  });
 
   let loadingData = true;
 
@@ -55,6 +49,11 @@
   import Swal from "sweetalert2";
   let firstLoad = false;
   onMount(() => {
+    currentUser = checkAuth();
+    if (currentUser?.role != "user") {
+      viewType = "list";
+    }
+
     const filterState = $orderActivityFilterStore;
 
     userId = filterState.userId || null;

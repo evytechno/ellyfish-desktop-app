@@ -41,11 +41,6 @@
   let setting = null;
   let errorMessage = "";
 
-  onMount(() => {
-    window.$ = jQuery;
-    window.jQuery = jQuery;
-  });
-
   import { setupBootstrapHandlers } from "$lib/utils/js/bootstrapHandlers.js";
   import { get } from "svelte/store";
   import { goto } from "$app/navigation";

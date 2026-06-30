@@ -35,6 +35,70 @@
         osNotifEnabled = granted;
       } catch (_) {}
     }
+
+    fetchNotifications();
+    fetchOpenQueryCount();
+    eventSource = new EventSource(`${API_BASE_URL}/${API_ROUTES.NOTIFICATION}/sse`);
+
+    eventSource.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data?.data?.user?.id === currentUser?.id) {
+        if (data?.data?.type === "force_logout") {
+          eventSource?.close();
+          logoutUser().finally(() => goto("/login"));
+          return;
+        }
+        // Don't show toast if user is already viewing this query
+        // For sub_query: only suppress if inline panel is open for that exact sub-query
+        // For others: suppress if on the query's own page
+        let alreadyOnQuery = false;
+        if (data.data.type === "sub_query" && data.data.parentQueryId && data.data.queryId) {
+          if (currentUser?.subRole === "tech_helper") {
+            // tech_helper views sub-query as a standalone page
+            alreadyOnQuery = $page.params?.id === String(data.data.queryId);
+          } else {
+            // tech views sub-query via parent query + inline panel
+            const openSqParam = $page.url.searchParams.get("sq");
+            alreadyOnQuery =
+              $page.params?.id === String(data.data.parentQueryId) &&
+              openSqParam === String(data.data.queryId);
+          }
+        } else if (data.data.queryId) {
+          alreadyOnQuery = $page.params?.id === String(data.data.queryId);
+        }
+
+        if (!alreadyOnQuery) {
+          // #10 — play different sound per type
+          playNotificationSound(data.data.type);
+          addToast(data.data);
+          // OS notification when app is minimized / in background
+          maybeOsNotify(data.data);
+        }
+        notifications = [data.data, ...notifications];
+        // #4 — increment live open count for query_open events
+        if (data.data.type === "query_open") {
+          openQueryCount.update((n) => n + 1);
+        }
+        // increment unread count for chat message notifications
+        if (data.data.type === "query" && data.data.queryId) {
+          incrementUnread(data.data.queryId);
+        }
+        // for sub-query notifications, track against the parent query's unread count
+        if (data.data.type === "sub_query") {
+          incrementUnread(data.data.parentQueryId ?? data.data.queryId);
+        }
+      }
+    };
+
+    eventSource.onopen = () => {
+      // re-sync bell count and open query count whenever the SSE (re)connects
+      fetchNotifications();
+      fetchOpenQueryCount();
+    };
+
+    eventSource.onerror = () => {
+      // do NOT close — browser will auto-reconnect when server is back
+    };
   });
 
   // Send an OS-level notification only when the window is not focused
@@ -248,71 +312,6 @@
   }
 
   let eventSource;
-  onMount(() => {
-    fetchNotifications();
-    fetchOpenQueryCount();
-    eventSource = new EventSource(`${API_BASE_URL}/${API_ROUTES.NOTIFICATION}/sse`);
-
-    eventSource.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data?.data?.user?.id === currentUser?.id) {
-        if (data?.data?.type === "force_logout") {
-          eventSource?.close();
-          logoutUser().finally(() => goto("/login"));
-          return;
-        }
-        // Don't show toast if user is already viewing this query
-        // For sub_query: only suppress if inline panel is open for that exact sub-query
-        // For others: suppress if on the query's own page
-        let alreadyOnQuery = false;
-        if (data.data.type === "sub_query" && data.data.parentQueryId && data.data.queryId) {
-          if (currentUser?.subRole === "tech_helper") {
-            // tech_helper views sub-query as a standalone page
-            alreadyOnQuery = $page.params?.id === String(data.data.queryId);
-          } else {
-            // tech views sub-query via parent query + inline panel
-            const openSqParam = $page.url.searchParams.get("sq");
-            alreadyOnQuery =
-              $page.params?.id === String(data.data.parentQueryId) &&
-              openSqParam === String(data.data.queryId);
-          }
-        } else if (data.data.queryId) {
-          alreadyOnQuery = $page.params?.id === String(data.data.queryId);
-        }
-
-        if (!alreadyOnQuery) {
-          // #10 — play different sound per type
-          playNotificationSound(data.data.type);
-          addToast(data.data);
-          // OS notification when app is minimized / in background
-          maybeOsNotify(data.data);
-        }
-        notifications = [data.data, ...notifications];
-        // #4 — increment live open count for query_open events
-        if (data.data.type === "query_open") {
-          openQueryCount.update((n) => n + 1);
-        }
-        // increment unread count for chat message notifications
-        if (data.data.type === "query" && data.data.queryId) {
-          incrementUnread(data.data.queryId);
-        }
-        // for sub-query notifications, track against the parent query's unread count
-        if (data.data.type === "sub_query") {
-          incrementUnread(data.data.parentQueryId ?? data.data.queryId);
-        }
-      }
-    };
-
-    eventSource.onopen = () => {
-      // re-sync bell count and open query count whenever the SSE (re)connects
-      fetchNotifications();
-      fetchOpenQueryCount();
-    };
-
-    eventSource.onerror = () => {
-      // do NOT close — browser will auto-reconnect when server is back
-    };
-  });
 
   onDestroy(() => {
     eventSource?.close();

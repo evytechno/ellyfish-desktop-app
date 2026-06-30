@@ -15,8 +15,50 @@
   import { checkAuth } from "$lib/utils/auth";
   import { get } from "svelte/store";
   let currentUser = null;
-  onMount(() => {
+  onMount(async () => {
     currentUser = checkAuth();
+
+    fetchNotifications();
+
+    setTimeout(() => {
+      firstLoad = true;
+    }, 500);
+
+    eventSource = new EventSource(
+      `${API_BASE_URL}/${API_ROUTES.NOTIFICATION}/sse`
+    );
+
+    eventSource.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+
+      if (data?.data?.user?.id === currentUser?.id) {
+        notifications = [data.data, ...notifications];
+      }
+    };
+
+    eventSource.onerror = (err) => {
+      console.error("SSE error:", err);
+      eventSource.close();
+    };
+
+    const cached = get(usersAllStore);
+    if (cached && cached.length > 0) {
+      users = cached;
+      loadingData = false;
+      return;
+    }
+    loadingData = true;
+    try {
+      const data = await authApiFetch(API_ROUTES.USER + "/all");
+      users = data;
+      usersAllStore.set(data);
+    } catch (err) {
+      errorMessage = "Failed to load user data.";
+    } finally {
+      setTimeout(() => {
+        loadingData = false;
+      }, 500);
+    }
   });
 
   let notifications = [];
@@ -39,33 +81,8 @@
   let formErrors = {};
 
   let firstLoad = false;
-  onMount(() => {
-    fetchNotifications();
-
-    setTimeout(() => {
-      firstLoad = true;
-    }, 500);
-  });
 
   let eventSource;
-  onMount(() => {
-    eventSource = new EventSource(
-      `${API_BASE_URL}/${API_ROUTES.NOTIFICATION}/sse`
-    );
-
-    eventSource.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-
-      if (data?.data?.user?.id === currentUser?.id) {
-        notifications = [data.data, ...notifications];
-      }
-    };
-
-    eventSource.onerror = (err) => {
-      console.error("SSE error:", err);
-      eventSource.close();
-    };
-  });
 
   onDestroy(() => {
     eventSource?.close();
@@ -184,26 +201,6 @@
     }, 300);
   }
 
-  onMount(async () => {
-    const cached = get(usersAllStore);
-    if (cached && cached.length > 0) {
-      users = cached;
-      loadingData = false;
-      return;
-    }
-    loadingData = true;
-    try {
-      const data = await authApiFetch(API_ROUTES.USER + "/all");
-      users = data;
-      usersAllStore.set(data);
-    } catch (err) {
-      errorMessage = "Failed to load user data.";
-    } finally {
-      setTimeout(() => {
-        loadingData = false;
-      }, 500);
-    }
-  });
 
   $: [
     searchTerm,

@@ -63,6 +63,19 @@
   }
   import DispatchProcess from "$lib/components/DispatchProcess.svelte";
 
+  // Split components
+  import OrderActivityTab from "./components/OrderActivityTab.svelte";
+  import OrderChatsTab from "./components/OrderChatsTab.svelte";
+  import OrderFilesTab from "./components/OrderFilesTab.svelte";
+  import OrderRemindersTab from "./components/OrderRemindersTab.svelte";
+  import OrderLegacyClientsTab from "./components/OrderLegacyClientsTab.svelte";
+  import OrderQueriesTab from "./components/OrderQueriesTab.svelte";
+  import OrderComponentsTab from "./components/OrderComponentsTab.svelte";
+  import OrderEditOffcanvas from "./components/OrderEditOffcanvas.svelte";
+  import OrderAssignedUsersModal from "./components/OrderAssignedUsersModal.svelte";
+  import OrderVisitModals from "./components/OrderVisitModals.svelte";
+  import OrderQueryModals from "./components/OrderQueryModals.svelte";
+
   let errorMessage = "";
   let order = null;
   let users = [];
@@ -718,24 +731,17 @@
   onMount(async () => {
     currentUser = checkAuth();
     await loadOrder();
-  });
 
-  afterNavigate(async () => {
-    currentUser = checkAuth();
-    await loadOrder();
-  });
-
-  onMount(async () => {
     try {
       const cached = get(usersAllStore);
       if (cached && cached.length > 0) {
         users = cached;
         loadingData = false;
-        return;
+      } else {
+        const data = await authApiFetch(API_ROUTES.USER + "/all");
+        users = data;
+        usersAllStore.set(data);
       }
-      const data = await authApiFetch(API_ROUTES.USER + "/all");
-      users = data;
-      usersAllStore.set(data);
     } catch (err) {
       errorMessage = "Failed to load user data.";
     } finally {
@@ -743,6 +749,25 @@
         loadingData = false;
       }, 500);
     }
+
+    const checkModalAndAttachPaste = () => {
+      const modal = document.getElementById("new_file");
+      if (modal?.classList.contains("show")) {
+        document.addEventListener("paste", handlePaste);
+      } else {
+        document.removeEventListener("paste", handlePaste);
+      }
+    };
+    const modal = document.getElementById("new_file");
+    if (modal) {
+      observer = new MutationObserver(checkModalAndAttachPaste);
+      observer.observe(modal, { attributes: true, attributeFilter: ["class"] });
+    }
+  });
+
+  afterNavigate(async () => {
+    currentUser = checkAuth();
+    await loadOrder();
   });
 
   function getAvatarText(title) {
@@ -2086,23 +2111,6 @@
     orderWorkOrderNumber = component?.workOrderNumber;
   }
 
-  onMount(() => {
-    const checkModalAndAttachPaste = () => {
-      const modal = document.getElementById("new_file");
-      if (modal?.classList.contains("show")) {
-        document.addEventListener("paste", handlePaste);
-      } else {
-        document.removeEventListener("paste", handlePaste);
-      }
-    };
-
-    const modal = document.getElementById("new_file");
-    if (modal) {
-      observer = new MutationObserver(checkModalAndAttachPaste);
-      observer.observe(modal, { attributes: true, attributeFilter: ["class"] });
-    }
-  });
-
   onDestroy(() => {
     observer?.disconnect();
     if (typeof document !== "undefined") {
@@ -2245,6 +2253,128 @@
   }
   const sources = ["Whatsapp", "Website", "Mail"];
   let showImages = [];
+
+  // ── Component-compatible wrapper functions ───────────────────────────────────
+  async function handleAddChat({ type, message: msg }) {
+    loading = true; formErrors = {};
+    try {
+      const data = await authApiFetch(API_ROUTES.ORDER_CHAT, {
+        method: "POST",
+        data: JSON.stringify({ orderId: Number(orderId), type, message: msg }),
+      });
+      if (data) {
+        order.orderChats = [data.data, ...order.orderChats];
+        Swal.fire("Success!", data.message, "success");
+        let act = { title: "Order Chat Added", description: "A new chat has been added.", data: data?.data, createdAt: new Date().toISOString() };
+        order.groupedActivities = addActivityToGroupedActivities(act);
+      }
+    } catch (err) { errorHandle(err); }
+    finally { loading = false; }
+  }
+
+  async function handleDeleteChat(id) {
+    const r = await Swal.fire({ title: "Delete Confirmation", text: "Delete this chat?", icon: "warning", showCancelButton: true, confirmButtonText: "Yes, delete it!" });
+    if (!r.isConfirmed) return;
+    try {
+      const data = await authApiFetch(`${API_ROUTES.ORDER_CHAT}/${id}`, { method: "DELETE" });
+      order.orderChats = order.orderChats.map((c) => c.id === id ? { ...c, deletedAt: new Date().toISOString() } : c);
+      if (data?.message) Swal.fire("Success!", data.message, "success");
+    } catch (err) { errorHandle(err); }
+  }
+
+  async function handleAddReminder({ reminderTime: rt, message: msg }) {
+    loading = true; formErrors = {};
+    try {
+      const data = await authApiFetch(API_ROUTES.ORDER_REMINDER, {
+        method: "POST",
+        data: JSON.stringify({ orderId: Number(orderId), reminderTime: rt, message: msg }),
+      });
+      if (data) {
+        order.orderReminders = [data.data, ...order.orderReminders];
+        Swal.fire("Success!", data.message, "success");
+        let act = { title: "Order Reminder Added", description: "A new reminder added.", data: data?.data, createdAt: new Date().toISOString() };
+        order.groupedActivities = addActivityToGroupedActivities(act);
+      }
+    } catch (err) { errorHandle(err); }
+    finally { loading = false; }
+  }
+
+  async function handleDeleteReminder(id) {
+    const r = await Swal.fire({ title: "Delete Confirmation", text: "Delete this reminder?", icon: "warning", showCancelButton: true, confirmButtonText: "Yes, delete it!" });
+    if (!r.isConfirmed) return;
+    try {
+      const data = await authApiFetch(`${API_ROUTES.ORDER_REMINDER}/${id}`, { method: "DELETE" });
+      order.orderReminders = order.orderReminders.map((rem) => rem.id === id ? { ...rem, deletedAt: new Date().toISOString() } : rem);
+      if (data?.message) Swal.fire("Success!", data.message, "success");
+    } catch (err) { errorHandle(err); }
+  }
+
+  async function handleAddAttachment({ aTitle: t, link: l, files: fs }) {
+    loading = true; formErrors = {};
+    const payload = new FormData();
+    payload.append("title", t);
+    payload.append("link", l);
+    if (fs && fs.length) fs.forEach((f) => payload.append("file", f));
+    payload.append("orderId", Number(orderId));
+    try {
+      const data = await authApiFetch(API_ROUTES.ORDER_ATTACHMENT, { method: "POST", data: payload });
+      if (data) {
+        order.orderAttachments = [data.data, ...order.orderAttachments];
+        Swal.fire("Success!", data.message, "success");
+        let act = { title: "Order Attachment Added", description: "A new attachment added.", data: data?.data, createdAt: new Date().toISOString() };
+        order.groupedActivities = addActivityToGroupedActivities(act);
+      }
+    } catch (err) { const ve = errorHandle(err); if (ve) formErrors = ve; }
+    finally { loading = false; }
+  }
+
+  async function handleDeleteAttachment(id) {
+    const r = await Swal.fire({ title: "Delete Confirmation", text: "Delete this attachment?", icon: "warning", showCancelButton: true, confirmButtonText: "Yes, delete it!" });
+    if (!r.isConfirmed) return;
+    try {
+      const data = await authApiFetch(`${API_ROUTES.ORDER_ATTACHMENT}/${id}`, { method: "DELETE" });
+      order.orderAttachments = order.orderAttachments.map((a) => a.id === id ? { ...a, deletedAt: new Date().toISOString() } : a);
+      if (data?.message) Swal.fire("Success!", data.message, "success");
+    } catch (err) { errorHandle(err); }
+  }
+
+  async function handleAddAssignedUser(selectedUserIds) {
+    loading = true; formErrors = {};
+    const newAssigned = selectedUserIds.map((id) => users.find((u) => u.id === id)).filter(Boolean);
+    const existingAdmins = order.assignedUsers.filter((u) => u.role === "admin");
+    const assignedUsers = [...newAssigned, ...existingAdmins];
+    if (!assignedUsers.length) { Swal.fire("Warning!", "Please select at least one user.", "warning"); loading = false; return; }
+    try {
+      const data = await authApiFetch(API_ROUTES.ORDER + "/" + order.id, {
+        method: "PUT",
+        data: JSON.stringify({ assignedUsers, orderActivity: { title: "Assigned Users Updated", description: "Assigned users updated." } }),
+      });
+      order = { ...order, assignedUsers: data.data?.assignedUsers ?? order.assignedUsers };
+      Swal.fire("Success!", data.message, "success");
+      closeModalMenual("#add_contact");
+    } catch (err) { errorHandle(err); }
+    finally { loading = false; }
+  }
+
+  async function handleEditComponentCompat({ orderTitle: t, orderWorkOrderNumber: wo }) {
+    loading = true; formErrors = {};
+    try {
+      const data = await authApiFetch(API_ROUTES.ORDER + "/" + childOrderId, {
+        method: "PUT",
+        data: JSON.stringify({ title: t, workOrderNumber: wo }),
+      });
+      if (data) {
+        order.childOrders = order.childOrders.map((c) => c.id === childOrderId ? { ...c, title: t, workOrderNumber: wo } : c);
+        Swal.fire("Success!", data.message, "success");
+        closeModalMenual("#edit_component");
+      }
+    } catch (err) { const ve = errorHandle(err); if (ve) formErrors = ve; }
+    finally { loading = false; }
+  }
+
+  async function handleSubmitVisitModal(payload) {
+    await submitVisitModal(payload);
+  }
   let showImagesStart = 0;
 
   function openImageLightbox(urls, index = 0) {
@@ -2336,101 +2466,21 @@
               <div></div>
             </div>
 
-            <!-- Raise Query Modal -->
-            {#if showQueryModal}
-              <div
-                style="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1055;display:flex;align-items:center;justify-content:center;padding:1rem;"
-                on:click|self={() => (showQueryModal = false)}
-              >
-                <div
-                  class="card shadow-lg p-4"
-                  style="max-width:520px;width:100%;"
-                >
-                  <h5 class="fw-bold mb-3">Raise Query for This Order</h5>
-                  {#if queryError}
-                    <div class="alert alert-danger py-2">{queryError}</div>
-                  {/if}
-                  <div class="mb-3">
-                    <label class="form-label"
-                      >Subject <span class="text-danger">*</span></label
-                    >
-                    <input
-                      type="text"
-                      class="form-control"
-                      bind:value={querySubject}
-                      placeholder="Brief subject..."
-                      maxlength="150"
-                    />
-                  </div>
-                  <div class="mb-3">
-                    <label class="form-label">
-                      Requirement <span class="text-muted">(optional)</span>
-                    </label>
-                    <textarea
-                      class="form-control"
-                      rows="4"
-                      bind:value={queryDescription}
-                      placeholder="Describe your requirement in detail..."
-                      style="resize:vertical;"
-                    ></textarea>
-                  </div>
-                  <div class="d-flex gap-2 justify-content-end">
-                    <button
-                      class="btn btn-secondary btn-sm"
-                      on:click={() => (showQueryModal = false)}>Cancel</button
-                    >
-                    <button
-                      class="btn btn-primary btn-sm"
-                      on:click={submitOrderQuery}
-                      disabled={raisingQuery}
-                    >
-                      {raisingQuery ? "Submitting..." : "Submit Query"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            {/if}
-
-            <!-- Edit Query Modal -->
-            {#if showEditQueryModal}
-              <div
-                style="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1055;display:flex;align-items:center;justify-content:center;padding:1rem;"
-                on:click|self={() => (showEditQueryModal = false)}
-              >
-                <div class="card shadow-lg p-4" style="max-width:520px;width:100%;">
-                  <h5 class="fw-bold mb-3">Edit Query</h5>
-                  {#if editQueryError}
-                    <div class="alert alert-danger py-2">{editQueryError}</div>
-                  {/if}
-                  <div class="mb-3">
-                    <label class="form-label">Subject <span class="text-danger">*</span></label>
-                    <input
-                      type="text"
-                      class="form-control"
-                      bind:value={editQuerySubject}
-                      placeholder="Brief subject..."
-                      maxlength="150"
-                    />
-                  </div>
-                  <div class="mb-3">
-                    <label class="form-label">Requirement <span class="text-muted">(optional)</span></label>
-                    <textarea
-                      class="form-control"
-                      rows="4"
-                      bind:value={editQueryDescription}
-                      placeholder="Describe your requirement in detail..."
-                      style="resize:vertical;"
-                    ></textarea>
-                  </div>
-                  <div class="d-flex gap-2 justify-content-end">
-                    <button class="btn btn-secondary btn-sm" on:click={() => (showEditQueryModal = false)}>Cancel</button>
-                    <button class="btn btn-primary btn-sm" on:click={submitEditQuery} disabled={editingQueryLoading}>
-                      {editingQueryLoading ? "Saving..." : "Save Changes"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            {/if}
+            <!-- Query Modals -->
+            <OrderQueryModals
+              bind:showQueryModal
+              bind:showEditQueryModal
+              bind:querySubject
+              bind:queryDescription
+              bind:editQuerySubject
+              bind:editQueryDescription
+              {queryError}
+              {raisingQuery}
+              {editQueryError}
+              {editingQueryLoading}
+              {submitOrderQuery}
+              {submitEditQuery}
+            />
 
             <div class="card order-header-card">
               <div class="card-body">
@@ -3359,7 +3409,9 @@
             <!-- Tab Content -->
             <div class="tab-content pt-0">
               {#if activeTab === "Activity"}
-                <!-- Activities -->
+                <OrderActivityTab {order} {currentUser} {activeDate} {toggleAccordion} />
+                <!-- Activities (inline backup — replaced by component above) -->
+                {#if false}
                 <div class="tab-pane active show" id="tab_1">
                   <div class="card">
                     <div
@@ -3603,10 +3655,20 @@
                   </div>
                 </div>
                 <!-- /Activities -->
+                {/if}
               {/if}
 
               {#if activeTab === "Files"}
-                <!-- Files -->
+                <OrderFilesTab
+                  {order}
+                  maskAuthorName={maskAuthorName}
+                  addAttachment={handleAddAttachment}
+                  deleteAttachment={handleDeleteAttachment}
+                  {openAttachment}
+                  {openImageLightbox}
+                />
+                <!-- Files (legacy inline — replaced by component) -->
+                {#if false}
                 <div class="tab-pane active show" id="tab_2">
                   <div class="card">
                     <div
@@ -3913,10 +3975,19 @@
                   </div>
                 </div>
                 <!-- /Notes -->
+                {/if}
               {/if}
 
               {#if activeTab === "Chats"}
-                <!-- Chats -->
+                <OrderChatsTab
+                  {order}
+                  {currentUser}
+                  maskAuthorName={maskAuthorName}
+                  addChat={handleAddChat}
+                  deleteChat={handleDeleteChat}
+                />
+                <!-- Chats (legacy inline — replaced by component) -->
+                {#if false}
                 <div class="tab-pane active show" id="tab_3">
                   <div class="card">
                     <div
@@ -4096,11 +4167,12 @@
                   </div>
                 </div>
                 <!-- /Chats -->
+                {/if}
               {/if}
 
-
               {#if activeTab === "Client"}
-                <!-- Client -->
+                <OrderLegacyClientsTab {order} deleteClient={deleteClient} />
+                {#if false}
                 <div class="tab-pane active show" id="tab_3">
                   <div class="card">
                     <div
@@ -4234,10 +4306,17 @@
                   </div>
                 </div>
                 <!-- /Client -->
+                {/if}
               {/if}
 
               {#if activeTab === "Reminders"}
-                <!-- Reminders -->
+                <OrderRemindersTab
+                  {order}
+                  maskAuthorName={maskAuthorName}
+                  addReminder={handleAddReminder}
+                  deleteReminder={handleDeleteReminder}
+                />
+                {#if false}
                 <div class="tab-pane active show" id="tab_7">
                   <div class="card">
                     <div
@@ -4340,10 +4419,20 @@
                     </div>
                   </div>
                 </div>
-                <!-- /Chats -->
+                <!-- /Chats (Reminders) -->
+                {/if}
               {/if}
               {#if activeTab === "Queries"}
-                <!-- Queries Tab -->
+                <OrderQueriesTab
+                  {order}
+                  {currentUser}
+                  {orderQueries}
+                  {orderQueriesLoading}
+                  maskAssignedName={maskAssignedName}
+                  {openQueryModal}
+                  {openEditQueryModal}
+                />
+                {#if false}
                 <div class="tab-pane active show" id="tab_10">
                   <div class="card">
                     <div
@@ -4535,10 +4624,19 @@
                   </div>
                 </div>
                 <!-- /Queries Tab -->
+                {/if}
               {/if}
               {#if ["Deal Won", "Dispatched", "Completed"].includes(order?.status)}
                 {#if activeTab === "Components"}
-                  <!-- Components -->
+                  <OrderComponentsTab
+                    {order}
+                    {cerateChildOrder}
+                    {editChildOrder}
+                    deleteComponent={deleteComponent}
+                    editComponent={handleEditComponentCompat}
+                  />
+                  <!-- Components (legacy inline — replaced by component) -->
+                  {#if false}
                   <div class="tab-pane active show" id="tab_8">
                     <div class="card">
                       <div
@@ -4634,6 +4732,7 @@
                     </div>
                   </div>
                   <!-- /Components -->
+                  {/if}
                 {/if}
               {/if}
               {#if ["Dispatched", "Completed"].includes(order?.status)}
@@ -4661,7 +4760,28 @@
   <!-- End Content -->
 </div>
 
-<!-- Add Canvas -->
+<!-- Add Canvas (component) -->
+<OrderEditOffcanvas
+  {order}
+  {categories}
+  handleSubmit={handleSubmit}
+  bind:title
+  bind:category
+  bind:orderDate
+  bind:startDate
+  bind:deadlineDate
+  bind:price
+  bind:currency
+  bind:priceTerms
+  bind:source
+  bind:description
+  bind:workOrderNumber
+  bind:formErrors
+  bind:loading
+  bind:errorMessage
+/>
+<!-- Add Canvas (legacy inline — replaced by component) -->
+{#if false}
 <div
   class="offcanvas offcanvas-end offcanvas-large"
   tabindex="-1"
@@ -4928,8 +5048,10 @@
   </div>
 </div>
 <!-- /Add Canvas -->
+{/if}
 
-<!-- Add Attachment -->
+<!-- Add Attachment (now in OrderFilesTab component) -->
+{#if false}
 <div class="modal fade" id="new_file" role="dialog">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -5105,8 +5227,10 @@
   </div>
 </div>
 <!-- /Add Attachment -->
+{/if}
 
-<!-- Create Chat -->
+<!-- Create Chat (now in OrderChatsTab component) -->
+{#if false}
 <div class="modal fade" id="create_call" role="dialog">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -5190,8 +5314,10 @@
   </div>
 </div>
 <!-- /Create Chat -->
+{/if}
 
-<!-- Create Reminder -->
+<!-- Create Reminder (now in OrderRemindersTab component) -->
+{#if false}
 <div class="modal fade" id="create_reminder" role="dialog">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -5266,8 +5392,17 @@
   </div>
 </div>
 <!-- /Create Reminder -->
+{/if}
 
-<!-- Manage Assigned Users -->
+<!-- Manage Assigned Users (component) -->
+<OrderAssignedUsersModal
+  {order}
+  {currentUser}
+  {users}
+  addAssignedUser={handleAddAssignedUser}
+/>
+<!-- Manage Assigned Users (legacy inline) -->
+{#if false}
 <div class="modal custom-modal fade" id="add_contact" role="dialog">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -5388,6 +5523,7 @@
   </div>
 </div>
 <!-- /Manage Assigned Users -->
+{/if}
 
 <!-- Add Contact Modal (Scenario 2 — order already has client linked) -->
 {#if showAddContactModal}
@@ -5970,6 +6106,17 @@
   </div>
 {/if}
 
+<OrderVisitModals
+  {order}
+  {users}
+  {orderVisits}
+  bind:showVisitModal
+  bind:showVisitListModal
+  {openVisitModal}
+  submitVisitModal={handleSubmitVisitModal}
+/>
+
+{#if false}
 {#if showVisitListModal}
   <div
     class="modal fade show d-block"
@@ -6196,6 +6343,7 @@
       </div>
     </div>
   </div>
+{/if}
 {/if}
 
 <!-- Change Client Modal (Svelte-controlled) -->
@@ -6673,7 +6821,8 @@
 </div>
 <!-- /Create Client -->
 
-<!-- Create Component -->
+<!-- Create Component (now in OrderComponentsTab) -->
+{#if false}
 <div class="modal fade" id="edit_component" role="dialog">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -6747,6 +6896,9 @@
     </div>
   </div>
 </div>
+
+<!-- /Create Component (legacy end) -->
+{/if}
 
 <!-- /Create Client -->
 

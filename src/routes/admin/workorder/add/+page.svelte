@@ -173,75 +173,74 @@
         if (matched) companyId = matched.id;
       }
       loadingData = false;
-      return;
-    }
-    loadingData = true;
-    try {
-      const data = await authApiFetch(API_ROUTES.COMPANY + "/all");
-      companies = data;
-      companiesAllStore.set(data);
-      if (!companyId && currentUser?.companyId) {
-        const matched = companies.find(c => c.id === Number(currentUser.companyId));
-        if (matched) companyId = matched.id;
+    } else {
+      loadingData = true;
+      try {
+        const data = await authApiFetch(API_ROUTES.COMPANY + "/all");
+        companies = data;
+        companiesAllStore.set(data);
+        if (!companyId && currentUser?.companyId) {
+          const matched = companies.find(c => c.id === Number(currentUser.companyId));
+          if (matched) companyId = matched.id;
+        }
+      } catch (err) {
+        errorMessage = "Failed to load company data.";
+      } finally {
+        setTimeout(() => { loadingData = false; }, 500);
       }
-    } catch (err) {
-      errorMessage = "Failed to load company data.";
-    } finally {
-      setTimeout(() => { loadingData = false; }, 500);
     }
-  });
 
-  onMount(async () => {
     const fromOrderId = $page.url.searchParams.get("fromOrder");
-    if (!fromOrderId) return;
-    fromOrder = true;
-    try {
-      const order = await authApiFetch(`${API_ROUTES.ORDER}/${fromOrderId}/basic`);
-      if (!order) return;
-      const pi = order.orderPayments?.[0];
-      if (order.company?.id) companyId = order.company.id;
-      orderId = order.id;
-      workOrderType = "order";
-      title = order.title ?? "";
-      orderInitialTitle = order.pId ? `#${order.pId} - ${order.title || ""}` : (order.title ?? "");
-      linkedOrder = { id: order.id, title: order.title, financialYear: order.financialYear, pId: order.pId };
-      orderSelectKey++;
-      poNumber = pi?.poNumber ?? "";
-      remarks = pi?.remarks ?? "";
-      if (pi?.items?.length) {
-        items = pi.items.map((i) => ({ item: i.item ?? "", quantity: i.quantity ?? "0", unit: i.unit || "Pcs", price: 0, hsCode: "", total: 0 }));
+    if (fromOrderId) {
+      fromOrder = true;
+      try {
+        const order = await authApiFetch(`${API_ROUTES.ORDER}/${fromOrderId}/basic`);
+        if (order) {
+          const pi = order.orderPayments?.[0];
+          if (order.company?.id) companyId = order.company.id;
+          orderId = order.id;
+          workOrderType = "order";
+          title = order.title ?? "";
+          orderInitialTitle = order.pId ? `#${order.pId} - ${order.title || ""}` : (order.title ?? "");
+          linkedOrder = { id: order.id, title: order.title, financialYear: order.financialYear, pId: order.pId };
+          orderSelectKey++;
+          poNumber = pi?.poNumber ?? "";
+          remarks = pi?.remarks ?? "";
+          if (pi?.items?.length) {
+            items = pi.items.map((i) => ({ item: i.item ?? "", quantity: i.quantity ?? "0", unit: i.unit || "Pcs", price: 0, hsCode: "", total: 0 }));
+          }
+        }
+      } catch (err) {
+        console.error("Failed to prefill from order", err);
       }
-    } catch (err) {
-      console.error("Failed to prefill from order", err);
     }
-  });
 
-  onMount(async () => {
     const fromInvoiceId = $page.url.searchParams.get("fromInvoice");
-    if (!fromInvoiceId) return;
-    try {
-      const inv = await authApiFetch(`${API_ROUTES.ORDER_PAYMENT}/${fromInvoiceId}`);
-      if (inv.company?.id) companyId = inv.company.id;
-      if (inv.order?.id) {
-        orderId = inv.order.id;
-        workOrderType = "order";
-        orderInitialTitle = inv.order.pId ? `#${inv.order.pId} - ${inv.order.title || ""}` : (inv.order.title ?? "");
-        orderSelectKey++;
-      } else {
-        workOrderType = "self";
+    if (fromInvoiceId) {
+      try {
+        const inv = await authApiFetch(`${API_ROUTES.ORDER_PAYMENT}/${fromInvoiceId}`);
+        if (inv.company?.id) companyId = inv.company.id;
+        if (inv.order?.id) {
+          orderId = inv.order.id;
+          workOrderType = "order";
+          orderInitialTitle = inv.order.pId ? `#${inv.order.pId} - ${inv.order.title || ""}` : (inv.order.title ?? "");
+          orderSelectKey++;
+        } else {
+          workOrderType = "self";
+        }
+        title = inv.order?.title ?? inv.billToName ?? "";
+        poNumber = inv.poNumber ?? "";
+        remarks = inv.remarks ?? "";
+        const piItems = (inv.items ?? []).map((i) => ({ item: i.item ?? "", quantity: i.quantity ?? "0", unit: i.unit || "Pcs", price: 0, hsCode: i.hsCode ?? "", total: 0 }));
+        const extraItems = (inv.extraItems ?? []).map((i) => ({ item: i.item ?? "", quantity: "0", unit: "Pcs", price: 0, hsCode: "", total: 0 }));
+        items = [...piItems, ...extraItems];
+      } catch (err) {
+        console.error("Failed to prefill from invoice", err);
       }
-      title = inv.order?.title ?? inv.billToName ?? "";
-      poNumber = inv.poNumber ?? "";
-      remarks = inv.remarks ?? "";
-      const piItems = (inv.items ?? []).map((i) => ({ item: i.item ?? "", quantity: i.quantity ?? "0", unit: i.unit || "Pcs", price: 0, hsCode: i.hsCode ?? "", total: 0 }));
-      const extraItems = (inv.extraItems ?? []).map((i) => ({ item: i.item ?? "", quantity: "0", unit: "Pcs", price: 0, hsCode: "", total: 0 }));
-      items = [...piItems, ...extraItems];
-    } catch (err) {
-      console.error("Failed to prefill from invoice", err);
     }
-  });
 
-  onMount(() => { setTimeout(() => { loadingData = false; }, 500); });
+    setTimeout(() => { loadingData = false; }, 500);
+  });
 </script>
 
 <svelte:window on:beforeunload={handleBeforeUnload} />
