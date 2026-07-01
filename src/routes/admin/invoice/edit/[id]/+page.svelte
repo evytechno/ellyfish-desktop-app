@@ -71,9 +71,10 @@
 
   // Reactive calculations
   $: itemsSubtotal = items.reduce((s, i) => s + (i.total || 0), 0);
-  $: subtotal = itemsSubtotal - discount;
   $: extratotal = extraItems.reduce((s, i) => s + (i.total || 0), 0);
-  $: subplustotal = subtotal + extratotal;
+  $: taxableExtraTotal = extraItems.reduce((s, i) => s + (i.taxable ? (i.total || 0) : 0), 0);
+  $: subtotal = itemsSubtotal - discount + taxableExtraTotal;
+  $: subplustotal = itemsSubtotal - discount + extratotal;
   $: taxtotal = taxItems.reduce((s, i) => s + (i.total || 0), 0);
   $: total = Math.round(subplustotal + taxtotal);
   $: subtotal, recalculateTaxes();
@@ -89,7 +90,7 @@
 
   function addItem() { items = [...items, { item: "", quantity: 1, unit: "Pcs", unitPrice: 0, hsCode: "", total: 0 }]; }
   function removeItem(i) { items = items.filter((_, idx) => idx !== i); }
-  function addExtraItem() { extraItems = [...extraItems, { item: "", total: 0 }]; }
+  function addExtraItem() { extraItems = [...extraItems, { item: "", total: 0, taxable: true }]; }
   function removeExtraItem(i) { extraItems = extraItems.filter((_, idx) => idx !== i); }
   function addTaxItem() { taxItems = [...taxItems, { item: "", percentage: 0, total: 0 }]; }
   function removeTaxItem(i) { taxItems = taxItems.filter((_, idx) => idx !== i); }
@@ -235,7 +236,7 @@
         country: taxCountry, customerState: taxCountry === "India" ? taxState : null, taxSlab: taxSlab || null,
         priceTerms, inCoterms, inCotermsBy, swiftCode, currency,
         paymentMethod, status, termsConditions, remarks, poNumber, discount,
-        totalAmountTitle, totalAmountValue: totalAmountValue || total,
+        totalAmountTitle, totalAmountValue: totalAmountValue || 0,
         selectedBankAccount, billToName, billToAddress, billToGSTNumber,
         billToMobile, billToEmail, shipToName, shipToAddress, shipToGSTNumber,
         shipToMobile, shipToEmail, companyId,
@@ -283,7 +284,7 @@
       totalAmountTitle = inv.totalAmountTitle || "Total Amount";
       totalAmountValue = inv.totalAmountValue || 0;
       items            = (inv.items || []).map(i => ({ ...i, unit: i.unit || "Pcs" }));
-      extraItems       = inv.extraItems || [];
+      extraItems       = (inv.extraItems || []).map(i => ({ ...i, taxable: i.taxable ?? false }));
       isOutOfIndia     = inv.isOutOfIndia || false;
       taxCountry       = inv.country || (inv.isOutOfIndia ? "Outside India" : "India");
       taxState         = inv.customerState || "Rajasthan";
@@ -683,6 +684,7 @@
                         <tr>
                           <th class="py-1 px-2">Charge Name</th>
                           <th class="py-1 px-2 text-end" style="width:100px">Amount</th>
+                          <th class="py-1 px-2 text-center" style="width:56px">Taxable</th>
                           <th style="width:40px"></th>
                         </tr>
                       </thead>
@@ -690,7 +692,8 @@
                         {#each extraItems as ei, i}
                           <tr>
                             <td class="p-1"><input type="text" class="form-control form-control-sm border-0 shadow-none" bind:value={ei.item} placeholder="e.g. Freight, Packing" /></td>
-                            <td class="p-1"><input type="number" class="form-control form-control-sm border-0 shadow-none text-end" bind:value={ei.total} min="0" step="0.01" placeholder="0.00" /></td>
+                            <td class="p-1"><input type="number" class="form-control form-control-sm border-0 shadow-none text-end" bind:value={ei.total} on:input={recalculateTaxes} min="0" step="0.01" placeholder="0.00" /></td>
+                            <td class="p-1 text-center"><input type="checkbox" bind:checked={ei.taxable} on:change={recalculateTaxes} title="Include in taxable value" /></td>
                             <td class="p-1 text-center"><button type="button" class="btn btn-sm text-danger" on:click={() => removeExtraItem(i)}><i class="ti ti-x"></i></button></td>
                           </tr>
                         {/each}

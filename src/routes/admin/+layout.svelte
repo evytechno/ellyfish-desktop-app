@@ -349,7 +349,6 @@
       }
     } catch (error) {
       errorMessage = "Failed to load setting data.";
-      console.error("Fetch error:", error);
       const validationErrors = errorHandle(error);
     } finally {
       setTimeout(() => {

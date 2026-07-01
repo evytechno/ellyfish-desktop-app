@@ -84,7 +84,6 @@
       }
     } catch (error) {
       errorMessage = "Failed to load user data.";
-      console.error("Fetch error:", error);
     } finally {
       loading = false;
       setTimeout(() => { loadingData = false; }, 500);

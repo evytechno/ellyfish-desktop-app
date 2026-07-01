@@ -42,7 +42,6 @@
       try {
         await Promise.all([fetchCategories()]);
       } catch (error) {
-        console.error("Error refreshing data:", error);
       } finally {
         refresh = false;
       }
@@ -117,7 +116,6 @@
       categories = data.data;
       totalItems = data.total;
     } catch (error) {
-      console.error("Fetch error:", error);
       loading = false;
       const validationErrors = errorHandle(error);
     } finally {

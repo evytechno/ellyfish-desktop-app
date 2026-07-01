@@ -82,7 +82,6 @@
       allowedLocations = data?.allowedLocations ?? [];
     } catch (error) {
       errorMessage = "Failed to load setting data.";
-      console.error("Fetch error:", error);
       loading = false;
       const validationErrors = errorHandle(error);
     } finally {

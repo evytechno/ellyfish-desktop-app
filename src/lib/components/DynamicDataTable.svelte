@@ -1,6 +1,7 @@
 <script>
   import { createEventDispatcher } from "svelte";
   import Pagination from "./Pagination.svelte";
+  import Skeleton from "./Skeleton.svelte";
 
   export let columns = [];
   export let data = [];
@@ -245,21 +246,39 @@
             {/if}
           </tr>
         {/each}
+      {:else if loading}
+        {#each Array(8) as _, r}
+          <tr class="border-t">
+            <td class="px-4 py-2">
+              <Skeleton width="28px" height="13px" borderRadius="4px" />
+            </td>
+            {#each columns as col, c}
+              <td class="px-4 py-2">
+                {#if c === 0}
+                  <Skeleton width="{60 + Math.floor((r * 13 + c * 7) % 40)}px" height="14px" borderRadius="4px" />
+                {:else if col.key === 'status' || col.key === 'type'}
+                  <Skeleton width="72px" height="22px" borderRadius="999px" />
+                {:else}
+                  <Skeleton width="{50 + Math.floor((r * 7 + c * 11) % 50)}px" height="13px" borderRadius="4px" />
+                {/if}
+              </td>
+            {/each}
+            {#if actions.length > 0}
+              <td class="px-4 py-2">
+                <div class="d-inline-flex gap-2">
+                  <Skeleton width="28px" height="28px" borderRadius="50%" />
+                </div>
+              </td>
+            {/if}
+          </tr>
+        {/each}
       {:else}
         <tr>
           <td
             colspan={columns.length + 1 + (actions.length > 0 ? 1 : 0)}
             class="px-4 py-2 text-center text-gray-500"
           >
-            <div
-              class="flex items-center justify-center transition-opacity duration-300"
-            >
-              {#if loading}
-                <i class="ti ti-loader animate-spin text-lg text-blue-500"></i>
-              {:else}
-                <span>No matching results</span>
-              {/if}
-            </div>
+            <span>No matching results</span>
           </td>
         </tr>
       {/if}

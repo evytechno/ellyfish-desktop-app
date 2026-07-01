@@ -88,7 +88,6 @@
       try {
         await Promise.all([fetchOrders(), getAllCompanies(), getAllUsers()]);
       } catch (error) {
-        console.error("Error refreshing data:", error);
       } finally {
         refresh = false;
       }
@@ -190,7 +189,6 @@
         orders, totalItems, totalPages,
       });
     } catch (error) {
-      console.error("Fetch error:", error);
       loading = false;
       const validationErrors = errorHandle(error);
     } finally {
@@ -346,11 +344,9 @@
       const cachedData = getFromLocalStorage(
         "orders_dispatched_" + query.toString(),
       );
-      console.log("cachedData:", cachedData);
 
       if (cachedData) {
         orders = orders.filter((o) => o.id !== order.id);
-        console.log("Updated orders list dispatched:", orders);
         orders = [...orders];
         saveToLocalStorage("orders_dispatched_" + query.toString(), { orders });
       }
@@ -361,7 +357,6 @@
       });
       return true;
     } catch (error) {
-      console.log("Error updating order status:", error);
 
       const validationErrors = errorHandle(error);
 
@@ -372,7 +367,6 @@
       }
       return false;
     } finally {
-      console.log("formErrors : ", formErrors);
     }
   }
   async function statusUpdate(order) {
@@ -415,7 +409,6 @@
       });
       return true;
     } catch (error) {
-      console.error("Error updating order status:", error);
 
       const validationErrors = errorHandle(error);
 
@@ -426,7 +419,6 @@
       }
       return false;
     } finally {
-      console.error("formErrors : ", formErrors);
     }
   }
 
@@ -462,7 +454,7 @@
 
   async function changeStatus(orderId) {
     let n_order = orders.find((order) => order.id == orderId);
-    if (!n_order) return console.error("Order not found");
+    if (!n_order) return;
 
     const { value: selectedStatus, isConfirmed } = await Swal.fire({
       title: "Change Order Status",
@@ -496,7 +488,6 @@
       n_order.status = selectedStatus;
       let updateStatus = await statusUpdate(n_order);
     } catch (err) {
-      console.error("Failed to change user status:", err);
     }
   }
 

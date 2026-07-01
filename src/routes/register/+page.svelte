@@ -14,7 +14,6 @@
       errorMessage = "You must agree to the Terms & Privacy.";
     } else {
       errorMessage = "";
-      console.log("Submitting registration...");
     }
   };
 </script>

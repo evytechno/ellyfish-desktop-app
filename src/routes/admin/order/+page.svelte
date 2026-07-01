@@ -380,10 +380,6 @@
   });
 </script>
 
-{#if loadingData}
-  <Loader />
-{/if}
-
 <div class="page-wrapper">
   <div class="content">
     <!-- Page Header -->

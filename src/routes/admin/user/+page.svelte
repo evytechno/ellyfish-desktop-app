@@ -179,7 +179,6 @@
       try {
         await Promise.all([fetchUsers()]);
       } catch (error) {
-        console.error("Error refreshing data:", error);
       } finally {
         refresh = false;
       }
@@ -206,7 +205,6 @@
       users = data.data;
       totalItems = data.total;
     } catch (error) {
-      console.error("Fetch error:", error);
       loading = false;
       const validationErrors = errorHandle(error);
     } finally {
@@ -246,7 +244,7 @@
 
   async function changeStatus(id) {
     const user = users.find((u) => u.id === Number(id));
-    if (!user) return console.error("User not found");
+    if (!user) return;
 
     const { value: selectedStatus, isConfirmed } = await Swal.fire({
       title: "Change User Status",
@@ -292,7 +290,6 @@
       //   "success"
       // );
     } catch (err) {
-      console.error("Failed to change user status:", err);
     }
   }
 

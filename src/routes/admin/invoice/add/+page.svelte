@@ -75,9 +75,10 @@
 
   // ── Reactive calculations ─────────────────────────────────────────────────
   $: itemsSubtotal = items.reduce((s, i) => s + (i.total || 0), 0);
-  $: subtotal = itemsSubtotal - discount;
   $: extratotal = extraItems.reduce((s, i) => s + (i.total || 0), 0);
-  $: subplustotal = subtotal + extratotal;
+  $: taxableExtraTotal = extraItems.reduce((s, i) => s + (i.taxable !== false ? (i.total || 0) : 0), 0);
+  $: subtotal = itemsSubtotal - discount + taxableExtraTotal;
+  $: subplustotal = itemsSubtotal - discount + extratotal;
   $: taxtotal = taxItems.reduce((s, i) => s + (i.total || 0), 0);
   $: total = Math.round(subplustotal + taxtotal);
   $: subtotal, recalculateTaxes();
@@ -95,7 +96,7 @@
     items = [...items, { item: "", quantity: 1, unit: "Pcs", unitPrice: 0, hsCode: "", total: 0 }];
   }
   function removeItem(i) { items = items.filter((_, idx) => idx !== i); }
-  function addExtraItem() { extraItems = [...extraItems, { item: "", total: 0 }]; }
+  function addExtraItem() { extraItems = [...extraItems, { item: "", total: 0, taxable: true }]; }
   function removeExtraItem(i) { extraItems = extraItems.filter((_, idx) => idx !== i); }
   function addTaxItem() { taxItems = [...taxItems, { item: "", percentage: 0, total: 0 }]; }
   function removeTaxItem(i) { taxItems = taxItems.filter((_, idx) => idx !== i); }
@@ -260,7 +261,7 @@
         country: taxCountry, customerState: taxCountry === "India" ? taxState : null, taxSlab: taxSlab || null,
         priceTerms, inCoterms, inCotermsBy, swiftCode, currency,
         paymentMethod, status, termsConditions, remarks, poNumber, discount,
-        totalAmountTitle, totalAmountValue: totalAmountValue || total,
+        totalAmountTitle, totalAmountValue: totalAmountValue || 0,
         selectedBankAccount, billToName, billToAddress, billToGSTNumber,
         billToMobile, billToEmail, shipToName, shipToAddress, shipToGSTNumber,
         shipToMobile, shipToEmail, companyId,
@@ -715,6 +716,7 @@
                         <tr>
                           <th class="py-1 px-2">Charge Name</th>
                           <th class="py-1 px-2 text-end" style="width:100px">Amount</th>
+                          <th class="py-1 px-2 text-center" style="width:56px">Taxable</th>
                           <th style="width:40px"></th>
                         </tr>
                       </thead>
@@ -727,7 +729,10 @@
                             </td>
                             <td class="p-1">
                               <input type="number" class="form-control form-control-sm border-0 shadow-none text-end"
-                                bind:value={ei.total} min="0" step="0.01" placeholder="0.00" />
+                                bind:value={ei.total} on:input={recalculateTaxes} min="0" step="0.01" placeholder="0.00" />
+                            </td>
+                            <td class="p-1 text-center">
+                              <input type="checkbox" bind:checked={ei.taxable} on:change={recalculateTaxes} title="Include in taxable value" />
                             </td>
                             <td class="p-1 text-center">
                               <button type="button" class="btn btn-sm text-danger" on:click={() => removeExtraItem(i)}>

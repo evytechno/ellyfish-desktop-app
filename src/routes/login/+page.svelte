@@ -173,7 +173,6 @@
 
       goto("/admin/dashboard");
     } catch (error) {
-      console.log("error : ", error);
       let n_errors = errorHandle(error);
       errorMessage = n_errors;
     } finally {

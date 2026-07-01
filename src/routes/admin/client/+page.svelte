@@ -43,7 +43,7 @@
     debounceRefreshTimeout = setTimeout(async () => {
       refresh = true;
       try { await fetchClients(); }
-      catch (e) { console.error(e); }
+      catch (e) {}
       finally { refresh = false; }
     }, 200);
   }

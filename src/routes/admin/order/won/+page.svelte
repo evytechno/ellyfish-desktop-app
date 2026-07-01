@@ -51,7 +51,7 @@
 
   async function changeImportStatus(orderId) {
     let n_order = orders.find((order) => order.id == orderId);
-    if (!n_order) return console.error("Order not found");
+    if (!n_order) return;
 
     let updateImportStatus = await importStatusUpdate(n_order);
   }
@@ -105,7 +105,6 @@
       try {
         await Promise.all([fetchOrders(), getAllCompanies(), getAllUsers()]);
       } catch (error) {
-        console.error("Error refreshing data:", error);
       } finally {
         refresh = false;
       }
@@ -207,7 +206,6 @@
         orders, totalItems, totalPages,
       });
     } catch (error) {
-      console.error("Fetch error:", error);
       loading = false;
       const validationErrors = errorHandle(error);
     } finally {
@@ -375,7 +373,6 @@
       });
       return true;
     } catch (error) {
-      console.error("Error updating order status:", error);
 
       const validationErrors = errorHandle(error);
 
@@ -386,12 +383,10 @@
       }
       return false;
     } finally {
-      console.error("formErrors : ", formErrors);
     }
   }
   async function importStatusUpdate(order) {
     order.importStatus = order.importStatus === "false" ? "true" : "false";
-    console.log("order : ", order);
 
     errorMessage = "";
     formErrors = {};
@@ -432,7 +427,6 @@
       });
       return true;
     } catch (error) {
-      console.error("Error updating order import status:", error);
 
       const validationErrors = errorHandle(error);
 
@@ -443,7 +437,6 @@
       }
       return false;
     } finally {
-      console.error("formErrors : ", formErrors);
     }
   }
 
@@ -479,7 +472,7 @@
 
   async function changeStatus(orderId) {
     let n_order = orders.find((order) => order.id == orderId);
-    if (!n_order) return console.error("Order not found");
+    if (!n_order) return;
 
     const { value: selectedStatus, isConfirmed } = await Swal.fire({
       title: "Change Order Status",
@@ -513,7 +506,6 @@
       n_order.status = selectedStatus;
       let updateStatus = await statusUpdate(n_order);
     } catch (err) {
-      console.error("Failed to change user status:", err);
     }
   }
 

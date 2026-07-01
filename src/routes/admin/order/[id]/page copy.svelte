@@ -209,7 +209,6 @@
         errorMessage = "An unexpected error occurred.";
       }
     } finally {
-      console.log("formErrors : ", formErrors);
 
       loading = false;
     }
@@ -355,7 +354,6 @@
         errorMessage = "An unexpected error occurred.";
       }
     } finally {
-      console.log("formErrors : ", formErrors);
     }
   }
 
@@ -416,10 +414,8 @@
         formErrors = validationErrors;
       } else {
         errorMessage = "An unexpected error occurred.";
-        console.error("Unexpected error:", error);
       }
     } finally {
-      console.log("formErrors:", formErrors);
       loading = false;
     }
   }
@@ -459,10 +455,8 @@
             formErrors = validationErrors;
           } else {
             errorMessage = "An unexpected error occurred.";
-            console.error("Unexpected error:", error);
           }
         } finally {
-          console.log("formErrors:", formErrors);
           loading = false;
         }
       }
@@ -514,10 +508,8 @@
         formErrors = validationErrors;
       } else {
         errorMessage = "An unexpected error occurred.";
-        console.error("Unexpected error:", error);
       }
     } finally {
-      console.log("formErrors:", formErrors);
       loading = false;
     }
   }
@@ -552,10 +544,8 @@
             formErrors = validationErrors;
           } else {
             errorMessage = "An unexpected error occurred.";
-            console.error("Unexpected error:", error);
           }
         } finally {
-          console.log("formErrors:", formErrors);
           loading = false;
         }
       }
@@ -607,10 +597,8 @@
         formErrors = validationErrors;
       } else {
         errorMessage = "An unexpected error occurred.";
-        console.error("Unexpected error:", error);
       }
     } finally {
-      console.log("formErrors:", formErrors);
       loading = false;
     }
   }
@@ -650,10 +638,8 @@
             formErrors = validationErrors;
           } else {
             errorMessage = "An unexpected error occurred.";
-            console.error("Unexpected error:", error);
           }
         } finally {
-          console.log("formErrors:", formErrors);
           loading = false;
         }
       }
@@ -718,10 +704,8 @@
         formErrors = validationErrors;
       } else {
         errorMessage = "An unexpected error occurred.";
-        console.error("Unexpected error:", error);
       }
     } finally {
-      console.log("formErrors:", formErrors);
       loading = false;
     }
   }
@@ -758,10 +742,8 @@
             formErrors = validationErrors;
           } else {
             errorMessage = "An unexpected error occurred.";
-            console.error("Unexpected error:", error);
           }
         } finally {
-          console.log("formErrors:", formErrors);
           loading = false;
         }
       }
@@ -819,10 +801,8 @@
         formErrors = validationErrors;
       } else {
         errorMessage = "An unexpected error occurred.";
-        console.error("Unexpected error:", error);
       }
     } finally {
-      console.log("formErrors:", formErrors);
       loading = false;
     }
   }
@@ -859,10 +839,8 @@
             formErrors = validationErrors;
           } else {
             errorMessage = "An unexpected error occurred.";
-            console.error("Unexpected error:", error);
           }
         } finally {
-          console.log("formErrors:", formErrors);
           loading = false;
         }
       }
@@ -916,7 +894,6 @@
           errorMessage = "An unexpected error occurred.";
         }
       } finally {
-        console.log("formErrors : ", formErrors);
 
         loading = false;
       }
@@ -964,10 +941,8 @@
         formErrors = validationErrors;
       } else {
         errorMessage = "An unexpected error occurred.";
-        console.error("Unexpected error:", error);
       }
     } finally {
-      console.log("formErrors:", formErrors);
       loading = false;
     }
   }
@@ -1107,7 +1082,6 @@
     }
 
     if (isNaN(formattedDate)) {
-      console.error("Invalid date format:", date);
       return "Invalid date";
     }
 
@@ -1142,10 +1116,8 @@
             formErrors = validationErrors;
           } else {
             errorMessage = "An unexpected error occurred.";
-            console.error("Unexpected error:", error);
           }
         } finally {
-          console.log("formErrors:", formErrors);
           loading = false;
         }
       }
@@ -1229,7 +1201,6 @@
         path,
         timestamp,
       });
-      console.log("signature : ", signature);
       const response = await fetch(`${WORKSHOP_BASE_URL}${path}`, {
         headers: {
           "x-api-key": "BOM_PROJECT",
@@ -1240,7 +1211,6 @@
       const dispatchedData = await response.json();
       dispatchedDetailsStore.set(dispatchedData?.data);
     } catch (err) {
-      console.error("Error fetching dispatched data:", err);
       errorMessage = "Failed to load dispatched data.";
     } finally {
       setTimeout(() => {
@@ -1307,10 +1277,8 @@
         formErrors = validationErrors;
       } else {
         errorMessage = "An unexpected error occurred.";
-        console.error("Unexpected error:", error);
       }
     } finally {
-      console.log("formErrors:", formErrors);
       loading = false;
     }
   }

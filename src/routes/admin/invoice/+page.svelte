@@ -138,7 +138,6 @@
           fetchAllUsers(),
         ]);
       } catch (error) {
-        console.error("Error refreshing data:", error);
       } finally {
         refresh = false;
       }
@@ -189,7 +188,6 @@
           piWarning = `This order already has ${check.count} PI(s): ${labels}`;
         }
       } catch (err) {
-        console.error("PI duplicate check failed", err);
       }
     }
     try {
@@ -224,7 +222,6 @@
       if (bAddress) shipToAddress   = bAddress;
       if (bGST)     shipToGSTNumber = bGST;
     } catch (err) {
-      console.error("Failed to fetch order details for auto-fill:", err);
     }
   }
 
@@ -649,7 +646,6 @@
         totalItems,
       });
     } catch (error) {
-      console.error("Fetch error:", error);
       loading = false;
       const validationErrors = errorHandle(error);
     } finally {
@@ -800,7 +796,6 @@
   async function fillDataOnForm(id) {
     let newInvoice = invoices.find((invoice) => invoice.id === id);
     if (newInvoice) {
-      console.log("newInvoice  : ", newInvoice);
 
       if (newInvoice?.order) {
         invoiceType = "order";
@@ -923,7 +918,6 @@
       settingStore.set(data);
     } catch (error) {
       errorMessage = "Failed to load setting data.";
-      console.error("Fetch error:", error);
       const validationErrors = errorHandle(error);
     } finally {
       setTimeout(() => {
@@ -1019,82 +1013,78 @@
     <!-- End Page Header -->
 
     <!-- table header -->
-    <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
+    <div class="row g-2 align-items-center mb-3">
       {#if trashBin}
-        <div class="pb-2.5">
+        <div class="col-auto pb-2.5">
           <button on:click={() => (trashBin = false)}>
             <i class="ti ti-arrow-narrow-left me-1"></i>Back
           </button>
         </div>
       {:else}
-        <div class="flex items-center gap-2 flex-wrap">
-          <div class="flex items-center gap-2 flex-wrap">
-            <div>
-              <div class="input-icon input-icon-start position-relative">
-                <span class="input-icon-addon text-dark">
-                  <i class="ti ti-search"></i>
-                </span>
-                <input
-                  type="text"
-                  value={searchTerm}
-                  on:input={(e) => handleSearchChange(e.target.value)}
-                  class="form-control"
-                  placeholder="Search.."
-                />
-              </div>
-            </div>
+        <div class="col-auto">
+          <div class="input-icon input-icon-start position-relative">
+            <span class="input-icon-addon text-dark">
+              <i class="ti ti-search"></i>
+            </span>
+            <input
+              type="text"
+              value={searchTerm}
+              on:input={(e) => handleSearchChange(e.target.value)}
+              class="form-control"
+              placeholder="Search.."
+              style="min-width:160px;"
+            />
           </div>
-          <div class="flex items-center gap-2 flex-wrap">
-            <select bind:value={selectedFilter} class="form-select">
-              <option value="all">All</option>
-              <option value="today">Today</option>
-              <option value="last7days">Last 7 Days</option>
-              <option value="last30days">Last 30 Days</option>
-              <option value="custom">Custom Range</option>
+        </div>
+        <div class="col-auto">
+          <select bind:value={selectedFilter} class="form-select w-auto">
+            <option value="all">All</option>
+            <option value="today">Today</option>
+            <option value="last7days">Last 7 Days</option>
+            <option value="last30days">Last 30 Days</option>
+            <option value="custom">Custom Range</option>
+          </select>
+        </div>
+        {#if selectedFilter === "custom"}
+          <div class="col-auto">
+            <input
+              type="date"
+              bind:value={customStartDate}
+              class="form-control"
+              style="min-width:140px;"
+            />
+          </div>
+          <div class="col-auto">
+            <input
+              type="date"
+              bind:value={customEndDate}
+              class="form-control"
+              style="min-width:140px;"
+            />
+          </div>
+        {/if}
+        {#if currentUser?.role != "user"}
+          <div class="col-auto">
+            <select bind:value={userId} class="form-select w-auto">
+              <option value={null}>Select User</option>
+              {#each users as user}
+                <option value={user?.id}>{user?.name}</option>
+              {/each}
             </select>
           </div>
-          {#if selectedFilter === "custom"}
-            <div class="flex items-center gap-2">
-              <input
-                type="date"
-                bind:value={customStartDate}
-                class="form-control"
-              />
-            </div>
-            <div class="flex items-center gap-2">
-              <input
-                type="date"
-                bind:value={customEndDate}
-                class="form-control"
-              />
-            </div>
-          {/if}
-          {#if currentUser?.role != "user"}
-            <div class="flex items-center gap-2 flex-wrap">
-              <select bind:value={userId} class="form-select">
-                <option value={null}>Select User</option>
-                {#each users as user}
-                  <option value={user?.id}>{user?.name}</option>
-                {/each}
-              </select>
-            </div>
-            {#if currentUser?.role != "user"}
-              <div class="flex items-center gap-2 flex-wrap">
-                <select bind:value={byCompanyId} class="form-select">
-                  <option value={null}>Select Company</option>
-                  {#each companies as company}
-                    <option value={company?.id}>{company?.name}</option>
-                  {/each}
-                </select>
-              </div>
-            {/if}
-          {/if}
-        </div>
-        <div class="flex items-center gap-2 flex-wrap">
-          {#if currentUser?.role != "user"}
-            <div
-              class="d-flex align-items-center shadow p-1 rounded border view-icons bg-white"
-            >
+          <div class="col-auto">
+            <select bind:value={byCompanyId} class="form-select w-auto">
+              <option value={null}>Select Company</option>
+              {#each companies as company}
+                <option value={company?.id}>{company?.name}</option>
+              {/each}
+            </select>
+          </div>
+        {/if}
+        <div class="col"></div>
+        {#if currentUser?.role != "user"}
+          <div class="col-auto">
+            <div class="d-flex align-items-center shadow p-1 rounded border view-icons bg-white">
               <button
                 on:click={() => (trashBin = true)}
                 class="flex-shrink-0 btn btn-sm p-1 border-0 fs-14 bg-primary text-white"
@@ -1102,7 +1092,9 @@
                 <i class="ti ti-trash"></i>
               </button>
             </div>
-          {/if}
+          </div>
+        {/if}
+        <div class="col-auto">
           {#if currentUser?.role === "master" || currentUser?.role === "admin"}
             <a href="/admin/invoice/add" class="btn btn-primary">
               <i class="ti ti-square-rounded-plus-filled me-1"></i>Add New Invoice

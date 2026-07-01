@@ -85,7 +85,6 @@
       try {
         await Promise.all([fetchOrders(), getAllCompanies(), getAllUsers()]);
       } catch (error) {
-        console.error("Error refreshing data:", error);
       } finally {
         refresh = false;
       }
@@ -187,7 +186,6 @@
         orders, totalItems, totalPages,
       });
     } catch (error) {
-      console.error("Fetch error:", error);
       loading = false;
       const validationErrors = errorHandle(error);
     } finally {

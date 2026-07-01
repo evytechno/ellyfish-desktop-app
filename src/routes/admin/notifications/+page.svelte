@@ -37,7 +37,6 @@
     };
 
     eventSource.onerror = (err) => {
-      console.error("SSE error:", err);
       eventSource.close();
     };
 
@@ -103,7 +102,6 @@
       try {
         await Promise.all([fetchNotifications()]);
       } catch (error) {
-        console.error("Error refreshing data:", error);
       } finally {
         refresh = false;
       }
@@ -180,7 +178,6 @@
       notifications = data.data;
       totalItems = data.total;
     } catch (error) {
-      console.error("Fetch error:", error);
       loading = false;
       const validationErrors = errorHandle(error);
     } finally {
@@ -253,7 +250,6 @@
         errorMessage = "An unexpected error occurred.";
       }
     } finally {
-      console.log("formErrors : ", formErrors);
       loading = false;
     }
   }

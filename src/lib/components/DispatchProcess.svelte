@@ -280,7 +280,6 @@
       const resp = await apiFetch(`/user/sales/all`, "GET");
       users = resp?.data ?? [];
     } catch (e) {
-      console.error("fetchEmployees:", e);
     }
   }
 
@@ -308,7 +307,6 @@
       syncForms(dispatchData);
       dispatchedDetailsStore.set(dispatchData);
     } catch (e) {
-      console.error("fetchDispatch:", e);
     } finally {
       loadingData = false;
     }
@@ -637,12 +635,6 @@
         currentTab = "dispatch";
         return;
       }
-      console.log("dispatchData : ", dispatchData);
-      console.log("nextStatus : ", nextStatus);
-      console.log(
-        '["installationInProgress", "installed"].includes(nextStatus) :',
-        ["installationInProgress", "installed"].includes(nextStatus),
-      );
 
       // 3. Installation required
       // 🚫 At least 1 employee required

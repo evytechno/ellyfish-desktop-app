@@ -42,7 +42,6 @@
       try {
         await Promise.all([fetchCompanies()]);
       } catch (error) {
-        console.error("Error refreshing data:", error);
       } finally {
         refresh = false;
       }
@@ -114,7 +113,6 @@
       companies = data.data;
       totalItems = data.total;
     } catch (error) {
-      console.error("Fetch error:", error);
       loading = false;
       const validationErrors = errorHandle(error);
     } finally {

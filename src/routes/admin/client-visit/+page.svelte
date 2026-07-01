@@ -71,7 +71,6 @@
       visits = data.data ?? [];
       totalItems = data.total ?? 0;
     } catch (e) {
-      console.error(e);
     } finally {
       loadingData = false;
     }
@@ -260,45 +259,58 @@
     </div>
 
     <!-- Filters -->
-    <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
-      <div class="flex items-center gap-2 flex-wrap">
+    <div class="row g-2 align-items-center mb-3">
+      <div class="col-auto">
         <div class="input-icon input-icon-start position-relative">
           <span class="input-icon-addon text-dark"><i class="ti ti-search"></i></span>
           <input type="text" value={searchTerm} on:input={(e) => handleSearchChange(e.target.value)}
-            class="form-control" placeholder="Search.." style="width:180px" />
+            class="form-control" placeholder="Search.." style="min-width:160px;" />
         </div>
-        <select bind:value={selectedFilter} class="form-select" style="width:150px">
+      </div>
+      <div class="col-auto">
+        <select bind:value={selectedFilter} class="form-select w-auto">
           <option value="all">All</option>
           <option value="today">Today</option>
           <option value="last7days">Last 7 Days</option>
           <option value="last30days">Last 30 Days</option>
           <option value="custom">Custom Range</option>
         </select>
-        {#if selectedFilter === "custom"}
-          <input type="date" bind:value={customStartDate} class="form-control" style="width:150px" />
-          <input type="date" bind:value={customEndDate} class="form-control" style="width:150px" />
-        {/if}
-        <select bind:value={visitTypeFilter} class="form-select" style="width:130px">
+      </div>
+      {#if selectedFilter === "custom"}
+        <div class="col-auto">
+          <input type="date" bind:value={customStartDate} class="form-control" style="min-width:140px;" />
+        </div>
+        <div class="col-auto">
+          <input type="date" bind:value={customEndDate} class="form-control" style="min-width:140px;" />
+        </div>
+      {/if}
+      <div class="col-auto">
+        <select bind:value={visitTypeFilter} class="form-select w-auto">
           <option value="">All Types</option>
           <option value="incoming">Incoming</option>
           <option value="outgoing">Outgoing</option>
         </select>
-        {#if currentUser?.role !== "user"}
-          <select bind:value={byUserId} class="form-select" style="width:150px">
+      </div>
+      {#if currentUser?.role !== "user"}
+        <div class="col-auto">
+          <select bind:value={byUserId} class="form-select w-auto">
             <option value={null}>Select User</option>
             {#each users as u}
               <option value={u.id}>{u.name}</option>
             {/each}
           </select>
-          <select bind:value={byCompanyId} class="form-select" style="width:160px">
+        </div>
+        <div class="col-auto">
+          <select bind:value={byCompanyId} class="form-select w-auto">
             <option value={null}>Select Company</option>
             {#each companies as c}
               <option value={c.id}>{c.name}</option>
             {/each}
           </select>
-        {/if}
-      </div>
-      <div class="flex items-center gap-2">
+        </div>
+      {/if}
+      <div class="col"></div>
+      <div class="col-auto">
         <a href="/admin/client-visit/add" class="btn btn-primary">
           <i class="ti ti-square-rounded-plus-filled me-1"></i>Add New Visit
         </a>

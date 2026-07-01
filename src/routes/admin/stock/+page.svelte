@@ -108,7 +108,6 @@
       try {
         await Promise.all([fetchComponents()]);
       } catch (error) {
-        console.error("Error refreshing data:", error);
       } finally {
         refresh = false;
       }
@@ -138,7 +137,6 @@
       totalPages = data?.totalPages || 0;
       totalItems = data?.totalElements || 0;
     } catch (error) {
-      console.error("Fetch error:", error);
       errorHandle(error);
     } finally {
       loading = false;
@@ -254,10 +252,8 @@
         formErrors = validationErrors;
       } else {
         errorMessage = "An unexpected error occurred.";
-        console.error("Unexpected error:", error);
       }
     } finally {
-      console.log("formErrors:", formErrors);
       loading = false;
     }
   }

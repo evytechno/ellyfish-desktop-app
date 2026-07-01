@@ -104,7 +104,6 @@
         woWarning = `This order already has ${check.count} work order(s): ${labels}`;
       }
     } catch (err) {
-      console.error("WO duplicate check failed", err);
     }
   }
 
@@ -211,7 +210,6 @@
           }
         }
       } catch (err) {
-        console.error("Failed to prefill from order", err);
       }
     }
 
@@ -235,7 +233,6 @@
         const extraItems = (inv.extraItems ?? []).map((i) => ({ item: i.item ?? "", quantity: "0", unit: "Pcs", price: 0, hsCode: "", total: 0 }));
         items = [...piItems, ...extraItems];
       } catch (err) {
-        console.error("Failed to prefill from invoice", err);
       }
     }
 

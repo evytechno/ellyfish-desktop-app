@@ -146,7 +146,6 @@
       dashboardData = { ...data };
       fetchCategoryStats();
     } catch (error) {
-      console.error("Fetch error:", error);
       loading = false;
       const validationErrors = errorHandle(error);
     } finally {
@@ -194,7 +193,6 @@
     const dashboardElements = document.getElementsByClassName("printDashboard");
 
     if (!dashboardElements.length) {
-      console.error("No dashboard sections found!");
       return;
     }
 

@@ -80,12 +80,13 @@
     });
     const iSub = items.reduce((s, i) => s + (i.total || 0), 0);
     const eSub = extraItems.reduce((s, i) => s + (parseFloat(i.total) || 0), 0);
-    const base = iSub + eSub - (parseFloat(discount) || 0);
+    const taxableESub = extraItems.reduce((s, i) => s + (i.taxable !== false ? (parseFloat(i.total) || 0) : 0), 0);
+    const taxBase = iSub + taxableESub - (parseFloat(discount) || 0);
     taxItems = taxItems.map((t) => ({
       ...t,
-      total: parseFloat(((base * t.percentage) / 100).toFixed(2)),
+      total: parseFloat(((taxBase * t.percentage) / 100).toFixed(2)),
     }));
-    totalAmountValue = parseFloat((base + taxItems.reduce((s, t) => s + (t.total || 0), 0)).toFixed(2));
+    totalAmountValue = parseFloat((iSub + eSub - (parseFloat(discount) || 0) + taxItems.reduce((s, t) => s + (t.total || 0), 0)).toFixed(2));
   }
 
   $: items, extraItems, taxItems, discount, recalculate();
@@ -119,7 +120,7 @@
 
   function addItem() { items = [...items, { item: "", quantity: "0", unit: "Pcs", price: 0, hsCode: "", total: 0 }]; }
   function removeItem(i) { items = items.filter((_, idx) => idx !== i); }
-  function addExtraItem() { extraItems = [...extraItems, { item: "", total: 0 }]; }
+  function addExtraItem() { extraItems = [...extraItems, { item: "", total: 0, taxable: true }]; }
   function removeExtraItem(i) { extraItems = extraItems.filter((_, idx) => idx !== i); }
   function addTaxItem() { taxItems = [...taxItems, { item: "", percentage: 0, total: 0 }]; recalculate(); }
   function removeTaxItem(i) { taxItems = taxItems.filter((_, idx) => idx !== i); recalculate(); }
@@ -151,7 +152,7 @@
     totalAmountTitle = data.totalAmountTitle ?? "Total Amount";
     totalAmountValue = data.totalAmountValue ?? 0;
     items = (data.items ?? []).map((i) => ({ ...i, unit: i.unit || "Pcs", price: i.price ?? i.unitPrice ?? 0 }));
-    extraItems = (data.extraItems ?? []).map((i) => ({ ...i }));
+    extraItems = (data.extraItems ?? []).map((i) => ({ ...i, taxable: i.taxable ?? true }));
     taxItems = (data.taxItems ?? []).map((t) => ({ ...t }));
     taxCountry = data.country || "India";
     taxState = data.customerState || "Rajasthan";
@@ -215,7 +216,7 @@
             shipToGSTNumber = pi.shipToGSTNumber ?? "";
             shipToMobile = pi.shipToMobile ?? "";
             shipToEmail = pi.shipToEmail ?? "";
-            extraItems = (pi.extraItems ?? []).map((i) => ({ ...i }));
+            extraItems = (pi.extraItems ?? []).map((i) => ({ ...i, taxable: i.taxable ?? true }));
             taxItems = (pi.taxItems ?? []).map((t) => ({ ...t }));
             taxCountry = pi.country || "India";
             taxState = pi.customerState || "Rajasthan";
@@ -515,6 +516,7 @@
                       <tr>
                         <th class="py-1 px-2">Name</th>
                         <th class="py-1 px-2 text-end" style="width:100px">Amount</th>
+                        <th class="py-1 px-2 text-center" style="width:56px">Taxable</th>
                         <th style="width:40px"></th>
                       </tr>
                     </thead>
@@ -523,6 +525,7 @@
                         <tr>
                           <td class="p-1"><input type="text" class="form-control form-control-sm border-0 shadow-none" bind:value={ei.item} placeholder="e.g. Freight" /></td>
                           <td class="p-1"><input type="number" class="form-control form-control-sm border-0 shadow-none text-end" bind:value={ei.total} on:input={recalculate} /></td>
+                          <td class="p-1 text-center"><input type="checkbox" bind:checked={ei.taxable} on:change={recalculate} title="Include in taxable value" /></td>
                           <td class="p-1 text-center"><button type="button" class="btn btn-sm text-danger" on:click={() => removeExtraItem(i)}><i class="ti ti-x"></i></button></td>
                         </tr>
                       {/each}

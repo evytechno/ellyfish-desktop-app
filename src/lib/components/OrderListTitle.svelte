@@ -11,11 +11,9 @@
     toggleStatusVisibility(statusKey);
   }
   function toggleStatusVisibility(statusKey) {
-    console.log("statusKey : ", statusKey);
 
     statusNamesStore.update((statusNames) => {
       const status = statusNames[statusKey];
-    console.log("status : ", status);
       if (status) {
         status.visible = !status.visible;
       }

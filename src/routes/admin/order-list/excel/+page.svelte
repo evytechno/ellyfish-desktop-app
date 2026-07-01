@@ -258,7 +258,6 @@
       await refreshOrder(orderId);
     } catch (e) {
       await refreshOrder(orderId);
-      console.error(e);
     }
     finally { editingSaving = false; savingCell = null; }
   }
@@ -394,7 +393,7 @@
       try {
         const res = await authApiFetch(`${API_ROUTES.USER}/all`, { method: "GET" });
         allUsers = Array.isArray(res) ? res : (res.data || []);
-      } catch (e) { console.error(e); }
+      } catch (e) {}
     }
     try {
       const cached = get(companiesAllStore);
@@ -404,7 +403,7 @@
         allCompanies = Array.isArray(res) ? res : (res.data || []);
         companiesAllStore.set(allCompanies);
       }
-    } catch (e) { console.error(e); }
+    } catch (e) {}
     fetchOrders();
   });
 
@@ -448,7 +447,7 @@
       await authApiFetch(API_ROUTES.ORDER, { method: "POST", data: JSON.stringify(payload) });
       closeDrawer();
       await fetchOrders(1);
-    } catch (e) { console.error(e); }
+    } catch (e) {}
     finally { drawerLoading = false; }
   }
 
@@ -576,7 +575,7 @@
       orders = res.data || res;
       total = res.total || orders.length;
       totalPages = res.totalPages || 1;
-    } catch (e) { console.error(e); }
+    } catch (e) {}
     finally { loadingData = false; }
   }
 
@@ -584,7 +583,7 @@
     try {
       const res = await authApiFetch(`${API_ROUTES.ORDER}/${orderId}`, { method: "GET" });
       orders = orders.map(o => o.id === orderId ? res : o);
-    } catch (e) { console.error(e); }
+    } catch (e) {}
   }
 
   async function toggleRow(orderId) {
@@ -612,7 +611,7 @@
       await tick();
       const el = document.getElementById(`chat-scroll-${orderId}`);
       if (el) el.scrollTop = el.scrollHeight;
-    } catch (e) { console.error(e); }
+    } catch (e) {}
   }
 
   async function addReminder(orderId) {
@@ -633,7 +632,7 @@
       await tick();
       const el = document.getElementById(`remind-scroll-${orderId}`);
       if (el) el.scrollTop = el.scrollHeight;
-    } catch (e) { console.error(e); }
+    } catch (e) {}
   }
 
   async function handleFileUpload(orderId, e) {
@@ -648,7 +647,7 @@
       await tick();
       const el = document.getElementById(`attach-scroll-${orderId}`);
       if (el) el.scrollTop = el.scrollHeight;
-    } catch (err) { console.error(err); }
+    } catch (err) {}
     finally { e.target.value = ""; }
   }
 
@@ -662,7 +661,7 @@
         }),
       });
       orders = orders.map(o => o.id === orderId ? { ...o, status } : o);
-    } catch (e) { console.error(e); }
+    } catch (e) {}
   }
 
   function formatDate(d) {
@@ -783,7 +782,7 @@
           method: "POST",
           data: JSON.stringify({ orderId: linkClientOrderId, clientContactId: contact.id }),
         });
-      } catch (e) { console.error("migrate failed:", oc.name, e); }
+      } catch (e) {}
     }
   }
 
@@ -819,7 +818,7 @@
       inlineContactName[order.id] = "";
       inlineContactMobile[order.id] = "";
       await refreshOrder(order.id);
-    } catch (err) { console.error(err); }
+    } catch (err) {}
     finally { savingInlineContact[order.id] = false; }
   }
 
@@ -941,7 +940,7 @@
       }
       await refreshOrder(linkClientOrderId);
       closeLinkClientModal();
-    } catch (err) { console.error(err); }
+    } catch (err) {}
     finally { linkingClient = false; }
   }
 

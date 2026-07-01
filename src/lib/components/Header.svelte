@@ -171,7 +171,6 @@
       settingStore.set(data);
     } catch (error) {
       errorMessage = "Failed to load setting data.";
-      console.error("Fetch error:", error);
       const validationErrors = errorHandle(error);
     } finally {
       setTimeout(() => {
@@ -379,7 +378,6 @@
         inquiryOrders = data.data;
       }
     } catch (error) {
-      console.error("Fetch error:", error);
       loading = false;
       const validationErrors = errorHandle(error);
     } finally {

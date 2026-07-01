@@ -90,11 +90,14 @@
     (invoice?.items ?? []).reduce((sum, item) => sum + (item.total ?? 0), 0) -
     (invoice?.discount ?? 0);
   $: extratotal = (invoice?.extraItems ?? []).reduce((sum, item) => sum + (item.total ?? 0), 0);
+  $: taxableExtraTotal = (invoice?.extraItems ?? []).reduce((sum, item) => sum + (item.taxable === true ? (item.total ?? 0) : 0), 0);
+  $: nonTaxableExtraTotal = (invoice?.extraItems ?? []).reduce((sum, item) => sum + (item.taxable !== true ? (item.total ?? 0) : 0), 0);
   $: subplustotal = (subtotal ?? 0) + (extratotal ?? 0);
   $: taxtotal = invoice?.taxItems?.length
     ? invoice.taxItems.reduce((sum, item) => sum + (item.total ?? 0), 0)
     : 0;
   $: total = Math.round((subplustotal ?? 0) + (taxtotal ?? 0));
+  $: displayTotal = invoice?.totalAmountValue || total;
   $: totalInWord = numberToWords(Number.isFinite(total) ? Math.round(total) : 0) + " Only";
 
   const currencies = [
@@ -253,7 +256,7 @@
                         <div>{invoice?.totalAmountTitle || "Total Amount"}</div>
                         <div>
                           {currencies.find((c) => c.code === invoice?.currency)?.symbol}
-                          {invoice?.totalAmountValue.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/-
+                          {displayTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/-
                         </div>
                       </div>
                       <div class="flex items-center justify-between p-2 px-0">
@@ -278,9 +281,9 @@
                       </div>
                     {/if}
                     {#if invoice?.priceTerms}
-                      <div class="flex items-center justify-between pb-1 px-0">
-                        <div>Payment</div>
-                        <div>{invoice.priceTerms}</div>
+                      <div class="flex items-start justify-between pb-1 px-0 gap-2">
+                        <div class="flex-shrink-0">Payment</div>
+                        <div class="text-right">{invoice.priceTerms}</div>
                       </div>
                     {/if}
                     {#if invoice?.inCoterms}
@@ -321,12 +324,12 @@
                   <table class="w-full" style="table-layout:fixed;">
                     <thead class="bg-[#106ab0] text-white">
                       <tr>
-                        <th class="border p-2 text-white text-center" style="width:50px;">No.</th>
+                        <th class="border p-2 text-white text-center" style="width:45px;white-space:nowrap;">No.</th>
                         <th class="border p-2 text-white" style="width:30%;">Name</th>
-                        <th class="border p-2 text-white text-center" style="width:55px;">Qty</th>
-                        <th class="border p-2 text-white text-center" style="width:55px;">Unit</th>
+                        <th class="border p-2 text-white text-center" style="width:70px;">Qty</th>
+                        <th class="border p-2 text-white text-center" style="width:52px;white-space:nowrap;">Unit</th>
                         <th class="border p-2 text-white text-center" style="min-width:80px;">Unit Price</th>
-                        <th class="border p-2 text-white text-center" style="width:80px;">HS Code</th>
+                        <th class="border p-2 text-white text-center" style="width:65px;white-space:nowrap;">HS Code</th>
                         <th class="border p-2 text-white text-center" style="min-width:80px;">Total</th>
                       </tr>
                     </thead>
@@ -338,7 +341,7 @@
                           <td class="border p-2 capitalize" style="word-break:break-word;overflow-wrap:break-word;">{item?.item}</td>
 
                           <!-- Qty -->
-                          <td class="border p-2 text-center item-cell" on:click={() => startCellEdit(index, "quantity")}>
+                          <td class="border p-2 text-center item-cell" style="white-space:nowrap;" on:click={() => startCellEdit(index, "quantity")}>
                             {#if editingCell?.rowIndex === index && editingCell?.field === "quantity"}
                               <input class="inline-cell-input" type="number" min="0" bind:value={editingValue}
                                 on:blur={commitCell} on:keydown={handleCellKeydown} autofocus />
@@ -348,7 +351,7 @@
                           </td>
 
                           <!-- Unit -->
-                          <td class="border p-2 text-center item-cell" on:click={() => startCellEdit(index, "unit")}>
+                          <td class="border p-2 text-center item-cell" style="white-space:nowrap;" on:click={() => startCellEdit(index, "unit")}>
                             {#if editingCell?.rowIndex === index && editingCell?.field === "unit"}
                               <select class="inline-cell-input" bind:value={editingValue}
                                 on:change={commitCell} on:blur={commitCell} on:keydown={handleCellKeydown} autofocus>
@@ -424,6 +427,12 @@
                         <div>{currencies.find((c) => c.code === invoice?.currency)?.symbol} {invoice?.discount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/-</div>
                       </div>
                     {/if}
+                    {#if taxableExtraTotal > 0}
+                      <div class="flex items-center justify-between py-0.5">
+                        <div>Extra Charges (Taxable)</div>
+                        <div>{currencies.find((c) => c.code === invoice?.currency)?.symbol} {taxableExtraTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/-</div>
+                      </div>
+                    {/if}
                     <div class="mb-2">
                       {#each invoice?.taxItems as item2}
                         <div class="flex items-center justify-between py-0.5">
@@ -432,6 +441,12 @@
                         </div>
                       {/each}
                     </div>
+                    {#if nonTaxableExtraTotal > 0}
+                      <div class="flex items-center justify-between py-0.5 mb-2">
+                        <div>Extra Charges (Non-Taxable)</div>
+                        <div>{currencies.find((c) => c.code === invoice?.currency)?.symbol} {nonTaxableExtraTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/-</div>
+                      </div>
+                    {/if}
                     <div class="flex items-center justify-between p-2 text-lg bg-[#106ab0] text-white">
                       <div>Total Amount</div>
                       <div>{currencies.find((c) => c.code === invoice?.currency)?.symbol} {total.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/-</div>

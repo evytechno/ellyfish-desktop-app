@@ -362,7 +362,6 @@
         .download(`${safeName}-stats-${dateStr}.pdf`);
 
     } catch (e) {
-      console.error("PDF export failed:", e);
       Swal.fire({ icon: "error", title: "Export Failed", text: "Could not generate PDF. Please try again." });
     } finally {
       exportingPdf = false;

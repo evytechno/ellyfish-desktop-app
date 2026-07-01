@@ -89,7 +89,7 @@
             <div class="card-body">
               {#if !chat?.deletedAt}
                 <div class="absolute top-5 right-5">
-                  <button on:click={deleteChat(chat?.id)} class="bg-red-500 text-white text-md px-1.5 py-1 rounded">
+                  <button on:click={() => deleteChat(chat?.id)} class="bg-red-500 text-white text-md px-1.5 py-1 rounded">
                     <i class="ti ti-trash"></i>
                   </button>
                 </div>

@@ -41,7 +41,6 @@
       const data = await authApiFetch(API_ROUTES.CATEGORY + "/all");
       parentCategories = data;
     } catch (err) {
-      console.error("Failed to load parent categories", err);
     } finally {
       setTimeout(() => {
         loadingData = false;
@@ -80,7 +79,6 @@
         formErrors = validationErrors;
       } else {
         errorMessage = "An unexpected error occurred.";
-        console.error("Unexpected error:", error);
       }
     } finally {
       loading = false;

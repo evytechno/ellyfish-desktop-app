@@ -46,6 +46,8 @@
   $: extratotal = (invoice?.extraItems ?? []).reduce(
     (sum, item) => sum + (item.total ?? 0), 0
   );
+  $: taxableExtraTotal = (invoice?.extraItems ?? []).reduce((sum, item) => sum + (item.taxable !== false ? (item.total ?? 0) : 0), 0);
+  $: nonTaxableExtraTotal = (invoice?.extraItems ?? []).reduce((sum, item) => sum + (item.taxable === false ? (item.total ?? 0) : 0), 0);
   $: subplustotal = (subtotal ?? 0) + (extratotal ?? 0);
   $: taxtotal = invoice?.taxItems?.length
     ? invoice.taxItems.reduce((sum, item) => sum + (item.total ?? 0), 0)
@@ -331,6 +333,15 @@
                         </div>
                       </div>
                     {/if}
+                    {#if taxableExtraTotal > 0}
+                      <div class="flex items-center justify-between py-0.5">
+                        <div>Extra Charges (Taxable)</div>
+                        <div>
+                          {currencies.find((c) => c.code === invoice?.currency)?.symbol}
+                          {taxableExtraTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/-
+                        </div>
+                      </div>
+                    {/if}
                     <div class="mb-2">
                       {#each invoice?.taxItems ?? [] as item2}
                         <div class="flex items-center justify-between py-0.5">
@@ -342,6 +353,15 @@
                         </div>
                       {/each}
                     </div>
+                    {#if nonTaxableExtraTotal > 0}
+                      <div class="flex items-center justify-between py-0.5 mb-2">
+                        <div>Extra Charges (Non-Taxable)</div>
+                        <div>
+                          {currencies.find((c) => c.code === invoice?.currency)?.symbol}
+                          {nonTaxableExtraTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/-
+                        </div>
+                      </div>
+                    {/if}
                     <div class="flex items-center justify-between p-2 text-lg bg-[#106ab0] text-white">
                       <div>Total Amount</div>
                       <div>

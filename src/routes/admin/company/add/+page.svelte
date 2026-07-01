@@ -115,10 +115,8 @@
         formErrors = validationErrors;
       } else {
         errorMessage = "An unexpected error occurred.";
-        console.error("Unexpected error:", error);
       }
     } finally {
-      console.log("formErrors:", formErrors);
       loading = false;
     }
   }

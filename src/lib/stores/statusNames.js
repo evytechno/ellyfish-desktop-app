@@ -108,6 +108,5 @@ statusNamesStore.subscribe(async (value) => {
       data: JSON.stringify(updatedUser),
     });
   } catch (error) {
-    console.error("Error saving statusNames to user details:", error);
   }
 });

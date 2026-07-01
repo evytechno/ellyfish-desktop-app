@@ -108,7 +108,6 @@
         errorMessage = "An unexpected error occurred.";
       }
     } finally {
-      console.log("formErrors:", formErrors);
       loading = false;
     }
   }

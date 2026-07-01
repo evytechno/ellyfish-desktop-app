@@ -295,7 +295,6 @@
       const data = await authApiFetch(`${API_ROUTES.NOTIFICATION}?${query.toString()}`, { method: "GET" });
       notifications = data.data;
     } catch (error) {
-      console.error("Fetch error:", error);
       const validationErrors = errorHandle(error);
     } finally {
       loading = false;

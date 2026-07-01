@@ -348,7 +348,6 @@
     const dashboardElements = document.getElementsByClassName("printDashboard");
 
     if (!dashboardElements.length) {
-      console.error("No dashboard sections found!");
       return;
     }
 

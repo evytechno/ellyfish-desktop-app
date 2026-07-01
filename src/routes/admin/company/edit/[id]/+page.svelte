@@ -99,7 +99,6 @@
       }
     } catch (error) {
       errorMessage = "Failed to load company data.";
-      console.error("Fetch error:", error);
       loading = false;
       const validationErrors = errorHandle(error);
     } finally {

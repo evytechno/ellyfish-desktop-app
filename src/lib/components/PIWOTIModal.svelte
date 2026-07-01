@@ -141,10 +141,12 @@
   function recompute() {
     itemsSubtotal    = items.reduce((s, i) => s + (parseFloat(i.total) || 0), 0);
     extraSubtotal    = extraItems.reduce((s, i) => s + (parseFloat(i.total) || 0), 0);
-    baseAmount       = itemsSubtotal + extraSubtotal - (parseFloat(discount) || 0);
+    const taxableExtraSubtotal = extraItems.reduce(
+      (s, i) => s + (i.taxable !== false ? (parseFloat(i.total) || 0) : 0), 0);
+    baseAmount       = itemsSubtotal + taxableExtraSubtotal - (parseFloat(discount) || 0);
     taxTotal         = taxItems.reduce((s, t) =>
       s + parseFloat(((baseAmount * (parseFloat(t.percentage) || 0)) / 100).toFixed(2)), 0);
-    totalAmountValue = Math.round(baseAmount + taxTotal);
+    totalAmountValue = Math.round(itemsSubtotal + extraSubtotal - (parseFloat(discount) || 0) + taxTotal);
   }
 
   // Helper: single tax item amount for template display
@@ -298,7 +300,7 @@
 
   function addItem()      { items      = [...items,      { item: "", quantity: 1, unit: "Pcs", unitPrice: 0, hsCode: "", total: 0 }]; recompute(); }
   function removeItem(i)  { items      = items.filter((_, idx) => idx !== i); recompute(); }
-  function addExtra()     { extraItems = [...extraItems, { item: "", total: 0 }]; recompute(); }
+  function addExtra()     { extraItems = [...extraItems, { item: "", total: 0, taxable: true }]; recompute(); }
   function removeExtra(i) { extraItems = extraItems.filter((_, idx) => idx !== i); recompute(); }
   function addTax()       { taxItems   = [...taxItems,   { item: "", percentage: 0 }]; recompute(); }
   function removeTax(i)   { taxItems   = taxItems.filter((_, idx) => idx !== i); recompute(); }
@@ -507,6 +509,14 @@
   function fmtCur(val, cur = "INR") {
     return new Intl.NumberFormat("en-IN", { style: "currency", currency: cur }).format(val || 0);
   }
+  function resolvedTotal(doc) {
+    if (!doc) return 0;
+    if (doc.totalAmountValue) return doc.totalAmountValue;
+    const iSub = (doc.items ?? []).reduce((s, i) => s + (i.total || 0), 0);
+    const eSub = (doc.extraItems ?? []).reduce((s, i) => s + (i.total || 0), 0);
+    const tSub = (doc.taxItems ?? []).reduce((s, t) => s + (t.total || 0), 0);
+    return iSub + eSub - (doc.discount || 0) + tSub;
+  }
 </script>
 
 {#if open}
@@ -577,7 +587,7 @@
               <div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">PI Number</div><div class="fw-semibold font-mono">{fmtRef(pi.financialYear, pi.invoiceNo)}</div></div>
               <div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Date</div><div>{fmtDate(pi.invoiceDate)}</div></div>
               <div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Status</div><span class="badge {pi.status === 'Paid' ? 'bg-success' : pi.status === 'Partially Paid' ? 'bg-warning text-dark' : 'bg-secondary'}">{pi.status}</span></div>
-              <div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Total</div><div class="fw-bold text-success">{fmtCur(pi.totalAmountValue, pi.currency)}</div></div>
+              <div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Total</div><div class="fw-bold text-success">{fmtCur(resolvedTotal(pi), pi.currency)}</div></div>
               {#if pi.poNumber}<div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">PO Number</div><div class="font-mono">{pi.poNumber}</div></div>{/if}
               {#if pi.currency}<div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Currency</div><div>{pi.currency}</div></div>{/if}
               {#if pi.paymentMethod}<div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Payment</div><div>{pi.paymentMethod}</div></div>{/if}
@@ -648,7 +658,7 @@
               <div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">TI Number</div><div class="fw-semibold font-mono">{fmtRef(ti.financialYear, ti.invoiceNo)}</div></div>
               <div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Date</div><div>{fmtDate(ti.invoiceDate)}</div></div>
               <div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Status</div><span class="badge {ti.isLocked ? 'bg-danger' : 'bg-warning text-dark'}">{ti.isLocked ? "Locked" : "Draft"}</span></div>
-              <div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Total</div><div class="fw-bold text-success">{fmtCur(ti.totalAmountValue, ti.currency)}</div></div>
+              <div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Total</div><div class="fw-bold text-success">{fmtCur(resolvedTotal(ti), ti.currency)}</div></div>
               {#if ti.poNumber}<div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">PO Number</div><div class="font-mono">{ti.poNumber}</div></div>{/if}
               {#if ti.currency}<div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Currency</div><div>{ti.currency}</div></div>{/if}
             </div>
@@ -867,12 +877,13 @@
                     <div class="text-muted small fst-italic py-1">No extra charges</div>
                   {:else}
                     <table class="table table-sm table-bordered mb-0">
-                      <thead class="table-light"><tr><th>Charge</th><th class="text-end" style="width:90px;">Amount</th><th style="width:36px;"></th></tr></thead>
+                      <thead class="table-light"><tr><th>Charge</th><th class="text-end" style="width:90px;">Amount</th><th class="text-center" style="width:56px;">Taxable</th><th style="width:36px;"></th></tr></thead>
                       <tbody>
                         {#each extraItems as ei, i}
                           <tr>
                             <td class="p-1"><input type="text" class="form-control form-control-sm border-0 shadow-none" bind:value={ei.item} placeholder="e.g. Freight" /></td>
                             <td class="p-1"><input type="number" class="form-control form-control-sm border-0 shadow-none text-end" min="0" step="0.01" bind:value={ei.total} on:input={recompute} /></td>
+                            <td class="p-1 text-center"><input type="checkbox" checked={ei.taxable !== false} on:change={(e) => { ei.taxable = e.target.checked; recompute(); }} title="Include in taxable value" /></td>
                             <td class="p-1 text-center"><button type="button" class="btn btn-sm text-danger" on:click={() => removeExtra(i)}><i class="ti ti-x"></i></button></td>
                           </tr>
                         {/each}
@@ -1281,12 +1292,13 @@
                     <div class="text-muted small fst-italic py-1">No extra charges</div>
                   {:else}
                     <table class="table table-sm table-bordered mb-0">
-                      <thead class="table-light"><tr><th>Charge</th><th class="text-end" style="width:90px;">Amount</th><th style="width:36px;"></th></tr></thead>
+                      <thead class="table-light"><tr><th>Charge</th><th class="text-end" style="width:90px;">Amount</th><th class="text-center" style="width:56px;">Taxable</th><th style="width:36px;"></th></tr></thead>
                       <tbody>
                         {#each extraItems as ei, i}
                           <tr>
                             <td class="p-1"><input type="text" class="form-control form-control-sm border-0 shadow-none" bind:value={ei.item} placeholder="e.g. Freight" /></td>
                             <td class="p-1"><input type="number" class="form-control form-control-sm border-0 shadow-none text-end" min="0" step="0.01" bind:value={ei.total} on:input={recompute} /></td>
+                            <td class="p-1 text-center"><input type="checkbox" checked={ei.taxable !== false} on:change={(e) => { ei.taxable = e.target.checked; recompute(); }} title="Include in taxable value" /></td>
                             <td class="p-1 text-center"><button type="button" class="btn btn-sm text-danger" on:click={() => removeExtra(i)}><i class="ti ti-x"></i></button></td>
                           </tr>
                         {/each}

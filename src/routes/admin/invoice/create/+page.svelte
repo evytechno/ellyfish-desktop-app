@@ -78,13 +78,14 @@
     });
     const itemsSub = items.reduce((s, i) => s + (i.total || 0), 0);
     const extraSub = extraItems.reduce((s, i) => s + (parseFloat(i.total) || 0), 0);
-    const base = itemsSub + extraSub - (parseFloat(discount) || 0);
+    const taxableExtraSub = extraItems.reduce((s, i) => s + (i.taxable !== false ? (parseFloat(i.total) || 0) : 0), 0);
+    const taxBase = itemsSub + taxableExtraSub - (parseFloat(discount) || 0);
     taxItems = taxItems.map((t) => ({
       ...t,
-      total: parseFloat(((base * (parseFloat(t.percentage) || 0)) / 100).toFixed(2)),
+      total: parseFloat(((taxBase * (parseFloat(t.percentage) || 0)) / 100).toFixed(2)),
     }));
     const taxTotal = taxItems.reduce((s, t) => s + (t.total || 0), 0);
-    totalAmountValue = parseFloat((base + taxTotal).toFixed(2));
+    totalAmountValue = parseFloat((itemsSub + extraSub - (parseFloat(discount) || 0) + taxTotal).toFixed(2));
   }
 
   $: items, extraItems, taxItems, discount, recalculate();
@@ -136,7 +137,7 @@
   }
 
   function addExtraItem() {
-    extraItems = [...extraItems, { item: "", total: 0 }];
+    extraItems = [...extraItems, { item: "", total: 0, taxable: true }];
   }
 
   function removeExtraItem(i) {
@@ -243,7 +244,7 @@
       shipToGSTNumber = pi.shipToGSTNumber ?? "";
       shipToMobile = pi.shipToMobile ?? "";
       shipToEmail = pi.shipToEmail ?? "";
-      extraItems = (pi.extraItems ?? []).map((i) => ({ ...i }));
+      extraItems = (pi.extraItems ?? []).map((i) => ({ ...i, taxable: i.taxable ?? true }));
       taxItems = (pi.taxItems ?? []).map((t) => ({ ...t }));
       taxCountry = pi.country || (pi.isOutOfIndia ? "Outside India" : "India");
       taxState = pi.customerState || "Rajasthan";
@@ -804,6 +805,7 @@
                   <tr>
                     <th>Name</th>
                     <th style="width:160px">Amount</th>
+                    <th class="text-center" style="width:70px">Taxable</th>
                     <th style="width:50px"></th>
                   </tr>
                 </thead>
@@ -821,6 +823,9 @@
                           bind:value={ei.total}
                           on:input={recalculate}
                         />
+                      </td>
+                      <td class="text-center">
+                        <input type="checkbox" bind:checked={ei.taxable} on:change={recalculate} title="Include in taxable value" />
                       </td>
                       <td>
                         <button

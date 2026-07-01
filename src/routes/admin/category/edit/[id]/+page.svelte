@@ -51,7 +51,6 @@
       parentCategories = allData.filter((c) => c.id !== Number(categoryId));
     } catch (error) {
       errorMessage = "Failed to load category data.";
-      console.error("Fetch error:", error);
     } finally {
       loading = false;
       setTimeout(() => {
