@@ -946,7 +946,7 @@
 
   // Recipient is busy/away when last own message is still unread
   $: recipientBusy = (() => {
-    const lastOwn = [...chats].reverse().find(c => c.isOwn && !c.subQueryEvent && !c.isDeleted);
+    const lastOwn = [...chats].reverse().find(c => c.isOwn && !c.subQueryEvent && !c.systemEvent && !c.isDeleted);
     return lastOwn ? lastOwn.read === false : false;
   })();
 
@@ -1435,7 +1435,7 @@
   }
 
   function canDeleteChat(chat) {
-    if (chat.isDeleted || chat.subQueryEvent) return false;
+    if (chat.isDeleted || chat.subQueryEvent || chat.systemEvent) return false;
     if (currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.role === 'manager') return true;
     if (isTelecaller(currentUser) && chat.isOwn) return true;
     return false;
@@ -2123,6 +2123,27 @@
       // skip if already added locally (own message added immediately after send)
       if (chats.find((c) => c.id === msg.id)) return;
 
+      // system event message (reopen, reassignment) — render as centered divider
+      if (msg.systemEvent) {
+        // escalated events are admin-only — hide from tech/tech_helper in real-time too
+        if (msg.systemEvent.type === 'escalated' && (isTech(currentUser) || isTechHelper(currentUser))) return;
+        chats = [...chats, {
+          id: msg.id,
+          message: null,
+          attachments: [],
+          createdAt: msg.createdAt,
+          isOwn: false,
+          senderLabel: 'System',
+          senderType: 'system',
+          replyTo: null,
+          isFinal: false,
+          finalSetById: null,
+          subQueryEvent: null,
+          systemEvent: msg.systemEvent,
+        }];
+        return;
+      }
+
       const isOwn = msg.senderId === currentUser?.id;
       // msg.isAdminSender is true when sender has no subRole (master/admin/manager)
       const isAdminSender = msg.isAdminSender ?? false;
@@ -2666,8 +2687,16 @@
           showConfirmButton: false,
         });
         await loadQuery(); // refresh so the button disappears
+      } else if (status === 403) {
+        Swal.fire({
+          icon: "error",
+          title: "Not Allowed",
+          text: e?.data?.message ?? "This query was reassigned to a different support member.",
+          confirmButtonColor: "#dc3545",
+        });
+        await loadQuery();
       } else {
-        Swal.fire({ icon: "error", title: "Error", text: errorHandle(e) });
+        errorHandle(e);
       }
     } finally { actionLoading = false; }
   }
@@ -2708,15 +2737,80 @@
     } finally { actionLoading = false; }
   }
 
-  async function reopen() {
+  // ── Reopen modal state ───────────────────────────────────────────────────
+  let showReopenModal = false;
+  let reopenType = "same"; // 'same' | 'other'
+  let reopenNote = "";
+  let reopenError = "";
+
+  function openReopenModal() {
+    reopenType = "same";
+    reopenNote = "";
+    reopenError = "";
+    showReopenModal = true;
+  }
+
+  async function submitReopen() {
+    reopenError = "";
+    if (reopenType === "other" && !reopenNote.trim()) {
+      reopenError = "Please provide a reason for reassigning to another support member.";
+      return;
+    }
     actionLoading = true;
     try {
-      await authApiFetch(`${API_ROUTES.QUERY}/${queryId}/reopen`, { method: "PATCH" });
+      await authApiFetch(`${API_ROUTES.QUERY}/${queryId}/reopen`, {
+        method: "PATCH",
+        data: JSON.stringify({ reopenType, note: reopenNote.trim() || undefined }),
+      });
+      showReopenModal = false;
       Swal.fire({ icon: "success", title: "Query reopened", timer: 1500, showConfirmButton: false });
       await loadQuery();
       loadInProgress();
     } catch (e) {
-      Swal.fire({ icon: "error", title: "Error", text: errorHandle(e) });
+      reopenError = e?.data?.message ?? "Failed to reopen query.";
+    } finally { actionLoading = false; }
+  }
+
+  // ── Escalate (telecaller on stuck in_progress) ──────────────────────────
+  let showEscalateModal = false;
+  let escalateNote = "";
+  let escalateLoading = false;
+
+  async function submitEscalate() {
+    escalateLoading = true;
+    try {
+      await authApiFetch(`${API_ROUTES.QUERY}/${queryId}/escalate`, {
+        method: "PATCH",
+        data: JSON.stringify({ note: escalateNote.trim() || undefined }),
+      });
+      showEscalateModal = false;
+      escalateNote = "";
+      Swal.fire({ icon: "success", title: "Escalated!", text: "Admin has been notified.", timer: 2000, showConfirmButton: false });
+      await loadQuery();
+    } catch (e) {
+      Swal.fire({ icon: "error", title: "Error", text: e?.data?.message ?? "Failed to escalate." });
+    } finally { escalateLoading = false; }
+  }
+
+  // ── Force Release (admin/master on stuck in_progress) ───────────────────
+  async function forceRelease() {
+    const confirm = await Swal.fire({
+      icon: "warning",
+      title: "Force Release Query?",
+      text: "This will remove the current tech and return the query to the open queue.",
+      showCancelButton: true,
+      confirmButtonText: "Yes, release it",
+      confirmButtonColor: "#dc3545",
+    });
+    if (!confirm.isConfirmed) return;
+    actionLoading = true;
+    try {
+      await authApiFetch(`${API_ROUTES.QUERY}/${queryId}/force-release`, { method: "PATCH" });
+      Swal.fire({ icon: "success", title: "Query Released", text: "Query is back in the open queue.", timer: 2000, showConfirmButton: false });
+      await loadQuery();
+      loadInProgress();
+    } catch (e) {
+      Swal.fire({ icon: "error", title: "Error", text: e?.data?.message ?? "Failed to release query." });
     } finally { actionLoading = false; }
   }
 
@@ -3181,7 +3275,7 @@
   }
 
   function sqCanDeleteChat(chat) {
-    if (chat.isDeleted || chat.subQueryEvent) return false;
+    if (chat.isDeleted || chat.subQueryEvent || chat.systemEvent) return false;
     if (currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.role === 'manager') return true;
     if (isTelecaller(currentUser) && chat.isOwn) return true;
     return false;
@@ -3260,6 +3354,94 @@
       <div class="text-center py-5 text-muted">Query not found.</div>
     {:else}
       <LightBox data={lightboxData} startIndex={lightboxStartIndex} />
+
+      <!-- ── Reopen modal ───────────────────────────────────────────────────── -->
+      {#if showEscalateModal}
+        <div style="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1055;display:flex;align-items:center;justify-content:center;padding:1rem;"
+          on:click|self={() => (showEscalateModal = false)}>
+          <div class="card shadow-lg p-4" style="max-width:460px;width:100%;position:relative;">
+            <button style="position:absolute;top:0.6rem;right:0.75rem;background:none;border:none;font-size:1.2rem;color:#6c757d;cursor:pointer;"
+              on:click={() => (showEscalateModal = false)}>
+              <i class="ti ti-x"></i>
+            </button>
+            <h5 class="fw-bold mb-1"><i class="ti ti-alert-triangle text-warning me-2"></i>Escalate Query</h5>
+            <p class="text-muted small mb-3">Admin will be notified that the support member is unavailable or not responding.</p>
+            <div class="mb-3">
+              <label class="form-label small fw-semibold">Reason <span class="text-muted fw-normal">(optional)</span></label>
+              <textarea class="form-control form-control-sm" rows="3"
+                bind:value={escalateNote}
+                placeholder="e.g. No response for 2 days, tech seems unavailable"
+                style="resize:vertical;"></textarea>
+            </div>
+            <div class="d-flex gap-2 justify-content-end">
+              <button class="btn btn-secondary btn-sm" on:click={() => (showEscalateModal = false)}>Cancel</button>
+              <button class="btn btn-warning btn-sm" on:click={submitEscalate} disabled={escalateLoading}>
+                {escalateLoading ? "Escalating..." : "Escalate to Admin"}
+              </button>
+            </div>
+          </div>
+        </div>
+      {/if}
+
+      {#if showReopenModal}
+        <div style="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1055;display:flex;align-items:center;justify-content:center;padding:1rem;"
+          on:click|self={() => (showReopenModal = false)}>
+          <div class="card shadow-lg p-4" style="max-width:480px;width:100%;position:relative;">
+            <button style="position:absolute;top:0.6rem;right:0.75rem;background:none;border:none;font-size:1.2rem;color:#6c757d;cursor:pointer;"
+              on:click={() => (showReopenModal = false)}>
+              <i class="ti ti-x"></i>
+            </button>
+            <h5 class="fw-bold mb-1">Reopen Query</h5>
+            <p class="text-muted small mb-3">Choose how you want to reopen this query.</p>
+
+            {#if reopenError}
+              <div class="alert alert-danger py-2 small">{reopenError}</div>
+            {/if}
+
+            <!-- Reopen type selection -->
+            <div class="d-flex gap-2 mb-3">
+              <button type="button"
+                class="btn btn-sm flex-fill {reopenType === 'same' ? 'btn-warning' : 'btn-outline-secondary'}"
+                on:click={() => { reopenType = 'same'; reopenNote = ''; reopenError = ''; }}>
+                <i class="ti ti-user-check me-1"></i> Same Support Member
+              </button>
+              <button type="button"
+                class="btn btn-sm flex-fill {reopenType === 'other' ? 'btn-danger' : 'btn-outline-secondary'}"
+                on:click={() => { reopenType = 'other'; reopenError = ''; }}>
+                <i class="ti ti-user-plus me-1"></i> Other Support Member
+              </button>
+            </div>
+
+            <!-- Description of choice -->
+            {#if reopenType === 'same'}
+              <div class="alert alert-warning py-2 small mb-3">
+                <i class="ti ti-info-circle me-1"></i>
+                The same support member will be notified to continue working on this query.
+              </div>
+            {:else}
+              <div class="alert alert-danger py-2 small mb-2">
+                <i class="ti ti-info-circle me-1"></i>
+                The query will go back to the open queue for a new support member to pick up.
+              </div>
+              <div class="mb-3">
+                <label class="form-label small fw-semibold">Reason <span class="text-danger">*</span></label>
+                <textarea class="form-control form-control-sm" rows="3"
+                  bind:value={reopenNote}
+                  placeholder="Why is a different support member needed? (e.g. original member on leave)"
+                  style="resize:vertical;"></textarea>
+              </div>
+            {/if}
+
+            <div class="d-flex gap-2 justify-content-end">
+              <button class="btn btn-secondary btn-sm" on:click={() => (showReopenModal = false)}>Cancel</button>
+              <button class="btn {reopenType === 'same' ? 'btn-warning' : 'btn-danger'} btn-sm"
+                on:click={submitReopen} disabled={actionLoading}>
+                {actionLoading ? "Reopening..." : "Reopen Query"}
+              </button>
+            </div>
+          </div>
+        </div>
+      {/if}
 
       <!-- ── Pending-files preview modal (slider) ─────────────────────────── -->
       {#if pendingFiles.length > 0}
@@ -3525,18 +3707,28 @@
                       <i class="ti ti-lock"></i> Close Query
                     </button>
                   {/if}
+                  {#if query.status === "in_progress" && Number(query.raisedById) === Number(currentUser?.id)}
+                    <button class="qd-btn qd-btn--warning" on:click={() => { escalateNote = ""; showEscalateModal = true; }} disabled={actionLoading}>
+                      <i class="ti ti-alert-triangle"></i> Escalate
+                    </button>
+                  {/if}
                   {#if query.status === "resolved"}
                     {#if query.assignedToId}
                       <button class="qd-btn qd-btn--success" on:click={acceptSolution} disabled={actionLoading}>
                         <i class="ti ti-thumb-up"></i> Accept Solution
                       </button>
                     {/if}
-                    <button class="qd-btn qd-btn--danger-outline" on:click={reopen} disabled={actionLoading}>
+                    <button class="qd-btn qd-btn--danger-outline" on:click={openReopenModal} disabled={actionLoading}>
                       <i class="ti ti-refresh"></i> Reopen Query
                     </button>
                   {/if}
                 {/if}
                 {#if isMasterView(currentUser) && query.status !== "closed"}
+                  {#if query.status === "in_progress"}
+                    <button class="qd-btn qd-btn--danger-outline" on:click={forceRelease} disabled={actionLoading}>
+                      <i class="ti ti-player-eject"></i> Force Release
+                    </button>
+                  {/if}
                   <button class="qd-btn qd-btn--danger-outline" on:click={closeQuery} disabled={actionLoading}>
                     <i class="ti ti-lock"></i> Close Query
                   </button>
@@ -3961,6 +4153,27 @@
                   </div>
                 {/if}
                 {/if}
+              {:else if chat.systemEvent}
+                <!-- System event: centered divider message -->
+                <div class="chat-system-event chat-system-event--{chat.systemEvent.type}" id="chat-msg-{chat.id}">
+                  <span class="chat-system-event__line"></span>
+                  <span class="chat-system-event__text">
+                    {#if chat.systemEvent.type === 'reopened_same'}
+                      Query reopened — same support member will continue
+                    {:else if chat.systemEvent.type === 'reopened_other'}
+                      Query reopened and reassigned to a new support member
+                    {:else if chat.systemEvent.type === 'escalated'}
+                      <i class="ti ti-alert-triangle me-1"></i>Query escalated to admin
+                    {:else if chat.systemEvent.type === 'force_released'}
+                      <i class="ti ti-player-eject me-1"></i>Query force released by admin — returned to open queue
+                    {/if}
+                    {#if chat.systemEvent.note}
+                      <span class="chat-system-event__note"> · {chat.systemEvent.note}</span>
+                    {/if}
+                    <span class="chat-system-event__time">{formatDate(chat.createdAt)}</span>
+                  </span>
+                  <span class="chat-system-event__line"></span>
+                </div>
               {:else}
                 <div class="chat-row" class:chat-row--own={chat.isOwn} class:chat-row--new={chat.isNew} id="chat-msg-{chat.id}">
                   {#if !chat.isOwn}
@@ -6759,6 +6972,39 @@
   .modal-close-btn:hover { color: #dc3545; background: rgba(220,53,69,0.08); }
 
   /* ─── inline sub-query event cards in chat ───────────────────────────────── */
+  /* ── Centered system event divider ──────────────────────────────────────── */
+  .chat-system-event {
+    display: flex; align-items: center; gap: 8px;
+    margin: 14px 16px; text-align: center;
+  }
+  .chat-system-event__line {
+    flex: 1; height: 1px; background: #dee2e6;
+  }
+  /* color-coded lines by event type */
+  .chat-system-event--reopened_same    .chat-system-event__line { background: #74c0fc; }
+  .chat-system-event--reopened_other   .chat-system-event__line { background: #ffa94d; }
+  .chat-system-event--escalated        .chat-system-event__line { background: #ffe066; }
+  .chat-system-event--force_released   .chat-system-event__line { background: #ff8787; }
+
+  /* text color matches line color */
+  .chat-system-event--reopened_same  .chat-system-event__text { color: #1971c2; }
+  .chat-system-event--reopened_other .chat-system-event__text { color: #e8590c; }
+  .chat-system-event--escalated      .chat-system-event__text { color: #e67700; }
+  .chat-system-event--force_released .chat-system-event__text { color: #c92a2a; }
+
+  .chat-system-event__text {
+    font-size: 11.5px; color: #868e96; flex-shrink: 0;
+    max-width: 70%;
+    white-space: normal; text-align: center;
+    line-height: 1.4;
+  }
+  .chat-system-event__note {
+    font-style: italic; opacity: 0.75;
+  }
+  .chat-system-event__time {
+    display: block; font-size: 10px; opacity: 0.6; margin-top: 2px;
+  }
+
   .sq-event-card {
     display: flex; align-items: center; gap: 10px;
     margin: 10px auto; padding: 8px 16px;

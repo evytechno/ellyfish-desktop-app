@@ -363,7 +363,7 @@
   let visitAttendees = [];
   let visitCompanies = [];
   let visitCompanyId = "";
-  async function openVisitModal() {
+  function openVisitModal() {
     if (!order?.clientId) {
       Swal.fire({
         icon: "warning",
@@ -377,38 +377,10 @@
       });
       return;
     }
-    visitError = "";
-    visitFormErrors = {};
-    visitType = "outgoing";
-    visitDate = new Date().toISOString().slice(0, 10);
-    visitStartTime = "";
-    visitEndTime = "";
-    visitTransport = "";
-    visitPurpose = "";
-    visitOutcome = "";
-    visitNextFollowUp = "";
-    visitFeedback = "";
-    visitNotes = "";
-    visitTerms = "";
-    visitClientContacts = [];
-    visitSelectedContactIds = [];
-    visitAttendees = [];
-    visitCompanyId = "";
-    showVisitModal = true;
-    try {
-      const [cc, comps] = await Promise.all([
-        authApiFetch(`${API_ROUTES.CLIENT_CONTACT}/by-client/${order.clientId}`),
-        authApiFetch(API_ROUTES.COMPANY + "/all"),
-      ]);
-      visitClientContacts = cc?.data ?? cc ?? [];
-      visitCompanies = comps || [];
-      if (currentUser?.companyId) {
-        const match = visitCompanies.find((c) => c.id === Number(currentUser.companyId));
-        if (match) visitCompanyId = String(match.id);
-      }
-      if (!visitCompanyId && visitCompanies.length === 1)
-        visitCompanyId = String(visitCompanies[0].id);
-    } catch (_) {}
+    const params = new URLSearchParams();
+    params.set("orderId", String(orderId));
+    if (order.clientId) params.set("clientId", String(order.clientId));
+    goto(`/admin/client-visit/add?${params.toString()}`);
   }
   function toggleVisitContact(id) {
     if (visitSelectedContactIds.includes(id))
@@ -2086,6 +2058,8 @@
   {orderVisits}
   bind:showVisitModal
   bind:showVisitListModal
+  bind:visitCompanyId
+  bind:visitCompanies
   {openVisitModal}
   submitVisitModal={handleSubmitVisitModal}
 /><OrderClientModals

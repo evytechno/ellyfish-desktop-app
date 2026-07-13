@@ -82,6 +82,27 @@ export const getRolePermissions = () => {
 };
 
 /**
+ * Check if the current user can access a module.
+ * - master/manager/user roles: always true (they use role-based guards)
+ * - admin with null modulePermissions: full access
+ * - admin with modulePermissions: check the key for 'view' or 'full'
+ * @param {string} moduleKey - e.g. 'orders', 'clients', 'queries'
+ * @param {'view'|'full'} level - minimum required level (default 'view')
+ * @param {object|null} user - pass explicitly or leave null to read from localStorage
+ */
+export const canAccess = (moduleKey, level = 'view', user = null) => {
+  const u = user ?? checkAuth();
+  if (!u) return false;
+  if (u.role !== 'admin') return true;
+  if (!u.modulePermissions) return true; // null = full access
+
+  const access = u.modulePermissions[moduleKey];
+  if (!access || access === 'none') return false;
+  if (level === 'full') return access === 'full';
+  return true; // 'view' or 'full' satisfies 'view'
+};
+
+/**
  * Load tokens from secure storage into localStorage on app start
  * Call this once on app mount to restore session
  */

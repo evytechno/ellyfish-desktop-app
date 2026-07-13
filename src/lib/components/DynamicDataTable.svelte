@@ -14,8 +14,12 @@
   export let serverMode = false;
   export let loading;
   export let headersItemShow = true;
-  export let selectable = false;      // show checkboxes in S.N. column
-  export let selectedIds = new Set(); // Set<number> of selected row ids
+  export let selectable = false;           // legacy checkbox prop
+  export let checkboxSelection = false;    // new checkbox prop (alias)
+  export let selectedIds = new Set();      // Set<number> of selected row ids
+  export let allPageSelected = false;      // controlled select-all state
+
+  $: _checkboxActive = selectable || checkboxSelection;
 
   const dispatch = createEventDispatcher();
 
@@ -147,13 +151,13 @@
     <thead>
       <tr class="bg-gray-100 text-left text-gray-700 uppercase text-sm">
         <th class="px-4 py-2 cursor-pointer whitespace-nowrap">
-          {#if selectable}
+          {#if _checkboxActive}
             <div class="flex items-center gap-2">
               <input
                 type="checkbox"
                 class="form-check-input mt-0"
-                checked={paginated.length > 0 && paginated.every(r => selectedIds.has(r.id))}
-                on:change={() => dispatch('selectAll', { rows: paginated })}
+                checked={checkboxSelection ? allPageSelected : (paginated.length > 0 && paginated.every(r => selectedIds.has(r.id)))}
+                on:change={() => checkboxSelection ? dispatch('toggleAll') : dispatch('selectAll', { rows: paginated })}
               />
               S.N.
             </div>
@@ -189,13 +193,13 @@
               class="px-4 py-2 border-red-500"
               class:border-l-4={row.deletedAt}
             >
-              {#if selectable}
+              {#if _checkboxActive}
                 <div class="flex items-center gap-2">
                   <input
                     type="checkbox"
                     class="form-check-input mt-0"
                     checked={selectedIds.has(row.id)}
-                    on:change={() => dispatch('selectRow', { id: row.id })}
+                    on:change={() => checkboxSelection ? dispatch('toggleRow', row.id) : dispatch('selectRow', { id: row.id })}
                   />
                   {i + 1 + (currentPage - 1) * rowsPerPage}.
                 </div>
@@ -222,12 +226,15 @@
                 <div class="d-inline-flex gap-2">
                   {#if !row.deletedAt}
                     {#each actions as action}
-                      <button
-                        on:click={() => action.onClick(row.id)}
-                        class={`btn btn-icon btn-sm rounded-pill ${action.color}`}
-                      >
-                        <i class={`${action.icon}`}></i>
-                      </button>
+                      {#if !action.hidden || !action.hidden(row)}
+                        <button
+                          on:click={() => action.onClick(row.id)}
+                          class={`btn btn-icon btn-sm rounded-pill ${action.color}`}
+                          disabled={action.disabled ? action.disabled(row) : false}
+                        >
+                          <i class={`${action.icon}`}></i>
+                        </button>
+                      {/if}
                     {/each}
                   {:else}
                     {#each actions as action}

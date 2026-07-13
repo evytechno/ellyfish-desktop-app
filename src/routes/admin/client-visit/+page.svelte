@@ -130,8 +130,11 @@
     {
       key: "visitType",
       label: "Type",
-      render: (val, row) =>
-        `<span class="badge ${row.visitType === 'incoming' ? 'bg-info' : 'bg-warning text-dark'}">${row.visitType}</span>`,
+      render: (val, row) => {
+        const BADGES = { incoming: 'bg-info', outgoing: 'bg-warning text-dark', joint: 'bg-primary', job_discussion: 'bg-success', job_received: 'bg-secondary', sample_sent: 'bg-danger' };
+        const LABELS = { incoming: '↙ Incoming', outgoing: '↗ Outgoing', joint: 'Joint', job_discussion: 'Job Discussion', job_received: 'Job Received', sample_sent: 'Sample Sent' };
+        return `<span class="badge ${BADGES[row.visitType] ?? 'bg-secondary'}">${LABELS[row.visitType] ?? row.visitType}</span>`;
+      },
     },
     {
       key: "visitDate",
@@ -287,8 +290,12 @@
       <div class="col-auto">
         <select bind:value={visitTypeFilter} class="form-select w-auto">
           <option value="">All Types</option>
-          <option value="incoming">Incoming</option>
-          <option value="outgoing">Outgoing</option>
+          <option value="incoming">↙ Incoming</option>
+          <option value="outgoing">↗ Outgoing</option>
+          <option value="joint">Joint</option>
+          <option value="job_discussion">Job Discussion</option>
+          <option value="job_received">Job Received</option>
+          <option value="sample_sent">Sample Sent</option>
         </select>
       </div>
       {#if currentUser?.role !== "user"}

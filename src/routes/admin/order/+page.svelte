@@ -126,7 +126,7 @@
   const allStatuses = [
     "New Lead", "Contacted", "Quotation Sent", "Follow Up", "Needs Assessment",
     "Qualified", "Negotiation In Progress", "Deal Won", "Unqualified", "Deal Lost",
-    "Dispatched", "Completed",
+    "Reference", "Dispatched", "Completed",
   ];
 
   // ── Data fetching ─────────────────────────────────────────────────────────

@@ -217,8 +217,16 @@
           showConfirmButton: false,
         });
         await Promise.all([loadData(), loadStats()]);
+      } else if (status === 403) {
+        Swal.fire({
+          icon: "error",
+          title: "Not Allowed",
+          text: e?.data?.message ?? "This query was reassigned to a different support member.",
+          confirmButtonColor: "#dc3545",
+        });
+        await Promise.all([loadData(), loadStats()]);
       } else {
-        Swal.fire({ icon: "error", title: "Error", text: errorHandle(e) });
+        errorHandle(e);
       }
     }
   }

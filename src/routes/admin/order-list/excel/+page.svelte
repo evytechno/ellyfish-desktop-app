@@ -683,6 +683,7 @@
   const STATUS_OPTIONS = [
     "New Lead", "Contacted", "Quotation Sent", "Follow Up", "Needs Assessment",
     "Qualified", "Negotiation In Progress", "Deal Won", "Unqualified", "Deal Lost",
+    "Reference",
   ];
 
   // PI/WO/TI modal

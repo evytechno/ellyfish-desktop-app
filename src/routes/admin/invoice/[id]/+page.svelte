@@ -541,7 +541,8 @@
   }
   .item-row .item-cell { position: relative; }
   @media print {
-    @page { margin: 0; size: A4; }
+    @page { margin: 10mm 0 0 0; size: A4; }
+    @page :first { margin: 0; }
     :global(*) {
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;

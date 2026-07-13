@@ -3,7 +3,7 @@
   import { afterNavigate } from "$app/navigation";
   import { page } from "$app/stores";
   import jQuery from "jquery";
-  import { checkAuth } from "$lib/utils/auth";
+  import { checkAuth, canAccess } from "$lib/utils/auth";
   import { ATTACHMENT_BASE_URL } from "$lib/constants/constants";
   import UpdateNotification from "$lib/components/UpdateNotification.svelte";
   import { openQueryCount } from "$lib/stores/queryStore";
@@ -287,7 +287,7 @@
                   <li>
                     <ul>
                       <!-- Query menu — hidden for plain users with no subRole -->
-                      {#if currentUser?.subRole === "tech_helper"}
+                      {#if canAccess('queries', 'view', currentUser) && currentUser?.subRole === "tech_helper"}
                         <li class="submenu">
                           <a
                             href="#queries"
@@ -333,7 +333,7 @@
                             </li>
                           </ul>
                         </li>
-                      {:else if currentUser?.subRole === "tech"}
+                      {:else if canAccess('queries', 'view', currentUser) && currentUser?.subRole === "tech"}
                         <li class="submenu">
                           <a
                             href="#queries"
@@ -394,7 +394,7 @@
                             </li>
                           </ul>
                         </li>
-                      {:else if currentUser?.role !== "user"}
+                      {:else if canAccess('queries', 'view', currentUser) && currentUser?.role !== "user"}
                         <li class="submenu">
                           <a
                             href="#queries"
@@ -431,7 +431,7 @@
                             </li>
                           </ul>
                         </li>
-                      {:else if currentUser?.subRole === "telecaller"}
+                      {:else if canAccess('queries', 'view', currentUser) && currentUser?.subRole === "telecaller"}
                         <li
                           class:active={currentPath.startsWith("/admin/query")}
                         >
@@ -447,7 +447,8 @@
                         </li>
                       {/if}
 
-                      <!-- Group Chat — visible to all authenticated users -->
+                      <!-- Group Chat -->
+                      {#if canAccess('group_chat', 'view', currentUser)}
                       <li
                         class:active={currentPath.startsWith("/admin/group-chat")}
                       >
@@ -463,9 +464,11 @@
                           {/if}
                         </a>
                       </li>
+                      {/if}
 
                       <!-- Orders — hidden from tech/tech_helper unless orderAccess is true -->
-                      {#if (currentUser?.subRole !== "tech" && currentUser?.subRole !== "tech_helper") || currentUser?.orderAccess}
+                      {#if ((currentUser?.subRole !== "tech" && currentUser?.subRole !== "tech_helper") || currentUser?.orderAccess)}
+                        {#if canAccess('orders', 'view', currentUser)}
                         <li class="submenu">
                           <a
                             href="#orders"
@@ -528,6 +531,8 @@
                             </li>
                           </ul>
                         </li>
+                        {/if}
+                        {#if canAccess('invoices', 'view', currentUser)}
                         <li
                           class:active={currentPath.startsWith(
                             "/admin/invoice",
@@ -560,6 +565,8 @@
                             >
                           </a>
                         </li>
+                        {/if}
+                        {#if currentUser?.role === "master" || canAccess('clients', 'view', currentUser)}
                         {#if currentUser?.role === "master"}
                           <li
                             class:active={currentPath.startsWith("/admin/client") && !currentPath.startsWith("/admin/client-visit")}
@@ -571,7 +578,20 @@
                               <i class="ti ti-building-store"></i><span>Clients</span>
                             </a>
                           </li>
+                        {:else if canAccess('clients', 'view', currentUser)}
+                          <li
+                            class:active={currentPath.startsWith("/admin/client") && !currentPath.startsWith("/admin/client-visit")}
+                          >
+                            <a
+                              href="/admin/client"
+                              class:active={currentPath.startsWith("/admin/client") && !currentPath.startsWith("/admin/client-visit")}
+                            >
+                              <i class="ti ti-building-store"></i><span>Clients</span>
+                            </a>
+                          </li>
                         {/if}
+                        {/if}
+                        {#if canAccess('work_order', 'view', currentUser)}
                         <li
                           class:active={currentPath.startsWith(
                             "/admin/workorder",
@@ -586,6 +606,22 @@
                             <i class="ti ti-file-description"></i><span>Work Order</span>
                           </a>
                         </li>
+                        {/if}
+                        {#if currentUser?.role === 'master' || currentUser?.role === 'admin'}
+                        <li class:active={currentPath.startsWith("/admin/old-inquiries") && !currentPath.startsWith("/admin/old-inquiries/my")}>
+                          <a href="/admin/old-inquiries" class:active={currentPath.startsWith("/admin/old-inquiries") && !currentPath.startsWith("/admin/old-inquiries/my")}>
+                            <i class="ti ti-database-import"></i><span>Old Inquiries</span>
+                          </a>
+                        </li>
+                        {/if}
+                        {#if currentUser?.role === 'user' || currentUser?.role === 'manager'}
+                        <li class:active={currentPath.startsWith("/admin/old-inquiries/my")}>
+                          <a href="/admin/old-inquiries/my" class:active={currentPath.startsWith("/admin/old-inquiries/my")}>
+                            <i class="ti ti-database-import"></i><span>Old Inquiries</span>
+                          </a>
+                        </li>
+                        {/if}
+                        {#if canAccess('client_visits', 'view', currentUser)}
                         <li
                           class:active={currentPath.startsWith(
                             "/admin/client-visit",
@@ -600,6 +636,8 @@
                             <i class="ti ti-map-pin"></i><span>Client Visits</span>
                           </a>
                         </li>
+                        {/if}
+                        {#if canAccess('user_payments', 'view', currentUser)}
                         <li
                           class:active={currentPath.startsWith(
                             "/admin/payment",
@@ -616,6 +654,7 @@
                             >
                           </a>
                         </li>
+                        {/if}
                       {/if}
                     </ul>
                   </li>
@@ -623,6 +662,7 @@
                     <li class="menu-title"><span>REPORTS</span></li>
                     <li>
                       <ul>
+                        {#if canAccess('reports', 'view', currentUser)}
                         <li class:active={currentPath.startsWith("/admin/reports/user-activity")}>
                           <a
                             href="/admin/reports/user-activity"
@@ -631,6 +671,7 @@
                             <i class="ti ti-chart-bar"></i><span>User Activity</span>
                           </a>
                         </li>
+                        {/if}
                       </ul>
                     </li>
                   {/if}
@@ -640,6 +681,7 @@
                   <li>
                     <ul>
                       {#if currentUser?.role != "user"}
+                        {#if canAccess('category', 'view', currentUser)}
                         <li
                           class:active={currentPath.startsWith(
                             "/admin/category",
@@ -654,6 +696,7 @@
                             <i class="ti ti-category"></i><span>Category</span>
                           </a>
                         </li>
+                        {/if}
                         <li
                           class:active={currentPath.startsWith(
                             "/admin/company",
@@ -668,6 +711,7 @@
                             <i class="ti ti-building"></i><span>Companies</span>
                           </a>
                         </li>
+                        {#if canAccess('users', 'view', currentUser)}
                         <li
                           class:active={currentPath.startsWith("/admin/user")}
                         >
@@ -678,8 +722,9 @@
                             <i class="ti ti-user-up"></i><span>Users</span>
                           </a>
                         </li>
+                        {/if}
                       {/if}
-                      {#if currentUser?.role != "user"}
+                      {#if currentUser?.role != "user" && canAccess('history', 'view', currentUser)}
                         <li
                           class:active={currentPath.startsWith(
                             "/admin/history",

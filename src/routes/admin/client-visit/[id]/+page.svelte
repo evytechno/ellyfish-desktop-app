@@ -78,9 +78,11 @@
           <button type="button" class="btn btn-outline-secondary btn-sm" on:click={() => history.length > 2 ? history.back() : goto('/admin/client-visit')}>← Back</button>
           <i class="ti ti-map-pin text-muted" style="font-size:18px;"></i>
           <span class="fw-semibold" style="font-size:16px;">Visit #{visit.id}</span>
-          <span class="badge {visit.visitType === 'outgoing' ? 'bg-warning text-dark' : 'bg-info'}">
-            {visit.visitType === 'outgoing' ? '↗ Outgoing' : '↙ Incoming'}
-          </span>
+          {#each [{ incoming: ['bg-info','↙ Incoming'], outgoing: ['bg-warning text-dark','↗ Outgoing'], joint: ['bg-primary','Joint'], job_discussion: ['bg-success','Job Discussion'], job_received: ['bg-secondary','Job Received'], sample_sent: ['bg-danger','Sample Sent'] }] as map}
+            <span class="badge {(map[visit.visitType] ?? ['bg-secondary', visit.visitType])[0]}">
+              {(map[visit.visitType] ?? ['bg-secondary', visit.visitType])[1]}
+            </span>
+          {/each}
           <span class="text-muted" style="font-size:13px;">{visit.company?.name ?? ""}</span>
         </div>
         <div class="d-flex gap-2">
@@ -151,11 +153,15 @@
                 </td>
               </tr>
 
-              <!-- Row 2: Purpose / Transport / Outcome / Follow-up / Created By -->
+              <!-- Row 2: Purpose / Transport / Outcome -->
               <tr>
                 <td>
                   <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;">Purpose</div>
-                  <div style="font-size:13px;">{visit.purpose}</div>
+                  <div style="font-size:13px;">{visit.purpose ?? "—"}</div>
+                  {#if visit.location}
+                    <div class="text-muted mt-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;">Location</div>
+                    <div style="font-size:13px;">{visit.location}</div>
+                  {/if}
                 </td>
                 <td>
                   <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;">Transport</div>
@@ -194,18 +200,21 @@
               <!-- Row 4: Feedback / Notes (only if present) -->
               {#if visit.clientFeedback || visit.notes}
                 <tr>
-                  <td colspan={visit.clientFeedback && visit.notes ? 1 : 3}>
-                    {#if visit.clientFeedback}
+                  {#if visit.clientFeedback && visit.notes}
+                    <td>
                       <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;"><i class="ti ti-message-circle me-1"></i>Client Feedback</div>
                       <div style="font-size:13px;line-height:1.5;font-style:italic;">"{visit.clientFeedback}"</div>
-                    {/if}
-                  </td>
-                  {#if visit.clientFeedback && visit.notes}
+                    </td>
                     <td colspan="2">
                       <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;"><i class="ti ti-notes me-1"></i>Internal Notes</div>
                       <div style="font-size:13px;line-height:1.5;">{visit.notes}</div>
                     </td>
-                  {:else if visit.notes}
+                  {:else if visit.clientFeedback}
+                    <td colspan="3">
+                      <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;"><i class="ti ti-message-circle me-1"></i>Client Feedback</div>
+                      <div style="font-size:13px;line-height:1.5;font-style:italic;">"{visit.clientFeedback}"</div>
+                    </td>
+                  {:else}
                     <td colspan="3">
                       <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;"><i class="ti ti-notes me-1"></i>Internal Notes</div>
                       <div style="font-size:13px;line-height:1.5;">{visit.notes}</div>

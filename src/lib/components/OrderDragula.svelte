@@ -21,7 +21,10 @@
     "Deal Won",
     "Unqualified",
     "Deal Lost",
+    "Reference",
   ];
+
+  const READ_ONLY_STATUSES = new Set(["Reference"]);
 
   function initColumn() {
     return { orders: [], page: 1, total: 0, loading: true, hasMore: false };
@@ -250,9 +253,12 @@
       const drake = dragula(containers, {
         removeOnSpill: false,
         revertOnSpill: false,
-        moves: (_el, _source, handle) => {
-          // Don't start drag when clicking inside interactive elements or modals
+        moves: (_el, source, handle) => {
+          if (READ_ONLY_STATUSES.has(source?.getAttribute("data-status"))) return false;
           return !handle.closest('input, textarea, select, .fixed, [data-no-drag]');
+        },
+        accepts: (_el, target) => {
+          return !READ_ONLY_STATUSES.has(target?.getAttribute("data-status"));
         },
       });
 

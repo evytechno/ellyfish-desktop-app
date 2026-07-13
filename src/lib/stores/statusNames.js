@@ -18,13 +18,15 @@ const defaultStatuses = {
   "Deal Won":                { name: "Deal Won",                      visible: true },
   Unqualified:               { name: "Unqualified",                   visible: true },
   "Deal Lost":               { name: "Deal Lost",                     visible: true },
+  Reference:                 { name: "Reference",                     visible: true },
 };
 
 // Version history:
 // 1 → original
 // 2 → "Follow Up" renamed to "Follow Up [Fast Conversion]"
 //      "Needs Assessment" renamed to "Follow Up [Slow Conversion]"
-const CURRENT_VERSION = 2;
+// 3 → added "Reference" status
+const CURRENT_VERSION = 3;
 const VERSION_KEY = "statusNames_version";
 
 function migrateStatuses(stored) {
@@ -53,6 +55,13 @@ function migrateStatuses(stored) {
       if (!(key in migrated)) {
         migrated[key] = val;
       }
+    }
+  }
+
+  // v2 → v3: add Reference status
+  if (storedVersion < 3) {
+    if (!migrated["Reference"]) {
+      migrated["Reference"] = { name: "Reference", visible: true };
     }
   }
 

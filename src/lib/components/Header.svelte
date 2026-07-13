@@ -413,6 +413,7 @@
   }
 
   let statusesColors = {
+    "Reference": "bg-[#8b5cf6]",
     "New Lead": "bg-blue",
     Contacted: "bg-purple",
     "Follow Up": "bg-yellow",

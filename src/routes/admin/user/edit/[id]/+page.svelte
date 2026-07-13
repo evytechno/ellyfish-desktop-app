@@ -29,6 +29,59 @@
   let salesUsersGroups = {}; // { telecaller: [{id,name}], tech: [...], manager: [...] }
   let allowedSalesUserIds = null; // null = no restriction
 
+  // Module permissions (master setting for admin users) — null = full access
+  let modulePermissions = null;
+  $: fullAccess = modulePermissions === null;
+
+  const MODULE_GROUPS = [
+    { label: 'Orders', modules: [
+      { key: 'orders', label: 'Orders' },
+      { key: 'invoices', label: 'Invoices (PI + TAX)' },
+      { key: 'work_order', label: 'Work Order (WO)' },
+      { key: 'order_payments', label: 'Order Payments' },
+    ]},
+    { label: 'Clients', modules: [
+      { key: 'clients', label: 'Clients' },
+      { key: 'client_visits', label: 'Client Visits' },
+    ]},
+    { label: 'Queries', modules: [
+      { key: 'queries', label: 'Queries' },
+    ]},
+    { label: 'Finance', modules: [
+      { key: 'user_payments', label: 'Employee Payments' },
+    ]},
+    { label: 'Inventory', modules: [
+      { key: 'stock', label: 'Stock' },
+      { key: 'category', label: 'Category' },
+    ]},
+    { label: 'System', modules: [
+      { key: 'users', label: 'Users' },
+      { key: 'group_chat', label: 'Group Chat' },
+      { key: 'reports', label: 'Reports' },
+      { key: 'history', label: 'History' },
+    ]},
+  ];
+
+  function setModulePerm(key, value) {
+    if (!modulePermissions) modulePermissions = {};
+    modulePermissions = { ...modulePermissions, [key]: value };
+  }
+
+  function getModulePerm(key) {
+    return modulePermissions?.[key] ?? 'view';
+  }
+
+  function toggleFullAccess() {
+    if (fullAccess) {
+      // switching to restricted — set all modules to 'view' as default
+      const perms = {};
+      MODULE_GROUPS.forEach(g => g.modules.forEach(m => { perms[m.key] = 'view'; }));
+      modulePermissions = perms;
+    } else {
+      modulePermissions = null;
+    }
+  }
+
   // Per-role permissions
   let rolePerms = {
     admin:   { subRole: null, orderAccess: true, queryAccessTelecaller: true, queryAccessTech: true, queryAccessTechHelper: true },
@@ -60,6 +113,7 @@
       loginStartTime = data.loginStartTime || "09:00";
       loginEndTime = data.loginEndTime || "18:10";
       allowedSalesUserIds = data.allowedSalesUserIds ?? null;
+      modulePermissions = data.modulePermissions ?? null;
 
       // Load roles
       selectedRoles = data.roles && data.roles.length > 0 ? data.roles : [data.role ?? "user"];
@@ -167,6 +221,7 @@
       loginStartTime: loginStartTime || null,
       loginEndTime: loginEndTime || null,
       allowedSalesUserIds: currentUser?.role === "master" && selectedRoles.includes("admin") ? (allowedSalesUserIds ?? null) : undefined,
+      modulePermissions: currentUser?.role === "master" && selectedRoles.includes("admin") ? (modulePermissions ?? null) : undefined,
     };
 
     try {
@@ -400,6 +455,43 @@
             </div>
           {/if}
 
+          {#if currentUser?.role === "master" && selectedRoles.includes("admin")}
+            <div class="mt-4">
+              <label class="form-label fw-bold">Module Access Permissions</label>
+              <div class="text-muted small mb-2">Control which modules this admin can access.</div>
+              <div class="module-perms-box">
+                <!-- Full Access toggle -->
+                <div class="d-flex align-items-center gap-3 mb-3 pb-3" style="border-bottom: 1px solid #e0e7ff;">
+                  <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" id="fullAccessToggle" checked={fullAccess} on:change={toggleFullAccess} />
+                    <label class="form-check-label fw-semibold" for="fullAccessToggle">Full Access</label>
+                  </div>
+                  <span class="text-muted small">{fullAccess ? "Admin has unrestricted access to all modules" : "Custom per-module access configured below — click Submit to save changes"}</span>
+                </div>
+
+                {#if !fullAccess}
+                  {#each MODULE_GROUPS as group}
+                    <div class="mb-3">
+                      <div class="module-group-label">{group.label}</div>
+                      <div class="d-flex flex-column gap-1">
+                        {#each group.modules as mod}
+                          <div class="module-perm-row">
+                            <span class="module-perm-name">{mod.label}</span>
+                            <div class="perm-btn-group">
+                              <button type="button" class="perm-btn" class:active={(modulePermissions?.[mod.key] ?? 'view') === 'none'} on:click={() => setModulePerm(mod.key, 'none')}>None</button>
+                              <button type="button" class="perm-btn" class:active={(modulePermissions?.[mod.key] ?? 'view') === 'view'} on:click={() => setModulePerm(mod.key, 'view')}>View</button>
+                              <button type="button" class="perm-btn" class:active={(modulePermissions?.[mod.key] ?? 'view') === 'full'} on:click={() => setModulePerm(mod.key, 'full')}>Full</button>
+                            </div>
+                          </div>
+                        {/each}
+                      </div>
+                    </div>
+                  {/each}
+                {/if}
+              </div>
+            </div>
+          {/if}
+
           <div class="flex justify-end mt-4">
             <button class="btn btn-primary" type="submit" disabled={loading}>
               {loading ? "Submitting..." : "Submit"}
@@ -474,5 +566,63 @@
     background: #3b5bdb;
     border-color: #3b5bdb;
     color: #fff;
+  }
+  .module-perms-box {
+    background: #f8f9ff;
+    border: 1px solid #d0d7f5;
+    border-radius: 10px;
+    padding: 16px;
+    position: relative;
+    z-index: 2;
+  }
+  .module-group-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #3b5bdb;
+    margin-bottom: 6px;
+  }
+  .module-perm-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #fff;
+    border: 1px solid #e9ecef;
+    border-radius: 7px;
+    padding: 7px 12px;
+  }
+  .module-perm-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: #333;
+  }
+  .perm-btn-group {
+    display: flex;
+    gap: 4px;
+  }
+  .perm-btn {
+    border: 1px solid #ced4da;
+    background: #fff;
+    border-radius: 5px;
+    padding: 3px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    color: #555;
+    transition: all 0.15s;
+    pointer-events: auto;
+    position: relative;
+    z-index: 1;
+    user-select: none;
+  }
+  .perm-btn.active {
+    background: #3b5bdb;
+    border-color: #3b5bdb;
+    color: #fff;
+    font-weight: 600;
+  }
+  .perm-btn:hover:not(.active) {
+    background: #e9ecef;
+    border-color: #adb5bd;
   }
 </style>

@@ -29,6 +29,15 @@
   let addingContact = false;
   let addContactError = "";
 
+  const VISIT_TYPES = [
+    { value: "incoming",       icon: "ti-building-store",  label: "They Came To Us",        color: "primary",   desc: "Client visited your company" },
+    { value: "outgoing",       icon: "ti-car",             label: "We Visited Client",       color: "warning",   desc: "Your team went to client site" },
+    { value: "joint",          icon: "ti-users",           label: "Joint Site Visit",        color: "info",      desc: "Together at a third location" },
+    { value: "job_discussion", icon: "ti-clipboard-list",  label: "Job Discussion",          color: "success",   desc: "Client discussed job requirements" },
+    { value: "job_received",   icon: "ti-package",         label: "Job Received",            color: "secondary", desc: "Client sent material/job to us" },
+    { value: "sample_sent",    icon: "ti-send",            label: "Sample Sent",             color: "danger",    desc: "You sent a sample to client" },
+  ];
+
   // visit fields
   let visitType = "outgoing";
   let companyId = "";
@@ -36,6 +45,7 @@
   let startTime = "";
   let endTime = "";
   let transportMedium = "";
+  let location = "";
   let purpose = "";
   let outcome = "";
   let nextFollowUpDate = "";
@@ -84,6 +94,7 @@
       startTime = toDatetimeLocal(visit.startTime);
       endTime = toDatetimeLocal(visit.endTime);
       transportMedium = visit.transportMedium ?? "";
+      location = visit.location ?? "";
       purpose = visit.purpose ?? "";
       outcome = visit.outcome ?? "";
       nextFollowUpDate = visit.nextFollowUpDate?.slice(0, 10) ?? "";
@@ -184,6 +195,7 @@
         startTime: startTime || undefined,
         endTime: endTime || undefined,
         transportMedium: transportMedium || undefined,
+        location: location || undefined,
         purpose,
         outcome: outcome || undefined,
         nextFollowUpDate: nextFollowUpDate || undefined,
@@ -263,12 +275,12 @@
     try {
       const res = await authApiFetch(API_ROUTES.CLIENT_CONTACT, {
         method: "POST",
-        data: JSON.stringify({
+        data: {
           clientId,
           name: newContact.name.trim(),
           designation: newContact.designation || undefined,
           mobile: newContact.mobile || undefined,
-        }),
+        },
       });
       const saved = res?.data ?? res;
       clientContacts = [...clientContacts, saved];
@@ -456,22 +468,29 @@
           </div>
           <div class="card-body">
 
-            <div class="row g-3 mb-3">
-              <div class="col-md-3">
-                <label class="form-label fw-semibold">Visit Type</label>
-                <div class="d-flex gap-2">
-                  <button type="button"
-                    class="btn flex-fill {visitType === 'outgoing' ? 'btn-warning' : 'btn-outline-secondary'}"
-                    on:click={() => (visitType = 'outgoing')}>
-                    <i class="ti ti-arrow-up-right me-1"></i>Outgoing
-                  </button>
-                  <button type="button"
-                    class="btn flex-fill {visitType === 'incoming' ? 'btn-info text-white' : 'btn-outline-secondary'}"
-                    on:click={() => (visitType = 'incoming')}>
-                    <i class="ti ti-arrow-down-left me-1"></i>Incoming
-                  </button>
-                </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Visit Type</label>
+              <div class="row g-2">
+                {#each VISIT_TYPES as t}
+                  <div class="col-md-4 col-6">
+                    <button type="button"
+                      class="w-100 border rounded p-2 text-start position-relative"
+                      style="cursor:pointer;background:{visitType === t.value ? 'var(--bs-' + t.color + '-bg-subtle,#e8f4ff)' : '#fff'};border-color:{visitType === t.value ? 'var(--bs-' + t.color + ')' : '#dee2e6'} !important;transition:all .15s;"
+                      on:click={() => visitType = t.value}>
+                      {#if visitType === t.value}
+                        <span class="position-absolute top-0 end-0 mt-1 me-1"><i class="ti ti-circle-check text-{t.color}" style="font-size:14px;"></i></span>
+                      {/if}
+                      <div class="d-flex align-items-center gap-2">
+                        <i class="ti {t.icon} text-{t.color}" style="font-size:16px;"></i>
+                        <span class="fw-semibold" style="font-size:12px;">{t.label}</span>
+                      </div>
+                    </button>
+                  </div>
+                {/each}
               </div>
+            </div>
+
+            <div class="row g-3 mb-3">
               <div class="col-md-3">
                 <label class="form-label fw-semibold">Visit Date <span class="text-danger">*</span></label>
                 <input type="date" class="form-control" bind:value={visitDate} required />
@@ -495,6 +514,12 @@
                 <label class="form-label fw-semibold">Transport</label>
                 <input type="text" class="form-control" placeholder="Car, Train, Flight..." bind:value={transportMedium} />
               </div>
+              {#if visitType === 'joint'}
+                <div class="col-md-2">
+                  <label class="form-label fw-semibold">Location / Site <span class="text-danger">*</span></label>
+                  <input type="text" class="form-control" placeholder="Address or site name..." bind:value={location} />
+                </div>
+              {/if}
               <div class="col-md-3">
                 <label class="form-label fw-semibold">Outcome</label>
                 <select class="form-select" bind:value={outcome}>

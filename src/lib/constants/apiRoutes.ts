@@ -25,4 +25,5 @@ export const API_ROUTES = {
   ORDER_CONTACT: `order-contacts`,
   WARNING: `warnings`,
   CLIENT_VISIT: `client-visits`,
+  OLD_INQUIRY: `old-inquiries`,
 };
