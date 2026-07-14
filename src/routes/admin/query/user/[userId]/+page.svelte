@@ -374,7 +374,7 @@
 
     <!-- Back + title -->
     <div class="d-flex align-items-center gap-2 mb-3">
-      <button class="btn btn-sm btn-outline-secondary" on:click={() => history.back()}>
+      <button class="btn btn-sm btn-warning" on:click={() => history.back()}>
         <i class="ti ti-arrow-left"></i> Back
       </button>
       <h4 class="fw-bold mb-0">Query User Dashboard</h4>

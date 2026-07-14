@@ -132,7 +132,7 @@
       label: "Type",
       render: (val, row) => {
         const BADGES = { incoming: 'bg-info', outgoing: 'bg-warning text-dark', joint: 'bg-primary', job_discussion: 'bg-success', job_received: 'bg-secondary', sample_sent: 'bg-danger' };
-        const LABELS = { incoming: '↙ Incoming', outgoing: '↗ Outgoing', joint: 'Joint', job_discussion: 'Job Discussion', job_received: 'Job Received', sample_sent: 'Sample Sent' };
+        const LABELS = { incoming: 'They Came To Us', outgoing: 'We Visited Client', joint: 'Joint Site Visit', job_discussion: 'Client Gave Job Details', job_received: 'Job Received', sample_sent: 'Sample Sent' };
         return `<span class="badge ${BADGES[row.visitType] ?? 'bg-secondary'}">${LABELS[row.visitType] ?? row.visitType}</span>`;
       },
     },
@@ -290,10 +290,10 @@
       <div class="col-auto">
         <select bind:value={visitTypeFilter} class="form-select w-auto">
           <option value="">All Types</option>
-          <option value="incoming">↙ Incoming</option>
-          <option value="outgoing">↗ Outgoing</option>
-          <option value="joint">Joint</option>
-          <option value="job_discussion">Job Discussion</option>
+          <option value="incoming">They Came To Us</option>
+          <option value="outgoing">We Visited Client</option>
+          <option value="joint">Joint Site Visit</option>
+          <option value="job_discussion">Client Gave Job Details</option>
           <option value="job_received">Job Received</option>
           <option value="sample_sent">Sample Sent</option>
         </select>

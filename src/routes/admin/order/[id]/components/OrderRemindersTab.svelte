@@ -11,10 +11,35 @@
   let loading = false;
   let formErrors = {};
 
+  function toLocalDatetimeValue(date) {
+    const d = new Date(date);
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    return d.toISOString().slice(0, 16);
+  }
+
+  function setPreset(preset) {
+    const now = new Date();
+    if (preset === "1h") {
+      now.setHours(now.getHours() + 1);
+    } else if (preset === "3h") {
+      now.setHours(now.getHours() + 3);
+    } else if (preset === "tomorrow") {
+      now.setDate(now.getDate() + 1);
+      now.setHours(10, 0, 0, 0);
+    } else if (preset === "monday") {
+      const day = now.getDay();
+      const diff = (8 - day) % 7 || 7;
+      now.setDate(now.getDate() + diff);
+      now.setHours(10, 0, 0, 0);
+    }
+    reminderTime = toLocalDatetimeValue(now);
+  }
+
   async function handleAddReminder(e) {
     e.preventDefault();
     formErrors = {};
     if (!reminderTime) { formErrors.reminderTime = ["Reminder time is required."]; return; }
+    if (new Date(reminderTime) <= new Date()) { formErrors.reminderTime = ["Reminder time cannot be in the past."]; return; }
     if (!reminderMessage.trim()) { formErrors.message = ["Message is required."]; return; }
     loading = true;
     try {
@@ -105,8 +130,15 @@
           <div class="grid grid-cols-1 gap-4">
             <div>
               <label class="form-label" for="reminderTime">Reminder Time <span class="text-danger">*</span></label>
+              <div class="d-flex flex-wrap gap-1 mb-2">
+                <button type="button" class="btn btn-xs btn-outline-secondary" on:click={() => setPreset('1h')}>In 1 hour</button>
+                <button type="button" class="btn btn-xs btn-outline-secondary" on:click={() => setPreset('3h')}>In 3 hours</button>
+                <button type="button" class="btn btn-xs btn-outline-secondary" on:click={() => setPreset('tomorrow')}>Tomorrow 10 AM</button>
+                <button type="button" class="btn btn-xs btn-outline-secondary" on:click={() => setPreset('monday')}>Next Monday</button>
+              </div>
               <input type="datetime-local" name="reminderTime" class="form-control"
-                class:is-invalid={formErrors.reminderTime} bind:value={reminderTime} required id="reminderTime" />
+                class:is-invalid={formErrors.reminderTime} bind:value={reminderTime} required id="reminderTime"
+                min={toLocalDatetimeValue(Date.now() + 60000)} />
               {#if formErrors.reminderTime}
                 <ul class="text-danger mt-1 text-xs capitalize"><li>{formErrors.reminderTime[0]}</li></ul>
               {/if}

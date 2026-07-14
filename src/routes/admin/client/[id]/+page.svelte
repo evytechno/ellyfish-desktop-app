@@ -46,14 +46,19 @@
 
   // Role helpers
   $: canEdit = currentUser?.role === "master" || currentUser?.subRole === "telecaller";
-  $: canView = canEdit || currentUser?.role === "admin" || currentUser?.role === "manager";
+  $: canView = canEdit || currentUser?.role === "admin" || currentUser?.role === "manager" || currentUser?.role === "user";
+  $: visibleOrders = currentUser?.role === "user"
+    ? (client?.orders ?? []).filter((o) =>
+        o.assignedUsers?.some((u) => u.id === Number(currentUser.id))
+      )
+    : (client?.orders ?? []);
 
   onMount(async () => {
     currentUser = checkAuth();
 
     // Recompute after currentUser is set
     const _canEdit = currentUser?.role === "master" || currentUser?.subRole === "telecaller";
-    const _canView = _canEdit || currentUser?.role === "admin" || currentUser?.role === "manager";
+    const _canView = _canEdit || currentUser?.role === "admin" || currentUser?.role === "manager" || currentUser?.role === "user";
 
     if (!_canView) {
       loadingData = false;
@@ -252,7 +257,7 @@
         </nav>
       </div>
       <div class="gap-2 d-flex align-items-center flex-wrap">
-        <button class="btn btn-outline-light shadow" on:click={() => window.history.back()}>
+        <button class="btn btn-warning btn-sm" on:click={() => window.history.back()}>
           <i class="ti ti-arrow-left me-1"></i>Back
         </button>
         <a href="/admin/client-visit/add?clientId={clientId}" class="btn btn-success shadow">
@@ -538,11 +543,11 @@
           <div class="card-header">
             <h5 class="mb-0">
               <i class="ti ti-medal me-2 text-primary"></i>Orders
-              <span class="badge bg-primary ms-1">{client?.orders?.length || 0}</span>
+              <span class="badge bg-primary ms-1">{visibleOrders.length}</span>
             </h5>
           </div>
           <div class="card-body">
-            {#if !client?.orders || client.orders.length === 0}
+            {#if visibleOrders.length === 0}
               <div class="text-center py-4 text-muted">
                 <i class="ti ti-medal fs-1 d-block mb-2"></i>
                 No orders linked to this client.
@@ -560,7 +565,7 @@
                     </tr>
                   </thead>
                   <tbody>
-                    {#each client.orders as order}
+                    {#each visibleOrders as order}
                       <tr class="border-t hover:bg-gray-50">
                         <td class="px-4 py-2 text-muted small">{order.pId}</td>
                         <td class="px-4 py-2 fw-semibold">{order.pId ? `#${order.pId} - ${order.title || ""}` : (order.title || "-")}</td>

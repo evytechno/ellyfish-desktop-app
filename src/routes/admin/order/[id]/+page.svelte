@@ -1672,7 +1672,7 @@
     <div class="d-flex align-items-center justify-content-between gap-2 mb-1 flex-wrap">
       <div class="d-flex align-items-center gap-3">
         <button
-          class="btn btn-outline-secondary btn-sm"
+          class="btn btn-warning btn-sm"
           on:click={() => (history.length > 2 ? history.back() : goto("/admin/order"))}
         >
           <i class="ti ti-arrow-left me-1"></i>Back

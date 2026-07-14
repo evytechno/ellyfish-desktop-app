@@ -15,7 +15,25 @@
 
   import Loader from "$lib/components/Loader.svelte";
   import QueryHighlights from "$lib/components/QueryHighlights.svelte";
+  import { missedReminderCount } from "$lib/stores/reminderStore";
   let loadingData = true;
+
+  let todayReminders = [];
+  async function fetchTodayReminders() {
+    try {
+      const data = await authApiFetch(`${API_ROUTES.ORDER_REMINDER}/today`, { method: "GET" });
+      todayReminders = Array.isArray(data) ? data : (data?.data ?? []);
+    } catch (_) {}
+  }
+
+  async function dismissTodayReminder(id) {
+    todayReminders = todayReminders.filter((r) => r.id !== id);
+    try {
+      await authApiFetch(`${API_ROUTES.ORDER_REMINDER}/${id}`, { method: "DELETE" });
+    } catch (_) {
+      // silently ignore — UI already updated optimistically
+    }
+  }
 
   let highlights = { telecallers: [], techs: [], techHelpers: [], overdueQueries: [] };
   let highlightsLoading = false;
@@ -107,6 +125,7 @@
       }
 
       if (isMaster) calls.push(loadHighlights());
+      calls.push(fetchTodayReminders());
       calls.push(usersPromise.then(data => { users = data; }));
 
       await Promise.all(calls);
@@ -410,6 +429,47 @@
 {/if}
 <div class="page-wrapper">
   <div class="content pb-0">
+
+    <!-- ── Missed reminder banner ── -->
+    {#if $missedReminderCount > 0}
+      <div class="alert alert-warning d-flex align-items-center gap-2 mb-3 py-2 px-3" style="border-left:4px solid #fd7e14;">
+        <i class="ti ti-clock fs-18" style="color:#fd7e14;"></i>
+        <span class="fw-semibold">You have {$missedReminderCount} unread order reminder{$missedReminderCount > 1 ? 's' : ''}</span>
+        <a href="/admin/notifications" class="ms-auto btn btn-sm btn-outline-warning py-0">View</a>
+      </div>
+    {/if}
+
+    <!-- ── Due Today Widget ── -->
+    {#if todayReminders.length > 0}
+      <div class="card mb-3 border-0 shadow-sm">
+        <div class="card-header d-flex align-items-center gap-2 py-2" style="background:#fff8f0;border-bottom:2px solid #fd7e14;">
+          <i class="ti ti-clock-hour-4 fs-18" style="color:#fd7e14;"></i>
+          <h6 class="mb-0 fw-semibold">Due Today ({todayReminders.length})</h6>
+        </div>
+        <div class="card-body p-0">
+          {#each todayReminders as r}
+            <div class="d-flex align-items-center gap-3 px-3 py-2 border-bottom">
+              <span class="badge bg-warning text-dark flex-shrink-0" style="font-size:11px;min-width:54px;text-align:center;">
+                {new Date(r.reminderTime).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true})}
+              </span>
+              <a href="/admin/order/{r.order?.id}" class="flex-grow-1 text-dark fw-medium fs-13 text-decoration-none text-truncate">
+                {r.message || "Reminder"}
+              </a>
+              {#if r.order}
+                <span class="text-muted fs-12 flex-shrink-0 d-none d-md-inline">#{r.order.pId ?? r.order.id} – {r.order.title ?? ""}</span>
+              {/if}
+              <button
+                class="btn btn-sm btn-light flex-shrink-0 p-0"
+                style="width:26px;height:26px;line-height:1;border-radius:50%;"
+                title="Dismiss reminder"
+                on:click={() => dismissTodayReminder(r.id)}
+              >&#x2715;</button>
+            </div>
+          {/each}
+        </div>
+      </div>
+    {/if}
+
     {#if currentUser?.subRole === "tech" || currentUser?.subRole === "tech_helper"}
       <!-- ── Tech / Tech Helper Dashboard ── -->
       <div>

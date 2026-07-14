@@ -1,4 +1,4 @@
-<script>
+﻿<script>
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
   import { page } from "$app/stores";
@@ -21,9 +21,9 @@
 
   // Which field sections each type shows
   const TYPE_FIELDS = {
-    incoming:       { transport: false, location: false, startEnd: true,  outcome: true,  purpose: true,  feedback: true,  terms: false, jobs: false, nextFollowUp: true,  ourTeamLabel: "Our Team Who Received",  clientLabel: "Client Contacts Who Came",    ourTeamRequired: false, clientRequired: false },
-    outgoing:       { transport: true,  location: false, startEnd: true,  outcome: true,  purpose: true,  feedback: true,  terms: true,  jobs: false, nextFollowUp: true,  ourTeamLabel: "Who Went From Our Side", clientLabel: "Client Contacts Met",         ourTeamRequired: true,  clientRequired: false },
-    joint:          { transport: true,  location: true,  startEnd: true,  outcome: true,  purpose: true,  feedback: false, terms: false, jobs: false, nextFollowUp: true,  ourTeamLabel: "Our Team",               clientLabel: "Client Contacts",             ourTeamRequired: true,  clientRequired: false },
+    incoming:       { transport: false, location: false, startEnd: true,  outcome: true,  purpose: true,  feedback: true,  terms: false, jobs: true, nextFollowUp: true,  ourTeamLabel: "Our Team Who Received",  clientLabel: "Client Contacts Who Came",    ourTeamRequired: false, clientRequired: false },
+    outgoing:       { transport: true,  location: false, startEnd: true,  outcome: true,  purpose: true,  feedback: true,  terms: true,  jobs: true, nextFollowUp: true,  ourTeamLabel: "Who Went From Our Side", clientLabel: "Client Contacts Met",         ourTeamRequired: true,  clientRequired: false },
+    joint:          { transport: true,  location: true,  startEnd: true,  outcome: true,  purpose: true,  feedback: false, terms: false, jobs: true, nextFollowUp: true,  ourTeamLabel: "Our Team",               clientLabel: "Client Contacts",             ourTeamRequired: true,  clientRequired: false },
     job_discussion: { transport: false, location: false, startEnd: false, outcome: false, purpose: false, feedback: false, terms: true,  jobs: true,  nextFollowUp: true,  ourTeamLabel: "Our Team Present",       clientLabel: "Client Contacts Who Came",    ourTeamRequired: false, clientRequired: false },
     job_received:   { transport: false, location: false, startEnd: false, outcome: false, purpose: false, feedback: false, terms: false, jobs: true,  nextFollowUp: false, ourTeamLabel: "Received By",            clientLabel: "Sent By (Client Contact)",    ourTeamRequired: false, clientRequired: false },
     sample_sent:    { transport: false, location: false, startEnd: false, outcome: false, purpose: false, feedback: false, terms: false, jobs: true,  nextFollowUp: true,  ourTeamLabel: "Sent By",                clientLabel: "Sent To (Client Contact)",    ourTeamRequired: false, clientRequired: false },
@@ -304,7 +304,7 @@
     <!-- Header -->
     <div class="d-flex align-items-center justify-content-between gap-2 mb-4 flex-wrap">
       <div class="d-flex align-items-center gap-3">
-        <button type="button" class="btn btn-outline-secondary btn-sm" on:click={() => window.history.back()}>
+        <button type="button" class="btn btn-warning btn-sm" on:click={() => window.history.back()}>
           <i class="ti ti-arrow-left me-1"></i>Back
         </button>
         <div>

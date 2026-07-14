@@ -4,6 +4,7 @@
   import { authApiFetch } from "$lib/api/client";
   import { API_ROUTES } from "$lib/constants/apiRoutes";
   import { errorHandle } from "$lib/utils/errorHandle";
+  import { missedReminderCount } from "$lib/stores/reminderStore";
   import { API_BASE_URL } from "$lib/constants/constants";
   import { formatDistanceToNow } from "date-fns";
   import { goto } from "$app/navigation";
@@ -102,10 +103,8 @@
   });
 
   // Send an OS-level notification only when the window is not focused
-  // (minimized, hidden, or in background). When focused, the in-app toast is enough.
   function maybeOsNotify(notification) {
-    if (!window.__TAURI__ || !osNotifEnabled) return;
-    if (document.hasFocus()) return; // app is in foreground — skip
+    if (document.hasFocus()) return; // in foreground — in-app toast is enough
 
     const titles = {
       OrderReminder: "⏰ Order Reminder",
@@ -113,11 +112,34 @@
       query: "💬 Query Reply",
       sub_query: "🔧 Sub-Query Update",
     };
+    const title = titles[notification.type] || "🔔 Notification";
+    const body = notification.message ?? "";
 
-    sendNotification({
-      title: titles[notification.type] || "🔔 Notification",
-      body: notification.message ?? "",
-    });
+    // Tauri desktop app
+    if (window.__TAURI__ && osNotifEnabled) {
+      sendNotification({ title, body });
+      return;
+    }
+
+    // Browser push fallback (web)
+    if ("Notification" in window && Notification.permission === "granted") {
+      new Notification(title, { body, icon: "/favicon.ico" });
+    } else if ("Notification" in window && Notification.permission !== "denied") {
+      Notification.requestPermission().then((perm) => {
+        if (perm === "granted") new Notification(title, { body, icon: "/favicon.ico" });
+      });
+    }
+  }
+
+  // Snooze an OrderReminder — creates a new reminder 30 min from now
+  async function snoozeReminder(toast) {
+    removeToast(toast.id);
+    try {
+      await authApiFetch(`${API_ROUTES.ORDER_REMINDER}/${toast.notification.id}/snooze?minutes=30`, {
+        method: "POST",
+        data: {},
+      });
+    } catch (_) {}
   }
 
   // ── sound ─────────────────────────────────────────────────────────────────
@@ -318,6 +340,7 @@
 
   $: unreadCount = notifications.filter((n) => !n.read).length;
   $: invoke("set_tray_tooltip", { count: unreadCount }).catch(() => {});
+  $: missedReminderCount.set(notifications.filter((n) => !n.read && n.type === "OrderReminder").length);
 
   async function readNotification(id) {
     errorMessage = "";
@@ -503,6 +526,13 @@
           </div>
           <p class="ntf-msg">{toast.notification.message}</p>
           <span class="ntf-time">{formatTime(toast.notification.createdAt)}</span>
+          {#if toast.notification.type === "OrderReminder"}
+            <button
+              class="ntf-snooze-btn"
+              on:click|stopPropagation={() => snoozeReminder(toast)}
+              title="Snooze 30 minutes"
+            >⏱ Snooze 30 min</button>
+          {/if}
         </div>
       </div>
 
@@ -689,6 +719,24 @@
     font-weight: 600;
     letter-spacing: 0.3px;
     padding: 2px 6px;
+  }
+
+  /* ── Snooze button ──────────────────────────────────────────────────────── */
+  .ntf-snooze-btn {
+    margin-top: 8px;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 20px;
+    border: 1px solid rgba(253, 126, 20, 0.5);
+    background: rgba(253, 126, 20, 0.12);
+    color: #fd7e14;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .ntf-snooze-btn:hover {
+    background: rgba(253, 126, 20, 0.25);
+    border-color: #fd7e14;
   }
 
   /* ── UI Toast icon (showToast) ───────────────────────────────────────────── */

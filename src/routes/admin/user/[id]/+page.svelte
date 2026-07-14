@@ -124,6 +124,9 @@
       class="d-flex align-items-center justify-content-between gap-2 mb-4 flex-wrap"
     >
       <div>
+        <button class="btn btn-warning btn-sm mb-2" on:click={() => history.length > 2 ? history.back() : window.location.href='/admin/user'}>
+          <i class="ti ti-arrow-left me-1"></i>Back
+        </button>
         <h4 class="mb-1">User</h4>
         <nav aria-label="breadcrumb">
           <ol class="breadcrumb mb-0 p-0">

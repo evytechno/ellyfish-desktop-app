@@ -3570,7 +3570,7 @@
 
             <!-- ── Card label ── -->
             <div class="qd-card-label d-flex align-items-center gap-2">
-              <button class="btn btn-sm btn-outline-secondary py-0 px-1" on:click={() => history.back()} title="Back">
+              <button class="btn btn-sm btn-warning py-0 px-1" on:click={() => history.back()} title="Back">
                 <i class="ti ti-arrow-left"></i>
               </button>
               <span><i class="ti ti-message-circle"></i>Query Detail</span>

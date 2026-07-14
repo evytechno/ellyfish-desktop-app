@@ -38,7 +38,11 @@
           row?.inqCode ? row.inqCode : null,
         ].filter(Boolean).join(" · ");
         const label = row?.pId ? `#${row.pId} - ${row?.title || ""}` : (row?.title || "");
-        return `<a href="/admin/order/${row.id}" class="flex flex-col gap-0.5"><div class="max-w-[300px] truncate">${label}</div>${sub ? `<div class="text-[10px] text-[#e41f07] font-mono">${sub}</div>` : ""}</a>`;
+        const pendingReminder = row?.orderReminders?.find(r => !r.sent && !r.deletedAt);
+        const reminderBadge = pendingReminder
+          ? `<span title="Reminder: ${new Date(pendingReminder.reminderTime).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:true})}" style="display:inline-flex;align-items:center;gap:3px;font-size:10px;background:#fff3cd;color:#856404;border:1px solid #ffc107;border-radius:12px;padding:1px 6px;margin-left:6px;font-weight:600;vertical-align:middle;"><i class="ti ti-clock" style="font-size:11px;"></i>${new Date(pendingReminder.reminderTime).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true})}</span>`
+          : "";
+        return `<a href="/admin/order/${row.id}" class="flex flex-col gap-0.5"><div class="max-w-[300px] truncate">${label}${reminderBadge}</div>${sub ? `<div class="text-[10px] text-[#e41f07] font-mono">${sub}</div>` : ""}</a>`;
       },
     },
     { key: "workOrderNumber", label: "Work Order No." },

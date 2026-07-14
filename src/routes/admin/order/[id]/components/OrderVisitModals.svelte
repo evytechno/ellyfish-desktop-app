@@ -60,7 +60,7 @@
                       <td class="px-3 fw-semibold text-center">{i + 1}</td>
                       <td>
                         <span class="badge {v.visitType === 'incoming' ? 'bg-primary' : v.visitType === 'outgoing' ? 'bg-warning text-dark' : v.visitType === 'joint' ? 'bg-info' : v.visitType === 'job_discussion' ? 'bg-success' : v.visitType === 'job_received' ? 'bg-secondary' : 'bg-danger'}">
-                          {v.visitType === 'incoming' ? 'Incoming' : v.visitType === 'outgoing' ? 'Outgoing' : v.visitType === 'joint' ? 'Joint' : v.visitType === 'job_discussion' ? 'Job Discuss' : v.visitType === 'job_received' ? 'Job Received' : 'Sample Sent'}
+                          {v.visitType === 'incoming' ? 'They Came To Us' : v.visitType === 'outgoing' ? 'We Visited Client' : v.visitType === 'joint' ? 'Joint Site Visit' : v.visitType === 'job_discussion' ? 'Client Gave Job Details' : v.visitType === 'job_received' ? 'Job Received' : 'Sample Sent'}
                         </span>
                       </td>
                       <td class="small">{v.visitDate ? new Date(v.visitDate).toLocaleDateString("en-IN") : "—"}</td>

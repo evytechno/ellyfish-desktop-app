@@ -7,10 +7,10 @@ export function convertDate(rawTimestamp, format) {
 
 export function newDateFormate(date, format) {
   let formattedDate;
-  if (typeof date === "string" && date.includes(".") && !date.endsWith("Z")) {
+  if (typeof date === "string" && date.includes(".") && !date.endsWith("Z") && !date.includes("+")) {
     const [datePart, msPart] = date.split(".");
     const trimmedMs = msPart.slice(0, 3);
-    formattedDate = new Date(`${datePart}.${trimmedMs}Z`);
+    formattedDate = new Date(`${datePart}.${trimmedMs}`);
   } else {
     formattedDate = new Date(date);
   }

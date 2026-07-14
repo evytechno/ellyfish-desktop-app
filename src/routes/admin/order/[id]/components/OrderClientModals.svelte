@@ -44,16 +44,27 @@
     savingClient = true;
     editClientErrors = {};
     try {
+      const payload = Object.fromEntries(
+        Object.entries(editClientData).filter(([, v]) => v !== "" && v !== null && v !== undefined)
+      );
       await authApiFetch(`${API_ROUTES.CLIENT}/${order.client.id}`, {
         method: "PUT",
-        data: JSON.stringify(editClientData),
+        data: payload,
       });
       order = { ...order, client: { ...order.client, ...editClientData } };
       showEditClientModal = false;
     } catch (e) {
       const errs = e?.data?.message;
-      if (typeof errs === "object") editClientErrors = errs;
-      else editClientErrors = { name: errs ?? "Failed to update client." };
+      if (typeof errs === "object") {
+        editClientErrors = errs;
+      } else {
+        const msg = errs ?? "Failed to update client.";
+        const lower = msg.toLowerCase();
+        if (lower.includes("email")) editClientErrors = { email: msg };
+        else if (lower.includes("gst")) editClientErrors = { gstNumber: msg };
+        else if (lower.includes("mobile")) editClientErrors = { mobile: msg };
+        else editClientErrors = { name: msg };
+      }
     } finally {
       savingClient = false;
     }
@@ -690,7 +701,8 @@
             </div>
             <div class="col-12">
               <label class="form-label">Email</label>
-              <input type="email" class="form-control" bind:value={editClientData.email} placeholder="Email" maxlength="100" />
+              <input type="email" class="form-control" class:is-invalid={editClientErrors.email} bind:value={editClientData.email} placeholder="Email" maxlength="100" />
+              {#if editClientErrors.email}<div class="invalid-feedback">{editClientErrors.email}</div>{/if}
             </div>
             <div class="col-12">
               <label class="form-label">Address</label>

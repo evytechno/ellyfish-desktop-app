@@ -1,4 +1,4 @@
-<script>
+﻿<script>
   import { onMount } from "svelte";
   import { page } from "$app/stores";
   import { goto } from "$app/navigation";
@@ -37,6 +37,17 @@
     { value: "job_received",   icon: "ti-package",         label: "Job Received",            color: "secondary", desc: "Client sent material/job to us" },
     { value: "sample_sent",    icon: "ti-send",            label: "Sample Sent",             color: "danger",    desc: "You sent a sample to client" },
   ];
+
+  const TYPE_FIELDS = {
+    incoming:       { transport: false, location: false, startEnd: true,  outcome: true,  purpose: true,  feedback: true,  terms: false, jobs: true, nextFollowUp: true,  dateLabel: "Visit Date",     ourTeamLabel: "Our Team Who Received",  clientLabel: "Client Contacts Who Came",  jobsLabel: "Job / Material Details" },
+    outgoing:       { transport: true,  location: false, startEnd: true,  outcome: true,  purpose: true,  feedback: true,  terms: true,  jobs: true, nextFollowUp: true,  dateLabel: "Visit Date",     ourTeamLabel: "Who Went From Our Side", clientLabel: "Client Contacts Met",       jobsLabel: "Job / Material Details" },
+    joint:          { transport: true,  location: true,  startEnd: true,  outcome: true,  purpose: true,  feedback: false, terms: false, jobs: true, nextFollowUp: true,  dateLabel: "Visit Date",     ourTeamLabel: "Our Team",               clientLabel: "Client Contacts",           jobsLabel: "Job / Material Details" },
+    job_discussion: { transport: false, location: false, startEnd: false, outcome: false, purpose: false, feedback: false, terms: true,  jobs: true,  nextFollowUp: true,  dateLabel: "Discussion Date",ourTeamLabel: "Our Team Present",       clientLabel: "Client Contacts Who Came",  jobsLabel: "Job / Work-piece Requirements" },
+    job_received:   { transport: false, location: false, startEnd: false, outcome: false, purpose: false, feedback: false, terms: false, jobs: true,  nextFollowUp: false, dateLabel: "Date Received",  ourTeamLabel: "Received By",            clientLabel: "Sent By (Client Contact)",   jobsLabel: "Job / Material Details" },
+    sample_sent:    { transport: false, location: false, startEnd: false, outcome: false, purpose: false, feedback: false, terms: false, jobs: true,  nextFollowUp: true,  dateLabel: "Date Sent",      ourTeamLabel: "Sent By",                clientLabel: "Sent To (Client Contact)",   jobsLabel: "Sample Details" },
+  };
+
+  $: fields = TYPE_FIELDS[visitType] || TYPE_FIELDS["outgoing"];
 
   // visit fields
   let visitType = "outgoing";
@@ -320,7 +331,7 @@
     <!-- Page Header -->
     <div class="d-flex align-items-center justify-content-between gap-2 mb-4 flex-wrap">
       <div class="d-flex align-items-center gap-3">
-        <button type="button" class="btn btn-outline-secondary btn-sm" on:click={() => history.length > 2 ? history.back() : goto(`/admin/client-visit/${visitId}`)}>
+        <button type="button" class="btn btn-warning btn-sm" on:click={() => history.length > 2 ? history.back() : goto(`/admin/client-visit/${visitId}`)}>
           <i class="ti ti-arrow-left me-1"></i>Back
         </button>
         <div>
@@ -386,7 +397,7 @@
                 <div class="border-top pt-3">
                   <div class="d-flex align-items-center justify-content-between mb-2">
                     <label class="form-label fw-semibold mb-0">
-                      <i class="ti ti-users me-1 text-primary"></i>Contacts Met During Visit
+                      <i class="ti ti-users me-1 text-primary"></i>{fields.clientLabel}
                       <span class="text-muted fw-normal">(select all who attended)</span>
                     </label>
                     {#if !showAddContact}
@@ -492,69 +503,89 @@
 
             <div class="row g-3 mb-3">
               <div class="col-md-3">
-                <label class="form-label fw-semibold">Visit Date <span class="text-danger">*</span></label>
+                <label class="form-label fw-semibold">{fields.dateLabel} <span class="text-danger">*</span></label>
                 <input type="date" class="form-control" bind:value={visitDate} required />
               </div>
-              <div class="col-md-3">
-                <label class="form-label fw-semibold">Start Date &amp; Time</label>
-                <input type="datetime-local" class="form-control" bind:value={startTime} />
-              </div>
-              <div class="col-md-3">
-                <label class="form-label fw-semibold">End Date &amp; Time</label>
-                <input type="datetime-local" class="form-control" bind:value={endTime} />
-              </div>
+              {#if fields.startEnd}
+                <div class="col-md-3">
+                  <label class="form-label fw-semibold">Start Date &amp; Time</label>
+                  <input type="datetime-local" class="form-control" bind:value={startTime} />
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label fw-semibold">End Date &amp; Time</label>
+                  <input type="datetime-local" class="form-control" bind:value={endTime} />
+                </div>
+              {/if}
             </div>
 
             <div class="row g-3 mb-3">
-              <div class="col-md-4">
-                <label class="form-label fw-semibold">Purpose <span class="text-danger">*</span></label>
-                <input type="text" class="form-control" bind:value={purpose} placeholder="e.g. Site survey, Machine demo, Follow-up..." required />
-              </div>
-              <div class="col-md-2">
-                <label class="form-label fw-semibold">Transport</label>
-                <input type="text" class="form-control" placeholder="Car, Train, Flight..." bind:value={transportMedium} />
-              </div>
-              {#if visitType === 'joint'}
+              {#if fields.purpose}
+                <div class="col-md-4">
+                  <label class="form-label fw-semibold">Purpose <span class="text-danger">*</span></label>
+                  <input type="text" class="form-control" bind:value={purpose} placeholder="e.g. Site survey, Machine demo, Follow-up..." required />
+                </div>
+              {/if}
+              {#if fields.transport}
+                <div class="col-md-2">
+                  <label class="form-label fw-semibold">Transport</label>
+                  <input type="text" class="form-control" placeholder="Car, Train, Flight..." bind:value={transportMedium} />
+                </div>
+              {/if}
+              {#if fields.location}
                 <div class="col-md-2">
                   <label class="form-label fw-semibold">Location / Site <span class="text-danger">*</span></label>
                   <input type="text" class="form-control" placeholder="Address or site name..." bind:value={location} />
                 </div>
               {/if}
-              <div class="col-md-3">
-                <label class="form-label fw-semibold">Outcome</label>
-                <select class="form-select" bind:value={outcome}>
-                  <option value="">— Select outcome —</option>
-                  <option value="Positive">Positive</option>
-                  <option value="Negative">Negative</option>
-                  <option value="Pending">Pending</option>
-                  <option value="No Response">No Response</option>
-                </select>
-              </div>
-              <div class="col-md-3">
-                <label class="form-label fw-semibold">Next Follow-up Date</label>
-                <input type="date" class="form-control" bind:value={nextFollowUpDate} />
-              </div>
+              {#if fields.outcome}
+                <div class="col-md-3">
+                  <label class="form-label fw-semibold">Outcome</label>
+                  <select class="form-select" bind:value={outcome}>
+                    <option value="">— Select outcome —</option>
+                    <option value="Positive">Positive</option>
+                    <option value="Negative">Negative</option>
+                    <option value="Pending">Pending</option>
+                    <option value="No Response">No Response</option>
+                  </select>
+                </div>
+              {/if}
+              {#if fields.nextFollowUp}
+                <div class="col-md-3">
+                  <label class="form-label fw-semibold">Next Follow-up Date</label>
+                  <input type="date" class="form-control" bind:value={nextFollowUpDate} />
+                </div>
+              {/if}
             </div>
 
-            <div class="row g-3">
-              <div class="col-md-6">
-                <label class="form-label fw-semibold">Client Feedback</label>
-                <textarea class="form-control" rows="3" placeholder="What the client said, asked, or decided during the visit..." bind:value={clientFeedback}></textarea>
+            {#if fields.feedback}
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label class="form-label fw-semibold">Client Feedback</label>
+                  <textarea class="form-control" rows="3" placeholder="What the client said, asked, or decided during the visit..." bind:value={clientFeedback}></textarea>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label fw-semibold">Internal Notes</label>
+                  <textarea class="form-control" rows="3" placeholder="Internal notes — follow-up actions, price discussed, concerns..." bind:value={notes}></textarea>
+                </div>
               </div>
-              <div class="col-md-6">
-                <label class="form-label fw-semibold">Internal Notes</label>
-                <textarea class="form-control" rows="3" placeholder="Internal notes — follow-up actions, price discussed, concerns..." bind:value={notes}></textarea>
+            {:else}
+              <div class="row g-3">
+                <div class="col-md-12">
+                  <label class="form-label fw-semibold">Internal Notes</label>
+                  <textarea class="form-control" rows="3" placeholder="Internal notes..." bind:value={notes}></textarea>
+                </div>
               </div>
-            </div>
+            {/if}
 
           </div>
         </div>
 
         <!-- ═══ SECTION 2: Jobs ═══ -->
+        {#if fields.jobs}
         <div class="card border mb-3">
           <div class="card-header py-2 bg-white d-flex align-items-center justify-content-between">
             <h6 class="mb-0 fw-semibold">
-              <i class="ti ti-tool me-2 text-warning"></i>Section 2 — Job / Work-piece Requirements
+              <i class="ti ti-tool me-2 text-warning"></i>Section 2 — {fields.jobsLabel}
               {#if jobs.length > 0}
                 <span class="badge bg-warning text-dark ms-2">{jobs.length} job{jobs.length > 1 ? 's' : ''}</span>
               {/if}
@@ -650,7 +681,10 @@
           </div>
         </div>
 
+        {/if}
+
         <!-- Terms -->
+        {#if fields.terms}
         <div class="card border mb-3">
           <div class="card-header py-2 bg-white">
             <h6 class="mb-0 fw-semibold">
@@ -661,6 +695,7 @@
             <textarea class="form-control" rows="2" placeholder="Delivery terms, advance amount, warranty period, lead time discussed during the visit..." bind:value={terms}></textarea>
           </div>
         </div>
+        {/if}
 
         <!-- Save -->
         <div class="d-flex gap-2 mb-4">
@@ -676,7 +711,7 @@
       <div class="card border mb-3">
         <div class="card-header py-2 bg-white">
           <h6 class="mb-0 fw-semibold">
-            <i class="ti ti-users me-2 text-primary"></i>Attendees <span class="text-muted fw-normal">(Our Team)</span>
+            <i class="ti ti-users me-2 text-primary"></i>{fields.ourTeamLabel} <span class="text-muted fw-normal">(Our Team)</span>
           </h6>
         </div>
         <div class="card-body">

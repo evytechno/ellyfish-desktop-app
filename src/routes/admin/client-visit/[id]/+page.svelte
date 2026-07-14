@@ -1,4 +1,4 @@
-<script>
+﻿<script>
   import { onMount } from "svelte";
   import { page } from "$app/stores";
   import { goto } from "$app/navigation";
@@ -55,6 +55,16 @@
   $: totalExpenses = expenses.reduce((s, e) => s + (e.items ?? []).reduce((es, it) => es + (parseFloat(it.price ?? it.amount) || 0), 0), 0);
 
   const outcomeColors = { Positive: "bg-success", Negative: "bg-danger", Pending: "bg-warning text-dark", "No Response": "bg-secondary" };
+
+  const TYPE_FIELDS = {
+    incoming:       { transport: false, location: false, startEnd: true,  outcome: true,  purpose: true,  feedback: true,  terms: false, jobs: true, nextFollowUp: true,  dateLabel: "Visit Date",      ourTeamLabel: "Our Team Who Received",  clientLabel: "Client Contacts Who Came",  jobsLabel: "Job / Material Details" },
+    outgoing:       { transport: true,  location: false, startEnd: true,  outcome: true,  purpose: true,  feedback: true,  terms: true,  jobs: true, nextFollowUp: true,  dateLabel: "Visit Date",      ourTeamLabel: "Who Went From Our Side", clientLabel: "Client Contacts Met",       jobsLabel: "Job / Material Details" },
+    joint:          { transport: true,  location: true,  startEnd: true,  outcome: true,  purpose: true,  feedback: false, terms: false, jobs: true, nextFollowUp: true,  dateLabel: "Visit Date",      ourTeamLabel: "Our Team",               clientLabel: "Client Contacts",           jobsLabel: "Job / Material Details" },
+    job_discussion: { transport: false, location: false, startEnd: false, outcome: false, purpose: false, feedback: false, terms: true,  jobs: true,  nextFollowUp: true,  dateLabel: "Discussion Date", ourTeamLabel: "Our Team Present",       clientLabel: "Client Contacts Who Came",  jobsLabel: "Job / Work-piece Requirements" },
+    job_received:   { transport: false, location: false, startEnd: false, outcome: false, purpose: false, feedback: false, terms: false, jobs: true,  nextFollowUp: false, dateLabel: "Date Received",   ourTeamLabel: "Received By",            clientLabel: "Sent By (Client Contact)",   jobsLabel: "Job / Material Details" },
+    sample_sent:    { transport: false, location: false, startEnd: false, outcome: false, purpose: false, feedback: false, terms: false, jobs: true,  nextFollowUp: true,  dateLabel: "Date Sent",       ourTeamLabel: "Sent By",                clientLabel: "Sent To (Client Contact)",   jobsLabel: "Sample Details" },
+  };
+  $: tf = visit ? (TYPE_FIELDS[visit.visitType] ?? TYPE_FIELDS["outgoing"]) : TYPE_FIELDS["outgoing"];
 </script>
 
 <!-- lightbox -->
@@ -75,10 +85,10 @@
       <!-- ── Top bar ── -->
       <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
         <div class="d-flex align-items-center gap-2 flex-wrap">
-          <button type="button" class="btn btn-outline-secondary btn-sm" on:click={() => history.length > 2 ? history.back() : goto('/admin/client-visit')}>← Back</button>
+          <button type="button" class="btn btn-warning btn-sm" on:click={() => history.length > 2 ? history.back() : goto('/admin/client-visit')}>← Back</button>
           <i class="ti ti-map-pin text-muted" style="font-size:18px;"></i>
           <span class="fw-semibold" style="font-size:16px;">Visit #{visit.id}</span>
-          {#each [{ incoming: ['bg-info','↙ Incoming'], outgoing: ['bg-warning text-dark','↗ Outgoing'], joint: ['bg-primary','Joint'], job_discussion: ['bg-success','Job Discussion'], job_received: ['bg-secondary','Job Received'], sample_sent: ['bg-danger','Sample Sent'] }] as map}
+          {#each [{ incoming: ['bg-info','They Came To Us'], outgoing: ['bg-warning text-dark','We Visited Client'], joint: ['bg-primary','Joint Site Visit'], job_discussion: ['bg-success','Client Gave Job Details'], job_received: ['bg-secondary','Job Received'], sample_sent: ['bg-danger','Sample Sent'] }] as map}
             <span class="badge {(map[visit.visitType] ?? ['bg-secondary', visit.visitType])[0]}">
               {(map[visit.visitType] ?? ['bg-secondary', visit.visitType])[1]}
             </span>
@@ -106,7 +116,7 @@
           </div>
           <span style="font-size:12px;color:#6c757d;">
             {fmtDate(visit.visitDate)}
-            {#if visit.startTime || visit.endTime}
+            {#if tf.startEnd && (visit.startTime || visit.endTime)}
               &nbsp;·&nbsp; {fmtDatetime(visit.startTime)} – {fmtDatetime(visit.endTime)}
             {/if}
           </span>
@@ -125,7 +135,7 @@
                   {/if}
                 </td>
                 <td style="width:40%;">
-                  <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;">Client Contacts Met</div>
+                  <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;">{tf.clientLabel}</div>
                   {#if visit.clientContacts?.length}
                     <div class="d-flex flex-wrap gap-1">
                       {#each visit.clientContacts as cc}
@@ -139,7 +149,7 @@
                   {/if}
                 </td>
                 <td style="width:30%;">
-                  <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;">Our Team</div>
+                  <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;">{tf.ourTeamLabel}</div>
                   <div class="d-flex flex-wrap gap-1">
                     {#each (visit.attendees ?? []) as att}
                       <span class="badge border" style="font-size:11px;font-weight:400;background:#E6F1FB;color:#185FA5;border-color:#B5D4F4!important;">
@@ -153,73 +163,87 @@
                 </td>
               </tr>
 
-              <!-- Row 2: Purpose / Transport / Outcome -->
-              <tr>
-                <td>
-                  <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;">Purpose</div>
-                  <div style="font-size:13px;">{visit.purpose ?? "—"}</div>
-                  {#if visit.location}
-                    <div class="text-muted mt-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;">Location</div>
-                    <div style="font-size:13px;">{visit.location}</div>
-                  {/if}
-                </td>
-                <td>
-                  <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;">Transport</div>
-                  <div style="font-size:13px;">{visit.transportMedium || "—"}</div>
-                </td>
-                <td>
-                  <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;">Outcome</div>
-                  {#if visit.outcome}
-                    <span class="badge {outcomeColors[visit.outcome] ?? 'bg-secondary'}">{visit.outcome}</span>
-                  {:else}
-                    <span class="text-muted" style="font-size:13px;">—</span>
-                  {/if}
-                </td>
-              </tr>
+              <!-- Row 2: Purpose / Transport / Outcome (only if any apply) -->
+              {#if tf.purpose || tf.transport || tf.outcome}
+                <tr>
+                  <td>
+                    {#if tf.purpose}
+                      <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;">Purpose</div>
+                      <div style="font-size:13px;">{visit.purpose ?? "—"}</div>
+                      {#if tf.location && visit.location}
+                        <div class="text-muted mt-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;">Location</div>
+                        <div style="font-size:13px;">{visit.location}</div>
+                      {/if}
+                    {/if}
+                  </td>
+                  <td>
+                    {#if tf.transport}
+                      <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;">Transport</div>
+                      <div style="font-size:13px;">{visit.transportMedium || "—"}</div>
+                    {/if}
+                  </td>
+                  <td>
+                    {#if tf.outcome}
+                      <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;">Outcome</div>
+                      {#if visit.outcome}
+                        <span class="badge {outcomeColors[visit.outcome] ?? 'bg-secondary'}">{visit.outcome}</span>
+                      {:else}
+                        <span class="text-muted" style="font-size:13px;">—</span>
+                      {/if}
+                    {/if}
+                  </td>
+                </tr>
+              {/if}
 
-              <!-- Row 3: Follow-up / Created By / Notes/Feedback -->
+              <!-- Row 3: Follow-up / Created By / Start–End -->
               <tr>
                 <td>
-                  <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;">Next Follow-up</div>
-                  <div style="font-size:13px;">{fmtDate(visit.nextFollowUpDate)}</div>
+                  {#if tf.nextFollowUp}
+                    <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;">Next Follow-up</div>
+                    <div style="font-size:13px;">{fmtDate(visit.nextFollowUpDate)}</div>
+                  {/if}
                 </td>
                 <td>
                   <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;">Created By</div>
                   <div style="font-size:13px;">{visit.createdBy?.name ?? "—"} · {visit.financialYear}</div>
                 </td>
                 <td>
-                  <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;">Start / End Time</div>
-                  <div style="font-size:13px;">
-                    {#if visit.startTime || visit.endTime}
-                      {fmtDatetime(visit.startTime)} – {fmtDatetime(visit.endTime)}
-                    {:else}—{/if}
-                  </div>
+                  {#if tf.startEnd}
+                    <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;">Start / End Time</div>
+                    <div style="font-size:13px;">
+                      {#if visit.startTime || visit.endTime}
+                        {fmtDatetime(visit.startTime)} – {fmtDatetime(visit.endTime)}
+                      {:else}—{/if}
+                    </div>
+                  {/if}
                 </td>
               </tr>
 
-              <!-- Row 4: Feedback / Notes (only if present) -->
-              {#if visit.clientFeedback || visit.notes}
+              <!-- Row 4: Feedback / Notes -->
+              {#if tf.feedback && visit.clientFeedback && visit.notes}
                 <tr>
-                  {#if visit.clientFeedback && visit.notes}
-                    <td>
-                      <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;"><i class="ti ti-message-circle me-1"></i>Client Feedback</div>
-                      <div style="font-size:13px;line-height:1.5;font-style:italic;">"{visit.clientFeedback}"</div>
-                    </td>
-                    <td colspan="2">
-                      <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;"><i class="ti ti-notes me-1"></i>Internal Notes</div>
-                      <div style="font-size:13px;line-height:1.5;">{visit.notes}</div>
-                    </td>
-                  {:else if visit.clientFeedback}
-                    <td colspan="3">
-                      <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;"><i class="ti ti-message-circle me-1"></i>Client Feedback</div>
-                      <div style="font-size:13px;line-height:1.5;font-style:italic;">"{visit.clientFeedback}"</div>
-                    </td>
-                  {:else}
-                    <td colspan="3">
-                      <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;"><i class="ti ti-notes me-1"></i>Internal Notes</div>
-                      <div style="font-size:13px;line-height:1.5;">{visit.notes}</div>
-                    </td>
-                  {/if}
+                  <td>
+                    <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;"><i class="ti ti-message-circle me-1"></i>Client Feedback</div>
+                    <div style="font-size:13px;line-height:1.5;font-style:italic;">"{visit.clientFeedback}"</div>
+                  </td>
+                  <td colspan="2">
+                    <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;"><i class="ti ti-notes me-1"></i>Internal Notes</div>
+                    <div style="font-size:13px;line-height:1.5;">{visit.notes}</div>
+                  </td>
+                </tr>
+              {:else if tf.feedback && visit.clientFeedback}
+                <tr>
+                  <td colspan="3">
+                    <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;"><i class="ti ti-message-circle me-1"></i>Client Feedback</div>
+                    <div style="font-size:13px;line-height:1.5;font-style:italic;">"{visit.clientFeedback}"</div>
+                  </td>
+                </tr>
+              {:else if visit.notes}
+                <tr>
+                  <td colspan="3">
+                    <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;"><i class="ti ti-notes me-1"></i>Internal Notes</div>
+                    <div style="font-size:13px;line-height:1.5;">{visit.notes}</div>
+                  </td>
                 </tr>
               {/if}
 
@@ -227,11 +251,12 @@
           </table>
         </div>
 
-        <!-- Section 2 header -->
+        <!-- Section 2 header (jobs) -->
+        {#if tf.jobs}
         <div class="d-flex align-items-center justify-content-between px-4 py-2" style="background:#f8f9fa;border:1px solid #e9ecef;border-top:0;border-bottom:0;">
           <div class="d-flex align-items-center gap-2">
             <div style="width:8px;height:8px;border-radius:50%;background:#854F0B;"></div>
-            <span class="text-uppercase fw-semibold" style="font-size:11px;letter-spacing:.05em;color:#6c757d;">Section 2 — Job / Work-piece Requirements</span>
+            <span class="text-uppercase fw-semibold" style="font-size:11px;letter-spacing:.05em;color:#6c757d;">Section 2 — {tf.jobsLabel}</span>
           </div>
           <a href="/admin/client-visit/edit/{visit.id}" class="btn btn-sm btn-outline-warning" style="font-size:11px;padding:3px 10px;">
             <i class="ti ti-plus me-1"></i>Add Job
@@ -295,10 +320,11 @@
             </span>
           </div>
         {/if}
+        {/if}
       </div>
 
       <!-- Terms -->
-      {#if visit.terms}
+      {#if tf.terms && visit.terms}
         <div class="card border-0 shadow-sm mb-3 px-4 py-3" style="border-radius:10px;">
           <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;"><i class="ti ti-file-text me-1"></i>Terms Discussed</div>
           <div style="font-size:13px;line-height:1.6;">{visit.terms}</div>

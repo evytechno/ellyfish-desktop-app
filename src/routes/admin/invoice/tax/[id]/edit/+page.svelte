@@ -302,7 +302,7 @@
     <!-- Header -->
     <div class="d-flex align-items-center justify-content-between gap-2 mb-4 flex-wrap">
       <div class="d-flex align-items-center gap-3">
-        <button type="button" class="btn btn-outline-secondary btn-sm" on:click={() => window.history.back()}>
+        <button type="button" class="btn btn-warning btn-sm" on:click={() => window.history.back()}>
           <i class="ti ti-arrow-left me-1"></i>Back
         </button>
         <div>

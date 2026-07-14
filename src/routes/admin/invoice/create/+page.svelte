@@ -381,7 +381,7 @@
           <i class="ti ti-arrow-left me-1"></i>Back to Order
         </a>
       {:else}
-        <button class="btn btn-outline-secondary btn-sm" on:click={() => window.history.back()}>
+        <button class="btn btn-warning btn-sm" on:click={() => window.history.back()}>
           <i class="ti ti-arrow-left me-1"></i>Back
         </button>
       {/if}

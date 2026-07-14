@@ -1,4 +1,4 @@
-<script>
+﻿<script>
   import { createEventDispatcher, onDestroy, onMount } from "svelte";
   import { authApiFetch } from "$lib/api/client";
   import { errorHandle } from "$lib/utils/errorHandle";
@@ -221,36 +221,39 @@
   }
 
   async function readNotification(id) {
-    errorMessage = "";
-    loading = true;
-    formErrors = {};
-
-    const updateNotification = {
-      read: true,
-    };
-
+    // Optimistic update
+    notifications = notifications.map((n) =>
+      n.id === id ? { ...n, read: true } : n
+    );
     try {
-      const data = await authApiFetch(API_ROUTES.NOTIFICATION + "/" + id, {
+      await authApiFetch(API_ROUTES.NOTIFICATION + "/" + id, {
         method: "PUT",
-        data: JSON.stringify(updateNotification),
+        data: { read: true },
       });
-
-      notifications.map((notification) =>
-        notification.id === data.data.id
-          ? { ...notification, read: data.data.read }
-          : notification
-      );
-      notifications = [...notifications];
     } catch (error) {
-      loading = false;
-      const validationErrors = errorHandle(error);
-      if (validationErrors && typeof validationErrors === "object") {
-        formErrors = validationErrors;
-      } else {
-        errorMessage = "An unexpected error occurred.";
-      }
+      errorHandle(error);
+      // revert on failure
+      notifications = notifications.map((n) =>
+        n.id === id ? { ...n, read: false } : n
+      );
+    }
+  }
+
+  let markingAll = false;
+  async function markAllAsRead() {
+    markingAll = true;
+    // Optimistic update
+    notifications = notifications.map((n) => ({ ...n, read: true }));
+    try {
+      await authApiFetch(API_ROUTES.NOTIFICATION + "/mark-all-read", {
+        method: "PUT",
+        data: {},
+      });
+    } catch (error) {
+      errorHandle(error);
+      fetchNotifications(); // revert by re-fetching
     } finally {
-      loading = false;
+      markingAll = false;
     }
   }
   $: totalPages = Math.ceil(totalItems / rowsPerPage);
@@ -388,14 +391,15 @@
             >{totalItems}</span
           >
         </h6>
-        <!-- <div class="d-flex align-items-center gap-2 flex-wrap">
-          <a href="#read" class="btn btn-light">
-            <i class="ti ti-checks me-1"></i>Mark all as read
-          </a>
-          <a href="#DeleteAll" class="btn btn-danger">
-            <i class="ti ti-trash me-1"></i>Delete All
-          </a>
-        </div> -->
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <button
+            class="btn btn-light"
+            on:click={markAllAsRead}
+            disabled={markingAll}
+          >
+            <i class="ti ti-checks me-1"></i>{markingAll ? "Marking..." : "Mark all as read"}
+          </button>
+        </div>
       </div>
 
       <div class="card-body">
@@ -406,73 +410,45 @@
                 <div
                   class="d-flex align-items-center justify-content-between flex-wrap gap-2"
                 >
-                  <div class="d-flex align-items-center">
-                    <a
-                      href="employee-details.html"
-                      class="avatar flex-shrink-0"
-                    >
-                      <img
-                        src="/assets/img/profiles/user.png"
-                        alt="img"
-                        class="rounded-circle"
-                      />
-                    </a>
-                    <div class="ms-2">
-                      <div>
-                        {#if notification?.type === "OrderReminder"}
-                          <p class="mb-1 text-wrap">
-                            Hey, <span class="text-dark fw-medium"
-                              >{notification?.user?.name}</span
-                            >
-                            – Check order '<button
-                              on:click={goto(
-                                "/admin/order/" + notification?.order?.id
-                              )}
-                              class="text-dark fw-medium cursor-pointer"
-                              >{notification?.order?.pId ? `#${notification.order.pId} - ${notification.order.title || ""}` : (notification?.order?.title || "")}</button
-                            >' for “<span class="text-dark"
-                              >{notification?.message}</span
-                            >”
-                          </p>
-                        {:else}
-                          <p class="mb-1 text-wrap">
-                            Hey, <span class="text-dark fw-medium"
-                              >{notification?.user?.name}</span
-                            >
-                            – “<span class="text-dark"
-                              >{notification?.message}</span
-                            >”
-                          </p>
-                        {/if}
-                        <!-- <p class="mb-1">
-                        <a href="#user" class="fw-medium">
-                          {notification?.user?.name}
-                        </a>
-                      </p>
-                      <p class="mb-0">{notification?.message}</p> -->
-                        <p class="fs-12 mb-0 d-inline-flex align-items-center">
-                          <i class="ti ti-clock me-1"> </i>
-                          {notification?.createdAt &&
-                            formatDistanceToNow(
-                              new Date(notification.createdAt),
-                              { addSuffix: true, includeSeconds: false }
-                            ).replace("about ", "")}
-                          {#if notification?.read === false}
-                            <button
-                              type="button"
-                              on:click={() =>
-                                readNotification(notification?.id)}
-                              class="ms-2"
-                            >
-                              <i
-                                class="ti ti-point-filled text-danger fs-16 lh-sm"
-                              ></i>
-                            </button>
-                          {/if}
+                  <div class="d-flex align-items-center flex-grow-1">
+                    <span class="avatar flex-shrink-0">
+                      <img src="/assets/img/profiles/user.png" alt="img" class="rounded-circle" />
+                    </span>
+                    <div class="ms-2 flex-grow-1">
+                      {#if notification?.type === "OrderReminder"}
+                        <p class="mb-1 text-wrap">
+                          Hey, <span class="text-dark fw-medium">{notification?.user?.name}</span>
+                          – Check order '<a href="/admin/order/{notification?.order?.id}" class="text-dark fw-medium">
+                            {notification?.order?.pId ? `#${notification.order.pId} - ${notification.order.title || ""}` : (notification?.order?.title || "")}
+                          </a>' for "<span class="text-dark">{notification?.message}</span>"
                         </p>
-                      </div>
+                      {:else}
+                        <p class="mb-1 text-wrap">
+                          Hey, <span class="text-dark fw-medium">{notification?.user?.name}</span>
+                          – "<span class="text-dark">{notification?.message}</span>"
+                        </p>
+                      {/if}
+                      <p class="fs-12 mb-0 d-inline-flex align-items-center gap-2">
+                        <i class="ti ti-clock me-1"></i>
+                        {notification?.createdAt && formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true, includeSeconds: false }).replace("about ", "")}
+                        {#if notification?.read === false}
+                          <span class="badge bg-danger" style="font-size:10px;">Unread</span>
+                        {:else}
+                          <span class="badge bg-success" style="font-size:10px;">Read</span>
+                        {/if}
+                      </p>
                     </div>
                   </div>
+                  {#if notification?.read === false}
+                    <button
+                      type="button"
+                      class="btn btn-sm btn-outline-success flex-shrink-0 ms-2"
+                      title="Mark as read"
+                      on:click={() => readNotification(notification?.id)}
+                    >
+                      <i class="ti ti-check me-1"></i>Mark read
+                    </button>
+                  {/if}
                 </div>
               </div>
             </div>
