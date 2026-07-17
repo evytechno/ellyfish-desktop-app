@@ -20,6 +20,7 @@
   export let customStartDate = null;
   export let customEndDate = null;
   export let orderBy = "createdAt";
+  export let filterSource = "";
 
   const dispatch = createEventDispatcher();
 
@@ -151,6 +152,14 @@
         placeholder="Category.."
         style="min-width:120px;"
       />
+    </div>
+
+    <!-- Source filter -->
+    <div class="col-auto">
+      <select bind:value={filterSource} on:change={onSelectChange} class="form-select w-auto">
+        <option value="">All Sources</option>
+        <option value="old_import">Old Import</option>
+      </select>
     </div>
 
     <!-- Spacer -->

@@ -106,6 +106,41 @@
     }
   }
 
+  // Bulk convert
+  let bulkConverting = false;
+  let bulkConvertResultOpen = false;
+  let bulkConvertResult = null;
+
+  $: assignedSelectedCount = items.filter(i => selectedIds.has(i.id) && i.status === 'assigned').length;
+
+  async function confirmBulkConvert() {
+    if (!assignedSelectedCount) return;
+    const result = await Swal.fire({
+      title: `Convert ${assignedSelectedCount} inquiries?`,
+      html: `Each will become a new order using the inquiry data.<br><span class="text-muted small">Unassigned and already-converted selections will be skipped.</span>`,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonColor: "#198754",
+      confirmButtonText: "Yes, convert all",
+    });
+    if (!result.isConfirmed) return;
+    bulkConverting = true;
+    try {
+      const res = await authApiFetch(`${API_ROUTES.OLD_INQUIRY}/bulk/convert`, {
+        method: "POST",
+        data: { ids: [...selectedIds] },
+      });
+      clearSelection();
+      await fetchList();
+      bulkConvertResult = res;
+      bulkConvertResultOpen = true;
+    } catch (e) {
+      errorHandle(e);
+    } finally {
+      bulkConverting = false;
+    }
+  }
+
   // Convert form
   let convertModalOpen = false;
   let convertSource = null; // old_inquiry item
@@ -503,6 +538,18 @@
         <button class="btn btn-sm btn-primary" on:click={() => { bulkAssignUserId = ""; bulkAssignOpen = true; }}>
           <i class="ti ti-user-check me-1"></i>Bulk Assign
         </button>
+        <button
+          class="btn btn-sm btn-success"
+          disabled={bulkConverting || assignedSelectedCount === 0}
+          on:click={confirmBulkConvert}
+          title={assignedSelectedCount === 0 ? "Select assigned inquiries to convert" : `Convert ${assignedSelectedCount} assigned`}
+        >
+          {#if bulkConverting}
+            <span class="spinner-border spinner-border-sm me-1"></span>Converting...
+          {:else}
+            <i class="ti ti-arrow-right me-1"></i>Bulk Convert ({assignedSelectedCount})
+          {/if}
+        </button>
         <button class="btn btn-sm btn-danger" on:click={confirmBulkDelete}>
           <i class="ti ti-trash me-1"></i>Delete
         </button>
@@ -865,6 +912,52 @@
               <i class="ti ti-check me-1"></i>Confirm & Create Order
             {/if}
           </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Bulk Convert Result Modal -->
+{#if bulkConvertResultOpen && bulkConvertResult}
+  <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.5);z-index:1070;">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">
+            <i class="ti ti-circle-check text-success me-2"></i>Bulk Convert Complete
+          </h5>
+          <button type="button" class="btn-close" on:click={() => (bulkConvertResultOpen = false)}></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-3 mb-3">
+            <div class="col-6">
+              <div class="p-3 bg-success bg-opacity-10 rounded text-center">
+                <div class="fs-4 fw-bold text-success">{bulkConvertResult.converted}</div>
+                <div class="text-muted small">Converted ✅</div>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="p-3 {bulkConvertResult.skipped?.length > 0 ? 'bg-warning bg-opacity-10' : 'bg-light'} rounded text-center">
+                <div class="fs-4 fw-bold {bulkConvertResult.skipped?.length > 0 ? 'text-warning' : ''}">{bulkConvertResult.skipped?.length ?? 0}</div>
+                <div class="text-muted small">Skipped ⚠️</div>
+              </div>
+            </div>
+          </div>
+          {#if bulkConvertResult.skipped?.length}
+            <h6 class="mb-2 small fw-semibold text-muted text-uppercase">Skipped</h6>
+            <div style="max-height:200px;overflow-y:auto;">
+              {#each bulkConvertResult.skipped as s}
+                <div class="d-flex justify-content-between align-items-center p-2 mb-1 bg-light rounded small">
+                  <span>{s.customerName || `ID ${s.id}`}</span>
+                  <span class="badge bg-warning text-dark">{s.reason}</span>
+                </div>
+              {/each}
+            </div>
+          {/if}
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-primary" on:click={() => (bulkConvertResultOpen = false)}>Close</button>
         </div>
       </div>
     </div>

@@ -10,6 +10,15 @@
   import Loader from "$lib/components/Loader.svelte";
 
   // ── Visit type definitions ──────────────────────────────────────────────────
+  const ADDRESS_LABELS = {
+    outgoing:       "Client Site Address",
+    incoming:       "Client's Origin / Home Office",
+    joint:          "Meeting Location",
+    job_discussion: "Client Office Address",
+    job_received:   "Pickup / Sent From Address",
+    sample_sent:    "Delivery Address",
+  };
+
   const VISIT_TYPES = [
     { value: "incoming",       icon: "ti-building-store",  label: "They Came To Us",          color: "primary",   desc: "Client visited your company" },
     { value: "outgoing",       icon: "ti-car",             label: "We Visited Client",         color: "warning",   desc: "Your team went to client site" },
@@ -53,12 +62,17 @@
 
   // ── Visit fields ────────────────────────────────────────────────────────────
   let visitType = "";
+  let visitStatus = "completed";
   let companyId = "";
   let visitDate = new Date().toISOString().slice(0, 10);
   let startTime = "";
   let endTime = "";
   let transportMedium = "";
   let location = "";
+  let addressLine = "";
+  let city = "";
+  let state = "";
+  let pincode = "";
   let purpose = "";
   let outcome = "";
   let nextFollowUpDate = "";
@@ -260,6 +274,7 @@
       const payload = {
         visitType,
         visitDate,
+        status: visitStatus,
         companyId: Number(companyId),
         clientId: ncSelectedClient.id,
         orderId: prefilledOrderId || undefined,
@@ -272,6 +287,10 @@
         terms: terms || undefined,
         transportMedium: transportMedium || undefined,
         location: location || undefined,
+        addressLine: addressLine || undefined,
+        city: city || undefined,
+        state: state || undefined,
+        pincode: pincode || undefined,
         startTime: startTime || undefined,
         endTime: endTime || undefined,
         attendees: attendees.filter((a) => a.userId).map((a) => ({ userId: Number(a.userId), isLead: a.isLead })),
@@ -536,6 +555,16 @@
                 <input type="date" class="form-control" bind:value={visitDate} required />
               </div>
 
+              <!-- Status -->
+              <div class="col-md-4">
+                <label class="form-label fw-semibold">Status <span class="text-danger">*</span></label>
+                <select class="form-select" bind:value={visitStatus}>
+                  <option value="scheduled">Scheduled (Planned)</option>
+                  <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
+
               <!-- Transport medium -->
               {#if fields?.transport}
                 <div class="col-md-4">
@@ -544,7 +573,7 @@
                 </div>
               {/if}
 
-              <!-- Location (joint visit) -->
+              <!-- Location (joint visit legacy) -->
               {#if fields?.location}
                 <div class="col-md-4">
                   <label class="form-label fw-semibold">Visit Location / Site <span class="text-danger">*</span></label>
@@ -564,6 +593,29 @@
                 </div>
               {/if}
             </div>
+
+            <!-- Address — shown for all types -->
+            {#if visitType}
+              <div class="mt-3 mb-3 px-1">
+                <label class="form-label fw-semibold mb-2">
+                  <i class="ti ti-map-pin me-1 text-primary"></i>{ADDRESS_LABELS[visitType] ?? "Address"}
+                </label>
+                <div class="row g-2">
+                  <div class="col-12">
+                    <input type="text" class="form-control" placeholder="Street / Area / Building" bind:value={addressLine} />
+                  </div>
+                  <div class="col-md-4">
+                    <input type="text" class="form-control" placeholder="City" bind:value={city} />
+                  </div>
+                  <div class="col-md-4">
+                    <input type="text" class="form-control" placeholder="State" bind:value={state} />
+                  </div>
+                  <div class="col-md-4">
+                    <input type="text" class="form-control" placeholder="Pincode" bind:value={pincode} />
+                  </div>
+                </div>
+              </div>
+            {/if}
 
             <!-- Purpose -->
             {#if fields?.purpose}

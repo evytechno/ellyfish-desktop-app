@@ -33,6 +33,7 @@
   let filterUserId = "";
   let filterCompanyId = "";
   let filterCategory = "";
+  let filterSource = "";
   let allUsers = [];
   let allCompanies = [];
 
@@ -569,6 +570,7 @@
         ...(filterUserId      && { byUserId: filterUserId }),
         ...(filterCompanyId   && { byCompanyId: filterCompanyId }),
         ...(filterCategory    && { category: filterCategory }),
+        ...(filterSource      && { source: filterSource }),
         ...dateParams,
       });
       const res = await authApiFetch(`${API_ROUTES.ORDER}?${q}`, { method: "GET" });
@@ -1047,6 +1049,11 @@
         bind:value={filterCategory}
         on:keydown={(e) => { if (e.key === "Enter") { saveFilterStore(); fetchOrders(1); } }}
       />
+      <!-- Source filter -->
+      <select class="form-select" style="width:145px;" bind:value={filterSource} on:change={() => { saveFilterStore(); fetchOrders(1); }}>
+        <option value="">All Sources</option>
+        <option value="old_import">Old Import</option>
+      </select>
       <!-- Sort -->
       <select class="form-select" style="width:155px;" bind:value={orderBy} on:change={() => { saveFilterStore(); fetchOrders(1); }}>
         {#each ORDER_BY_OPTIONS as opt}
@@ -1209,7 +1216,12 @@
                     {:else if isTitleSaving}
                       <div class="flex items-center gap-1 text-gray-400"><span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span> <span class="truncate">{order.title || "-"}</span></div>
                     {:else}
-                      <div class="line-clamp-2 break-words leading-normal" class:group-hover:text-blue-600={isExp}>{order.title || "-"}</div>
+                      <div class="line-clamp-2 break-words leading-normal" class:group-hover:text-blue-600={isExp}>
+                        {order.title || "-"}
+                        {#if order.source === 'old_import'}
+                          <span style="display:inline-block;font-size:9px;font-weight:600;background:#e8f4ff;color:#1971c2;border:1px solid #a5d8ff;border-radius:4px;padding:0 5px;letter-spacing:0.2px;margin-left:4px;vertical-align:middle;">Old Import</span>
+                        {/if}
+                      </div>
                     {/if}
                   </td>
 

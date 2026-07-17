@@ -42,7 +42,10 @@
         const reminderBadge = pendingReminder
           ? `<span title="Reminder: ${new Date(pendingReminder.reminderTime).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:true})}" style="display:inline-flex;align-items:center;gap:3px;font-size:10px;background:#fff3cd;color:#856404;border:1px solid #ffc107;border-radius:12px;padding:1px 6px;margin-left:6px;font-weight:600;vertical-align:middle;"><i class="ti ti-clock" style="font-size:11px;"></i>${new Date(pendingReminder.reminderTime).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true})}</span>`
           : "";
-        return `<a href="/admin/order/${row.id}" class="flex flex-col gap-0.5"><div class="max-w-[300px] truncate">${label}${reminderBadge}</div>${sub ? `<div class="text-[10px] text-[#e41f07] font-mono">${sub}</div>` : ""}</a>`;
+        const importBadge = row?.source === 'old_import'
+          ? `<span style="display:inline-block;font-size:9px;font-weight:600;background:#e8f4ff;color:#1971c2;border:1px solid #a5d8ff;border-radius:4px;padding:0 5px;letter-spacing:0.2px;margin-left:5px;vertical-align:middle;">Old Import</span>`
+          : "";
+        return `<a href="/admin/order/${row.id}" class="flex flex-col gap-0.5"><div class="max-w-[300px] truncate">${label}${reminderBadge}${importBadge}</div>${sub ? `<div class="text-[10px] text-[#e41f07] font-mono">${sub}</div>` : ""}</a>`;
       },
     },
     { key: "workOrderNumber", label: "Work Order No." },

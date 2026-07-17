@@ -62,7 +62,12 @@
               <tbody>
                 {#each visibleQueries as q}
                   <tr>
-                    <td class="fw-semibold">{q.subject}</td>
+                    <td>
+                      {#if q.ticketCode}
+                        <div class="text-muted" style="font-size:10.5px;font-weight:600;letter-spacing:0.3px;margin-bottom:2px;">{q.ticketCode}</div>
+                      {/if}
+                      <a href="/admin/query/{q.id}" class="fw-semibold text-primary text-decoration-none">{q.subject}</a>
+                    </td>
                     {#if currentUser?.subRole === "tech"}
                       <td>{maskAssignedName(q.raisedBy) ?? "-"}</td>
                     {:else if currentUser?.subRole === "telecaller"}

@@ -83,8 +83,11 @@
             title={order?.pId ? `#${order.pId} - ${order?.title || ""}` : order?.title}
             class="capitalize">{order?.pId ? `#${order.pId} - ${order?.title || ""}` : order?.title}</a
           >
-          <div class="text-[8px] text-[#e41f07]">
+          <div class="text-[8px] text-[#e41f07] flex items-center gap-1 flex-wrap">
             #{order?.pId?.toString().padStart(6, "0")} ({order?.workOrderNumber}){order?.inqCode ? ` · ${order.inqCode}` : ""}
+            {#if order?.source === 'old_import'}
+              <span style="display:inline-block;font-size:9px;font-weight:600;background:#e8f4ff;color:#1971c2;border:1px solid #a5d8ff;border-radius:4px;padding:0 5px;letter-spacing:0.2px;">Old Import</span>
+            {/if}
           </div>
         </h6>
       </div>

@@ -24,7 +24,7 @@
     "Reference",
   ];
 
-  const READ_ONLY_STATUSES = new Set(["Reference"]);
+  const READ_ONLY_STATUSES = new Set([]);
 
   function initColumn() {
     return { orders: [], page: 1, total: 0, loading: true, hasMore: false };
@@ -47,6 +47,7 @@
     if (filterParams.orderBy) query.set("orderBy", filterParams.orderBy);
     if (filterParams.withDeleted) query.set("withDeleted", "true");
     if (filterParams.filterCategory) query.set("category", filterParams.filterCategory);
+    if (filterParams.filterSource) query.set("source", filterParams.filterSource);
     query.set("status", status);
     query.set("page", String(page));
     query.set("limit", String(COLUMN_LIMIT));

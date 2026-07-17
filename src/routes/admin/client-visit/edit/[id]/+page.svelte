@@ -29,6 +29,15 @@
   let addingContact = false;
   let addContactError = "";
 
+  const ADDRESS_LABELS = {
+    outgoing:       "Client Site Address",
+    incoming:       "Client's Origin / Home Office",
+    joint:          "Meeting Location",
+    job_discussion: "Client Office Address",
+    job_received:   "Pickup / Sent From Address",
+    sample_sent:    "Delivery Address",
+  };
+
   const VISIT_TYPES = [
     { value: "incoming",       icon: "ti-building-store",  label: "They Came To Us",        color: "primary",   desc: "Client visited your company" },
     { value: "outgoing",       icon: "ti-car",             label: "We Visited Client",       color: "warning",   desc: "Your team went to client site" },
@@ -51,12 +60,17 @@
 
   // visit fields
   let visitType = "outgoing";
+  let visitStatus = "completed";
   let companyId = "";
   let visitDate = "";
   let startTime = "";
   let endTime = "";
   let transportMedium = "";
   let location = "";
+  let addressLine = "";
+  let city = "";
+  let state = "";
+  let pincode = "";
   let purpose = "";
   let outcome = "";
   let nextFollowUpDate = "";
@@ -64,6 +78,57 @@
   let notes = "";
   let terms = "";
   let selectedContactIds = [];
+
+  // order link (master only)
+  let linkedOrder = null;
+  let orderSearchQuery = "";
+  let orderSearchResults = [];
+  let orderSearchLoading = false;
+  let orderSearchTimer = null;
+  let orderSearchDropdown = false;
+
+  // order preview modal
+  let orderPreview = null;
+  let orderPreviewLoading = false;
+  let showOrderPreview = false;
+
+  async function openOrderPreview(orderId) {
+    showOrderPreview = true;
+    orderPreview = null;
+    orderPreviewLoading = true;
+    try {
+      orderPreview = await authApiFetch(`${API_ROUTES.ORDER}/${orderId}`);
+    } catch (_) {}
+    orderPreviewLoading = false;
+  }
+
+  async function searchOrders(q) {
+    if (!q || q.trim().length < 1) { orderSearchResults = []; orderSearchDropdown = false; return; }
+    orderSearchLoading = true;
+    try {
+      const res = await authApiFetch(`${API_ROUTES.ORDER}?search=${encodeURIComponent(q)}&limit=10`);
+      orderSearchResults = res?.data ?? [];
+      orderSearchDropdown = true;
+    } catch (_) { orderSearchResults = []; }
+    orderSearchLoading = false;
+  }
+
+  function onOrderSearchInput() {
+    clearTimeout(orderSearchTimer);
+    orderSearchTimer = setTimeout(() => searchOrders(orderSearchQuery), 300);
+  }
+
+  function selectOrder(order) {
+    linkedOrder = order;
+    orderSearchQuery = `#${order.pId} — ${order.title}`;
+    orderSearchDropdown = false;
+  }
+
+  function clearLinkedOrder() {
+    linkedOrder = null;
+    orderSearchQuery = "";
+    orderSearchResults = [];
+  }
 
   // attendees
   let existingAttendees = [];
@@ -100,12 +165,21 @@
       ]);
 
       visitType = visit.visitType ?? "outgoing";
+      visitStatus = visit.status ?? "completed";
+      if (visit.order) {
+        linkedOrder = visit.order;
+        orderSearchQuery = `#${visit.order.pId} — ${visit.order.title}`;
+      }
       companyId = visit.company?.id ? String(visit.company.id) : "";
       visitDate = visit.visitDate?.slice(0, 10) ?? "";
       startTime = toDatetimeLocal(visit.startTime);
       endTime = toDatetimeLocal(visit.endTime);
       transportMedium = visit.transportMedium ?? "";
       location = visit.location ?? "";
+      addressLine = visit.addressLine ?? "";
+      city = visit.city ?? "";
+      state = visit.state ?? "";
+      pincode = visit.pincode ?? "";
       purpose = visit.purpose ?? "";
       outcome = visit.outcome ?? "";
       nextFollowUpDate = visit.nextFollowUpDate?.slice(0, 10) ?? "";
@@ -203,10 +277,16 @@
       // save visit fields
       const payload = {
         visitType, visitDate,
+        status: visitStatus,
+        orderId: currentUser?.role === 'master' ? (linkedOrder?.id ?? null) : undefined,
         startTime: startTime || undefined,
         endTime: endTime || undefined,
         transportMedium: transportMedium || undefined,
         location: location || undefined,
+        addressLine: addressLine || undefined,
+        city: city || undefined,
+        state: state || undefined,
+        pincode: pincode || undefined,
         purpose,
         outcome: outcome || undefined,
         nextFollowUpDate: nextFollowUpDate || undefined,
@@ -470,6 +550,71 @@
           </div>
         {/if}
 
+        <!-- ═══ ORDER LINK (master only) ═══ -->
+        {#if currentUser?.role === 'master'}
+          <div class="card border mb-3">
+            <div class="card-header py-2 bg-white d-flex align-items-center justify-content-between">
+              <h6 class="mb-0 fw-semibold">
+                <i class="ti ti-link me-2 text-warning"></i>Linked Order
+              </h6>
+              {#if linkedOrder}
+                <button type="button" class="btn btn-sm btn-outline-danger py-0" on:click={clearLinkedOrder}>
+                  <i class="ti ti-x me-1"></i>Remove Link
+                </button>
+              {/if}
+            </div>
+            <div class="card-body">
+              {#if linkedOrder}
+                <div class="d-flex align-items-center gap-3 p-2 border border-warning rounded" style="background:#fffbf0;">
+                  <i class="ti ti-file-description text-warning" style="font-size:20px;flex-shrink:0;"></i>
+                  <div class="flex-grow-1">
+                    <div class="fw-semibold" style="font-size:13px;">#{linkedOrder.pId} — {linkedOrder.title}</div>
+                    {#if linkedOrder.status}<span class="badge bg-secondary" style="font-size:10px;">{linkedOrder.status}</span>{/if}
+                  </div>
+                  <button type="button" class="btn btn-sm btn-outline-primary py-0" on:click={() => openOrderPreview(linkedOrder.id)}>
+                    <i class="ti ti-eye me-1"></i>View
+                  </button>
+                </div>
+              {:else}
+                <div class="text-muted small mb-2">No order linked. Search to link one.</div>
+              {/if}
+
+              <!-- Order search -->
+              <div class="mt-3 position-relative">
+                <div class="input-group">
+                  <span class="input-group-text"><i class="ti ti-search"></i></span>
+                  <input
+                    type="text"
+                    class="form-control"
+                    placeholder="Search order by title or #pId..."
+                    bind:value={orderSearchQuery}
+                    on:input={onOrderSearchInput}
+                    autocomplete="off"
+                  />
+                  {#if orderSearchLoading}
+                    <span class="input-group-text"><span class="spinner-border spinner-border-sm"></span></span>
+                  {/if}
+                </div>
+                {#if orderSearchDropdown && orderSearchResults.length > 0}
+                  <div class="border rounded bg-white position-absolute w-100 shadow" style="z-index:9999;max-height:220px;overflow-y:auto;top:100%;">
+                    {#each orderSearchResults as o}
+                      <button type="button" class="d-block w-100 text-start px-3 py-2 border-bottom" style="background:none;"
+                        on:click={() => selectOrder(o)}>
+                        <div class="fw-semibold" style="font-size:13px;">#{o.pId} — {o.title}</div>
+                        <div class="text-muted" style="font-size:11px;">{o.status ?? ""}{o.orderClients?.[0]?.name ? ` · ${o.orderClients[0].name}` : ""}</div>
+                      </button>
+                    {/each}
+                  </div>
+                {:else if orderSearchDropdown && orderSearchResults.length === 0}
+                  <div class="border rounded bg-white position-absolute w-100 shadow px-3 py-2" style="z-index:9999;top:100%;">
+                    <span class="text-muted small">No orders found.</span>
+                  </div>
+                {/if}
+              </div>
+            </div>
+          </div>
+        {/if}
+
         <!-- ═══ SECTION 1: Visit Info ═══ -->
         <div class="card border mb-3">
           <div class="card-header py-2 bg-white">
@@ -505,6 +650,14 @@
               <div class="col-md-3">
                 <label class="form-label fw-semibold">{fields.dateLabel} <span class="text-danger">*</span></label>
                 <input type="date" class="form-control" bind:value={visitDate} required />
+              </div>
+              <div class="col-md-3">
+                <label class="form-label fw-semibold">Status <span class="text-danger">*</span></label>
+                <select class="form-select" bind:value={visitStatus}>
+                  <option value="scheduled">Scheduled (Planned)</option>
+                  <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
               </div>
               {#if fields.startEnd}
                 <div class="col-md-3">
@@ -578,6 +731,28 @@
             {/if}
 
           </div>
+
+          <!-- Address — all types -->
+          <div class="border-top pt-3 px-3 pb-3 mt-1">
+            <label class="form-label fw-semibold mb-2">
+              <i class="ti ti-map-pin me-1 text-primary"></i>{ADDRESS_LABELS[visitType] ?? "Address"}
+            </label>
+            <div class="row g-2">
+              <div class="col-12">
+                <input type="text" class="form-control" placeholder="Street / Area / Building" bind:value={addressLine} />
+              </div>
+              <div class="col-md-4">
+                <input type="text" class="form-control" placeholder="City" bind:value={city} />
+              </div>
+              <div class="col-md-4">
+                <input type="text" class="form-control" placeholder="State" bind:value={state} />
+              </div>
+              <div class="col-md-4">
+                <input type="text" class="form-control" placeholder="Pincode" bind:value={pincode} />
+              </div>
+            </div>
+          </div>
+
         </div>
 
         <!-- ═══ SECTION 2: Jobs ═══ -->
@@ -910,6 +1085,88 @@
         </div>
         <div class="modal-body text-center p-2">
           <img src={expenseLightbox} alt="Bill" style="max-width:100%;max-height:80vh;object-fit:contain;" />
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- ── Order Preview Modal ── -->
+{#if showOrderPreview}
+  <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.5);" on:click|self={() => showOrderPreview = false}>
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content">
+        <div class="modal-header py-2">
+          <h6 class="modal-title mb-0 fw-semibold">
+            <i class="ti ti-file-description me-2 text-warning"></i>
+            {#if orderPreview}#{orderPreview.pId} — {orderPreview.title}{:else}Order Details{/if}
+          </h6>
+          <div class="d-flex align-items-center gap-2">
+            {#if orderPreview}
+              <a href="/admin/order/{orderPreview.id}" target="_blank" class="btn btn-sm btn-outline-primary py-0">
+                <i class="ti ti-external-link me-1"></i>Open Full
+              </a>
+            {/if}
+            <button type="button" class="btn-close" on:click={() => showOrderPreview = false}></button>
+          </div>
+        </div>
+        <div class="modal-body p-0">
+          {#if orderPreviewLoading}
+            <div class="text-center py-5"><span class="spinner-border text-primary"></span></div>
+          {:else if orderPreview}
+            <table class="table table-bordered mb-0" style="font-size:13px;">
+              <tbody>
+                <tr>
+                  <td class="text-muted fw-semibold" style="width:30%;">Order #</td>
+                  <td>{orderPreview.financialYear}/{String(orderPreview.pId).padStart(6,'0')}</td>
+                  <td class="text-muted fw-semibold">Status</td>
+                  <td><span class="badge bg-secondary">{orderPreview.status}</span></td>
+                </tr>
+                <tr>
+                  <td class="text-muted fw-semibold">Title</td>
+                  <td colspan="3">{orderPreview.title}</td>
+                </tr>
+                {#if orderPreview.orderClients?.length}
+                  <tr>
+                    <td class="text-muted fw-semibold">Client</td>
+                    <td colspan="3">{orderPreview.orderClients[0]?.name ?? '—'}{orderPreview.orderClients[0]?.mobile ? ` · ${orderPreview.orderClients[0].mobile}` : ''}</td>
+                  </tr>
+                {/if}
+                {#if orderPreview.category}
+                  <tr>
+                    <td class="text-muted fw-semibold">Category</td>
+                    <td colspan="3">{orderPreview.category}</td>
+                  </tr>
+                {/if}
+                {#if orderPreview.price}
+                  <tr>
+                    <td class="text-muted fw-semibold">Price</td>
+                    <td colspan="3">{orderPreview.currency === 'USD' ? '$' : '₹'}{Number(orderPreview.price).toLocaleString('en-IN')}</td>
+                  </tr>
+                {/if}
+                {#if orderPreview.orderDate}
+                  <tr>
+                    <td class="text-muted fw-semibold">Order Date</td>
+                    <td colspan="3">{new Date(orderPreview.orderDate).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}</td>
+                  </tr>
+                {/if}
+                {#if orderPreview.assignedUsers?.length}
+                  <tr>
+                    <td class="text-muted fw-semibold">Assigned</td>
+                    <td colspan="3">{orderPreview.assignedUsers.map(u => u.name).join(', ')}</td>
+                  </tr>
+                {/if}
+                {#if orderPreview.workOrderNumber}
+                  <tr>
+                    <td class="text-muted fw-semibold">Work Order</td>
+                    <td colspan="3">{orderPreview.workOrderNumber}</td>
+                  </tr>
+                {/if}
+              </tbody>
+            </table>
+          {:else}
+            <div class="text-center py-5 text-muted">Failed to load order details.</div>
+          {/if}
         </div>
       </div>
     </div>

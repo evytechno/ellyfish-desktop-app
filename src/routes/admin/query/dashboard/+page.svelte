@@ -319,6 +319,9 @@
                   <tr>
                     <td>{(currentPage - 1) * rowsPerPage + i + 1}</td>
                     <td style="max-width:260px;">
+                      {#if q.ticketCode}
+                        <div class="text-muted" style="font-size:10.5px;font-weight:600;letter-spacing:0.3px;margin-bottom:2px;">{q.ticketCode}</div>
+                      {/if}
                       <a href="/admin/query/{q.id}" class="text-primary fw-semibold col-truncate" title={q.subject}>{q.subject}</a>
                     </td>
                     <td>

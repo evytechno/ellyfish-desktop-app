@@ -56,6 +56,15 @@
 
   const outcomeColors = { Positive: "bg-success", Negative: "bg-danger", Pending: "bg-warning text-dark", "No Response": "bg-secondary" };
 
+  const ADDRESS_LABELS = {
+    outgoing:       "Client Site Address",
+    incoming:       "Client's Origin / Home Office",
+    joint:          "Meeting Location",
+    job_discussion: "Client Office Address",
+    job_received:   "Pickup / Sent From Address",
+    sample_sent:    "Delivery Address",
+  };
+
   const TYPE_FIELDS = {
     incoming:       { transport: false, location: false, startEnd: true,  outcome: true,  purpose: true,  feedback: true,  terms: false, jobs: true, nextFollowUp: true,  dateLabel: "Visit Date",      ourTeamLabel: "Our Team Who Received",  clientLabel: "Client Contacts Who Came",  jobsLabel: "Job / Material Details" },
     outgoing:       { transport: true,  location: false, startEnd: true,  outcome: true,  purpose: true,  feedback: true,  terms: true,  jobs: true, nextFollowUp: true,  dateLabel: "Visit Date",      ourTeamLabel: "Who Went From Our Side", clientLabel: "Client Contacts Met",       jobsLabel: "Job / Material Details" },
@@ -93,6 +102,13 @@
               {(map[visit.visitType] ?? ['bg-secondary', visit.visitType])[1]}
             </span>
           {/each}
+          {#if visit.status === 'scheduled'}
+            <span class="badge bg-primary">Scheduled</span>
+          {:else if visit.status === 'cancelled'}
+            <span class="badge bg-danger">Cancelled</span>
+          {:else}
+            <span class="badge bg-success">Completed</span>
+          {/if}
           <span class="text-muted" style="font-size:13px;">{visit.company?.name ?? ""}</span>
         </div>
         <div class="d-flex gap-2">
@@ -130,9 +146,6 @@
                 <td style="width:30%;">
                   <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;">Client / Company</div>
                   <div class="fw-semibold" style="font-size:14px;">{visit.client?.name ?? "—"}</div>
-                  {#if visit.order}
-                    <div class="text-muted" style="font-size:12px;">Order: <a href="/admin/order/{visit.order.id}" class="text-primary">#{visit.order.id}</a></div>
-                  {/if}
                 </td>
                 <td style="width:40%;">
                   <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;">{tf.clientLabel}</div>
@@ -218,6 +231,46 @@
                   {/if}
                 </td>
               </tr>
+
+              <!-- Row: Address -->
+              {#if visit.addressLine || visit.city || visit.state || visit.pincode}
+                {@const fullAddress = [visit.addressLine, visit.city, visit.state, visit.pincode].filter(Boolean).join(', ')}
+                <tr>
+                  <td colspan="3">
+                    <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;">
+                      <i class="ti ti-map-pin me-1"></i>{ADDRESS_LABELS[visit.visitType] ?? "Address"}
+                    </div>
+                    <div class="d-flex align-items-center gap-2 flex-wrap" style="font-size:13px;">
+                      <span>{fullAddress}</span>
+                      <a href="https://maps.google.com/?q={encodeURIComponent(fullAddress)}" target="_blank" rel="noopener noreferrer"
+                        class="btn btn-xs btn-outline-primary py-0 px-2" style="font-size:11px;">
+                        <i class="ti ti-map me-1"></i>Open in Maps
+                      </a>
+                    </div>
+                  </td>
+                </tr>
+              {/if}
+
+              <!-- Row: Linked Order -->
+              {#if visit.order}
+                <tr>
+                  <td colspan="3">
+                    <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;">
+                      <i class="ti ti-link me-1"></i>Linked Order
+                    </div>
+                    <div class="d-flex align-items-center gap-3 p-2 border border-warning rounded" style="background:#fffbf0;">
+                      <i class="ti ti-file-description text-warning" style="font-size:20px;flex-shrink:0;"></i>
+                      <div class="flex-grow-1">
+                        <div class="fw-semibold" style="font-size:13px;">#{visit.order.pId} — {visit.order.title}</div>
+                        {#if visit.order.status}<span class="badge bg-secondary" style="font-size:10px;">{visit.order.status}</span>{/if}
+                      </div>
+                      <a href="/admin/order/{visit.order.id}" class="btn btn-sm btn-outline-primary py-0">
+                        <i class="ti ti-external-link me-1"></i>Open
+                      </a>
+                    </div>
+                  </td>
+                </tr>
+              {/if}
 
               <!-- Row 4: Feedback / Notes -->
               {#if tf.feedback && visit.clientFeedback && visit.notes}

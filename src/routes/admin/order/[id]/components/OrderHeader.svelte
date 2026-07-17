@@ -65,7 +65,11 @@
                 <i class="ti ti-layout-grid"></i>{order.category}
               </span>
             {/if}
-            {#if order?.source}
+            {#if order?.source === 'old_import'}
+              <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;background:#e8f4ff;color:#1971c2;border:1px solid #a5d8ff;border-radius:5px;padding:2px 8px;letter-spacing:0.2px;">
+                <i class="ti ti-database-import" style="font-size:12px;"></i>Old Import
+              </span>
+            {:else if order?.source}
               <span class="order-header-chip capitalize">
                 <i class="ti ti-mailbox"></i>{order.source}
               </span>
@@ -231,13 +235,14 @@
               <i class="ti ti-map-pin me-1"></i>Create Visit
             </button>
           {:else}
+            {@const scheduledCount = orderVisits.filter(v => v.status === 'scheduled').length}
             <button
               class="btn btn-outline-success btn-sm"
               on:click={() => (showVisitListModal = true)}
             >
-              <i class="ti ti-map-pin me-1"></i>Visit #{orderVisits[0].id}
-              {#if orderVisits.length > 1}
-                <span class="badge bg-success ms-1">+{orderVisits.length - 1}</span>
+              <i class="ti ti-map-pin me-1"></i>{orderVisits.length} Visit{orderVisits.length > 1 ? 's' : ''}
+              {#if scheduledCount > 0}
+                <span class="badge bg-primary ms-1">{scheduledCount} upcoming</span>
               {/if}
             </button>
             <button

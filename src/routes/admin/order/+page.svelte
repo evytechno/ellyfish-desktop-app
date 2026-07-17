@@ -46,6 +46,7 @@
   let companyId = null;
   let filterStatus = null;
   let filterCategory = "";
+  let filterSource = "";
   let searchTerm = "";
   let selectedFilter = "last7days";
   let customStartDate = null;
@@ -119,6 +120,7 @@
       withDeleted: trashBin,
       filterStatus,
       filterCategory,
+      filterSource,
       _refreshKey: gridRefreshKey,
     };
   })();
@@ -162,6 +164,7 @@
     if (trashBin) q.set("withDeleted", "true");
     if (filterStatus) q.set("status", filterStatus);
     if (filterCategory) q.set("category", filterCategory);
+    if (filterSource) q.set("source", filterSource);
     q.set("page", String(listCurrentPage));
     q.set("limit", String(listRowsPerPage));
     return q;
@@ -436,7 +439,7 @@
     <OrderFilters
       {users} {companies} {allStatuses} {currentUser} {viewType} {trashBin}
       bind:userId bind:companyId bind:filterStatus bind:filterCategory
-      bind:searchTerm bind:selectedFilter bind:customStartDate bind:customEndDate bind:orderBy
+      bind:searchTerm bind:selectedFilter bind:customStartDate bind:customEndDate bind:orderBy bind:filterSource
       on:filterChange={onFilterChange}
       on:viewTypeChange={(e) => changeViewType(e.detail)}
       on:trashToggle={() => { trashBin = !trashBin; }}
