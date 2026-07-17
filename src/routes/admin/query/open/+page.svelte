@@ -371,11 +371,17 @@
                 {@const badge    = urgencyBadge(waitMins)}
                 <tr style="{badge?.cls?.includes('critical') ? 'background:#fff5f5;' : badge ? 'background:#fff9f0;' : ''}">
                   <td>{(currentPage - 1) * rowsPerPage + i + 1}</td>
-                  <td>
-                    <a href="/admin/query/{q.id}" class="text-primary fw-semibold">{q.subject}</a>
-                    {#if badge}
-                      <span class="{badge.cls} ms-1">{badge.label}</span>
+                  <td style="max-width:260px;">
+                    {#if q.ticketCode}
+                      <div class="text-muted" style="font-size:10.5px;font-weight:600;letter-spacing:0.3px;margin-bottom:2px;">{q.ticketCode}</div>
                     {/if}
+                    <div class="d-flex align-items-center gap-1 flex-wrap" style="min-width:0;">
+                      <a href="/admin/query/{q.id}" class="text-primary fw-semibold" title={q.subject} style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{q.subject}</a>
+                      {#if badge}
+                        <span class="{badge.cls} ms-1" style="flex-shrink:0;">{badge.label}</span>
+                      {/if}
+                      {#if ['Deal Won', 'Dispatched', 'Completed'].includes(q.order?.status)}<span class="badge bg-success" style="font-size:10px;flex-shrink:0;">🏆 Deal Won</span>{/if}
+                    </div>
                   </td>
                   <td>
                     <span class="badge bg-light text-dark border" style="font-size:11px;">

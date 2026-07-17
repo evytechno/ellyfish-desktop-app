@@ -853,7 +853,15 @@
                 {#each queries as q, i}
                   <tr>
                     <td>{(currentPage-1)*rowsPerPage+i+1}</td>
-                    <td><a href="/admin/query/{q.id}" class="text-primary fw-semibold">{q.subject}</a></td>
+                    <td style="max-width:260px;">
+                      {#if q.ticketCode}
+                        <div class="text-muted" style="font-size:10.5px;font-weight:600;letter-spacing:0.3px;margin-bottom:2px;">{q.ticketCode}</div>
+                      {/if}
+                      <div class="d-flex align-items-center gap-1 flex-wrap" style="min-width:0;">
+                        <a href="/admin/query/{q.id}" class="text-primary fw-semibold" title={q.subject} style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{q.subject}</a>
+                        {#if ['Deal Won', 'Dispatched', 'Completed'].includes(q.order?.status)}<span class="badge bg-success" style="font-size:10px;flex-shrink:0;">🏆 Deal Won</span>{/if}
+                      </div>
+                    </td>
                     {#if isTelecaller(user)}
                       <td>{#if q.assignedTo?.name}{q.parentQueryId ? maskHelper(q.assignedTo.name) : maskTech(q.assignedTo.name)}{:else}<span class="text-muted">Unassigned</span>{/if}</td>
                     {:else}

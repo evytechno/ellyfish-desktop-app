@@ -26,6 +26,14 @@
     } catch (_) {}
   }
 
+  let upcomingVisits = [];
+  async function fetchUpcomingVisits() {
+    try {
+      const data = await authApiFetch(`${API_ROUTES.CLIENT_VISIT}/upcoming?days=30`, { method: "GET" });
+      upcomingVisits = Array.isArray(data) ? data : (data?.data ?? []);
+    } catch (_) {}
+  }
+
   async function dismissTodayReminder(id) {
     todayReminders = todayReminders.filter((r) => r.id !== id);
     try {
@@ -126,6 +134,7 @@
 
       if (isMaster) calls.push(loadHighlights());
       calls.push(fetchTodayReminders());
+      calls.push(fetchUpcomingVisits());
       calls.push(usersPromise.then(data => { users = data; }));
 
       await Promise.all(calls);
@@ -435,7 +444,39 @@
       <div class="alert alert-warning d-flex align-items-center gap-2 mb-3 py-2 px-3" style="border-left:4px solid #fd7e14;">
         <i class="ti ti-clock fs-18" style="color:#fd7e14;"></i>
         <span class="fw-semibold">You have {$missedReminderCount} unread order reminder{$missedReminderCount > 1 ? 's' : ''}</span>
-        <a href="/admin/notifications" class="ms-auto btn btn-sm btn-outline-warning py-0">View</a>
+        <a href="/admin/notifications?read=false&type=OrderReminder" class="ms-auto btn btn-sm btn-outline-warning py-0">View</a>
+      </div>
+    {/if}
+
+    <!-- ── Upcoming Visits Widget ── -->
+    {#if upcomingVisits.length > 0}
+      <div class="card mb-3 border-0 shadow-sm">
+        <div class="card-header d-flex align-items-center gap-2 py-2" style="background:#f0f7ff;border-bottom:2px solid #1971c2;">
+          <i class="ti ti-map-pin fs-18" style="color:#1971c2;"></i>
+          <h6 class="mb-0 fw-semibold">Upcoming Visits ({upcomingVisits.length})</h6>
+          <a href="/admin/client-visit" class="ms-auto btn btn-sm btn-outline-primary py-0">View All</a>
+        </div>
+        <div class="card-body p-0">
+          {#each upcomingVisits as v}
+            <div class="d-flex align-items-center gap-3 px-3 py-2 border-bottom">
+              <span class="badge bg-primary flex-shrink-0" style="font-size:11px;min-width:70px;text-align:center;">
+                {new Date(v.visitDate).toLocaleDateString('en-GB',{day:'2-digit',month:'short'})}
+              </span>
+              <span class="badge bg-light text-dark border flex-shrink-0" style="font-size:10px;">
+                {v.visitType === 'outgoing' ? 'We Visit' : v.visitType === 'incoming' ? 'They Come' : v.visitType === 'joint' ? 'Joint' : v.visitType}
+              </span>
+              <a href="/admin/client-visit/{v.id}" class="flex-grow-1 text-dark fw-medium fs-13 text-decoration-none text-truncate">
+                {v.client?.name ?? '—'}
+                {#if v.purpose} — <span class="text-muted fw-normal">{v.purpose}</span>{/if}
+              </a>
+              {#if v.attendees?.length}
+                <span class="text-muted fs-12 flex-shrink-0 d-none d-md-inline">
+                  <i class="ti ti-users me-1"></i>{v.attendees.map(a => a.user?.name ?? '').filter(Boolean).join(', ')}
+                </span>
+              {/if}
+            </div>
+          {/each}
+        </div>
       </div>
     {/if}
 

@@ -18,6 +18,11 @@
   onMount(async () => {
     currentUser = checkAuth();
 
+    // Pre-apply filters from URL params (e.g. from dashboard banner)
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('read')) readFilter = urlParams.get('read');
+    if (urlParams.get('type')) typeFilter = urlParams.get('type');
+
     fetchNotifications();
 
     setTimeout(() => {
@@ -74,6 +79,7 @@
   let customStartDate = null;
   let customEndDate = null;
   let readFilter = "";
+  let typeFilter = "";
 
   let loading = true;
   let errorMessage = "";
@@ -158,6 +164,9 @@
       if (readFilter !== "") {
         query.append("read", readFilter);
       }
+      if (typeFilter !== "") {
+        query.append("type", typeFilter);
+      }
 
       updateFilterStore({
         userId,
@@ -208,6 +217,7 @@
     rowsPerPage,
     userId,
     readFilter,
+    typeFilter,
   ],
     checkFetchRecord();
 
@@ -348,6 +358,15 @@
             <option value="">All Status</option>
             <option value="false">Unread</option>
             <option value="true">Read</option>
+          </select>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <select bind:value={typeFilter} class="form-select">
+            <option value="">All Types</option>
+            <option value="OrderReminder">Order Reminder</option>
+            <option value="query">Query</option>
+            <option value="query_open">Query Open</option>
+            <option value="sub_query">Sub Query</option>
           </select>
         </div>
 

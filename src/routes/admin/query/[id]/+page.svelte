@@ -20,6 +20,7 @@
   }
   import { queryPrivacy } from "$lib/stores/queryPrivacy";
   import { statusNamesStore } from "$lib/stores/statusNames";
+  import { jsPDF } from "jspdf";
   import Swal from "sweetalert2";
   import LightBox from "$lib/components/LightBox.svelte";
   import DOMPurify from "dompurify";
@@ -2885,6 +2886,169 @@
     return label;
   }
 
+  // ── PDF Export ───────────────────────────────────────────────────────────
+  let showExportModal = false;
+  let exportRangePreset = "all";
+  let exportFromDate = "";
+  let exportToDate = "";
+  let exportLoading = false;
+
+  function getExportDateRange() {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    if (exportRangePreset === "all") return { from: null, to: null };
+    if (exportRangePreset === "today") return { from: today, to: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999) };
+    if (exportRangePreset === "yesterday") {
+      const y = new Date(today); y.setDate(y.getDate() - 1);
+      return { from: y, to: new Date(y.getFullYear(), y.getMonth(), y.getDate(), 23, 59, 59, 999) };
+    }
+    if (exportRangePreset === "last7") {
+      const s = new Date(today); s.setDate(s.getDate() - 6);
+      return { from: s, to: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999) };
+    }
+    if (exportRangePreset === "last30") {
+      const s = new Date(today); s.setDate(s.getDate() - 29);
+      return { from: s, to: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999) };
+    }
+    if (exportRangePreset === "thismonth") {
+      const s = new Date(today.getFullYear(), today.getMonth(), 1);
+      return { from: s, to: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999) };
+    }
+    if (exportRangePreset === "custom") {
+      const from = exportFromDate ? (() => { const d = new Date(exportFromDate); d.setHours(0,0,0,0); return d; })() : null;
+      const to = exportToDate ? (() => { const d = new Date(exportToDate); d.setHours(23,59,59,999); return d; })() : null;
+      return { from, to };
+    }
+    return { from: null, to: null };
+  }
+
+  $: exportPreviewCount = (() => {
+    const { from, to } = getExportDateRange();
+    return chats.filter(c => {
+      if (c.subQueryEvent || c.systemEvent || c.isDeleted) return false;
+      const t = new Date(c.createdAt);
+      if (from && t < from) return false;
+      if (to && t > to) return false;
+      return true;
+    }).length;
+  })();
+
+  function getExportSenderName(chat) {
+    if (chat.systemEvent || chat.subQueryEvent) return "System";
+    if (chat.isOwn) return currentUser?.name ?? "You";
+    const type = chat.senderType;
+    const isMaster = currentUser?.role === "master";
+    const privacy = $queryPrivacy;
+    if (type === "telecaller") {
+      if (isMaster && privacy.telecaller) return "Telecaller";
+      return isMaster ? (chat.senderLabel ?? "Telecaller") : "Telecaller";
+    }
+    if (type === "tech") {
+      if (isMaster && privacy.tech) return "Tech";
+      return isMaster ? (chat.senderLabel ?? "Tech") : "Tech";
+    }
+    if (type === "tech_helper") {
+      if (isMaster && privacy.techHelper) return "Senior Tech";
+      return isMaster ? (chat.senderLabel ?? "Senior Tech") : "Senior Tech";
+    }
+    return chat.senderLabel ?? "Admin";
+  }
+
+  function getAttachmentLabel(url) {
+    if (!url) return "";
+    const lower = url.toLowerCase();
+    if (/\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?|$)/.test(lower)) return "📷 Image";
+    if (/\.(mp4|avi|mov|mkv|webm)(\?|$)/.test(lower)) return "🎬 Video";
+    if (/\.(mp3|wav|ogg|aac)(\?|$)/.test(lower)) return "🎵 Audio";
+    if (/\.(pdf)(\?|$)/.test(lower)) return "📄 File: " + url.split("/").pop().split("?")[0];
+    if (/\.(doc|docx|xls|xlsx|txt|zip|rar)(\?|$)/.test(lower)) return "📄 File: " + url.split("/").pop().split("?")[0];
+    if (/^https?:\/\//.test(url)) return "🔗 Link: " + url;
+    return "📎 Attachment";
+  }
+
+  function formatPdfDate(d) {
+    if (!d) return "—";
+    const dt = new Date(d);
+    const day = String(dt.getDate()).padStart(2, "0");
+    const month = String(dt.getMonth() + 1).padStart(2, "0");
+    const year = dt.getFullYear();
+    const h = String(dt.getHours()).padStart(2, "0");
+    const m = String(dt.getMinutes()).padStart(2, "0");
+    return `${day}/${month}/${year} ${h}:${m}`;
+  }
+
+  function exportChatPdf() {
+    exportLoading = true;
+    try {
+      const { from, to } = getExportDateRange();
+      let filtered = chats.filter(c => {
+        if (c.subQueryEvent || c.systemEvent || c.isDeleted) return false;
+        const t = new Date(c.createdAt);
+        if (from && t < from) return false;
+        if (to && t > to) return false;
+        return true;
+      });
+
+      const doc = new jsPDF({ unit: "mm", format: "a4" });
+      const pageW = 210, margin = 14, contentW = pageW - margin * 2;
+      let y = margin;
+
+      // ── Header ──
+      doc.setFontSize(13).setFont(undefined, "bold");
+      doc.text("Query Chat Export", margin, y); y += 7;
+      doc.setFontSize(9).setFont(undefined, "normal").setTextColor(80);
+      doc.text(`Query: ${query.ticketCode ?? "#" + query.id}  |  ${query.subject ?? ""}`, margin, y); y += 5;
+      if (exportFromDate || exportToDate) {
+        doc.text(`Date range: ${exportFromDate || "Start"} → ${exportToDate || "End"}`, margin, y); y += 5;
+      }
+      doc.text(`Total messages: ${filtered.length}  |  Exported: ${formatPdfDate(new Date())}`, margin, y); y += 5;
+      doc.setDrawColor(180).setLineWidth(0.3);
+      doc.line(margin, y, pageW - margin, y); y += 5;
+      doc.setTextColor(0);
+
+      // ── Messages ──
+      for (const chat of filtered) {
+        const sender = getExportSenderName(chat);
+        const time = formatPdfDate(chat.createdAt);
+        let body = "";
+        if (chat.attachments?.length) {
+          body = chat.attachments.map(a => getAttachmentLabel(a.url ?? a)).join("\n");
+          if (chat.message?.trim()) body = chat.message.trim() + "\n" + body;
+        } else {
+          body = chat.message?.trim() || "";
+        }
+        if (!body) continue;
+
+        // sender + time line
+        const senderLines = doc.splitTextToSize(sender, contentW * 0.6);
+        const neededH = 5 + senderLines.length * 4.5 + doc.splitTextToSize(body, contentW).length * 4.5 + 6;
+        if (y + neededH > 280) { doc.addPage(); y = margin; }
+
+        doc.setFontSize(8).setFont(undefined, "bold").setTextColor(40);
+        doc.text(senderLines, margin, y);
+        doc.setFont(undefined, "normal").setTextColor(120);
+        doc.text(time, pageW - margin, y, { align: "right" });
+        y += senderLines.length * 4.5;
+
+        doc.setFontSize(9).setFont(undefined, "normal").setTextColor(0);
+        const bodyLines = doc.splitTextToSize(body, contentW);
+        for (const line of bodyLines) {
+          if (y + 5 > 280) { doc.addPage(); y = margin; }
+          doc.text(line, margin, y); y += 4.5;
+        }
+
+        doc.setDrawColor(210).setLineWidth(0.2);
+        doc.line(margin, y + 1, pageW - margin, y + 1); y += 5;
+      }
+
+      const filename = `query-${query.ticketCode ?? query.id}-chat.pdf`;
+      doc.save(filename);
+      showExportModal = false;
+    } finally {
+      exportLoading = false;
+    }
+  }
+
   // ── Preview attached file before sending ─────────────────────────────────
   function previewAttachedFile(file) {
     if (file.type.startsWith("image/")) {
@@ -3547,22 +3711,32 @@
       <div class="row g-4">
         <!-- Left: query info + actions -->
         <div class="col-lg-3 query-left-col">
-          {#if (!isTech(currentUser) || currentUser?.orderAccess) && query.order}
-            <div class="card border-0 shadow-sm mb-3">
-              <div class="card-header py-2 d-flex align-items-center gap-2">
-                <i class="ti ti-receipt text-primary"></i>
-                <span class="fw-semibold small">Current Linked Order</span>
-                <button class="btn btn-sm btn-outline-primary ms-auto py-0 px-2" style="font-size:11px;" on:click={() => openOrderDrawer(query.order.id)}>
-                  <i class="ti ti-external-link me-1"></i>View
-                </button>
-              </div>
-              <div class="card-body py-2 px-3 small">
-                <div class="fw-semibold text-dark d-flex align-items-center justify-content-between gap-2">
-                  <span>{query.order.title ?? "-"} <b>#{query.order.pId}</b></span>
-                  <span class="badge bg-secondary" style="font-size:10px;white-space:nowrap;">{$statusNamesStore[query.order.status]?.name ?? query.order.status}</span>
+          {#if query.order}
+            {@const canSeeFullOrder = (currentUser?.role === 'admin' || currentUser?.role === 'master') || (currentUser?.orderAccess && !isTech(currentUser) && !isTechHelper(currentUser))}
+            {#if canSeeFullOrder}
+              <div class="card border-0 shadow-sm mb-3">
+                <div class="card-header py-2 d-flex align-items-center gap-2">
+                  <i class="ti ti-receipt text-primary"></i>
+                  <span class="fw-semibold small">Current Linked Order</span>
+                  <button class="btn btn-sm btn-outline-primary ms-auto py-0 px-2" style="font-size:11px;" on:click={() => openOrderDrawer(query.order.id)}>
+                    <i class="ti ti-external-link me-1"></i>View
+                  </button>
+                </div>
+                <div class="card-body py-2 px-3 small">
+                  <div class="fw-semibold text-dark d-flex align-items-center justify-content-between gap-2">
+                    <span>{query.order.title ?? "-"} <b>#{query.order.pId}</b></span>
+                    <span class="badge bg-secondary" style="font-size:10px;white-space:nowrap;">{$statusNamesStore[query.order.status]?.name ?? query.order.status}</span>
+                  </div>
                 </div>
               </div>
-            </div>
+            {:else if ['Deal Won', 'Dispatched', 'Completed'].includes(query.order.status)}
+              <div class="card border-0 shadow-sm mb-3">
+                <div class="card-body py-2 px-3 small d-flex align-items-center justify-content-between">
+                  <span class="text-muted">Order Status</span>
+                  <span class="badge bg-success">🏆 Deal Won</span>
+                </div>
+              </div>
+            {/if}
           {/if}
           <div class="qd-card mb-3">
             <!-- ── Switching shimmer bar (always rendered, animated when switching) ── -->
@@ -3579,8 +3753,11 @@
             <!-- ── Header: subject + status ── -->
             <div class="qd-header" class:qd-header--collapsed={qdCardCollapsed} style="cursor:pointer;" on:click={() => qdCardCollapsed = !qdCardCollapsed} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && (qdCardCollapsed = !qdCardCollapsed)}>
               <div class="qd-subject-wrap">
-                <h6 class="qd-subject">{query.subject}</h6>
-                <span class="badge {STATUS_COLORS[query.status] ?? 'bg-secondary'} qd-status-badge">
+                {#if query.ticketCode}
+                  <span class="qd-ticket-badge">{query.ticketCode}</span>
+                {/if}
+                <h6 class="qd-subject" title={query.subject}>{query.subject}</h6>
+                <span class="badge {STATUS_COLORS[query.status] ?? 'bg-secondary'} qd-status-badge flex-shrink-0">
                   {query.status?.replace("_", " ")}
                 </span>
               </div>
@@ -3842,6 +4019,44 @@
             </div>
           {/if}
 
+          {#if showExportModal}
+            <div class="modal-backdrop-custom" on:click={() => showExportModal = false} role="dialog" aria-modal="true">
+              <div class="card shadow-lg p-4 position-relative" style="max-width:420px;width:100%;" on:click|stopPropagation role="document">
+                <button class="modal-close-btn" on:click={() => showExportModal = false} aria-label="Close"><i class="ti ti-x"></i></button>
+                <h5 class="fw-bold mb-3"><i class="ti ti-file-type-pdf me-2 text-danger"></i>Export Chat as PDF</h5>
+                <div class="mb-3">
+                  <label class="form-label">Date Range</label>
+                  <select class="form-select" bind:value={exportRangePreset}>
+                    <option value="all">All Messages</option>
+                    <option value="today">Today</option>
+                    <option value="yesterday">Yesterday</option>
+                    <option value="last7">Last 7 Days</option>
+                    <option value="last30">Last 30 Days</option>
+                    <option value="thismonth">This Month</option>
+                    <option value="custom">Custom Range</option>
+                  </select>
+                </div>
+                {#if exportRangePreset === "custom"}
+                  <div class="mb-3">
+                    <label class="form-label">From Date</label>
+                    <input type="date" class="form-control" bind:value={exportFromDate} />
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label">To Date</label>
+                    <input type="date" class="form-control" bind:value={exportToDate} />
+                  </div>
+                {/if}
+                <p class="text-muted small mb-3"><i class="ti ti-info-circle me-1"></i>{exportPreviewCount} message{exportPreviewCount !== 1 ? "s" : ""} will be exported</p>
+                <div class="d-flex gap-2 justify-content-end">
+                  <button class="btn btn-secondary btn-sm" on:click={() => showExportModal = false}>Cancel</button>
+                  <button class="btn btn-danger btn-sm" on:click={exportChatPdf} disabled={exportLoading}>
+                    {#if exportLoading}<span class="spinner-border spinner-border-sm me-1" style="width:12px;height:12px;border-width:1.5px;"></span>{:else}<i class="ti ti-download me-1"></i>{/if}
+                    Export PDF
+                  </button>
+                </div>
+              </div>
+            </div>
+          {/if}
 
           <!-- In-progress list — inside left column, below detail card -->
           {#if inProgressLoading}
@@ -4023,6 +4238,11 @@
               {#if canRaiseSubQuery()}
                 <button class="btn btn-sm btn-outline-warning" on:click={() => showSubQueryModal = true}>
                   <i class="ti ti-plus me-1"></i>Query
+                </button>
+              {/if}
+              {#if currentUser?.role === 'admin' || currentUser?.role === 'master'}
+                <button class="btn btn-sm btn-outline-secondary" on:click={() => { exportRangePreset = 'all'; exportFromDate = ''; exportToDate = ''; showExportModal = true; }} title="Export Chat as PDF">
+                  <i class="ti ti-file-type-pdf"></i>
                 </button>
               {/if}
               <span class="badge {query.status === 'resolved' ? 'bg-success' : query.status === 'closed' ? 'bg-secondary' : query.status === 'in_progress' ? 'bg-warning text-dark' : 'bg-primary'} chat-status-badge">
@@ -6620,12 +6840,20 @@
   }
   .qd-collapse-btn:hover { color: #495057; }
   .qd-subject-wrap {
-    display: flex; align-items: flex-start;
-    justify-content: space-between; gap: 10px; flex: 1;
+    display: flex; flex-direction: row; align-items: center;
+    gap: 8px; flex: 1; min-width: 0; flex-wrap: nowrap;
   }
   .qd-subject {
     font-size: 15px; font-weight: 700;
-    color: #1a1a2e; margin: 0; line-height: 1.4; flex: 1;
+    color: #1a1a2e; margin: 0; line-height: 1.4;
+    flex: 1; min-width: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .qd-ticket-badge {
+    flex-shrink: 0;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.4px;
+    background: #f1f3f5; border: 1px solid #dee2e6;
+    border-radius: 4px; padding: 2px 7px; color: #495057;
   }
   .qd-status-badge { flex-shrink: 0; font-size: 11px; padding: 4px 9px; border-radius: 20px; }
 

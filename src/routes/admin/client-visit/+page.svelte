@@ -26,6 +26,7 @@
   let customStartDate = null;
   let customEndDate = null;
   let visitTypeFilter = "";
+  let statusFilter = "";
   let byUserId = null;
   let byCompanyId = null;
   let firstLoad = false;
@@ -41,7 +42,12 @@
   function getDateRange() {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    if (selectedFilter === "today") {
+    if (selectedFilter === "upcoming") {
+      const end = new Date(today); end.setDate(end.getDate() + 7);
+      return { startDate: today.toISOString().slice(0, 10), endDate: end.toISOString().slice(0, 10) };
+    } else if (selectedFilter === "upcoming_all") {
+      return { startDate: today.toISOString().slice(0, 10) };
+    } else if (selectedFilter === "today") {
       return { startDate: today.toISOString().slice(0, 10), endDate: today.toISOString().slice(0, 10) };
     } else if (selectedFilter === "last7days") {
       const s = new Date(today); s.setDate(s.getDate() - 6);
@@ -62,6 +68,7 @@
       const params = new URLSearchParams({ page: String(currentPage), limit: String(rowsPerPage) });
       if (searchTerm) params.set("search", searchTerm);
       if (visitTypeFilter) params.set("visitType", visitTypeFilter);
+      if (statusFilter) params.set("status", statusFilter);
       if (startDate) params.set("startDate", startDate);
       if (endDate) params.set("endDate", endDate);
       if (byUserId) params.set("byUserId", String(byUserId));
@@ -112,7 +119,7 @@
     debounceTimeout = setTimeout(() => { searchTerm = value; }, 300);
   }
 
-  $: [searchTerm, selectedFilter, customStartDate, customEndDate, currentPage, rowsPerPage, visitTypeFilter, byUserId, byCompanyId], checkFetch();
+  $: [searchTerm, selectedFilter, customStartDate, customEndDate, currentPage, rowsPerPage, visitTypeFilter, statusFilter, byUserId, byCompanyId], checkFetch();
   function checkFetch() {
     if (firstLoad) {
       if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) return;
@@ -126,7 +133,21 @@
     return `${String(dt.getDate()).padStart(2,"0")}-${String(dt.getMonth()+1).padStart(2,"0")}-${dt.getFullYear()}`;
   }
 
+  const STATUS_BADGE = {
+    scheduled: { cls: "bg-primary",  label: "Scheduled" },
+    completed:  { cls: "bg-success",  label: "Completed" },
+    cancelled:  { cls: "bg-danger",   label: "Cancelled" },
+  };
+
   $: columns = [
+    {
+      key: "status",
+      label: "Status",
+      render: (val, row) => {
+        const s = STATUS_BADGE[row.status] ?? { cls: "bg-secondary", label: row.status ?? "—" };
+        return `<span class="badge ${s.cls}">${s.label}</span>`;
+      },
+    },
     {
       key: "visitType",
       label: "Type",
@@ -144,7 +165,10 @@
     {
       key: "client",
       label: "Client",
-      render: (val, row) => row.client?.name ?? "—",
+      render: (val, row) => {
+        const city = row.city ? `<div class="text-muted" style="font-size:10.5px;">${row.city}</div>` : "";
+        return `<div>${row.client?.name ?? "—"}${city}</div>`;
+      },
     },
     {
       key: "order",
@@ -273,6 +297,8 @@
       <div class="col-auto">
         <select bind:value={selectedFilter} class="form-select w-auto">
           <option value="all">All</option>
+          <option value="upcoming">Upcoming (Next 7 Days)</option>
+          <option value="upcoming_all">Upcoming (All Future)</option>
           <option value="today">Today</option>
           <option value="last7days">Last 7 Days</option>
           <option value="last30days">Last 30 Days</option>
@@ -296,6 +322,14 @@
           <option value="job_discussion">Client Gave Job Details</option>
           <option value="job_received">Job Received</option>
           <option value="sample_sent">Sample Sent</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <select bind:value={statusFilter} class="form-select w-auto">
+          <option value="">All Statuses</option>
+          <option value="scheduled">Scheduled</option>
+          <option value="completed">Completed</option>
+          <option value="cancelled">Cancelled</option>
         </select>
       </div>
       {#if currentUser?.role !== "user"}

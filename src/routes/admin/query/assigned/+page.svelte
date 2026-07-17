@@ -300,11 +300,17 @@
                 {@const unread = $queryUnreadCounts[q.id] ?? 0}
                 <tr>
                   <td>{(currentPage - 1) * rowsPerPage + i + 1}</td>
-                  <td>
-                    <a href="/admin/query/{q.id}" class="text-primary fw-semibold">{q.subject}</a>
-                    {#if unread > 0}
-                      <span class="badge bg-danger rounded-pill ms-1" style="font-size:10px;">{unread > 99 ? "99+" : unread}</span>
+                  <td style="max-width:260px;">
+                    {#if q.ticketCode}
+                      <div class="text-muted" style="font-size:10.5px;font-weight:600;letter-spacing:0.3px;margin-bottom:2px;">{q.ticketCode}</div>
                     {/if}
+                    <div class="d-flex align-items-center gap-1 flex-wrap" style="min-width:0;">
+                      <a href="/admin/query/{q.id}" class="text-primary fw-semibold" title={q.subject} style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{q.subject}</a>
+                      {#if unread > 0}
+                        <span class="badge bg-danger rounded-pill" style="font-size:10px;flex-shrink:0;">{unread > 99 ? "99+" : unread}</span>
+                      {/if}
+                      {#if ['Deal Won', 'Dispatched', 'Completed'].includes(q.order?.status)}<span class="badge bg-success" style="font-size:10px;flex-shrink:0;">🏆 Deal Won</span>{/if}
+                    </div>
                   </td>
                   <td>
                     <span class="badge bg-light text-dark border">
