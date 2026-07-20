@@ -23,6 +23,7 @@
   let filterStatus = "";
   let filterType = "";
   let filterPriority = "";
+  let filterQuick = "";
   let selectedFilter = "last7days";
   let customStartDate = "";
   let customEndDate = "";
@@ -86,7 +87,7 @@
   }
 
   function saveFilterStore() {
-    queryAssignedFilterStore.set({ search, filterStatus, filterType, filterPriority, selectedFilter, customStartDate, customEndDate, rowsPerPage, currentPage });
+    queryAssignedFilterStore.set({ search, filterStatus, filterType, filterPriority, filterQuick, selectedFilter, customStartDate, customEndDate, rowsPerPage, currentPage });
   }
 
   onMount(async () => {
@@ -100,6 +101,7 @@
       if (saved.filterStatus    !== undefined) filterStatus    = saved.filterStatus;
       if (saved.filterType      !== undefined) filterType      = saved.filterType;
       if (saved.filterPriority  !== undefined) filterPriority  = saved.filterPriority;
+      if (saved.filterQuick     !== undefined) filterQuick     = saved.filterQuick;
       if (saved.selectedFilter  !== undefined) selectedFilter  = saved.selectedFilter;
       if (saved.customStartDate !== undefined) customStartDate = saved.customStartDate;
       if (saved.customEndDate   !== undefined) customEndDate   = saved.customEndDate;
@@ -120,6 +122,7 @@
       if (filterStatus) q.set("status", filterStatus);
       if (filterType) q.set("type", filterType);
       if (filterPriority) q.set("priority", filterPriority);
+      if (filterQuick === "dealWon") q.set("dealWon", "true");
       if (dateParams.dateFrom) q.set("dateFrom", dateParams.dateFrom);
       if (dateParams.dateTo) q.set("dateTo", dateParams.dateTo);
 
@@ -149,12 +152,12 @@
   function onFilterChange() { currentPage = 1; saveFilterStore(); loadData(); }
 
   function clearFilters() {
-    search = ""; filterStatus = ""; filterType = ""; filterPriority = "";
+    search = ""; filterStatus = ""; filterType = ""; filterPriority = ""; filterQuick = "";
     selectedFilter = "today"; customStartDate = ""; customEndDate = "";
     currentPage = 1; saveFilterStore(); loadData();
   }
 
-  $: hasFilters = search || filterStatus || filterType || filterPriority || selectedFilter !== "today";
+  $: hasFilters = search || filterStatus || filterType || filterPriority || filterQuick || selectedFilter !== "today";
 
   // Unread-first sort: queries with unread messages bubble to top of the current page.
   // Ties keep the backend's lastActivityAt order (already applied by the API).
@@ -260,6 +263,12 @@
           <option value="high">High</option>
           <option value="medium">Medium</option>
           <option value="low">Low</option>
+        </select>
+      </div>
+      <div>
+        <select class="form-select" bind:value={filterQuick} on:change={onFilterChange}>
+          <option value="">All</option>
+          <option value="dealWon">🏆 Deal Won</option>
         </select>
       </div>
       {#if hasFilters}
