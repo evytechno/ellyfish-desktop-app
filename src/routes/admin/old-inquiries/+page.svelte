@@ -151,7 +151,7 @@
 
   onMount(async () => {
     currentUser = checkAuth();
-    if (!currentUser || (currentUser.role !== "master" && currentUser.role !== "admin")) {
+    if (!currentUser) {
       goto("/admin/dashboard");
       return;
     }
