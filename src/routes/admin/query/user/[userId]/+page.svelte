@@ -242,11 +242,24 @@
 
   function replyPct(count, total) { return total > 0 ? Math.round(count / total * 100) : 0; }
 
+  $: isRoleUser       = currentUser?.role === "user";
   $: isTechSubRole    = currentUser?.subRole === "tech" || currentUser?.subRole === "tech_helper";
   $: isTCSubRole      = currentUser?.subRole === "telecaller";
-  $: maskTC     = (name) => ((isTechSubRole || (currentUser?.role === "master" && $queryPrivacy.telecaller)) && name) ? "Telecaller" : (name ?? "-");
-  $: maskTech   = (name) => ((isTCSubRole  || (currentUser?.role === "master" && $queryPrivacy.tech))       && name) ? "Tech"        : (name ?? "-");
-  $: maskHelper = (name) => ((isTCSubRole  || (currentUser?.role === "master" && $queryPrivacy.techHelper)) && name) ? "Senior Tech" : (name ?? "-");
+  $: maskTC     = (name) => {
+    if (isRoleUser && name && name !== currentUser?.name) return "Telecaller";
+    if (!isRoleUser && (isTechSubRole || (currentUser?.role === "master" && $queryPrivacy.telecaller)) && name) return "Telecaller";
+    return name ?? "-";
+  };
+  $: maskTech   = (name) => {
+    if (isRoleUser && name && name !== currentUser?.name) return "Tech";
+    if (!isRoleUser && (isTCSubRole || (currentUser?.role === "master" && $queryPrivacy.tech)) && name) return "Tech";
+    return name ?? "-";
+  };
+  $: maskHelper = (name) => {
+    if (isRoleUser && name && name !== currentUser?.name) return "Senior Tech";
+    if (!isRoleUser && (isTCSubRole || (currentUser?.role === "master" && $queryPrivacy.techHelper)) && name) return "Senior Tech";
+    return name ?? "-";
+  };
   $: maskedUserName     = user ? (user.subRole === "telecaller" ? maskTC(user.name) : user.subRole === "tech_helper" ? maskHelper(user.name) : maskTech(user.name)) : "";
   $: maskedUserInitials = maskedUserName ? initials(maskedUserName) : "?";
   $: replyTotal = detail

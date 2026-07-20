@@ -2857,11 +2857,24 @@
   const ALLOWED_TYPES = "image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar";
 
   // ── Privacy masking ───────────────────────────────────────────────────────
+  $: isRoleUser       = currentUser?.role === "user";
   $: isTechSubRole    = currentUser?.subRole === "tech" || currentUser?.subRole === "tech_helper";
   $: isTCSubRole      = currentUser?.subRole === "telecaller";
-  $: maskTC     = (name) => ((isTechSubRole || (currentUser?.role === "master" && $queryPrivacy.telecaller)) && name) ? "Telecaller" : (name ?? "-");
-  $: maskTech   = (name) => ((isTCSubRole  || (currentUser?.role === "master" && $queryPrivacy.tech))       && name) ? "Tech"        : (name ?? "-");
-  $: maskHelper = (name) => ((isTCSubRole  || (currentUser?.role === "master" && $queryPrivacy.techHelper)) && name) ? "Senior Tech" : (name ?? "-");
+  $: maskTC     = (name) => {
+    if (isRoleUser && name && name !== currentUser?.name) return "Telecaller";
+    if (!isRoleUser && (isTechSubRole || (currentUser?.role === "master" && $queryPrivacy.telecaller)) && name) return "Telecaller";
+    return name ?? "-";
+  };
+  $: maskTech   = (name) => {
+    if (isRoleUser && name && name !== currentUser?.name) return "Tech";
+    if (!isRoleUser && (isTCSubRole || (currentUser?.role === "master" && $queryPrivacy.tech)) && name) return "Tech";
+    return name ?? "-";
+  };
+  $: maskHelper = (name) => {
+    if (isRoleUser && name && name !== currentUser?.name) return "Senior Tech";
+    if (!isRoleUser && (isTCSubRole || (currentUser?.role === "master" && $queryPrivacy.techHelper)) && name) return "Senior Tech";
+    return name ?? "-";
+  };
   $: maskChatSender = (chat) => {
     if (currentUser?.role !== "master") return chat.senderLabel;
     if ($queryPrivacy.telecaller && chat.senderType === "telecaller") return "Telecaller";
