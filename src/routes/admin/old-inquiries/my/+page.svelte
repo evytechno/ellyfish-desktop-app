@@ -17,6 +17,7 @@
   let currentPage = 1;
   let rowsPerPage = 20;
   let searchTerm = "";
+  let filterStatus = "";
 
   let detailModalOpen = false;
   let detailItem = null;
@@ -27,6 +28,57 @@
     title: "", description: "", category: "",
     customerName: "", phone: "", whatsapp: "", companyName: "", address: "",
   };
+
+  // ── Bulk selection ─────────────────────────────────────────────────────────
+  let selectedIds = new Set();
+  let bulkConverting = false;
+  let bulkConvertResultOpen = false;
+  let bulkConvertResult = null;
+
+  $: allPageSelected = items.length > 0 && items.every(i => selectedIds.has(i.id));
+  $: assignedSelectedCount = items.filter(i => selectedIds.has(i.id) && i.status === 'assigned').length;
+
+  function toggleRow(id) {
+    if (selectedIds.has(id)) selectedIds.delete(id);
+    else selectedIds.add(id);
+    selectedIds = selectedIds;
+  }
+
+  function toggleAll() {
+    if (allPageSelected) items.forEach(i => selectedIds.delete(i.id));
+    else items.forEach(i => selectedIds.add(i.id));
+    selectedIds = selectedIds;
+  }
+
+  function clearSelection() { selectedIds = new Set(); }
+
+  async function confirmBulkConvert() {
+    if (!assignedSelectedCount) return;
+    const result = await Swal.fire({
+      title: `Convert ${assignedSelectedCount} inquiries?`,
+      html: `Each will become a new order using the inquiry data.<br><span class="text-muted small">Already-converted selections will be skipped.</span>`,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonColor: "#198754",
+      confirmButtonText: "Yes, convert all",
+    });
+    if (!result.isConfirmed) return;
+    bulkConverting = true;
+    try {
+      const res = await authApiFetch(`${API_ROUTES.OLD_INQUIRY}/bulk/convert`, {
+        method: "POST",
+        data: { ids: [...selectedIds] },
+      });
+      clearSelection();
+      await fetchList();
+      bulkConvertResult = res;
+      bulkConvertResultOpen = true;
+    } catch (e) {
+      errorHandle(e);
+    } finally {
+      bulkConverting = false;
+    }
+  }
 
   onMount(async () => {
     checkAuth();
@@ -39,6 +91,7 @@
     try {
       const params = new URLSearchParams({ page: String(currentPage), limit: String(rowsPerPage) });
       if (searchTerm) params.set("search", searchTerm);
+      if (filterStatus) params.set("status", filterStatus);
       const res = await authApiFetch(`${API_ROUTES.OLD_INQUIRY}/my?${params}`);
       items = res.data ?? [];
       totalItems = res.total ?? 0;
@@ -50,7 +103,7 @@
   }
 
   let debounce;
-  $: [searchTerm, currentPage, rowsPerPage], (() => {
+  $: [searchTerm, filterStatus, currentPage, rowsPerPage], (() => {
     if (!firstLoad) return;
     clearTimeout(debounce);
     debounce = setTimeout(fetchList, 250);
@@ -76,6 +129,14 @@
       label: "History",
       render: (val) =>
         `<span class="badge bg-light text-dark border">${Array.isArray(val) ? val.length : 0} notes</span>`,
+    },
+    {
+      key: "status",
+      label: "Status",
+      render: (val) => {
+        const cls = val === 'converted' ? 'bg-success' : val === 'assigned' ? 'bg-info' : 'bg-warning text-dark';
+        return `<span class="badge ${cls}">${val}</span>`;
+      },
     },
   ];
 
@@ -139,6 +200,8 @@
     detailItem = item;
     detailModalOpen = true;
   }
+
+
 </script>
 
 <div class="page-wrapper">
@@ -158,6 +221,7 @@
       </button>
     </div>
 
+    <!-- Filters -->
     <div class="row g-2 align-items-center mb-3">
       <div class="col-auto">
         <div class="input-icon input-icon-start position-relative">
@@ -171,7 +235,36 @@
           />
         </div>
       </div>
+      <div class="col-auto">
+        <select bind:value={filterStatus} class="form-select w-auto">
+          <option value="">All Status</option>
+          <option value="assigned">Assigned</option>
+          <option value="converted">Converted</option>
+        </select>
+      </div>
     </div>
+
+    <!-- Bulk Action Bar -->
+    {#if selectedIds.size > 0}
+      <div class="d-flex align-items-center gap-3 mb-2 p-2 px-3 bg-primary-subtle border border-primary rounded">
+        <span class="fw-semibold text-primary">{selectedIds.size} selected</span>
+        <button
+          class="btn btn-sm btn-success"
+          disabled={bulkConverting || assignedSelectedCount === 0}
+          on:click={confirmBulkConvert}
+          title={assignedSelectedCount === 0 ? "Select assigned inquiries to convert" : `Convert ${assignedSelectedCount} assigned`}
+        >
+          {#if bulkConverting}
+            <span class="spinner-border spinner-border-sm me-1"></span>Converting...
+          {:else}
+            <i class="ti ti-arrow-right me-1"></i>Bulk Convert ({assignedSelectedCount})
+          {/if}
+        </button>
+        <button class="btn btn-sm btn-outline-secondary ms-auto" on:click={clearSelection}>
+          <i class="ti ti-x me-1"></i>Clear
+        </button>
+      </div>
+    {/if}
 
     <div class="card border-0 rounded-0">
       <div class="card-body">
@@ -186,6 +279,11 @@
           totalPages={Math.ceil(totalItems / rowsPerPage)}
           serverMode={true}
           headersItemShow={false}
+          checkboxSelection={true}
+          {selectedIds}
+          {allPageSelected}
+          on:toggleRow={(e) => toggleRow(e.detail)}
+          on:toggleAll={toggleAll}
           on:pageChange={(e) => (currentPage = e.detail)}
           on:rowsPerPageChange={(e) => { rowsPerPage = e.detail; currentPage = 1; }}
           on:search={(e) => { searchTerm = e.detail; currentPage = 1; }}
@@ -194,6 +292,34 @@
     </div>
   </div>
 </div>
+
+<!-- Bulk Convert Result Modal -->
+{#if bulkConvertResultOpen && bulkConvertResult}
+  <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.5);">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="ti ti-check me-2 text-success"></i>Bulk Convert Result</h5>
+          <button class="btn-close" on:click={() => bulkConvertResultOpen = false}></button>
+        </div>
+        <div class="modal-body">
+          <p><strong>Converted:</strong> {bulkConvertResult.converted ?? 0}</p>
+          <p><strong>Skipped:</strong> {bulkConvertResult.skipped?.length ?? 0}</p>
+          {#if bulkConvertResult.skipped?.length}
+            <ul class="small text-muted">
+              {#each bulkConvertResult.skipped as s}
+                <li>{s.customerName || s.id} — {s.reason}</li>
+              {/each}
+            </ul>
+          {/if}
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-primary" on:click={() => bulkConvertResultOpen = false}>OK</button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <!-- Detail Modal -->
 {#if detailModalOpen && detailItem}

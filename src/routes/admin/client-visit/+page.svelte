@@ -145,7 +145,23 @@
       label: "Status",
       render: (val, row) => {
         const s = STATUS_BADGE[row.status] ?? { cls: "bg-secondary", label: row.status ?? "—" };
-        return `<span class="badge ${s.cls}">${s.label}</span>`;
+        const badge = `<span class="badge ${s.cls} status-change-btn" data-id="${row.id}" data-status="${row.status}" style="cursor:pointer;" title="Click to change status">${s.label} <i class="ti ti-chevron-down" style="font-size:10px;"></i></span>`;
+        if (row.status === 'scheduled' && row.visitDate) {
+          const today = new Date(); today.setHours(0,0,0,0);
+          const vd = new Date(row.visitDate); vd.setHours(0,0,0,0);
+          const diff = Math.round((vd - today) / 86400000);
+          let label, cls;
+          if (diff === 0)       { label = "Today";        cls = "text-warning fw-semibold"; }
+          else if (diff === 1)  { label = "Tomorrow";     cls = "text-success fw-semibold"; }
+          else if (diff > 1)    { label = `in ${diff}d`;  cls = "text-success"; }
+          else if (diff === -1) { label = "Yesterday";    cls = "text-danger fw-semibold"; }
+          else                  { label = `${-diff}d ago`; cls = "text-danger"; }
+          const overdueBadge = diff < 0
+            ? `<br><span class="badge bg-danger-subtle text-danger" style="font-size:10px;">Overdue</span>`
+            : '';
+          return `${badge}${overdueBadge}<br><small class="${cls}" style="font-size:10.5px;">${label}</small>`;
+        }
+        return badge;
       },
     },
     {
@@ -234,6 +250,108 @@
       color: "btn-soft-success",
     },
   ];
+
+  async function quickStatusChange(id, currentStatus) {
+    const options = [
+      { value: "scheduled", label: "📅 Scheduled", color: "#0d6efd" },
+      { value: "completed", label: "✓ Completed", color: "#198754" },
+      { value: "cancelled", label: "✕ Cancelled", color: "#dc3545" },
+    ].filter(o => o.value !== currentStatus);
+
+    const today = new Date().toISOString().slice(0, 10);
+
+    const btns = options.map(o =>
+      `<button class="swal2-status-btn" data-val="${o.value}"
+        style="background:${o.color};color:#fff;border:none;border-radius:6px;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer;flex:1;transition:opacity .15s;"
+        onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+        ${o.label}
+      </button>`
+    ).join("");
+
+    const { value: result } = await Swal.fire({
+      title: "Change Status",
+      html: `
+        <div style="display:flex;gap:8px;justify-content:center;margin-bottom:16px;">${btns}</div>
+        <div id="swal-extra" style="display:none;">
+          <div style="margin-bottom:10px;">
+            <label style="font-size:12px;color:#6c757d;display:block;text-align:left;margin-bottom:4px;" id="swal-date-label">Date</label>
+            <input id="swal-date" type="date" value="${today}"
+              style="width:100%;padding:7px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;" />
+          </div>
+          <div id="swal-reason-wrap" style="display:none;margin-bottom:10px;">
+            <label style="font-size:12px;color:#6c757d;display:block;text-align:left;margin-bottom:4px;">Reason</label>
+            <select id="swal-reason" style="width:100%;padding:7px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;">
+              <option value="">Select reason...</option>
+              <option>Client unavailable</option>
+              <option>Internal conflict</option>
+              <option>Rescheduled by client</option>
+              <option>Weather / travel issue</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div style="margin-bottom:4px;">
+            <label style="font-size:12px;color:#6c757d;display:block;text-align:left;margin-bottom:4px;">Note (optional)</label>
+            <input id="swal-note" type="text" placeholder="Add a note..."
+              style="width:100%;padding:7px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;" />
+          </div>
+        </div>`,
+      showConfirmButton: true,
+      confirmButtonText: "Update",
+      showCancelButton: true,
+      didOpen: (popup) => {
+        let picked = null;
+        const extra = popup.querySelector('#swal-extra');
+        const reasonWrap = popup.querySelector('#swal-reason-wrap');
+        const dateLabel = popup.querySelector('#swal-date-label');
+        popup.querySelectorAll('.swal2-status-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            picked = btn.dataset.val;
+            popup.querySelectorAll('.swal2-status-btn').forEach(b => b.style.opacity = '0.5');
+            btn.style.opacity = '1';
+            btn.style.outline = '2px solid #333';
+            extra.style.display = 'block';
+            if (picked === 'completed') {
+              dateLabel.textContent = 'Completed On';
+              reasonWrap.style.display = 'none';
+            } else if (picked === 'cancelled') {
+              dateLabel.textContent = 'Cancelled On';
+              reasonWrap.style.display = 'block';
+            } else {
+              dateLabel.textContent = 'New Visit Date';
+              reasonWrap.style.display = 'none';
+            }
+          });
+        });
+        popup._getPicked = () => picked;
+      },
+      preConfirm: () => {
+        const popup = document.querySelector('.swal2-popup');
+        const picked = popup?._getPicked?.();
+        if (!picked) { Swal.showValidationMessage('Please select a status'); return false; }
+        return {
+          status: picked,
+          date: document.querySelector('#swal-date')?.value || today,
+          note: document.querySelector('#swal-note')?.value || '',
+          reason: document.querySelector('#swal-reason')?.value || '',
+        };
+      },
+    });
+
+    if (!result) return;
+    try {
+      await authApiFetch(`${API_ROUTES.CLIENT_VISIT}/${id}/status`, {
+        method: "PATCH",
+        data: result,
+      });
+      visits = visits.map(v => v.id === id ? { ...v, status: result.status,
+        ...(result.status === 'completed' ? { completedAt: result.date } : {}),
+        ...(result.status === 'cancelled' ? { cancelledAt: result.date } : {}),
+        ...(result.status === 'scheduled' ? { visitDate: result.date } : {}),
+      } : v);
+    } catch (e) {
+      errorHandle(e);
+    }
+  }
 
   async function deleteVisit(id) {
     const result = await Swal.fire({
@@ -360,7 +478,10 @@
 
     <!-- Table -->
     <div class="card border-0 rounded-0">
-      <div class="card-body">
+      <div class="card-body" on:click={(e) => {
+        const btn = e.target.closest('.status-change-btn');
+        if (btn) quickStatusChange(Number(btn.dataset.id), btn.dataset.status);
+      }}>
         <DynamicDataTable
           loading={loadingData}
           {columns}

@@ -413,6 +413,56 @@
         </div>
       {/if}
 
+    <!-- Status History Timeline -->
+    {#if visit?.statusHistory?.length}
+      <div class="d-flex align-items-center justify-content-between px-4 py-2" style="background:#f8f9fa;border:1px solid #e9ecef;border-top:0;border-bottom:0;">
+        <div class="d-flex align-items-center gap-2">
+          <div style="width:8px;height:8px;border-radius:50%;background:#6c757d;"></div>
+          <span class="text-uppercase fw-semibold" style="font-size:11px;letter-spacing:.05em;color:#6c757d;">
+            Status History
+            {#if visit.rescheduleCount > 0}
+              <span class="badge bg-warning text-dark ms-2" style="font-size:10px;">Rescheduled {visit.rescheduleCount}×</span>
+            {/if}
+          </span>
+        </div>
+      </div>
+      <div class="px-4 py-3" style="border:1px solid #e9ecef;border-top:0;">
+        <div style="position:relative;padding-left:20px;">
+          {#each [...visit.statusHistory].reverse() as entry, i}
+            {@const STATUS_COLOR = { scheduled: '#0d6efd', completed: '#198754', cancelled: '#dc3545' }}
+            {@const STATUS_ICON = { scheduled: 'ti-calendar', completed: 'ti-circle-check', cancelled: 'ti-circle-x' }}
+            <div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:{i < visit.statusHistory.length - 1 ? '16px' : '0'};">
+              <div style="position:relative;flex-shrink:0;">
+                <div style="width:28px;height:28px;border-radius:50%;background:{STATUS_COLOR[entry.to] ?? '#6c757d'};display:flex;align-items:center;justify-content:center;">
+                  <i class="ti {STATUS_ICON[entry.to] ?? 'ti-circle'}" style="color:#fff;font-size:13px;"></i>
+                </div>
+                {#if i < visit.statusHistory.length - 1}
+                  <div style="position:absolute;left:13px;top:28px;width:2px;height:calc(100% + 8px);background:#e9ecef;"></div>
+                {/if}
+              </div>
+              <div style="padding-top:4px;">
+                <div style="font-size:13px;font-weight:600;">
+                  <span style="color:{STATUS_COLOR[entry.from] ?? '#6c757d'};text-transform:capitalize;">{entry.from}</span>
+                  <i class="ti ti-arrow-right mx-1" style="font-size:11px;color:#adb5bd;"></i>
+                  <span style="color:{STATUS_COLOR[entry.to] ?? '#6c757d'};text-transform:capitalize;">{entry.to}</span>
+                </div>
+                <div style="font-size:11px;color:#6c757d;margin-top:2px;">
+                  {entry.by} · {fmtDatetime(entry.at)}
+                  {#if entry.date} · <span class="fw-semibold">{fmtDate(entry.date)}</span>{/if}
+                </div>
+                {#if entry.reason}
+                  <div style="font-size:11px;color:#6c757d;margin-top:2px;"><i class="ti ti-tag me-1"></i>{entry.reason}</div>
+                {/if}
+                {#if entry.note}
+                  <div style="font-size:12px;color:#495057;margin-top:3px;font-style:italic;">"{entry.note}"</div>
+                {/if}
+              </div>
+            </div>
+          {/each}
+        </div>
+      </div>
+    {/if}
+
     {:else}
       <div class="alert alert-warning">Visit not found.</div>
     {/if}

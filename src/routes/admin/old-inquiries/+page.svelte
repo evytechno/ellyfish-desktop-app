@@ -23,6 +23,43 @@
 
   let searchTerm = "";
   let filterStatus = "";
+  let filterAssignedTo = "";
+  let filterDateField = "createdAt";
+  let filterDateFrom = "";
+  let filterDateTo = "";
+  let filterDatePreset = "";
+
+  function applyDatePreset(preset) {
+    filterDatePreset = preset;
+    if (preset === "custom" || preset === "") {
+      filterDateFrom = "";
+      filterDateTo = "";
+      return;
+    }
+    const today = new Date();
+    const fmt = (d) => d.toISOString().slice(0, 10);
+    const start = new Date(today);
+    const end = new Date(today);
+    if (preset === "today") {
+      // from = to = today
+    } else if (preset === "yesterday") {
+      start.setDate(start.getDate() - 1);
+      end.setDate(end.getDate() - 1);
+    } else if (preset === "last7") {
+      start.setDate(start.getDate() - 6);
+    } else if (preset === "last30") {
+      start.setDate(start.getDate() - 29);
+    } else if (preset === "thisMonth") {
+      start.setDate(1);
+    } else if (preset === "lastMonth") {
+      start.setMonth(start.getMonth() - 1, 1);
+      end.setDate(0); // last day of previous month
+    } else if (preset === "thisYear") {
+      start.setMonth(0, 1);
+    }
+    filterDateFrom = fmt(start);
+    filterDateTo = fmt(end);
+  }
 
   let users = [];
 
@@ -165,6 +202,10 @@
       const params = new URLSearchParams({ page: String(currentPage), limit: String(rowsPerPage) });
       if (searchTerm) params.set("search", searchTerm);
       if (filterStatus) params.set("status", filterStatus);
+      if (filterAssignedTo) params.set("assignedTo", filterAssignedTo);
+      if (filterDateFrom) params.set("dateFrom", filterDateFrom);
+      if (filterDateTo) params.set("dateTo", filterDateTo);
+      if (filterDateFrom || filterDateTo) params.set("dateField", filterDateField);
       const res = await authApiFetch(`${API_ROUTES.OLD_INQUIRY}?${params}`);
       items = res.data ?? [];
       totalItems = res.total ?? 0;
@@ -186,7 +227,7 @@
   }
 
   let debounce;
-  $: [searchTerm, filterStatus, currentPage, rowsPerPage], (() => {
+  $: [searchTerm, filterStatus, filterAssignedTo, filterDateField, filterDateFrom, filterDateTo, filterDatePreset, currentPage, rowsPerPage], (() => {
     if (!firstLoad) return;
     clearSelection();
     clearTimeout(debounce);
@@ -512,13 +553,8 @@
       <div class="col-auto">
         <div class="input-icon input-icon-start position-relative">
           <span class="input-icon-addon text-dark"><i class="ti ti-search"></i></span>
-          <input
-            type="text"
-            bind:value={searchTerm}
-            class="form-control"
-            placeholder="Search name, phone, product..."
-            style="min-width:200px;"
-          />
+          <input type="text" bind:value={searchTerm} class="form-control"
+            placeholder="Search name, phone, product..." style="min-width:200px;" />
         </div>
       </div>
       <div class="col-auto">
@@ -529,6 +565,52 @@
           <option value="converted">Converted</option>
         </select>
       </div>
+      <div class="col-auto">
+        <select bind:value={filterAssignedTo} class="form-select w-auto">
+          <option value="">Assigned To</option>
+          {#each users as u}
+            <option value={u.id}>{u.name}</option>
+          {/each}
+        </select>
+      </div>
+      <div class="col-auto">
+        <select bind:value={filterDateField} class="form-select w-auto">
+          <option value="createdAt">Imported Date</option>
+          <option value="assignedAt">Assigned Date</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <select
+          class="form-select w-auto"
+          value={filterDatePreset}
+          on:change={(e) => applyDatePreset(e.currentTarget.value)}
+        >
+          <option value="">All Dates</option>
+          <option value="today">Today</option>
+          <option value="yesterday">Yesterday</option>
+          <option value="last7">Last 7 Days</option>
+          <option value="last30">Last 30 Days</option>
+          <option value="thisMonth">This Month</option>
+          <option value="lastMonth">Last Month</option>
+          <option value="thisYear">This Year</option>
+          <option value="custom">Custom Range</option>
+        </select>
+      </div>
+      {#if filterDatePreset === "custom"}
+        <div class="col-auto">
+          <input type="date" bind:value={filterDateFrom} class="form-control" style="min-width:140px;" title="From date" />
+        </div>
+        <div class="col-auto">
+          <input type="date" bind:value={filterDateTo} class="form-control" style="min-width:140px;" title="To date" />
+        </div>
+      {/if}
+      {#if filterAssignedTo || filterDatePreset}
+        <div class="col-auto">
+          <button class="btn btn-outline-secondary btn-sm" on:click={() => { filterAssignedTo = ""; filterDateFrom = ""; filterDateTo = ""; filterDateField = "createdAt"; filterDatePreset = ""; }}>
+            <i class="ti ti-x me-1"></i>Clear Filters
+          </button>
+        </div>
+      {/if}
     </div>
 
     <!-- Bulk Action Bar -->

@@ -26,6 +26,7 @@
   let filterStatus = "";
   let filterType = "";
   let filterPriority = "";
+  let filterQuick = "";
   let selectedFilter = "last7days";
   let customStartDate = "";
   let customEndDate = "";
@@ -294,7 +295,7 @@
   }
 
   function saveFilterStore() {
-    queryFilterStore.set({ search, filterStatus, filterType, filterPriority, selectedFilter, customStartDate, customEndDate, dateField, raisedById, assignedToId, rowsPerPage, currentPage });
+    queryFilterStore.set({ search, filterStatus, filterType, filterPriority, filterQuick, selectedFilter, customStartDate, customEndDate, dateField, raisedById, assignedToId, rowsPerPage, currentPage });
   }
 
   onMount(async () => {
@@ -322,6 +323,7 @@
       if (saved.filterStatus    !== undefined) filterStatus    = saved.filterStatus;
       if (saved.filterType      !== undefined) filterType      = saved.filterType;
       if (saved.filterPriority  !== undefined) filterPriority  = saved.filterPriority;
+      if (saved.filterQuick     !== undefined) filterQuick     = saved.filterQuick;
       if (saved.selectedFilter  !== undefined) selectedFilter  = saved.selectedFilter;
       if (saved.customStartDate !== undefined) customStartDate = saved.customStartDate;
       if (saved.customEndDate   !== undefined) customEndDate   = saved.customEndDate;
@@ -357,6 +359,7 @@
       if (filterStatus) q.set("status", filterStatus);
       if (filterType) q.set("type", filterType);
       if (filterPriority) q.set("priority", filterPriority);
+      if (filterQuick === "dealWon") q.set("dealWon", "true");
       if (dateParams.dateFrom) q.set("dateFrom", dateParams.dateFrom);
       if (dateParams.dateTo) q.set("dateTo", dateParams.dateTo);
 
@@ -416,6 +419,7 @@
     filterStatus = "";
     filterType = "";
     filterPriority = "";
+    filterQuick = "";
     selectedFilter = "last7days";
     customStartDate = "";
     customEndDate = "";
@@ -431,6 +435,7 @@
     filterStatus ||
     filterType ||
     filterPriority ||
+    filterQuick ||
     selectedFilter !== "today" ||
     dateField !== "createdAt" ||
     raisedById ||
@@ -660,6 +665,12 @@
           {#each STATUSES as s}
             <option value={s.value}>{s.label}</option>
           {/each}
+        </select>
+      </div>
+      <div>
+        <select class="form-select" bind:value={filterQuick} on:change={onFilterChange}>
+          <option value="">All</option>
+          <option value="dealWon">🏆 Deal Won</option>
         </select>
       </div>
       {#if isMasterView(currentUser)}
