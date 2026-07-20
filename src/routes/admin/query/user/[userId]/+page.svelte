@@ -242,9 +242,11 @@
 
   function replyPct(count, total) { return total > 0 ? Math.round(count / total * 100) : 0; }
 
-  $: maskTC     = (name) => (currentUser?.role === "master" && $queryPrivacy.telecaller && name) ? "Telecaller" : (name ?? "-");
-  $: maskTech   = (name) => (currentUser?.role === "master" && $queryPrivacy.tech       && name) ? "Tech"        : (name ?? "-");
-  $: maskHelper = (name) => (currentUser?.role === "master" && $queryPrivacy.techHelper && name) ? "Senior Tech" : (name ?? "-");
+  $: isTechSubRole    = currentUser?.subRole === "tech" || currentUser?.subRole === "tech_helper";
+  $: isTCSubRole      = currentUser?.subRole === "telecaller";
+  $: maskTC     = (name) => ((isTechSubRole || (currentUser?.role === "master" && $queryPrivacy.telecaller)) && name) ? "Telecaller" : (name ?? "-");
+  $: maskTech   = (name) => ((isTCSubRole  || (currentUser?.role === "master" && $queryPrivacy.tech))       && name) ? "Tech"        : (name ?? "-");
+  $: maskHelper = (name) => ((isTCSubRole  || (currentUser?.role === "master" && $queryPrivacy.techHelper)) && name) ? "Senior Tech" : (name ?? "-");
   $: maskedUserName     = user ? (user.subRole === "telecaller" ? maskTC(user.name) : user.subRole === "tech_helper" ? maskHelper(user.name) : maskTech(user.name)) : "";
   $: maskedUserInitials = maskedUserName ? initials(maskedUserName) : "?";
   $: replyTotal = detail

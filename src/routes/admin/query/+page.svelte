@@ -491,9 +491,11 @@
     });
   }
 
-  $: maskTC     = (name) => (currentUser?.role === "master" && $queryPrivacy.telecaller && name) ? "Telecaller" : (name ?? "-");
-  $: maskTech   = (name) => (currentUser?.role === "master" && $queryPrivacy.tech       && name) ? "Tech"        : (name ?? "-");
-  $: maskHelper = (name) => (currentUser?.role === "master" && $queryPrivacy.techHelper && name) ? "Senior Tech" : (name ?? "-");
+  $: isTechSubRole    = currentUser?.subRole === "tech" || currentUser?.subRole === "tech_helper";
+  $: isTCSubRole      = currentUser?.subRole === "telecaller";
+  $: maskTC     = (name) => ((isTechSubRole || (currentUser?.role === "master" && $queryPrivacy.telecaller)) && name) ? "Telecaller" : (name ?? "-");
+  $: maskTech   = (name) => ((isTCSubRole  || (currentUser?.role === "master" && $queryPrivacy.tech))       && name) ? "Tech"        : (name ?? "-");
+  $: maskHelper = (name) => ((isTCSubRole  || (currentUser?.role === "master" && $queryPrivacy.techHelper)) && name) ? "Senior Tech" : (name ?? "-");
 </script>
 
 <div class="page-wrapper">
