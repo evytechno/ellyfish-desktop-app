@@ -166,7 +166,7 @@
                   <div class="d-flex flex-wrap gap-1">
                     {#each (visit.attendees ?? []) as att}
                       <span class="badge border" style="font-size:11px;font-weight:400;background:#E6F1FB;color:#185FA5;border-color:#B5D4F4!important;">
-                        {att.user?.name ?? "—"}{att.isLead ? " · Lead" : ""}
+                        {currentUser?.role === 'user' && att.user?.name !== currentUser?.name ? 'Team Member' : (att.user?.name ?? "—")}{att.isLead ? " · Lead" : ""}
                       </span>
                     {/each}
                     {#if !visit.attendees?.length}
@@ -218,7 +218,7 @@
                 </td>
                 <td>
                   <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;">Created By</div>
-                  <div style="font-size:13px;">{visit.createdBy?.name ?? "—"} · {visit.financialYear}</div>
+                  <div style="font-size:13px;">{currentUser?.role === 'user' && visit.createdBy?.name !== currentUser?.name ? 'Team Member' : (visit.createdBy?.name ?? "—")} · {visit.financialYear}</div>
                 </td>
                 <td>
                   {#if tf.startEnd}
@@ -405,7 +405,7 @@
                   <td style="font-size:13px;">{exp.title}</td>
                   <td style="font-size:12px;color:#6c757d;">{(exp.items ?? []).map((it) => `${it.item ?? it.description ?? ""} ₹${parseFloat(it.price ?? it.amount ?? 0).toFixed(0)}`).join(" · ") || "—"}</td>
                   <td class="text-end fw-semibold" style="font-size:13px;">₹{et.toLocaleString('en-IN')}</td>
-                  <td style="font-size:12px;color:#6c757d;">{exp.user?.name ?? "—"}</td>
+                  <td style="font-size:12px;color:#6c757d;">{currentUser?.role === 'user' && exp.user?.name !== currentUser?.name ? 'Team Member' : (exp.user?.name ?? "—")}</td>
                 </tr>
               {/each}
             </tbody>

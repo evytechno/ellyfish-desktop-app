@@ -471,7 +471,9 @@
               </a>
               {#if v.attendees?.length}
                 <span class="text-muted fs-12 flex-shrink-0 d-none d-md-inline">
-                  <i class="ti ti-users me-1"></i>{v.attendees.map(a => a.user?.name ?? '').filter(Boolean).join(', ')}
+                  <i class="ti ti-users me-1"></i>{currentUser?.role === 'user'
+                    ? v.attendees.map(a => a.user?.name === currentUser?.name ? currentUser.name : 'Team Member').join(', ')
+                    : v.attendees.map(a => a.user?.name ?? '').filter(Boolean).join(', ')}
                 </span>
               {/if}
             </div>
