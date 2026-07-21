@@ -5463,9 +5463,17 @@
                   <!-- Company / GST -->
                   <div class="op-section">
                     <div class="op-section-title"><i class="ti ti-building"></i>Company</div>
-                    {#if o.company}<div class="op-row"><span class="op-label"><i class="ti ti-building"></i>Name</span><span class="op-value op-copyable" on:click={() => copyField('company', o.company)}>{o.company}<i class="ti {copiedFieldKey === 'company' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'company'}></i></span></div>{/if}
+                    {#if o.client?.name || o.company}
+                      <div class="op-row">
+                        <span class="op-label"><i class="ti ti-building"></i>Name</span>
+                        <span class="op-value op-copyable" on:click={() => copyField('company', o.client?.name || o.company)}>
+                          {o.client?.name || o.company}
+                          <i class="ti {copiedFieldKey === 'company' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'company'}></i>
+                        </span>
+                      </div>
+                    {/if}
                     {#if o.gstNumber}<div class="op-row"><span class="op-label"><i class="ti ti-license"></i>GST No.</span><span class="op-value op-copyable font-mono" style="font-size:11px;" on:click={() => copyField('gst', o.gstNumber)}>{o.gstNumber}<i class="ti {copiedFieldKey === 'gst' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'gst'}></i></span></div>{/if}
-                    {#if !o.company && !o.gstNumber && !o.client}
+                    {#if !o.client?.name && !o.company && !o.gstNumber}
                       <div class="op-row"><span class="op-value text-muted" style="font-size:11px;">No company info.</span></div>
                     {/if}
                   </div>

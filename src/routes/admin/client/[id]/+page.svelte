@@ -25,6 +25,7 @@
   let editAddress = "";
   let editRemark = "";
   let editLoading = false;
+  let isEditing = false;
 
   // Add contact form
   let showContactForm = false;
@@ -110,6 +111,7 @@
         data: JSON.stringify(payload),
       });
       client = { ...client, ...res.data };
+      isEditing = false;
       Swal.fire("Saved!", "Client updated successfully.", "success");
     } catch (error) {
       const errs = errorHandle(error);
@@ -133,12 +135,12 @@
         data: JSON.stringify({
           clientId: Number(clientId),
           name: contactName,
-          designation: contactDesignation,
-          mobile: contactMobile,
-          email: contactEmail,
-          whatsapp: contactWhatsapp,
-          alternateMobile: contactAltMobile,
-          address: contactAddress,
+          ...(contactDesignation  && { designation:     contactDesignation }),
+          ...(contactMobile       && { mobile:          contactMobile }),
+          ...(contactEmail        && { email:           contactEmail }),
+          ...(contactWhatsapp     && { whatsapp:        contactWhatsapp }),
+          ...(contactAltMobile    && { alternateMobile: contactAltMobile }),
+          ...(contactAddress      && { address:         contactAddress }),
         }),
       });
       client.contacts = [...(client.contacts || []), res.data];
@@ -170,9 +172,11 @@
     editContactLoading = true;
     try {
       const { id: _id, createdAt: _c, updatedAt: _u, deletedAt: _d, ...contactPayload } = editingContact;
+      // Strip empty strings so optional @IsEmail / @IsString validators don't reject them
+      const cleanPayload = Object.fromEntries(Object.entries(contactPayload).filter(([, v]) => v !== ""));
       const res = await authApiFetch(`${API_ROUTES.CLIENT_CONTACT}/${editingContact.id}`, {
         method: "PUT",
-        data: JSON.stringify(contactPayload),
+        data: JSON.stringify(cleanPayload),
       });
       client.contacts = client.contacts.map(c => c.id === editingContact.id ? res.data : c);
       editingContact = null;
@@ -239,27 +243,29 @@
   <div class="content pb-0">
 
     <!-- Page Header -->
-    <div class="flex items-center justify-between gap-2 mb-4 flex-wrap">
-      <div>
-        <h4 class="mb-1">{client?.name || "Client Detail"}</h4>
-        <nav aria-label="breadcrumb">
-          <ol class="breadcrumb mb-0 p-0">
-            <li class="breadcrumb-item"><a href="/admin/dashboard">Home</a></li>
-            {#if canEdit}
-              <li class="breadcrumb-item"><a href="/admin/client">Clients</a></li>
-            {:else}
-              <li class="breadcrumb-item">Clients</li>
-            {/if}
-            <li class="breadcrumb-item active" aria-current="page">
-              {client?.name || "Detail"}
-            </li>
-          </ol>
-        </nav>
-      </div>
-      <div class="gap-2 d-flex align-items-center flex-wrap">
+    <div class="d-flex align-items-center justify-content-between gap-2 mb-4 flex-wrap">
+      <div class="d-flex align-items-center gap-3">
         <button class="btn btn-warning btn-sm" on:click={() => window.history.back()}>
           <i class="ti ti-arrow-left me-1"></i>Back
         </button>
+        <div>
+          <h4 class="mb-1">{client?.name || "Client Detail"}</h4>
+          <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0 p-0">
+              <li class="breadcrumb-item"><a href="/admin/dashboard">Home</a></li>
+              {#if canEdit}
+                <li class="breadcrumb-item"><a href="/admin/client">Clients</a></li>
+              {:else}
+                <li class="breadcrumb-item">Clients</li>
+              {/if}
+              <li class="breadcrumb-item active" aria-current="page">
+                {client?.name || "Detail"}
+              </li>
+            </ol>
+          </nav>
+        </div>
+      </div>
+      <div class="gap-2 d-flex align-items-center flex-wrap">
         <a href="/admin/client-visit/add?clientId={clientId}" class="btn btn-success shadow">
           <i class="ti ti-map-pin me-1"></i>Create Visit
         </a>
@@ -276,15 +282,20 @@
       <!-- Left: Client Info -->
       <div class="col-md-4">
         <div class="card border-0 rounded-0">
-          <div class="card-header">
+          <div class="card-header d-flex align-items-center justify-content-between">
             <h5 class="mb-0">
               <i class="ti ti-building-store me-2 text-primary"></i>Client Info
             </h5>
+            {#if canEdit && !isEditing}
+              <button class="btn btn-outline-primary btn-sm" on:click={() => isEditing = true}>
+                <i class="ti ti-edit me-1"></i>Edit
+              </button>
+            {/if}
           </div>
           <div class="card-body">
 
-            {#if canEdit}
-              <!-- Edit form for master / telecaller -->
+            {#if canEdit && isEditing}
+              <!-- Edit form -->
               <form on:submit={saveClient} novalidate>
                 <div class="mb-3">
                   <label class="form-label">Company Name <span class="text-danger">*</span></label>
@@ -318,15 +329,18 @@
                   <label class="form-label">Remark</label>
                   <textarea class="form-control" bind:value={editRemark} placeholder="Remark" rows="2"></textarea>
                 </div>
-                <div class="flex justify-end">
-                  <button type="submit" class="btn btn-primary" disabled={editLoading}>
+                <div class="d-flex justify-content-end gap-2">
+                  <button type="button" class="btn btn-secondary btn-sm" on:click={() => isEditing = false} disabled={editLoading}>
+                    Cancel
+                  </button>
+                  <button type="submit" class="btn btn-primary btn-sm" disabled={editLoading}>
                     {editLoading ? "Saving..." : "Save Changes"}
                   </button>
                 </div>
               </form>
 
             {:else}
-              <!-- Read-only view for admin / manager -->
+              <!-- Read-only view -->
               <table class="table table-sm table-borderless mb-0">
                 <tbody>
                   <tr>

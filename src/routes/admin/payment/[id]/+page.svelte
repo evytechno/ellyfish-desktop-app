@@ -56,20 +56,20 @@
     <div
       class="pageHeader d-flex align-items-center justify-content-between gap-2 mb-4 flex-wrap no-print"
     >
-      <div class="no-print">
-        <button class="btn btn-warning btn-sm mb-2" on:click={() => history.length > 2 ? history.back() : window.location.href='/admin/payment'}>
+      <div class="d-flex align-items-center gap-3 no-print">
+        <button class="btn btn-warning btn-sm" on:click={() => history.length > 2 ? history.back() : window.location.href='/admin/payment'}>
           <i class="ti ti-arrow-left me-1"></i>Back
         </button>
-        <h4 class="mb-1">Payment</h4>
-        <nav aria-label="breadcrumb">
-          <ol class="breadcrumb mb-0 p-0">
-            <li class="breadcrumb-item"><a href="/admin/dashboard">Home</a></li>
-            <li class="breadcrumb-item">
-              <a href="/admin/payment">Payments</a>
-            </li>
-            <li class="breadcrumb-item active" aria-current="page">Payment</li>
-          </ol>
-        </nav>
+        <div>
+          <h4 class="mb-1">Payment</h4>
+          <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0 p-0">
+              <li class="breadcrumb-item"><a href="/admin/dashboard">Home</a></li>
+              <li class="breadcrumb-item"><a href="/admin/payment">Payments</a></li>
+              <li class="breadcrumb-item active" aria-current="page">Payment</li>
+            </ol>
+          </nav>
+        </div>
       </div>
     </div>
     <!-- End Page Header -->

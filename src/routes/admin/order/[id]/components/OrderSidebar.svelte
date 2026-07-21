@@ -362,6 +362,18 @@
             </div>
           {/if}
         {:else if order.orderClients?.length > 0}
+          <!-- Legacy company name from order.company text field -->
+          {#if order.company}
+            <div class="order-sidebar-client-card mb-2">
+              <div class="d-flex align-items-center gap-1">
+                <i class="ti ti-building text-muted" style="font-size:13px;"></i>
+                <span class="fw-semibold" style="font-size:13px;">{order.company}</span>
+              </div>
+              {#if order.gstNumber}
+                <div class="order-sidebar-client-gst">GST: {order.gstNumber}</div>
+              {/if}
+            </div>
+          {/if}
           <p class="order-sidebar-chip-label mb-2">Legacy contacts</p>
           {#each order.orderClients as orderClient, index}
             {#if orderClient?.deletedAt == null}
@@ -406,6 +418,18 @@
               </div>
             {/if}
           {/each}
+        {:else if order.company}
+          <!-- No orderClients but company text exists -->
+          <div class="order-sidebar-client-card">
+            <div class="d-flex align-items-center gap-1">
+              <i class="ti ti-building text-muted" style="font-size:13px;"></i>
+              <span class="fw-semibold" style="font-size:13px;">{order.company}</span>
+            </div>
+            {#if order.gstNumber}
+              <div class="order-sidebar-client-gst">GST: {order.gstNumber}</div>
+            {/if}
+            <div class="text-muted mt-1" style="font-size:11px;">No contacts linked.</div>
+          </div>
         {:else}
           <div class="order-sidebar-empty-state">
             <i class="ti ti-link-off"></i>

@@ -50,20 +50,20 @@
 <div class="page-wrapper">
   <div class="content pb-0">
     <div class="d-flex align-items-center justify-content-between gap-2 mb-4 flex-wrap">
-      <div>
-        <button class="btn btn-warning btn-sm mb-2" on:click={() => history.length > 2 ? history.back() : window.location.href='/admin/category'}>
+      <div class="d-flex align-items-center gap-3">
+        <button class="btn btn-warning btn-sm" on:click={() => history.length > 2 ? history.back() : window.location.href='/admin/category'}>
           <i class="ti ti-arrow-left me-1"></i>Back
         </button>
-        <h4 class="mb-1">Category</h4>
-        <nav aria-label="breadcrumb">
-          <ol class="breadcrumb mb-0 p-0">
-            <li class="breadcrumb-item"><a href="/admin/dashboard">Home</a></li>
-            <li class="breadcrumb-item">
-              <a href="/admin/category">Categories</a>
-            </li>
-            <li class="breadcrumb-item active" aria-current="page">Category</li>
-          </ol>
-        </nav>
+        <div>
+          <h4 class="mb-1">Category</h4>
+          <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0 p-0">
+              <li class="breadcrumb-item"><a href="/admin/dashboard">Home</a></li>
+              <li class="breadcrumb-item"><a href="/admin/category">Categories</a></li>
+              <li class="breadcrumb-item active" aria-current="page">Category</li>
+            </ol>
+          </nav>
+        </div>
       </div>
       <a href="/admin/category/edit/{categoryId}" class="btn btn-primary">
         <i class="ti ti-edit me-1"></i>Edit

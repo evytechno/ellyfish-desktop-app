@@ -712,6 +712,135 @@
     finally { refresh = false; }
   }
 
+  // ── Client Edit Modal ────────────────────────────────────
+  let clientEditModal = null;
+  // = { orderId, order, focusField, clientId, clientContactId, isCompany, noContact }
+  let clientEditForm = { name: "", mobile: "", alternateMobile: "", whatsapp: "", email: "", designation: "", address: "" };
+  let clientEditCompanyName = "";
+  let clientEditSaving = false;
+  let clientEditError = "";
+
+  function openClientEditModal(order, field) {
+    const primaryOC = order.orderContacts?.find(oc => oc.isPrimary) ?? order.orderContacts?.[0];
+    const cc = primaryOC?.clientContact;
+
+    if (field === "company") {
+      clientEditModal = { orderId: order.id, order, focusField: "company", clientId: order.client?.id, clientContactId: null, isCompany: true, noContact: false };
+      clientEditCompanyName = order.client?.name || "";
+    } else {
+      clientEditModal = { orderId: order.id, order, focusField: field, clientId: order.client?.id, clientContactId: cc?.id ?? null, isCompany: false, noContact: !cc };
+      clientEditForm = {
+        name:            cc?.name            || "",
+        mobile:          cc?.mobile          || "",
+        alternateMobile: cc?.alternateMobile || "",
+        whatsapp:        cc?.whatsapp        || "",
+        email:           cc?.email           || "",
+        designation:     cc?.designation     || "",
+        address:         cc?.address         || "",
+      };
+    }
+    clientEditError = "";
+    clientEditSaving = false;
+  }
+
+  function closeClientEditModal() {
+    clientEditModal = null;
+    clientEditForm = { name: "", mobile: "", alternateMobile: "", whatsapp: "", email: "", designation: "", address: "" };
+    clientEditCompanyName = "";
+    clientEditError = "";
+    clientEditSaving = false;
+  }
+
+  async function saveClientEdit() {
+    if (!clientEditModal || clientEditSaving) return;
+    const { orderId, order, clientId, clientContactId, isCompany, noContact } = clientEditModal;
+    clientEditSaving = true;
+    clientEditError = "";
+    try {
+      if (isCompany) {
+        const newName = clientEditCompanyName.trim();
+        if (!newName) { clientEditError = "Company name cannot be empty."; clientEditSaving = false; return; }
+        await authApiFetch(`${API_ROUTES.CLIENT}/${clientId}`, {
+          method: "PUT",
+          data: JSON.stringify({ name: newName }),
+        });
+        orders = orders.map(o => o.id === orderId ? { ...o, client: { ...o.client, name: newName } } : o);
+
+      } else if (noContact) {
+        // Create new ClientContact + OrderContact
+        if (!clientEditForm.name.trim()) { clientEditError = "Name is required."; clientEditSaving = false; return; }
+        const contactRes = await authApiFetch(API_ROUTES.CLIENT_CONTACT, {
+          method: "POST",
+          data: JSON.stringify({
+            clientId,
+            name:            clientEditForm.name.trim(),
+            mobile:          clientEditForm.mobile          || undefined,
+            alternateMobile: clientEditForm.alternateMobile || undefined,
+            whatsapp:        clientEditForm.whatsapp        || undefined,
+            email:           clientEditForm.email           || undefined,
+            designation:     clientEditForm.designation     || undefined,
+            address:         clientEditForm.address         || undefined,
+          }),
+        });
+        const newContact = contactRes.data ?? contactRes;
+        await authApiFetch(API_ROUTES.ORDER_CONTACT, {
+          method: "POST",
+          data: JSON.stringify({ orderId, clientContactId: newContact.id }),
+        });
+        // Also create/update orderClients[0]
+        const orderClientId = order?.orderClients?.[0]?.id;
+        const legacyPayload = { orderId, name: clientEditForm.name.trim(), mobile: clientEditForm.mobile || "", address: clientEditForm.address || "" };
+        if (orderClientId) {
+          await authApiFetch(`${API_ROUTES.ORDER_CLIENT}/${orderClientId}`, { method: "PUT", data: JSON.stringify(legacyPayload) });
+        } else {
+          await authApiFetch(API_ROUTES.ORDER_CLIENT, { method: "POST", data: JSON.stringify(legacyPayload) });
+        }
+        await refreshOrder(orderId);
+
+      } else {
+        // Update existing ClientContact — all fields
+        await authApiFetch(`${API_ROUTES.CLIENT_CONTACT}/${clientContactId}`, {
+          method: "PUT",
+          data: JSON.stringify({
+            name:            clientEditForm.name.trim(),
+            mobile:          clientEditForm.mobile          || undefined,
+            alternateMobile: clientEditForm.alternateMobile || undefined,
+            whatsapp:        clientEditForm.whatsapp        || undefined,
+            email:           clientEditForm.email           || undefined,
+            designation:     clientEditForm.designation     || undefined,
+            address:         clientEditForm.address         || undefined,
+          }),
+        });
+        // Sync orderClients[0] for legacy display consistency
+        const orderClientId = order?.orderClients?.[0]?.id;
+        if (orderClientId) {
+          await authApiFetch(`${API_ROUTES.ORDER_CLIENT}/${orderClientId}`, {
+            method: "PUT",
+            data: JSON.stringify({ name: clientEditForm.name.trim(), mobile: clientEditForm.mobile || "", address: clientEditForm.address || "" }),
+          });
+        }
+        // Update local state
+        orders = orders.map(o => {
+          if (o.id !== orderId) return o;
+          const updatedContacts = (o.orderContacts || []).map(oc =>
+            oc.clientContact?.id === clientContactId
+              ? { ...oc, clientContact: { ...oc.clientContact, ...clientEditForm, name: clientEditForm.name.trim() } }
+              : oc
+          );
+          const updatedLegacy = (o.orderClients || []).map((oc, i) =>
+            i === 0 ? { ...oc, name: clientEditForm.name.trim(), mobile: clientEditForm.mobile || "", address: clientEditForm.address || "" } : oc
+          );
+          return { ...o, orderContacts: updatedContacts, orderClients: updatedLegacy };
+        });
+      }
+      closeClientEditModal();
+    } catch (e) {
+      clientEditError = "Failed to save. Please try again.";
+    } finally {
+      clientEditSaving = false;
+    }
+  }
+
   // ── Link Client Modal ────────────────────────────────────
   let showLinkClientModal = false;
   let linkClientOrderId = null;
@@ -775,8 +904,10 @@
             clientId: client.id,
             name: oc.name,
             mobile: oc.mobile || undefined,
-            ...(oc.email ? { email: oc.email } : {}),
+            email: oc.email || undefined,
             designation: oc.designation || undefined,
+            whatsapp: oc.whatsapp || undefined,
+            alternateMobile: oc.alternateMobile || undefined,
             address: oc.address || undefined,
           }),
         });
@@ -933,7 +1064,7 @@
       if (!linkedClient) {
         await authApiFetch(`${API_ROUTES.ORDER}/${linkClientOrderId}`, {
           method: "PUT",
-          data: JSON.stringify({ company: clientName, ...(clientId ? { clientId } : {}) }),
+          data: JSON.stringify({ ...(clientId ? { clientId } : {}) }),
         });
         // migrate pre-checked orderClients into formal contacts
         if (legacyChecked.length > 0) {
@@ -1226,78 +1357,99 @@
                   </td>
 
                   {:else if col.key === 'company'}
-                  <!-- Company -->
-                  <td class="px-2 py-2 border text-xs h-[54px] align-middle group"
-                    class:cursor-text={isExp} class:border-blue-400={isCompanyEdit} class:border-gray-100={!isCompanyEdit}
-                    on:click={(e) => { if (!isExp) return; e.stopPropagation(); if (!isCompanyEdit) startEdit(e, order.id, "company", order.company); }}>
+                  <!-- Company: client.name takes priority over order.company text -->
+                  <td class="px-2 py-2 border text-xs h-[54px] align-middle group cursor-pointer"
+                    class:border-blue-400={isCompanyEdit} class:border-gray-100={!isCompanyEdit}
+                    on:click={(e) => { e.stopPropagation(); if (order.client) { openClientEditModal(order, 'company'); } else if (!isCompanyEdit) { startEdit(e, order.id, "company", order.company); } }}>
                     {#if isCompanyEdit}
                       <input id="cell-input-{order.id}-company" class="w-full text-xs bg-transparent outline-none border-none p-0" bind:value={editingValue} on:keydown={onCellKeydown} on:blur={saveEdit} on:click|stopPropagation />
                     {:else if isCompanySaving}
-                      <div class="flex items-center gap-1 text-gray-400"><span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span> <span class="truncate">{order.company || "-"}</span></div>
+                      <div class="flex items-center gap-1 text-gray-400"><span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span> <span class="truncate">{order.client?.name || order.company || "-"}</span></div>
                     {:else}
-                      <div class="truncate" class:group-hover:text-blue-600={isExp}>{order.company || "-"}</div>
+                      <div class="truncate" class:group-hover:text-blue-600={isExp && !order.client}>
+                        {order.client?.name || order.company || "-"}
+                        {#if order.client}
+                          <span title="From linked client — edit via client record" class="ms-1 text-blue-400 cursor-default">●</span>
+                        {/if}
+                      </div>
                     {/if}
                   </td>
 
                   {:else if col.key === 'mobile'}
-                  <!-- Mobile -->
-                  <td class="px-2 py-2 border text-xs h-[54px] align-middle group"
-                    class:cursor-text={isExp} class:border-blue-400={isMobileEdit} class:border-gray-100={!isMobileEdit}
-                    on:click={(e) => { if (!isExp) return; e.stopPropagation(); if (!isMobileEdit) startEdit(e, order.id, "mobile", order.orderClients?.[0]?.mobile); }}>
+                  <!-- Mobile: primary orderContact.clientContact > orderClients[0]. Read-only if client linked. -->
+                  {@const primaryOC = order.orderContacts?.find(oc => oc.isPrimary) ?? order.orderContacts?.[0]}
+                  {@const mobileFromContact = primaryOC?.clientContact?.mobile}
+                  {@const mobileFromLegacy = order.orderClients?.[0]?.mobile}
+                  {@const displayMobile = mobileFromContact || mobileFromLegacy || ""}
+                  {@const mobileReadOnly = !!order.client}
+                  <td class="px-2 py-2 border text-xs h-[54px] align-middle group cursor-pointer"
+                    class:border-blue-400={isMobileEdit} class:border-gray-100={!isMobileEdit}
+                    on:click={(e) => { e.stopPropagation(); if (mobileReadOnly) { openClientEditModal(order, 'mobile'); } else if (!isMobileEdit) { startEdit(e, order.id, "mobile", mobileFromLegacy); } }}>
                     {#if isMobileEdit}
                       <input id="cell-input-{order.id}-mobile" class="w-full text-xs bg-transparent outline-none border-none p-0" bind:value={editingValue} on:keydown={onCellKeydown} on:blur={saveEdit} on:click|stopPropagation />
                     {:else if isMobileSaving}
-                      <div class="flex items-center gap-1 text-gray-400"><span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span> <span class="truncate">{order.orderClients?.[0]?.mobile || "-"}</span></div>
+                      <div class="flex items-center gap-1 text-gray-400"><span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span> <span class="truncate">{displayMobile || "-"}</span></div>
                     {:else if isExp}
-                      <div class="truncate group-hover:text-blue-600">{order.orderClients?.[0]?.mobile || "-"}</div>
+                      <div class="truncate group-hover:text-blue-600">
+                        {displayMobile || "-"}
+                        {#if mobileReadOnly && displayMobile}<span title="From linked client — edit via order detail" class="ms-1 text-blue-400 cursor-default">●</span>{/if}
+                      </div>
                     {:else}
-                      <div class="truncate text-gray-500 tracking-wider">{maskMobile(order.orderClients?.[0]?.mobile)}</div>
+                      <div class="truncate text-gray-500 tracking-wider">{maskMobile(displayMobile)}</div>
                     {/if}
                   </td>
 
                   {:else if col.key === 'name'}
-                  <!-- Client Name -->
-                  {@const hasOrderClient = order.orderClients?.length > 0}
+                  <!-- Client Name: primary orderContact.clientContact > orderClients[0]. Read-only if client linked. -->
+                  {@const primaryNC = order.orderContacts?.find(oc => oc.isPrimary) ?? order.orderContacts?.[0]}
+                  {@const nameFromContact = primaryNC?.clientContact?.name}
+                  {@const nameFromLegacy = order.orderClients?.[0]?.name}
                   {@const hasLinkedClient = !!order.client}
-                  {@const displayName = order.orderClients?.[0]?.name || order.client?.name || ""}
-                  <td class="px-2 py-2 border text-xs h-[54px] align-middle group"
-                    class:cursor-text={isExp && hasOrderClient} class:border-blue-400={isNameEdit} class:border-gray-100={!isNameEdit}
-                    on:click={(e) => { if (!isExp || !hasOrderClient) return; e.stopPropagation(); if (!isNameEdit) startEdit(e, order.id, "name", order.orderClients?.[0]?.name); }}>
+                  {@const displayName = nameFromContact || nameFromLegacy || order.client?.name || ""}
+                  {@const nameReadOnly = hasLinkedClient}
+                  <td class="px-2 py-2 border text-xs h-[54px] align-middle group cursor-pointer"
+                    class:border-blue-400={isNameEdit} class:border-gray-100={!isNameEdit}
+                    on:click={(e) => { e.stopPropagation(); if (nameReadOnly) { openClientEditModal(order, 'name'); } else if (!isNameEdit && nameFromLegacy) { startEdit(e, order.id, "name", nameFromLegacy); } }}>
                     {#if isNameEdit}
                       <input id="cell-input-{order.id}-name" class="w-full text-xs bg-transparent outline-none border-none p-0" bind:value={editingValue} on:keydown={onCellKeydown} on:blur={saveEdit} on:click|stopPropagation />
                     {:else if isNameSaving}
                       <div class="flex items-center gap-1 text-gray-400"><span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span> <span class="truncate">{displayName || "-"}</span></div>
-                    {:else if !hasOrderClient && hasLinkedClient}
-                      <!-- Client linked but no orderClient row — type in Mobile column to auto-create -->
-                      <div class="flex flex-col gap-0.5">
-                        <span class="truncate text-gray-700 text-[11px] font-semibold">{order.client.name}</span>
-                        <span class="text-[10px] text-orange-500 italic">Enter mobile to save</span>
-                      </div>
-                    {:else if !hasOrderClient && !hasLinkedClient}
+                    {:else if !displayName && !hasLinkedClient}
                       <div class="flex items-center gap-1 flex-wrap" on:click|stopPropagation>
                         <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded" style="background:#fff3cd;color:#856404;">⚠ No Client</span>
                         <button class="btn btn-xs text-[10px] py-0 px-1.5" style="background:#e8f4fd;color:#0d6efd;border:1px solid #b6d4fe;"
                           on:click={(e) => openLinkClientModal(e, order)}>+ Link</button>
                       </div>
                     {:else}
-                      <div class="truncate">{displayName || "-"}</div>
+                      <div class="truncate">
+                        {displayName || "-"}
+                        {#if nameReadOnly && displayName}<span title="From linked client — edit via order detail" class="ms-1 text-blue-400 cursor-default">●</span>{/if}
+                      </div>
                     {/if}
                   </td>
 
                   {:else if col.key === 'address'}
-                  <!-- Address / City -->
-                  <td class="px-2 py-2 border text-xs h-[54px] align-middle group"
-                    class:cursor-text={isExp} class:border-blue-400={isAddressEdit} class:border-gray-100={!isAddressEdit}
-                    title={isExp && !isAddressEdit ? (order.orderClients?.[0]?.address || "") : ""}
-                    on:click={(e) => { if (!isExp) return; e.stopPropagation(); if (!isAddressEdit) startEdit(e, order.id, "address", order.orderClients?.[0]?.address); }}>
+                  <!-- Address: primary orderContact.clientContact > orderClients[0]. Read-only if client linked. -->
+                  {@const primaryAC = order.orderContacts?.find(oc => oc.isPrimary) ?? order.orderContacts?.[0]}
+                  {@const addrFromContact = primaryAC?.clientContact?.address}
+                  {@const addrFromLegacy = order.orderClients?.[0]?.address}
+                  {@const displayAddr = addrFromContact || addrFromLegacy || ""}
+                  {@const addrReadOnly = !!order.client}
+                  <td class="px-2 py-2 border text-xs h-[54px] align-middle group cursor-pointer"
+                    class:border-blue-400={isAddressEdit} class:border-gray-100={!isAddressEdit}
+                    title={isExp && !isAddressEdit ? displayAddr : ""}
+                    on:click={(e) => { e.stopPropagation(); if (addrReadOnly) { openClientEditModal(order, 'address'); } else if (!isAddressEdit) { startEdit(e, order.id, "address", addrFromLegacy); } }}>
                     {#if isAddressEdit}
                       <input id="cell-input-{order.id}-address" class="w-full text-xs bg-transparent outline-none border-none p-0" bind:value={editingValue} on:keydown={onCellKeydown} on:blur={saveEdit} on:click|stopPropagation />
                     {:else if isAddressSaving}
-                      <div class="flex items-center gap-1 text-gray-400"><span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span> <span class="truncate">{order.orderClients?.[0]?.address || "-"}</span></div>
+                      <div class="flex items-center gap-1 text-gray-400"><span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span> <span class="truncate">{displayAddr || "-"}</span></div>
                     {:else if isExp}
-                      <div class="truncate group-hover:text-blue-600">{order.orderClients?.[0]?.address || "-"}</div>
+                      <div class="truncate group-hover:text-blue-600">
+                        {displayAddr || "-"}
+                        {#if addrReadOnly && displayAddr}<span title="From linked client — edit via order detail" class="ms-1 text-blue-400 cursor-default">●</span>{/if}
+                      </div>
                     {:else}
-                      <div class="truncate text-gray-700">{extractCity(order.orderClients?.[0]?.address)}</div>
+                      <div class="truncate text-gray-700">{extractCity(displayAddr)}</div>
                     {/if}
                   </td>
 
@@ -1555,6 +1707,159 @@
     {/if}
   </div>
 </div>
+
+<!-- Client Edit Modal -->
+{#if clientEditModal}
+  <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.45);" on:click|self={closeClientEditModal}>
+    <div class="modal-dialog modal-md modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content border-0 shadow-lg rounded-3">
+        <div class="modal-header py-2 px-3 border-bottom">
+          <div>
+            {#if clientEditModal.isCompany}
+              <h6 class="modal-title mb-0">Edit Company Name</h6>
+            {:else if clientEditModal.noContact}
+              <h6 class="modal-title mb-0">Add Contact</h6>
+              <div class="text-muted" style="font-size:11px;">Create a new contact for this order</div>
+            {:else}
+              <h6 class="modal-title mb-0">Edit Contact</h6>
+              <div class="text-muted" style="font-size:11px;">Linked to Client record — changes affect all orders using this contact</div>
+            {/if}
+          </div>
+          <button type="button" class="btn-close btn-close-sm" on:click={closeClientEditModal}></button>
+        </div>
+        <div class="modal-body px-3 py-3">
+
+          {#if clientEditModal.isCompany}
+            <!-- Company name single field -->
+            <div class="alert alert-warning py-2 px-3 mb-3 d-flex align-items-start justify-content-between gap-2" style="font-size:12px;">
+              <div class="d-flex align-items-start gap-2">
+                <i class="ti ti-alert-triangle flex-shrink-0 mt-1"></i>
+                <span>This updates the <strong>Client record</strong> and affects all orders linked to this client.</span>
+              </div>
+              <a href="/admin/client/{clientEditModal.clientId}" class="btn btn-xs btn-outline-secondary flex-shrink-0 d-flex align-items-center gap-1" style="font-size:11px;white-space:nowrap;padding:2px 8px;" on:click={closeClientEditModal}>
+                <i class="ti ti-external-link"></i> Full Edit
+              </a>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small mb-1">Company / Client Name</label>
+              <input
+                type="text"
+                class="form-control"
+                class:is-invalid={!!clientEditError}
+                bind:value={clientEditCompanyName}
+                placeholder="Client name"
+                autofocus
+                on:keydown={(e) => { if (e.key === 'Enter') saveClientEdit(); if (e.key === 'Escape') closeClientEditModal(); }}
+              />
+              {#if clientEditError}<div class="invalid-feedback d-block" style="font-size:11px;">{clientEditError}</div>{/if}
+            </div>
+
+          {:else}
+            <!-- Full contact form — create or edit -->
+            {#if !clientEditModal.noContact}
+              <div class="alert alert-info py-2 px-3 mb-3 d-flex align-items-start gap-2" style="font-size:12px;">
+                <i class="ti ti-info-circle flex-shrink-0 mt-1"></i>
+                <span>This contact is shared across orders. Saving will update it everywhere.</span>
+              </div>
+            {/if}
+
+            <div class="row g-2">
+              <div class="col-12">
+                <label class="form-label small mb-1" class:fw-bold={clientEditModal.focusField === 'name'} class:text-primary={clientEditModal.focusField === 'name'}>Name <span class="text-danger">*</span></label>
+                <input
+                  type="text"
+                  class="form-control"
+                  style={clientEditModal.focusField === 'name' ? 'border-color:#0d6efd;box-shadow:0 0 0 3px rgba(13,110,253,.15);' : ''}
+                  bind:value={clientEditForm.name}
+                  placeholder="Contact name"
+                  autofocus={clientEditModal.focusField === 'name'}
+                />
+              </div>
+              <div class="col-6">
+                <label class="form-label small mb-1" class:fw-bold={clientEditModal.focusField === 'mobile'} class:text-primary={clientEditModal.focusField === 'mobile'}>Mobile</label>
+                <input
+                  type="text"
+                  class="form-control"
+                  style={clientEditModal.focusField === 'mobile' ? 'border-color:#0d6efd;box-shadow:0 0 0 3px rgba(13,110,253,.15);' : ''}
+                  bind:value={clientEditForm.mobile}
+                  placeholder="Mobile"
+                  autofocus={clientEditModal.focusField === 'mobile'}
+                />
+              </div>
+              <div class="col-6">
+                <label class="form-label small mb-1" class:fw-bold={clientEditModal.focusField === 'alternateMobile'} class:text-primary={clientEditModal.focusField === 'alternateMobile'}>Alternate Mobile</label>
+                <input
+                  type="text"
+                  class="form-control"
+                  style={clientEditModal.focusField === 'alternateMobile' ? 'border-color:#0d6efd;box-shadow:0 0 0 3px rgba(13,110,253,.15);' : ''}
+                  bind:value={clientEditForm.alternateMobile}
+                  placeholder="Alternate mobile"
+                  autofocus={clientEditModal.focusField === 'alternateMobile'}
+                />
+              </div>
+              <div class="col-6">
+                <label class="form-label small mb-1" class:fw-bold={clientEditModal.focusField === 'whatsapp'} class:text-primary={clientEditModal.focusField === 'whatsapp'}>WhatsApp</label>
+                <input
+                  type="text"
+                  class="form-control"
+                  style={clientEditModal.focusField === 'whatsapp' ? 'border-color:#0d6efd;box-shadow:0 0 0 3px rgba(13,110,253,.15);' : ''}
+                  bind:value={clientEditForm.whatsapp}
+                  placeholder="WhatsApp"
+                  autofocus={clientEditModal.focusField === 'whatsapp'}
+                />
+              </div>
+              <div class="col-6">
+                <label class="form-label small mb-1" class:fw-bold={clientEditModal.focusField === 'email'} class:text-primary={clientEditModal.focusField === 'email'}>Email</label>
+                <input
+                  type="email"
+                  class="form-control"
+                  style={clientEditModal.focusField === 'email' ? 'border-color:#0d6efd;box-shadow:0 0 0 3px rgba(13,110,253,.15);' : ''}
+                  bind:value={clientEditForm.email}
+                  placeholder="Email"
+                  autofocus={clientEditModal.focusField === 'email'}
+                />
+              </div>
+              <div class="col-6">
+                <label class="form-label small mb-1" class:fw-bold={clientEditModal.focusField === 'designation'} class:text-primary={clientEditModal.focusField === 'designation'}>Designation</label>
+                <input
+                  type="text"
+                  class="form-control"
+                  style={clientEditModal.focusField === 'designation' ? 'border-color:#0d6efd;box-shadow:0 0 0 3px rgba(13,110,253,.15);' : ''}
+                  bind:value={clientEditForm.designation}
+                  placeholder="Designation"
+                  autofocus={clientEditModal.focusField === 'designation'}
+                />
+              </div>
+              <div class="col-12">
+                <label class="form-label small mb-1" class:fw-bold={clientEditModal.focusField === 'address'} class:text-primary={clientEditModal.focusField === 'address'}>Address</label>
+                <textarea
+                  class="form-control"
+                  style={clientEditModal.focusField === 'address' ? 'border-color:#0d6efd;box-shadow:0 0 0 3px rgba(13,110,253,.15);' : ''}
+                  rows="2"
+                  bind:value={clientEditForm.address}
+                  placeholder="Address"
+                ></textarea>
+              </div>
+            </div>
+            {#if clientEditError}
+              <div class="text-danger mt-2" style="font-size:12px;">{clientEditError}</div>
+            {/if}
+          {/if}
+
+        </div>
+        <div class="modal-footer py-2 px-3 border-top">
+          <button type="button" class="btn btn-sm btn-secondary" on:click={closeClientEditModal} disabled={clientEditSaving}>
+            Cancel
+          </button>
+          <button type="button" class="btn btn-sm btn-primary" on:click={saveClientEdit} disabled={clientEditSaving}>
+            {#if clientEditSaving}<span class="spinner-border spinner-border-sm me-1"></span>{/if}
+            {clientEditModal.noContact ? 'Create Contact' : 'Save Changes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <!-- PI/WO/TI Modal -->
 <PIWOTIModal

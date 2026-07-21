@@ -366,25 +366,27 @@
 <div class="page-wrapper">
   <div class="content">
     <div class="d-flex align-items-center justify-content-between gap-2 mb-4 flex-wrap">
-      <div>
-        <h4 class="mb-1">Create Tax Invoice</h4>
-        <nav aria-label="breadcrumb">
-          <ol class="breadcrumb mb-0 p-0">
-            <li class="breadcrumb-item"><a href="/admin/dashboard">Home</a></li>
-            <li class="breadcrumb-item"><a href="/admin/invoice/tax">Tax Invoices</a></li>
-            <li class="breadcrumb-item active" aria-current="page">Create</li>
-          </ol>
-        </nav>
+      <div class="d-flex align-items-center gap-3">
+        {#if orderId && !errorMessage}
+          <a href="/admin/order/{orderId}" class="btn btn-warning btn-sm">
+            <i class="ti ti-arrow-left me-1"></i>Back
+          </a>
+        {:else}
+          <button class="btn btn-warning btn-sm" on:click={() => window.history.back()}>
+            <i class="ti ti-arrow-left me-1"></i>Back
+          </button>
+        {/if}
+        <div>
+          <h4 class="mb-1">Create Tax Invoice</h4>
+          <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0 p-0">
+              <li class="breadcrumb-item"><a href="/admin/dashboard">Home</a></li>
+              <li class="breadcrumb-item"><a href="/admin/invoice/tax">Tax Invoices</a></li>
+              <li class="breadcrumb-item active" aria-current="page">Create</li>
+            </ol>
+          </nav>
+        </div>
       </div>
-      {#if orderId && !errorMessage}
-        <a href="/admin/order/{orderId}" class="btn btn-outline-secondary btn-sm">
-          <i class="ti ti-arrow-left me-1"></i>Back to Order
-        </a>
-      {:else}
-        <button class="btn btn-warning btn-sm" on:click={() => window.history.back()}>
-          <i class="ti ti-arrow-left me-1"></i>Back
-        </button>
-      {/if}
     </div>
 
     {#if errorMessage}

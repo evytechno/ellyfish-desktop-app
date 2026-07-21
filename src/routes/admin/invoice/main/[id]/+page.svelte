@@ -78,20 +78,20 @@
     <div
       class="pageHeader d-flex align-items-center justify-content-between gap-2 mb-4 flex-wrap no-print"
     >
-      <div class="no-print">
-        <button class="btn btn-warning btn-sm mb-2" on:click={() => history.length > 2 ? history.back() : window.location.href='/admin/invoice'}>
+      <div class="d-flex align-items-center gap-3 no-print">
+        <button class="btn btn-warning btn-sm" on:click={() => history.length > 2 ? history.back() : window.location.href='/admin/invoice'}>
           <i class="ti ti-arrow-left me-1"></i>Back
         </button>
-        <h4 class="mb-1">Invoice</h4>
-        <nav aria-label="breadcrumb">
-          <ol class="breadcrumb mb-0 p-0">
-            <li class="breadcrumb-item"><a href="/admin/dashboard">Home</a></li>
-            <li class="breadcrumb-item">
-              <a href="/admin/invoice">Invoices</a>
-            </li>
-            <li class="breadcrumb-item active" aria-current="page">Invoice</li>
-          </ol>
-        </nav>
+        <div>
+          <h4 class="mb-1">Invoice</h4>
+          <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0 p-0">
+              <li class="breadcrumb-item"><a href="/admin/dashboard">Home</a></li>
+              <li class="breadcrumb-item"><a href="/admin/invoice">Invoices</a></li>
+              <li class="breadcrumb-item active" aria-current="page">Invoice</li>
+            </ol>
+          </nav>
+        </div>
       </div>
     </div>
     <!-- End Page Header -->
