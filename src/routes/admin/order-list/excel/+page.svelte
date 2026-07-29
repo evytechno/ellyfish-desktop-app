@@ -298,6 +298,18 @@
     return `${visible}@${domain}`;
   }
 
+  let copiedFieldKey = "";
+  let copyTimeout = null;
+  async function copyField(key, value) {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(String(value));
+      copiedFieldKey = key;
+      if (copyTimeout) clearTimeout(copyTimeout);
+      copyTimeout = setTimeout(() => { copiedFieldKey = ""; }, 1500);
+    } catch (_) {}
+  }
+
   // ── add order drawer ─────────────────────────────────────
   let drawerOpen = false;
   let drawerLoading = false;
@@ -459,7 +471,8 @@
     { key: "inqCode", label: "Inq. Code",    width: 100, minWidth: 70,  visible: true },
     { key: "title",   label: "Title",        width: 160, minWidth: 80,  visible: true },
     { key: "company", label: "Company",      width: 100, minWidth: 80,  visible: true },
-    { key: "mobile",  label: "Mobile",       width: 100, minWidth: 80,  visible: true },
+    { key: "mobile",  label: "Mobile",       width: 130, minWidth: 100, visible: true },
+    { key: "email",   label: "Email",        width: 160, minWidth: 120, visible: true },
     { key: "name",    label: "Client Name",  width: 120, minWidth: 80,  visible: true },
     { key: "address", label: "City",         width: 100, minWidth: 80,  visible: true },
     { key: "chats",   label: "Chats",        width: 220, minWidth: 160, visible: true },
@@ -1382,6 +1395,7 @@
                   {@const mobileFromLegacy = order.orderClients?.[0]?.mobile}
                   {@const displayMobile = mobileFromContact || mobileFromLegacy || ""}
                   {@const mobileReadOnly = !!order.client}
+                  {@const mobileCopyKey = `mobile-${order.id}`}
                   <td class="px-2 py-2 border text-xs h-[54px] align-middle group cursor-pointer"
                     class:border-blue-400={isMobileEdit} class:border-gray-100={!isMobileEdit}
                     on:click={(e) => { e.stopPropagation(); if (mobileReadOnly) { openClientEditModal(order, 'mobile'); } else if (!isMobileEdit) { startEdit(e, order.id, "mobile", mobileFromLegacy); } }}>
@@ -1389,14 +1403,52 @@
                       <input id="cell-input-{order.id}-mobile" class="w-full text-xs bg-transparent outline-none border-none p-0" bind:value={editingValue} on:keydown={onCellKeydown} on:blur={saveEdit} on:click|stopPropagation />
                     {:else if isMobileSaving}
                       <div class="flex items-center gap-1 text-gray-400"><span class="spinner-border spinner-border-sm" style="width:10px;height:10px;border-width:1.5px;"></span> <span class="truncate">{displayMobile || "-"}</span></div>
-                    {:else if isExp}
-                      <div class="truncate group-hover:text-blue-600">
-                        {displayMobile || "-"}
-                        {#if mobileReadOnly && displayMobile}<span title="From linked client — edit via order detail" class="ms-1 text-blue-400 cursor-default">●</span>{/if}
-                      </div>
                     {:else}
-                      <div class="truncate text-gray-500 tracking-wider">{maskMobile(displayMobile)}</div>
+                      <div class="flex items-center gap-1 min-w-0">
+                        <span class="truncate" class:group-hover:text-blue-600={isExp} class:text-gray-500={!isExp} class:tracking-wider={!isExp}>
+                          {isExp ? (displayMobile || "-") : maskMobile(displayMobile)}
+                        </span>
+                        {#if mobileReadOnly && displayMobile && isExp}<span title="From linked client — edit via order detail" class="text-blue-400 cursor-default shrink-0">●</span>{/if}
+                        {#if displayMobile}
+                          <button
+                            type="button"
+                            class="btn btn-xs p-0 shrink-0 text-muted"
+                            title="Copy mobile"
+                            on:click|stopPropagation={() => copyField(mobileCopyKey, displayMobile)}
+                          >
+                            <i class="ti {copiedFieldKey === mobileCopyKey ? 'ti-check text-success' : 'ti-copy'}" style="font-size:12px;"></i>
+                          </button>
+                        {/if}
+                      </div>
                     {/if}
+                  </td>
+
+                  {:else if col.key === 'email'}
+                  {@const primaryEC = order.orderContacts?.find(oc => oc.isPrimary) ?? order.orderContacts?.[0]}
+                  {@const emailFromContact = primaryEC?.clientContact?.email}
+                  {@const emailFromLegacy = order.orderClients?.[0]?.email}
+                  {@const displayEmail = emailFromContact || emailFromLegacy || order.client?.email || ""}
+                  {@const emailReadOnly = !!order.client}
+                  {@const emailCopyKey = `email-${order.id}`}
+                  <td class="px-2 py-2 border text-xs h-[54px] align-middle group cursor-pointer"
+                    class:border-gray-100={true}
+                    title={isExp ? displayEmail : ""}
+                    on:click={(e) => { e.stopPropagation(); if (emailReadOnly) openClientEditModal(order, 'email'); }}>
+                    <div class="flex items-center gap-1 min-w-0">
+                      <span class="truncate" class:group-hover:text-blue-600={isExp && emailReadOnly} class:text-gray-500={!isExp} class:tracking-wider={!isExp}>
+                        {isExp ? (displayEmail || "-") : maskEmail(displayEmail)}
+                      </span>
+                      {#if displayEmail}
+                        <button
+                          type="button"
+                          class="btn btn-xs p-0 shrink-0 text-muted"
+                          title="Copy email"
+                          on:click|stopPropagation={() => copyField(emailCopyKey, displayEmail)}
+                        >
+                          <i class="ti {copiedFieldKey === emailCopyKey ? 'ti-check text-success' : 'ti-copy'}" style="font-size:12px;"></i>
+                        </button>
+                      {/if}
+                    </div>
                   </td>
 
                   {:else if col.key === 'name'}
