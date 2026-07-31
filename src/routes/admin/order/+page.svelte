@@ -19,11 +19,45 @@
   import OrderBulkToolbar from "./components/OrderBulkToolbar.svelte";
   import OrderListTable from "./components/OrderListTable.svelte";
   import { generatePdfFromList, generateExcelFromList } from "./components/orderExport.js";
+  import OrderFeedbackModal from "./[id]/components/OrderFeedbackModal.svelte";
 
   let currentUser = null;
   let loadingData = true;
   let filterReady = false;
   let firstLoad = false;
+
+  // Feedback modal
+  const FEEDBACK_TRIGGER_STATUSES = ["Deal Lost", "Deal Won", "Dispatched", "Completed", "Cancelled"];
+  let feedbackModalShow = false;
+  let feedbackModalOrder = null;
+  let feedbackTriggerStatus = null;
+  let feedbackLoading = false;
+
+  function openFeedbackModal(order, triggerStatus = null) {
+    feedbackModalOrder = order;
+    feedbackTriggerStatus = triggerStatus;
+    feedbackModalShow = true;
+  }
+
+  async function submitFeedback(e) {
+    if (!feedbackModalOrder) return;
+    feedbackLoading = true;
+    try {
+      await authApiFetch(API_ROUTES.ORDER_FEEDBACK, {
+        method: "POST",
+        data: JSON.stringify({
+          orderId: feedbackModalOrder.id,
+          satisfactionLevel: e.detail.satisfactionLevel,
+          reason: e.detail.reason,
+          remarks: e.detail.remarks,
+          feedbackType: e.detail.triggerStatus ? "TRIGGERED" : "FREE",
+          triggerStatus: e.detail.triggerStatus || null,
+        }),
+      });
+      feedbackModalShow = false;
+    } catch (err) { errorHandle(err); }
+    finally { feedbackLoading = false; }
+  }
 
   // List state
   let listOrders = [];
@@ -447,7 +481,9 @@
 
     <!-- Grid view -->
     {#if viewType === "grid" && filterReady}
-      <OrderDragula {filterParams} {updateOrderStatus} />
+      <OrderDragula {filterParams} {updateOrderStatus}
+        on:feedbackTrigger={(e) => openFeedbackModal(e.detail.order, e.detail.triggerStatus)}
+      />
 
     {:else}
       <!-- Bulk toolbar -->
@@ -469,10 +505,22 @@
         on:pageChange={(e) => { listCurrentPage = e.detail; fetchListOrders(); }}
         on:rowsPerPageChange={(e) => { listRowsPerPage = e.detail; listCurrentPage = 1; fetchListOrders(); }}
         on:viewRecord={(e) => goto("/admin/order/" + e.detail)}
+        on:addFeedback={(e) => {
+          const order = listOrders.find(o => o.id === e.detail);
+          if (order) openFeedbackModal(order, null);
+        }}
       />
     {/if}
   </div>
 </div>
+
+<OrderFeedbackModal
+  show={feedbackModalShow}
+  triggerStatus={feedbackTriggerStatus}
+  loading={feedbackLoading}
+  on:close={() => { feedbackModalShow = false; feedbackTriggerStatus = null; }}
+  on:submit={submitFeedback}
+/>
 
 <!-- Add Order offcanvas -->
 <OrderCreateForm {categories} on:created={refreshPage} />

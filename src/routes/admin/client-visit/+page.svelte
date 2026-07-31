@@ -28,10 +28,6 @@
   let visitTypeFilter = "";
   let statusFilter = "";
   let outcomeFilter = "";
-  let followUpFilter = "";
-  let overdueFilter = false;
-  let hasOrderFilter = "";
-  let cityFilter = "";
   let byUserId = null;
   let byCompanyId = null;
   let firstLoad = false;
@@ -75,10 +71,6 @@
       if (visitTypeFilter) params.set("visitType", visitTypeFilter);
       if (statusFilter) params.set("status", statusFilter);
       if (outcomeFilter) params.set("outcome", outcomeFilter);
-      if (followUpFilter) params.set("followUp", followUpFilter);
-      if (overdueFilter) params.set("overdue", "true");
-      if (hasOrderFilter) params.set("hasOrder", hasOrderFilter);
-      if (cityFilter.trim()) params.set("city", cityFilter.trim());
       if (startDate) params.set("startDate", startDate);
       if (endDate) params.set("endDate", endDate);
       if (byUserId) params.set("byUserId", String(byUserId));
@@ -129,13 +121,7 @@
     debounceTimeout = setTimeout(() => { searchTerm = value; currentPage = 1; }, 300);
   }
 
-  let cityDebounceTimeout;
-  function handleCityChange(value) {
-    clearTimeout(cityDebounceTimeout);
-    cityDebounceTimeout = setTimeout(() => { cityFilter = value; currentPage = 1; }, 300);
-  }
-
-  $: [searchTerm, selectedFilter, customStartDate, customEndDate, currentPage, rowsPerPage, visitTypeFilter, statusFilter, outcomeFilter, followUpFilter, overdueFilter, hasOrderFilter, cityFilter, byUserId, byCompanyId], checkFetch();
+  $: [searchTerm, selectedFilter, customStartDate, customEndDate, currentPage, rowsPerPage, visitTypeFilter, statusFilter, outcomeFilter, byUserId, byCompanyId], checkFetch();
   function checkFetch() {
     if (firstLoad) {
       if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) return;
@@ -474,38 +460,6 @@
           <option value="Pending">Pending</option>
           <option value="No Response">No Response</option>
         </select>
-      </div>
-      <div class="col-auto">
-        <select bind:value={followUpFilter} class="form-select w-auto">
-          <option value="">All Follow Ups</option>
-          <option value="upcoming">Follow Up Upcoming</option>
-          <option value="overdue">Follow Up Overdue</option>
-          <option value="has">Has Follow Up</option>
-          <option value="none">No Follow Up</option>
-        </select>
-      </div>
-      <div class="col-auto">
-        <select bind:value={hasOrderFilter} class="form-select w-auto">
-          <option value="">All Orders</option>
-          <option value="yes">Linked to Order</option>
-          <option value="no">No Order</option>
-        </select>
-      </div>
-      <div class="col-auto">
-        <input
-          type="text"
-          value={cityFilter}
-          on:input={(e) => handleCityChange(e.target.value)}
-          class="form-control"
-          placeholder="City.."
-          style="min-width:120px;"
-        />
-      </div>
-      <div class="col-auto">
-        <div class="form-check mt-2">
-          <input class="form-check-input" type="checkbox" id="overdueFilter" bind:checked={overdueFilter} />
-          <label class="form-check-label" for="overdueFilter">Overdue only</label>
-        </div>
       </div>
       {#if currentUser?.role !== "user"}
         <div class="col-auto">

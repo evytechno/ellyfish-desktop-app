@@ -39,7 +39,7 @@
       <h5 class="fw-semibold mb-0">Multiple Orders</h5>
       <div class="d-inline-flex align-items-center">
         {#if order?.status === "Deal Won"}
-          <button on:click={() => cerateChildOrder()} disabled={order?.status === "Deal Won"} class="link-primary fw-medium flex items-center">
+          <button on:click={() => cerateChildOrder()} class="link-primary fw-medium flex items-center">
             <i class="ti ti-circle-plus me-1"></i>Create New
           </button>
         {/if}

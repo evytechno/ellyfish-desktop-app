@@ -341,35 +341,35 @@
 
             {:else}
               <!-- Read-only view -->
-              <table class="table table-sm table-borderless mb-0">
+              <table class="table table-sm table-borderless mb-0 client-info-table">
                 <tbody>
                   <tr>
-                    <td class="text-muted small" style="width:35%">Company</td>
-                    <td class="fw-semibold">{client?.name || "—"}</td>
+                    <td class="text-muted small client-info-label">Company</td>
+                    <td class="fw-semibold client-info-value">{client?.name || "—"}</td>
                   </tr>
                   <tr>
-                    <td class="text-muted small">GST</td>
-                    <td>{client?.gstNumber || "—"}</td>
+                    <td class="text-muted small client-info-label">GST</td>
+                    <td class="client-info-value">{client?.gstNumber || "—"}</td>
                   </tr>
                   <tr>
-                    <td class="text-muted small">Mobile</td>
-                    <td>{client?.mobile || "—"}</td>
+                    <td class="text-muted small client-info-label">Mobile</td>
+                    <td class="client-info-value">{client?.mobile || "—"}</td>
                   </tr>
                   <tr>
-                    <td class="text-muted small">Email</td>
-                    <td>{client?.email || "—"}</td>
+                    <td class="text-muted small client-info-label">Email</td>
+                    <td class="client-info-value">{client?.email || "—"}</td>
                   </tr>
                   <tr>
-                    <td class="text-muted small">Whatsapp</td>
-                    <td>{client?.whatsapp || "—"}</td>
+                    <td class="text-muted small client-info-label">Whatsapp</td>
+                    <td class="client-info-value">{client?.whatsapp || "—"}</td>
                   </tr>
                   <tr>
-                    <td class="text-muted small">Address</td>
-                    <td>{client?.address || "—"}</td>
+                    <td class="text-muted small client-info-label">Address</td>
+                    <td class="client-info-value">{client?.address || "—"}</td>
                   </tr>
                   <tr>
-                    <td class="text-muted small">Remark</td>
-                    <td>{client?.remark || "—"}</td>
+                    <td class="text-muted small client-info-label">Remark</td>
+                    <td class="client-info-value">{client?.remark || "—"}</td>
                   </tr>
                 </tbody>
               </table>
@@ -610,3 +610,24 @@
 
   </div>
 </div>
+
+<style>
+  .client-info-table {
+    table-layout: fixed;
+    width: 100%;
+  }
+
+  .client-info-label {
+    width: 35%;
+    vertical-align: top;
+    white-space: nowrap;
+  }
+
+  .client-info-value {
+    width: 65%;
+    vertical-align: top;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+</style>

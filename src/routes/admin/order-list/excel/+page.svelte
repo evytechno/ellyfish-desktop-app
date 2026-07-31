@@ -13,10 +13,45 @@
   import { statusNamesStore } from "$lib/stores/statusNames";
   import { maskAssignedName } from '$lib/utils/maskUser';
   import PIWOTIModal from "$lib/components/PIWOTIModal.svelte";
+  import OrderFeedbackModal from "../../order/[id]/components/OrderFeedbackModal.svelte";
+  import { errorHandle } from "$lib/utils/errorHandle";
 
   // ── auth ─────────────────────────────────────────────────
   const currentUser = checkAuth();
   const isMaster = currentUser?.role === "master";
+
+  // ── feedback modal ───────────────────────────────────────
+  const FEEDBACK_TRIGGER_STATUSES = ["Deal Lost", "Deal Won", "Dispatched", "Completed", "Cancelled"];
+  let feedbackModalShow = false;
+  let feedbackModalOrder = null;
+  let feedbackTriggerStatus = null;
+  let feedbackLoading = false;
+
+  function openFeedbackModal(order, triggerStatus = null) {
+    feedbackModalOrder = order;
+    feedbackTriggerStatus = triggerStatus;
+    feedbackModalShow = true;
+  }
+
+  async function submitFeedback(e) {
+    if (!feedbackModalOrder) return;
+    feedbackLoading = true;
+    try {
+      await authApiFetch(API_ROUTES.ORDER_FEEDBACK, {
+        method: "POST",
+        data: JSON.stringify({
+          orderId: feedbackModalOrder.id,
+          satisfactionLevel: e.detail.satisfactionLevel,
+          reason: e.detail.reason,
+          remarks: e.detail.remarks,
+          feedbackType: e.detail.triggerStatus ? "TRIGGERED" : "FREE",
+          triggerStatus: e.detail.triggerStatus || null,
+        }),
+      });
+      feedbackModalShow = false;
+    } catch (err) { errorHandle(err); }
+    finally { feedbackLoading = false; }
+  }
 
   // ── data ────────────────────────────────────────────────
   let orders = [];
@@ -676,6 +711,10 @@
         }),
       });
       orders = orders.map(o => o.id === orderId ? { ...o, status } : o);
+      if (FEEDBACK_TRIGGER_STATUSES.includes(status)) {
+        const order = orders.find(o => o.id === orderId);
+        if (order) openFeedbackModal(order, status);
+      }
     } catch (e) {}
   }
 
@@ -1677,7 +1716,7 @@
                   <td class="px-2 py-2 border border-gray-100 align-middle text-xs h-[54px] truncate">{formatDate(order.createdAt)}</td>
 
                   {:else if col.key === 'actions'}
-                  <!-- PI / WO / TI -->
+                  <!-- PI / WO / TI + Feedback -->
                   <td class="px-2 py-2 border border-gray-100 align-middle text-xs h-[54px]" on:click|stopPropagation>
                     {#if order.status === "Deal Won"}
                       {@const pi = order.orderPayments?.[0]}
@@ -1705,6 +1744,11 @@
                     {:else}
                       <span class="text-gray-300">—</span>
                     {/if}
+                    <button
+                      class="btn btn-xs btn-soft-primary mt-1"
+                      title="Add Feedback"
+                      on:click|stopPropagation={() => openFeedbackModal(order)}
+                    ><i class="ti ti-message-star" style="font-size:11px;"></i></button>
                   </td>
 
                   {/if}
@@ -1912,6 +1956,15 @@
     </div>
   </div>
 {/if}
+
+<!-- Feedback Modal -->
+<OrderFeedbackModal
+  show={feedbackModalShow}
+  triggerStatus={feedbackTriggerStatus}
+  loading={feedbackLoading}
+  on:close={() => { feedbackModalShow = false; feedbackTriggerStatus = null; }}
+  on:submit={submitFeedback}
+/>
 
 <!-- PI/WO/TI Modal -->
 <PIWOTIModal

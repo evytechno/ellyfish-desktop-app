@@ -113,6 +113,7 @@
 
   const actions = [
     { label: "Invoice", icon: "ti ti-eye", onClick: (id) => dispatch("viewRecord", id), color: "btn-soft-success" },
+    { label: "Feedback", icon: "ti ti-message-star", onClick: (id) => dispatch("addFeedback", id), color: "btn-soft-primary" },
   ];
 </script>
 

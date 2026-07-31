@@ -637,6 +637,16 @@
                           </a>
                         </li>
                         {/if}
+                        <li
+                          class:active={currentPath === "/admin/feedback"}
+                        >
+                          <a
+                            href="/admin/feedback"
+                            class:active={currentPath === "/admin/feedback"}
+                          >
+                            <i class="ti ti-message-star"></i><span>Feedback</span>
+                          </a>
+                        </li>
                         {#if canAccess('user_payments', 'view', currentUser)}
                         <li
                           class:active={currentPath.startsWith(

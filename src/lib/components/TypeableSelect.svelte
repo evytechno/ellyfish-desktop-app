@@ -10,6 +10,7 @@
   // object mode: options = [{value: any, label: string}], emits the `value` field on change
   export let objectMode = false;
   export let disabled = false;
+  export let dropdownParent = null; // CSS selector or DOM element
 
   const dispatch = createEventDispatcher();
   let selectEl;
@@ -23,11 +24,19 @@
 
     jqSelect = jQuery(selectEl);
 
-    jqSelect.select2({
+    const s2opts = {
       tags: !grouped && !objectMode,
       width: "100%",
       placeholder,
-    });
+    };
+
+    if (dropdownParent) {
+      s2opts.dropdownParent = typeof dropdownParent === "string"
+        ? jQuery(dropdownParent)
+        : jQuery(dropdownParent);
+    }
+
+    jqSelect.select2(s2opts);
 
     if (disabled) jqSelect.prop("disabled", true);
 

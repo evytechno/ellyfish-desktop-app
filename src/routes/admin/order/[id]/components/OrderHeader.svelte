@@ -10,6 +10,7 @@
   export let orderVisits = [];
   export let openVisitModal;
   export let showVisitListModal;
+  export let openFeedbackModal = () => {};
 
   const statusesColors = {
     "New Lead": "bg-blue",
@@ -230,6 +231,9 @@
         </div>
 
         <div class="order-header-doc-item ms-auto d-flex align-items-center gap-2">
+          <button class="btn btn-outline-primary btn-sm" on:click={openFeedbackModal}>
+            <i class="ti ti-message-star me-1"></i>Add Feedback
+          </button>
           {#if orderVisits.length === 0}
             <button class="btn btn-success btn-sm" on:click={openVisitModal}>
               <i class="ti ti-map-pin me-1"></i>Create Visit

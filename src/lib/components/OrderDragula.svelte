@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from "svelte";
+  import { onMount, createEventDispatcher } from "svelte";
   import OrderCard from "./OrderCard.svelte";
   import OrderListTitle from "./OrderListTitle.svelte";
   import { authApiFetch } from "$lib/api/client";
@@ -8,6 +8,10 @@
 
   export let filterParams = {};
   export let updateOrderStatus;
+
+  const dispatch = createEventDispatcher();
+
+  const FEEDBACK_TRIGGER_STATUSES = ["Deal Lost", "Deal Won", "Dispatched", "Completed", "Cancelled"];
 
   const COLUMN_LIMIT = 20;
   const STATUSES = [
@@ -223,6 +227,8 @@
           total: columnState[oldStatus].total + 1,
         };
         columnState = { ...columnState };
+      } else if (FEEDBACK_TRIGGER_STATUSES.includes(newStatus)) {
+        dispatch("feedbackTrigger", { order: { ...order, status: newStatus }, triggerStatus: newStatus });
       }
     }
     document.addEventListener("orderStatusChanged", handleStatusChanged);
@@ -322,6 +328,8 @@
             total: columnState[oldStatus].total + 1,
           };
           columnState = { ...columnState };
+        } else if (FEEDBACK_TRIGGER_STATUSES.includes(newStatus)) {
+          dispatch("feedbackTrigger", { order: { ...order, status: newStatus }, triggerStatus: newStatus });
         }
       });
 

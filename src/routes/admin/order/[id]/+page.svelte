@@ -68,6 +68,8 @@
   import OrderLegacyClientsTab from "./components/OrderLegacyClientsTab.svelte";
   import OrderQueriesTab from "./components/OrderQueriesTab.svelte";
   import OrderComponentsTab from "./components/OrderComponentsTab.svelte";
+  import OrderFeedbackTab from "./components/OrderFeedbackTab.svelte";
+  import OrderFeedbackModal from "./components/OrderFeedbackModal.svelte";
   import OrderEditOffcanvas from "./components/OrderEditOffcanvas.svelte";
   import OrderAssignedUsersModal from "./components/OrderAssignedUsersModal.svelte";
   import OrderVisitModals from "./components/OrderVisitModals.svelte";
@@ -1245,6 +1247,73 @@
     }
   }
   let activeTab = "Activity";
+
+  // Feedback state
+  let showFeedbackModal = false;
+  let feedbackTriggerStatus = null;
+  let feedbackLoading = false;
+  let feedbacks = [];
+  let loadingFeedbacks = false;
+  let pendingStatusAfterFeedback = null;
+
+  const FEEDBACK_TRIGGER_STATUSES = ["Deal Lost", "Deal Won", "Dispatched", "Completed", "Cancelled"];
+  const FEEDBACK_MANDATORY_STATUSES = ["Deal Lost", "Cancelled"];
+
+  async function loadFeedbacks() {
+    if (!order?.id) return;
+    loadingFeedbacks = true;
+    try {
+      const res = await authApiFetch(`${API_ROUTES.ORDER_FEEDBACK}/order/${order.id}`);
+      feedbacks = res?.data ?? [];
+    } catch (_) {
+    } finally {
+      loadingFeedbacks = false;
+    }
+  }
+
+  async function submitFeedback({ satisfactionLevel, reason, remarks, triggerStatus }) {
+    feedbackLoading = true;
+    try {
+      const res = await authApiFetch(API_ROUTES.ORDER_FEEDBACK, {
+        method: "POST",
+        data: JSON.stringify({
+          orderId: order.id,
+          feedbackType: triggerStatus ? "TRIGGERED" : "FREE",
+          triggerStatus: triggerStatus || null,
+          satisfactionLevel,
+          reason,
+          remarks,
+        }),
+      });
+      feedbacks = [res.data, ...feedbacks];
+      Swal.fire("Success!", "Feedback submitted.", "success");
+    } catch (err) {
+      errorHandle(err);
+    } finally {
+      feedbackLoading = false;
+      showFeedbackModal = false;
+      feedbackTriggerStatus = null;
+    }
+  }
+
+  async function deleteFeedback(id) {
+    const r = await Swal.fire({
+      title: "Delete Feedback?",
+      text: "This will remove the feedback record.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Yes, delete!",
+    });
+    if (!r.isConfirmed) return;
+    try {
+      await authApiFetch(`${API_ROUTES.ORDER_FEEDBACK}/${id}`, { method: "DELETE" });
+      feedbacks = feedbacks.filter((f) => f.id !== id);
+      Swal.fire("Deleted!", "Feedback removed.", "success");
+    } catch (err) {
+      errorHandle(err);
+    }
+  }
+
   let statusesColors = {
     "New Lead": "bg-blue",
     Contacted: "bg-purple",
@@ -1401,6 +1470,11 @@
       };
       order.groupedActivities = addActivityToGroupedActivities(newActivity);
       Swal.fire("Success!", `Status changed to "${newLabel}".`, "success");
+      // Trigger feedback modal for relevant statuses
+      if (FEEDBACK_TRIGGER_STATUSES.includes(newStatus)) {
+        feedbackTriggerStatus = newLabel;
+        showFeedbackModal = true;
+      }
     } catch (error) {
       order.status = prevStatus; // revert on error
       Swal.fire("Error!", "Failed to change status.", "error");
@@ -1738,6 +1812,7 @@
               {orderVisits}
               {openVisitModal}
               bind:showVisitListModal
+              openFeedbackModal={() => { feedbackTriggerStatus = null; showFeedbackModal = true; }}
             />
             <!-- /Contact User -->
           </div>
@@ -1884,6 +1959,26 @@
                       </span>
                     </a>
                   </li>
+                  <li class="nav-item" role="presentation">
+                    <a
+                      href="#tab_fb"
+                      data-bs-toggle="tab"
+                      aria-expanded="false"
+                      class="nav-link border-3"
+                      class:active={activeTab === "Feedback"}
+                      on:click|preventDefault={() => { activeTab = "Feedback"; loadFeedbacks(); }}
+                      aria-selected={activeTab === "Feedback"}
+                      tabindex="-1"
+                      role="tab"
+                    >
+                      <span class="d-md-inline-block">
+                        <i class="ti ti-message-star me-1"></i>Feedback
+                        {#if feedbacks.length > 0}
+                          <span class="badge bg-primary ms-1" style="font-size:10px;">{feedbacks.length}</span>
+                        {/if}
+                      </span>
+                    </a>
+                  </li>
                   {#if ["Deal Won", "Dispatched", "Completed"].includes(order?.status)}
                     <li class="nav-item" role="presentation">
                       <a
@@ -1974,6 +2069,16 @@
                   {openEditQueryModal}
                 />
               {/if}
+              {#if activeTab === "Feedback"}
+                <OrderFeedbackTab
+                  {order}
+                  {feedbacks}
+                  {loadingFeedbacks}
+                  {currentUser}
+                  on:openFeedbackModal={() => { feedbackTriggerStatus = null; showFeedbackModal = true; }}
+                  on:deleteFeedback={(e) => deleteFeedback(e.detail)}
+                />
+              {/if}
               {#if ["Deal Won", "Dispatched", "Completed"].includes(order?.status)}
                 {#if activeTab === "Components"}
                   <OrderComponentsTab
@@ -2029,6 +2134,13 @@
   </div>
   <!-- End Content -->
 </div>
+<OrderFeedbackModal
+  show={showFeedbackModal}
+  triggerStatus={feedbackTriggerStatus}
+  loading={feedbackLoading}
+  on:close={() => { showFeedbackModal = false; feedbackTriggerStatus = null; }}
+  on:submit={(e) => submitFeedback(e.detail)}
+/>
 <!-- Add Canvas (component) --><OrderEditOffcanvas
   {order}
   {categories}

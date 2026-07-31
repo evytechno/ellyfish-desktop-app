@@ -100,6 +100,13 @@
   let s5Data = [];
   let s5Loading = false;
 
+  // Section 6 — Customer Feedback Stats
+  let s6Filter = "last30days";
+  let s6CustomStart = "";
+  let s6CustomEnd = "";
+  let s6Data = null;
+  let s6Loading = false;
+
   const ROLE_TABS = [
     { val: "telecaller",  label: "Telecaller", color: "#3b5bdb" },
     { val: "tech",        label: "Tech",        color: "#0ca678" },
@@ -261,6 +268,20 @@
     finally { s5Loading = false; }
   }
 
+  async function fetchS6() {
+    if (s6Filter === "custom" && (!s6CustomStart || !s6CustomEnd)) return;
+    s6Loading = true;
+    try {
+      const { startDate, endDate } = buildDateRange(s6Filter, s6CustomStart, s6CustomEnd);
+      const q = new URLSearchParams();
+      if (startDate) q.set("startDate", startDate);
+      if (endDate) q.set("endDate", endDate);
+      const res = await authApiFetch(`${API_ROUTES.ORDER_FEEDBACK}/stats?${q}`);
+      s6Data = res?.data ?? null;
+    } catch (_) {}
+    finally { s6Loading = false; }
+  }
+
   // ── mount ─────────────────────────────────────────────────────────────────
   onMount(async () => {
     currentUser = checkAuth();
@@ -286,7 +307,7 @@
         usersAllStore.set(data);
       } catch (_) {}
     }
-    await Promise.all([fetchS1(), fetchS2(), fetchS3(), fetchS4(), fetchS5()]);
+    await Promise.all([fetchS1(), fetchS2(), fetchS3(), fetchS4(), fetchS5(), fetchS6()]);
     loadingData = false;
     mounted = true;
   });
@@ -297,6 +318,7 @@
   $: if (mounted) { s3SubRole; s3ByUserId; s3Filter; s3CustomStart; s3CustomEnd; saveFilters(); fetchS3(); }
   $: if (mounted) { s4SubRole; s4ByUserId; s4Filter; s4CustomStart; s4CustomEnd; s4Page; saveFilters(); fetchS4(); }
   $: if (mounted) { s5SubRole; s5ByUserId; s5Filter; s5CustomStart; s5CustomEnd; saveFilters(); fetchS5(); }
+  $: if (mounted) { s6Filter; s6CustomStart; s6CustomEnd; fetchS6(); }
 
   // ── computed ──────────────────────────────────────────────────────────────
   $: s1Total      = s1Data.reduce((s, r) => s + r.orderCount, 0);
@@ -967,6 +989,104 @@
             </div>
           {/if}
         {/if}
+      </div>
+    </div>
+
+    <!-- ── ROW 4: Customer Feedback Stats ─────────────────────────────── -->
+    <div class="mb-4">
+      <div class="db-card">
+        <div class="db-card-head px-4 pt-3 pb-2">
+          <div>
+            <div class="db-card-title">Customer Feedback</div>
+            <div class="db-card-subtitle">
+              {#if s6Filter === "custom" && s6CustomStart && s6CustomEnd}
+                {s6CustomStart} → {s6CustomEnd}
+              {:else if s6Filter === "last7days"}Last 7 Days
+              {:else if s6Filter === "last30days"}Last 30 Days
+              {:else if s6Filter === "today"}Today
+              {:else}All Time{/if}
+            </div>
+          </div>
+          <div class="d-flex gap-2 align-items-center flex-wrap">
+            <select class="db-filter-select" bind:value={s6Filter} style="min-width:130px;">
+              <option value="today">Today</option>
+              <option value="last7days">Last 7 Days</option>
+              <option value="last30days">Last 30 Days</option>
+              <option value="custom">Custom</option>
+            </select>
+            {#if s6Filter === "custom"}
+              <input type="date" class="db-filter-select" bind:value={s6CustomStart} />
+              <input type="date" class="db-filter-select" bind:value={s6CustomEnd} />
+            {/if}
+          </div>
+        </div>
+        <div class="px-4 pb-3">
+          {#if s6Loading}
+            <div class="text-center py-3"><span class="spinner-border spinner-border-sm text-primary"></span></div>
+          {:else if !s6Data || s6Data.total === 0}
+            <div class="text-center text-muted py-3" style="font-size:13px;">No feedback recorded for this period.</div>
+          {:else}
+            <!-- Summary Counts -->
+            <div class="d-flex gap-3 flex-wrap mb-3 mt-1">
+              <div class="d-flex align-items-center gap-2 px-3 py-2 rounded" style="background:#ebfbee; min-width:110px;">
+                <i class="ti ti-mood-smile text-success" style="font-size:1.4rem;"></i>
+                <div>
+                  <div style="font-size:11px; color:#2f9e44; font-weight:600;">Satisfied</div>
+                  <div style="font-size:1.3rem; font-weight:700; color:#2f9e44; line-height:1.1;">{s6Data.satisfactionCounts?.SATISFIED ?? 0}</div>
+                </div>
+              </div>
+              <div class="d-flex align-items-center gap-2 px-3 py-2 rounded" style="background:#fff9db; min-width:110px;">
+                <i class="ti ti-mood-empty text-warning" style="font-size:1.4rem;"></i>
+                <div>
+                  <div style="font-size:11px; color:#e67700; font-weight:600;">Neutral</div>
+                  <div style="font-size:1.3rem; font-weight:700; color:#e67700; line-height:1.1;">{s6Data.satisfactionCounts?.NEUTRAL ?? 0}</div>
+                </div>
+              </div>
+              <div class="d-flex align-items-center gap-2 px-3 py-2 rounded" style="background:#fff5f5; min-width:110px;">
+                <i class="ti ti-mood-sad text-danger" style="font-size:1.4rem;"></i>
+                <div>
+                  <div style="font-size:11px; color:#e03131; font-weight:600;">Dissatisfied</div>
+                  <div style="font-size:1.3rem; font-weight:700; color:#e03131; line-height:1.1;">{s6Data.satisfactionCounts?.DISSATISFIED ?? 0}</div>
+                </div>
+              </div>
+              <div class="d-flex align-items-center gap-2 px-3 py-2 rounded" style="background:#f1f3f5; min-width:110px;">
+                <i class="ti ti-messages" style="font-size:1.4rem; color:#495057;"></i>
+                <div>
+                  <div style="font-size:11px; color:#495057; font-weight:600;">Total</div>
+                  <div style="font-size:1.3rem; font-weight:700; color:#495057; line-height:1.1;">{s6Data.total}</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Top Reasons -->
+            {#if s6Data.topReasons?.length > 0}
+              <div style="font-size:12px; font-weight:600; color:#495057; margin-bottom:6px;">Top Feedback Reasons</div>
+              <div class="d-flex flex-column gap-1">
+                {#each s6Data.topReasons as item}
+                  {@const LABELS = {
+                    CALL_NOT_PICKED: "Call Not Pick",
+                    TRANSPORTATION_ISSUE: "Transportation Issue",
+                    DAMAGED_POOR_QUALITY_MATERIAL: "Damaged / Poor Quality Material",
+                    DELAY_MACHINE_MATERIAL: "Delay Machine / Material",
+                    SATISFIED: "Satisfied",
+                    DOCUMENTATION_ISSUE: "Documentation Issue",
+                    WRONG_MATERIAL_DISPATCH: "Wrong Material Dispatch",
+                    TIMELY_INSTALLATION_PENDING: "Timely Installation Pending",
+                    OTHER: "Other",
+                  }}
+                  {@const maxCount = s6Data.topReasons[0]?.count ?? 1}
+                  <div class="d-flex align-items-center gap-2" style="font-size:12px;">
+                    <span style="min-width:200px; color:#495057;">{LABELS[item.reason] ?? item.reason}</span>
+                    <div style="flex:1; background:#f1f3f5; border-radius:4px; height:8px; overflow:hidden;">
+                      <div style="width:{Math.round((item.count / maxCount) * 100)}%; height:100%; background:#3b5bdb; border-radius:4px;"></div>
+                    </div>
+                    <span style="min-width:24px; text-align:right; font-weight:600; color:#3b5bdb;">{item.count}</span>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          {/if}
+        </div>
       </div>
     </div>
 
