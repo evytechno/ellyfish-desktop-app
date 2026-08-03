@@ -22,9 +22,36 @@
 
   let currentUser;
 
+  const COMMON_PATHS = [
+    "/admin/category",
+    "/admin/company",
+    "/admin/user",
+    "/admin/history",
+    "/admin/setting",
+  ];
+
+  function isCommonPath(path) {
+    return COMMON_PATHS.some((p) => path.startsWith(p));
+  }
+
+  let commonOpen =
+    typeof localStorage !== "undefined"
+      ? localStorage.getItem("sidebarCommonOpen") !== "false"
+      : true;
+
+  function toggleCommonSection() {
+    commonOpen = !commonOpen;
+    localStorage.setItem("sidebarCommonOpen", String(commonOpen));
+  }
+
   onMount(() => {
     // set user first so conditional menu blocks render before jQuery scans them
     currentUser = checkAuth();
+
+    // Always expand COMMON when viewing a common page
+    if (isCommonPath(window.location.pathname)) {
+      commonOpen = true;
+    }
 
     const $ = jQuery;
     const wrapper = $(".main-wrapper");
@@ -121,6 +148,9 @@
 
   // After every navigation: sync submenu open/close state with active links
   afterNavigate(() => {
+    if (isCommonPath($page.url.pathname)) {
+      commonOpen = true;
+    }
     // Wait one tick so Svelte's class:active bindings are in the DOM
     setTimeout(() => {
       const $ = jQuery;
@@ -189,7 +219,7 @@
             style="height: 100%; overflow: hidden scroll;"
           >
             <div class="simplebar-content" style="padding: 0px;">
-              <div id="sidebar-menu" class="sidebar-menu" style="padding-bottom: 80px;">
+              <div id="sidebar-menu" class="sidebar-menu" style="padding-bottom: 56px;">
                 <div class="mb-2">
                   <!-- Role bar -->
                   {#if currentUser}
@@ -466,34 +496,18 @@
                       </li>
                       {/if}
 
-                      <!-- Orders — hidden from tech/tech_helper unless orderAccess is true -->
+                      <!-- Orders submenu — list shortcuts (Orders / Excel moved to header) -->
                       {#if ((currentUser?.subRole !== "tech" && currentUser?.subRole !== "tech_helper") || currentUser?.orderAccess)}
                         {#if canAccess('orders', 'view', currentUser)}
                         <li class="submenu">
                           <a
                             href="#orders"
-                            class:active={currentPath.startsWith(
-                              "/admin/order",
-                            )}
+                            class:active={currentPath.startsWith("/admin/order") || currentPath.startsWith("/admin/order-list")}
                           >
                             <i class="ti ti-shopping-cart"></i><span>Orders</span>
                             <span class="menu-arrow"></span>
                           </a>
                           <ul>
-                            <li>
-                              <a
-                                href="/admin/order"
-                                class:active={currentPath === "/admin/order"}
-                                >Orders</a
-                              >
-                            </li>
-                            <li>
-                              <a
-                                href="/admin/order-list/excel"
-                                class:active={currentPath ===
-                                  "/admin/order-list/excel"}>Excel Orders</a
-                              >
-                            </li>
                             <li>
                               <a
                                 href="/admin/order/last-activity"
@@ -549,22 +563,6 @@
                             >
                           </a>
                         </li>
-                        <li
-                          class:active={currentPath.startsWith(
-                            "/admin/invoice/tax",
-                          )}
-                        >
-                          <a
-                            href="/admin/invoice/tax"
-                            class:active={currentPath.startsWith(
-                              "/admin/invoice/tax",
-                            )}
-                          >
-                            <i class="ti ti-receipt-tax"></i><span
-                              >Invoice (TAX)</span
-                            >
-                          </a>
-                        </li>
                         {/if}
                         {#if currentUser?.role === "master" || canAccess('clients', 'view', currentUser)}
                         {#if currentUser?.role === "master"}
@@ -591,22 +589,6 @@
                           </li>
                         {/if}
                         {/if}
-                        {#if canAccess('work_order', 'view', currentUser)}
-                        <li
-                          class:active={currentPath.startsWith(
-                            "/admin/workorder",
-                          )}
-                        >
-                          <a
-                            href="/admin/workorder"
-                            class:active={currentPath.startsWith(
-                              "/admin/workorder",
-                            )}
-                          >
-                            <i class="ti ti-file-description"></i><span>Work Order</span>
-                          </a>
-                        </li>
-                        {/if}
                         {#if currentUser?.role === 'master' || currentUser?.role === 'admin'}
                         <li class:active={currentPath.startsWith("/admin/old-inquiries") && !currentPath.startsWith("/admin/old-inquiries/my")}>
                           <a href="/admin/old-inquiries" class:active={currentPath.startsWith("/admin/old-inquiries") && !currentPath.startsWith("/admin/old-inquiries/my")}>
@@ -618,22 +600,6 @@
                         <li class:active={currentPath.startsWith("/admin/old-inquiries/my")}>
                           <a href="/admin/old-inquiries/my" class:active={currentPath.startsWith("/admin/old-inquiries/my")}>
                             <i class="ti ti-database-import"></i><span>Old Inquiries</span>
-                          </a>
-                        </li>
-                        {/if}
-                        {#if canAccess('client_visits', 'view', currentUser)}
-                        <li
-                          class:active={currentPath.startsWith(
-                            "/admin/client-visit",
-                          )}
-                        >
-                          <a
-                            href="/admin/client-visit"
-                            class:active={currentPath.startsWith(
-                              "/admin/client-visit",
-                            )}
-                          >
-                            <i class="ti ti-map-pin"></i><span>Client Visits</span>
                           </a>
                         </li>
                         {/if}
@@ -687,87 +653,101 @@
                   {/if}
 
                   {#if currentUser?.role === "master" || currentUser?.role != "user"}
-                    <li class="menu-title"><span>COMMON</span></li>{/if}
-                  <li>
-                    <ul>
-                      {#if currentUser?.role != "user"}
-                        {#if canAccess('category', 'view', currentUser)}
-                        <li
-                          class:active={currentPath.startsWith(
-                            "/admin/category",
-                          )}
-                        >
-                          <a
-                            href="/admin/category"
-                            class:active={currentPath.startsWith(
-                              "/admin/category",
-                            )}
-                          >
-                            <i class="ti ti-category"></i><span>Category</span>
-                          </a>
-                        </li>
-                        {/if}
-                        <li
-                          class:active={currentPath.startsWith(
-                            "/admin/company",
-                          )}
-                        >
-                          <a
-                            href="/admin/company"
-                            class:active={currentPath.startsWith(
-                              "/admin/company",
-                            )}
-                          >
-                            <i class="ti ti-building"></i><span>Companies</span>
-                          </a>
-                        </li>
-                        {#if canAccess('users', 'view', currentUser)}
-                        <li
-                          class:active={currentPath.startsWith("/admin/user")}
-                        >
-                          <a
-                            href="/admin/user"
-                            class:active={currentPath.startsWith("/admin/user")}
-                          >
-                            <i class="ti ti-user-up"></i><span>Users</span>
-                          </a>
-                        </li>
-                        {/if}
-                      {/if}
-                      {#if currentUser?.role != "user" && canAccess('history', 'view', currentUser)}
-                        <li
-                          class:active={currentPath.startsWith(
-                            "/admin/history",
-                          )}
-                        >
-                          <a
-                            href="/admin/history"
-                            class:active={currentPath.startsWith(
-                              "/admin/history",
-                            )}
-                          >
-                            <i class="ti ti-clock"></i><span>User History</span>
-                          </a>
-                        </li>
-                      {/if}
-                      {#if currentUser?.role === "master"}
-                        <li
-                          class:active={currentPath.startsWith(
-                            "/admin/setting",
-                          )}
-                        >
-                          <a
-                            href="/admin/setting"
-                            class:active={currentPath.startsWith(
-                              "/admin/setting",
-                            )}
-                          >
-                            <i class="ti ti-settings"></i><span>Setting</span>
-                          </a>
-                        </li>
-                      {/if}
-                    </ul>
-                  </li>
+                    <li class="menu-title menu-title-collapse">
+                      <button
+                        type="button"
+                        class="menu-title-toggle"
+                        class:collapsed={!commonOpen}
+                        on:click={toggleCommonSection}
+                        aria-expanded={commonOpen}
+                      >
+                        <span>COMMON</span>
+                        <i class="ti ti-chevron-down menu-title-chevron"></i>
+                      </button>
+                    </li>
+                    {#if commonOpen}
+                      <li>
+                        <ul>
+                          {#if currentUser?.role != "user"}
+                            {#if canAccess('category', 'view', currentUser)}
+                            <li
+                              class:active={currentPath.startsWith(
+                                "/admin/category",
+                              )}
+                            >
+                              <a
+                                href="/admin/category"
+                                class:active={currentPath.startsWith(
+                                  "/admin/category",
+                                )}
+                              >
+                                <i class="ti ti-category"></i><span>Category</span>
+                              </a>
+                            </li>
+                            {/if}
+                            <li
+                              class:active={currentPath.startsWith(
+                                "/admin/company",
+                              )}
+                            >
+                              <a
+                                href="/admin/company"
+                                class:active={currentPath.startsWith(
+                                  "/admin/company",
+                                )}
+                              >
+                                <i class="ti ti-building"></i><span>Companies</span>
+                              </a>
+                            </li>
+                            {#if canAccess('users', 'view', currentUser)}
+                            <li
+                              class:active={currentPath.startsWith("/admin/user")}
+                            >
+                              <a
+                                href="/admin/user"
+                                class:active={currentPath.startsWith("/admin/user")}
+                              >
+                                <i class="ti ti-user-up"></i><span>Users</span>
+                              </a>
+                            </li>
+                            {/if}
+                          {/if}
+                          {#if currentUser?.role != "user" && canAccess('history', 'view', currentUser)}
+                            <li
+                              class:active={currentPath.startsWith(
+                                "/admin/history",
+                              )}
+                            >
+                              <a
+                                href="/admin/history"
+                                class:active={currentPath.startsWith(
+                                  "/admin/history",
+                                )}
+                              >
+                                <i class="ti ti-clock"></i><span>User History</span>
+                              </a>
+                            </li>
+                          {/if}
+                          {#if currentUser?.role === "master"}
+                            <li
+                              class:active={currentPath.startsWith(
+                                "/admin/setting",
+                              )}
+                            >
+                              <a
+                                href="/admin/setting"
+                                class:active={currentPath.startsWith(
+                                  "/admin/setting",
+                                )}
+                              >
+                                <i class="ti ti-settings"></i><span>Setting</span>
+                              </a>
+                            </li>
+                          {/if}
+                        </ul>
+                      </li>
+                    {/if}
+                  {/if}
                 </ul>
               </div>
             </div>
@@ -795,7 +775,7 @@
 
   <!-- Update button pinned to sidebar bottom -->
   <div
-    class="absolute bottom-0 left-0 right-0 p-3 bg-white border-t border-gray-100 z-10"
+    class="absolute bottom-0 left-0 right-0 px-2 py-2 bg-white border-t border-gray-100 z-10"
   >
     <UpdateNotification />
   </div>
@@ -819,8 +799,8 @@
   :global(.tech-query-sub li a) {
     display: flex !important;
     align-items: center;
-    gap: 8px;
-    padding: 8px 10px 8px 26px !important;
+    gap: 6px;
+    padding: 4px 8px 4px 24px !important;
   }
   :global(.tech-query-sub li a .sub-icon) {
     font-size: 15px;
@@ -845,7 +825,7 @@
     border-radius: 20px;
     background: #dc3545;
     color: #fff;
-    font-size: 10px;
+    font-size: 0.8125rem;
     font-weight: 700;
     line-height: 1;
     letter-spacing: 0;
@@ -867,9 +847,9 @@
     position: relative;
     display: flex;
     align-items: center;
-    gap: 7px;
-    margin: 4px 10px 6px;
-    padding: 5px 9px;
+    gap: 6px;
+    margin: 2px 6px 4px;
+    padding: 3px 7px;
     border-radius: 7px;
     background: color-mix(in srgb, var(--rc) 10%, transparent);
     border: 1px solid color-mix(in srgb, var(--rc) 25%, transparent);
@@ -891,7 +871,7 @@
     line-height: 1;
   }
   :global(.sr-label) {
-    font-size: 10px;
+    font-size: 0.6875rem;
     font-weight: 800;
     letter-spacing: 0.6px;
     text-transform: uppercase;
@@ -911,13 +891,50 @@
   }
   /* Collapsed mini-sidebar: just icon centred, no label */
   :global(.mini-sidebar:not(.expand-menu) .sr-bar) {
-    margin: 4px 8px 6px;
-    padding: 5px;
+    margin: 2px 6px 4px;
+    padding: 3px;
     justify-content: center;
     gap: 0;
   }
   :global(.mini-sidebar:not(.expand-menu) .sr-label),
   :global(.mini-sidebar:not(.expand-menu) .sr-glow) {
     display: none;
+  }
+
+  :global(.menu-title-collapse) {
+    margin: 6px 0 4px !important;
+  }
+
+  :global(.menu-title-toggle) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 500;
+    font-size: inherit;
+    letter-spacing: inherit;
+    text-transform: uppercase;
+    color: inherit;
+    line-height: inherit;
+  }
+
+  :global(.menu-title-toggle:hover) {
+    color: var(--primary, #e41f07);
+  }
+
+  :global(.menu-title-chevron) {
+    font-size: 14px;
+    line-height: 1;
+    transition: transform 0.2s ease;
+    opacity: 0.7;
+  }
+
+  :global(.menu-title-toggle.collapsed .menu-title-chevron) {
+    transform: rotate(-90deg);
   }
 </style>

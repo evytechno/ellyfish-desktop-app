@@ -1,0 +1,215 @@
+/* Order detail page — layout & action chrome only.
+   Typography comes from styles/typography.css + component-scoped styles. */
+
+.order-detail-page {
+  --od-primary: #364fc7;
+  --od-primary-soft: #edf2ff;
+  --od-primary-border: #748ffc;
+  --od-warning: #f59f00;
+  --od-warning-text: #e67700;
+  --od-warning-soft: #fff9db;
+  --od-warning-border: #ffd43b;
+  --od-success: #2f9e44;
+  --od-success-text: #2b8a3e;
+  --od-success-soft: #ebfbee;
+  --od-success-border: #8ce99a;
+  --od-danger: #fa5252;
+  --od-danger-text: #c92a2a;
+  --od-danger-soft: #fff5f5;
+  --od-danger-border: #ffa8a8;
+  --od-info: #15aabf;
+  --od-info-text: #0c8599;
+  --od-info-soft: #e3fafc;
+  --od-info-border: #66d9e8;
+  --od-secondary: #495057;
+  --od-secondary-soft: #f8f9fa;
+  --od-secondary-border: #adb5bd;
+  --od-control-h: 28px;
+}
+
+.order-detail-page .content {
+  padding-bottom: 0;
+}
+
+/* Compact controls */
+.order-detail-page .btn,
+.order-detail-page .btn-sm,
+.order-detail-page .btn-xs {
+  font-weight: 400;
+  line-height: 1.3;
+}
+
+.order-detail-page .btn-sm {
+  padding: 4px 10px;
+  border-radius: 4px;
+}
+
+.order-detail-page .btn-xs {
+  font-size: var(--app-font-size-sm, 11px);
+  padding: 3px 8px;
+  border-radius: 4px;
+  line-height: 1.3;
+}
+
+.order-detail-page .form-control,
+.order-detail-page .form-select {
+  height: var(--od-control-h);
+  min-height: var(--od-control-h);
+  padding: 2px 8px;
+}
+
+.order-detail-page textarea.form-control {
+  height: auto;
+  min-height: 72px;
+  padding: 8px;
+}
+
+/* Tabs */
+.order-detail-page .nav-tabs .nav-link {
+  padding: 6px 10px;
+  font-weight: 400;
+}
+
+.order-detail-page .nav-tabs .nav-link.active {
+  font-weight: 500;
+}
+
+.order-detail-page thead th {
+  font-size: var(--app-font-size-sm, 11px);
+  font-weight: 400;
+  color: var(--od-secondary);
+}
+
+.order-detail-page td {
+  padding: 0.4rem 0.55rem;
+}
+
+.order-detail-page .fw-bold,
+.order-detail-page .fw-semibold,
+.order-detail-page .fw-medium {
+  font-weight: 500;
+}
+
+.order-detail-page .badge {
+  font-weight: 400;
+  padding: 2px 6px;
+}
+
+/* Soft filled outlines */
+.order-detail-page .btn-outline-primary {
+  color: var(--od-primary);
+  border-color: var(--od-primary-border);
+  background: var(--od-primary-soft);
+}
+.order-detail-page .btn-outline-primary:hover,
+.order-detail-page .btn-outline-primary:focus {
+  color: #fff;
+  background: var(--od-primary);
+  border-color: var(--od-primary);
+}
+
+.order-detail-page .btn-outline-secondary {
+  color: var(--od-secondary);
+  border-color: var(--od-secondary-border);
+  background: var(--od-secondary-soft);
+}
+.order-detail-page .btn-outline-secondary:hover,
+.order-detail-page .btn-outline-secondary:focus {
+  color: #fff;
+  background: var(--od-secondary);
+  border-color: var(--od-secondary);
+}
+
+.order-detail-page .btn-outline-warning {
+  color: var(--od-warning-text);
+  border-color: var(--od-warning-border);
+  background: var(--od-warning-soft);
+}
+.order-detail-page .btn-outline-warning:hover,
+.order-detail-page .btn-outline-warning:focus {
+  color: #fff;
+  background: var(--od-warning-text);
+  border-color: var(--od-warning-text);
+}
+
+.order-detail-page .btn-outline-success {
+  color: var(--od-success-text);
+  border-color: var(--od-success-border);
+  background: var(--od-success-soft);
+}
+.order-detail-page .btn-outline-success:hover,
+.order-detail-page .btn-outline-success:focus {
+  color: #fff;
+  background: var(--od-success);
+  border-color: var(--od-success);
+}
+
+.order-detail-page .btn-outline-danger {
+  color: var(--od-danger-text);
+  border-color: var(--od-danger-border);
+  background: var(--od-danger-soft);
+}
+.order-detail-page .btn-outline-danger:hover,
+.order-detail-page .btn-outline-danger:focus {
+  color: #fff;
+  background: var(--od-danger);
+  border-color: var(--od-danger);
+}
+
+.order-detail-page .btn-outline-info {
+  color: var(--od-info-text);
+  border-color: var(--od-info-border);
+  background: var(--od-info-soft);
+}
+.order-detail-page .btn-outline-info:hover,
+.order-detail-page .btn-outline-info:focus {
+  color: #fff;
+  background: var(--od-info);
+  border-color: var(--od-info);
+}
+
+.order-detail-page .btn-outline-light {
+  color: var(--od-secondary);
+  border-color: #ced4da;
+  background: #fff;
+}
+.order-detail-page .btn-outline-light:hover,
+.order-detail-page .btn-outline-light:focus {
+  color: #212529;
+  background: #e9ecef;
+  border-color: var(--od-secondary-border);
+}
+
+/* Solid actions */
+.order-detail-page .btn-primary {
+  background: var(--od-primary);
+  border-color: var(--od-primary);
+  color: #fff;
+}
+.order-detail-page .btn-warning {
+  background: var(--od-warning);
+  border-color: var(--od-warning);
+  color: #212529;
+}
+.order-detail-page .btn-info {
+  background: var(--od-info);
+  border-color: var(--od-info);
+  color: #fff;
+}
+.order-detail-page .btn-success {
+  background: var(--od-success);
+  border-color: var(--od-success);
+  color: #fff;
+}
+.order-detail-page .btn-danger {
+  background: var(--od-danger);
+  border-color: var(--od-danger);
+  color: #fff;
+}
+
+/* Quill in edit offcanvas */
+.order-detail-page .ql-editor,
+.order-detail-page .ql-container {
+  font-size: var(--app-font-size, 12px);
+  line-height: var(--app-line-height, 1.45);
+}

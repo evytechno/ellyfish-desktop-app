@@ -1,149 +1,133 @@
 <script>
   export let dashboardData;
+
+  $: stats = [
+    {
+      label: "Total Orders",
+      value: dashboardData?.totalOrders ?? 0,
+      icon: "ti-shopping-cart",
+      tone: "blue",
+    },
+    {
+      label: "Completion",
+      value: `${dashboardData?.completionRate ?? 0}%`,
+      icon: "ti-circle-check",
+      tone: "green",
+    },
+    {
+      label: "Success",
+      value: `${dashboardData?.successRate ?? 0}%`,
+      icon: "ti-trending-up",
+      tone: "teal",
+    },
+    {
+      label: "Failure",
+      value: `${dashboardData?.failureRate ?? 0}%`,
+      icon: "ti-trending-down",
+      tone: "red",
+    },
+    {
+      label: "Active",
+      value: dashboardData?.activeDeals ?? 0,
+      icon: "ti-activity",
+      tone: "purple",
+    },
+    {
+      label: "Avg / Day",
+      value: dashboardData?.avgOrdersPerDay ?? 0,
+      icon: "ti-calendar-stats",
+      tone: "gray",
+    },
+  ];
 </script>
 
-<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-  <!-- Total Orders -->
-  <div class="flex">
-    <div class="card flex-fill mb-0 relative overflow-hidden">
-      <div class="card-body relative z-1">
-        <div class="flex items-start justify-between">
-          <div>
-            <p class="fs-14 mb-1">Total Orders</p>
-            <h2 class="mb-1 fs-16">{dashboardData?.totalOrders}</h2>
-          </div>
-          <span
-            class="avatar avatar-md rounded-circle bg-soft-primary border border-primary"
-          >
-            <i class="ti ti-building fs-16 text-primary"></i>
-          </span>
-        </div>
+<div class="sc-strip mb-3" role="list">
+  {#each stats as s}
+    <div class="sc-cell sc-cell--{s.tone}" role="listitem">
+      <div class="sc-cell-top">
+        <i class="ti {s.icon}"></i>
+        <span class="sc-label">{s.label}</span>
       </div>
-      <img
-        src="/assets/img/icons/elemnt-01.svg"
-        alt="element-01"
-        class="img-fluid position-absolute top-0 Start-0"
-      />
+      <div class="sc-value">{s.value}</div>
     </div>
-  </div>
-
-  <!-- Completion Rate -->
-  <div class="flex">
-    <div class="card flex-fill mb-0 relative overflow-hidden">
-      <div class="card-body relative z-1">
-        <div class="flex items-start justify-between">
-          <div>
-            <p class="fs-14 mb-1">Completion Rate</p>
-            <h2 class="mb-1 fs-16">{dashboardData?.completionRate}%</h2>
-          </div>
-          <span
-            class="avatar avatar-md rounded-circle bg-soft-success border border-success"
-          >
-            <i class="ti ti-carousel-vertical fs-16 text-success"></i>
-          </span>
-        </div>
-      </div>
-      <img
-        src="/assets/img/icons/elemnt-02.svg"
-        alt="element-02"
-        class="img-fluid position-absolute top-0 Start-0"
-      />
-    </div>
-  </div>
-
-  <!-- Success Rate -->
-  <div class="flex">
-    <div class="card flex-fill mb-0 relative overflow-hidden">
-      <div class="card-body relative z-1">
-        <div class="flex items-start justify-between">
-          <div>
-            <p class="fs-14 mb-1">Success Rate</p>
-            <h2 class="mb-1 fs-16">{dashboardData?.successRate}%</h2>
-          </div>
-          <span
-            class="avatar avatar-md rounded-circle bg-soft-info border border-info"
-          >
-            <i class="ti ti-chart-bar fs-16 text-info"></i>
-          </span>
-        </div>
-      </div>
-      <img
-        src="/assets/img/icons/elemnt-03.svg"
-        alt="element-03"
-        class="img-fluid position-absolute top-0 Start-0"
-      />
-    </div>
-  </div>
-
-  <!-- Failure Rate -->
-  <div class="flex">
-    <div class="card flex-fill mb-0 relative overflow-hidden">
-      <div class="card-body relative z-1">
-        <div class="flex items-start justify-between">
-          <div>
-            <p class="fs-14 mb-1">Failure Rate</p>
-            <h2 class="mb-1 fs-16">{dashboardData?.failureRate}%</h2>
-          </div>
-          <span
-            class="avatar avatar-md rounded-circle bg-soft-danger border border-danger"
-          >
-            <i class="ti ti-chart-candle fs-16 text-danger"></i>
-          </span>
-        </div>
-      </div>
-      <img
-        src="/assets/img/icons/elemnt-01.svg"
-        alt="element-04"
-        class="img-fluid position-absolute top-0 Start-0"
-      />
-    </div>
-  </div>
-
-  <!-- Active Deals -->
-  <div class="flex">
-    <div class="card flex-fill mb-0 relative overflow-hidden">
-      <div class="card-body relative z-1">
-        <div class="flex items-start justify-between">
-          <div>
-            <p class="fs-14 mb-1">Active Orders</p>
-            <h2 class="mb-1 fs-16">{dashboardData?.activeDeals}</h2>
-          </div>
-          <span
-            class="avatar avatar-md rounded-circle bg-soft-secondary border border-secondary"
-          >
-            <i class="ti ti-handshake fs-16 text-secondary"></i>
-          </span>
-        </div>
-      </div>
-      <img
-        src="/assets/img/icons/elemnt-02.svg"
-        alt="element-05"
-        class="img-fluid position-absolute top-0 Start-0"
-      />
-    </div>
-  </div>
-
-  <!-- Avg Orders Per Day -->
-  <div class="flex">
-    <div class="card flex-fill mb-0 relative overflow-hidden">
-      <div class="card-body relative z-1">
-        <div class="flex items-start justify-between">
-          <div>
-            <p class="fs-14 mb-1">Avg Orders / Day</p>
-            <h2 class="mb-1 fs-16">{dashboardData?.avgOrdersPerDay}</h2>
-          </div>
-          <span
-            class="avatar avatar-md rounded-circle bg-soft-dark border border-dark"
-          >
-            <i class="ti ti-calendar-stats fs-16 text-dark"></i>
-          </span>
-        </div>
-      </div>
-      <img
-        src="/assets/img/icons/elemnt-03.svg"
-        alt="element-06"
-        class="img-fluid position-absolute top-0 Start-0"
-      />
-    </div>
-  </div>
+  {/each}
 </div>
+
+<style>
+  .sc-strip {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 0;
+    background: #fff;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .sc-cell {
+    padding: 10px 12px;
+    border-right: 1px solid #f1f3f5;
+    min-width: 0;
+  }
+  .sc-cell:last-child { border-right: none; }
+
+  .sc-cell-top {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-bottom: 4px;
+    min-width: 0;
+  }
+  .sc-cell-top i {
+    font-size: 13px;
+    flex-shrink: 0;
+    opacity: 0.9;
+  }
+  .sc-label {
+    font-size: 10.5px;
+    font-weight: 500;
+    color: #868e96;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .sc-value {
+    font-size: 16px;
+    font-weight: 700;
+    color: #212529;
+    line-height: 1.15;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+
+  .sc-cell--blue .sc-cell-top i,
+  .sc-cell--blue .sc-value { color: #364fc7; }
+  .sc-cell--green .sc-cell-top i,
+  .sc-cell--green .sc-value { color: #2b8a3e; }
+  .sc-cell--teal .sc-cell-top i,
+  .sc-cell--teal .sc-value { color: #087f5b; }
+  .sc-cell--red .sc-cell-top i,
+  .sc-cell--red .sc-value { color: #c92a2a; }
+  .sc-cell--purple .sc-cell-top i,
+  .sc-cell--purple .sc-value { color: #5f3dc4; }
+  .sc-cell--gray .sc-cell-top i,
+  .sc-cell--gray .sc-value { color: #495057; }
+
+  @media (max-width: 1100px) {
+    .sc-strip {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .sc-cell:nth-child(3n) { border-right: none; }
+    .sc-cell:nth-child(n+4) { border-top: 1px solid #f1f3f5; }
+  }
+
+  @media (max-width: 560px) {
+    .sc-strip {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .sc-cell { border-right: 1px solid #f1f3f5; }
+    .sc-cell:nth-child(2n) { border-right: none; }
+    .sc-cell:nth-child(n+3) { border-top: 1px solid #f1f3f5; }
+  }
+</style>

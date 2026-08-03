@@ -23,6 +23,7 @@
   import { jsPDF } from "jspdf";
   import Swal from "sweetalert2";
   import LightBox from "$lib/components/LightBox.svelte";
+  import MediaPickerModal from "$lib/components/MediaPickerModal.svelte";
   import DOMPurify from "dompurify";
   import { open as openExternal } from '@tauri-apps/api/shell';
 
@@ -967,6 +968,10 @@
     sendChat();
   }
   let attachedFiles = [];
+  /** @type {{ url: string, name: string, mime: string }[]} */
+  let attachedRefs = [];
+  let showMediaPicker = false;
+  let mediaPickerTarget = "main"; // main | sq
   let pendingFiles = []; // staged from drop/paste — shown in preview modal before confirm
   let pendingIndex = 0;  // active slide in the preview modal
   let fileInputEl;
@@ -975,6 +980,9 @@
   let actionLoading = false;
   let qdCardCollapsed = false;
   let switching = false; // true while selectQuery is loading new data (shows shimmer bar)
+
+  $: attachTotal = attachedFiles.length + attachedRefs.length;
+  $: attachSlotsLeft = Math.max(0, 5 - attachTotal);
 
   // reply state
   let replyTo = null; // { id, senderLabel, message, senderType } | null
@@ -1284,7 +1292,7 @@
     sqViewQuery = null;
     sqViewChats = [];
     sqViewHasMore = false; sqHasMoreOlder = false;
-    sqChatMessage = ""; sqAttachedFiles = []; sqReplyTo = null;
+    sqChatMessage = ""; sqAttachedFiles = []; sqAttachedRefs = []; sqReplyTo = null;
     sqOtherTyping = false; sqIsAtBottom = true; sqIsTyping = false;
     sqExpandedMessages = new Set();
     sqPendingFiles = []; sqPendingIndex = 0;
@@ -1297,6 +1305,7 @@
     expandedMessages = new Set();
     chatMessage = "";
     attachedFiles = [];
+    attachedRefs = [];
     cancelPending();
     replyTo = null;
     editingChatId = null;
@@ -1685,6 +1694,10 @@
   // interactive state
   let sqChatMessage = "";
   let sqAttachedFiles = [];
+  /** @type {{ url: string, name: string, mime: string }[]} */
+  let sqAttachedRefs = [];
+  $: sqAttachTotal = sqAttachedFiles.length + sqAttachedRefs.length;
+  $: sqAttachSlotsLeft = Math.max(0, 5 - sqAttachTotal);
   let sqSendingChat = false;
   let sqReplyTo = null;
   let sqIsTyping = false;
@@ -1731,7 +1744,7 @@
     // clear sub-query status notifications (pickup/resolve) from the bell
     authApiFetch(`${API_ROUTES.QUERY}/${sq.id}/read-notifications`, { method: "PATCH" }).catch(() => {});
     // reset interactive state for new panel
-    sqChatMessage = ""; sqAttachedFiles = []; sqReplyTo = null;
+    sqChatMessage = ""; sqAttachedFiles = []; sqAttachedRefs = []; sqReplyTo = null;
     sqOtherTyping = false; sqIsAtBottom = true;
     sqExpandedMessages = new Set();
     sqNewMsgCount = 0; sqShowNewMsgBanner = false;
@@ -1787,7 +1800,7 @@
     sqViewHasMore = false;
     sqHasMoreOlder = false;
     sqViewLoading = false;
-    sqChatMessage = ""; sqAttachedFiles = []; sqReplyTo = null;
+    sqChatMessage = ""; sqAttachedFiles = []; sqAttachedRefs = []; sqReplyTo = null;
     sqOtherTyping = false; sqIsAtBottom = true;
     sqExpandedMessages = new Set();
     sqNewMsgCount = 0; sqShowNewMsgBanner = false;
@@ -1951,6 +1964,7 @@
     expandedMessages = new Set();
     chatMessage = "";
     attachedFiles = [];
+    attachedRefs = [];
     cancelPending();
     replyTo = null;
     editingChatId = null;
@@ -2447,7 +2461,7 @@
     const input = e.target;
     const picked = Array.from(input.files ?? []);
     if (picked.length) {
-      attachedFiles = [...attachedFiles, ...picked].slice(0, 5);
+      attachedFiles = [...attachedFiles, ...picked].slice(0, 5 - attachedRefs.length);
     }
     input.value = "";
   }
@@ -2456,11 +2470,42 @@
     fileInputEl?.click();
   }
 
+  function openMediaPicker(target = "main") {
+    mediaPickerTarget = target;
+    showMediaPicker = true;
+  }
+
+  function onMediaPickerConfirm(e) {
+    const refs = e.detail ?? [];
+    if (!refs.length) return;
+    if (mediaPickerTarget === "sq") {
+      const room = Math.max(0, 5 - sqAttachedFiles.length - sqAttachedRefs.length);
+      sqAttachedRefs = [...sqAttachedRefs, ...refs.slice(0, room)];
+    } else {
+      const room = Math.max(0, 5 - attachedFiles.length - attachedRefs.length);
+      attachedRefs = [...attachedRefs, ...refs.slice(0, room)];
+    }
+  }
+
   function clearAttachment(index) {
     const f = attachedFiles[index];
     const url = previewCache.get(f);
     if (url) { URL.revokeObjectURL(url); previewCache.delete(f); }
     attachedFiles = attachedFiles.filter((_, i) => i !== index);
+  }
+
+  function clearAttachedRef(index) {
+    attachedRefs = attachedRefs.filter((_, i) => i !== index);
+  }
+
+  function clearSqAttachedRef(index) {
+    sqAttachedRefs = sqAttachedRefs.filter((_, i) => i !== index);
+  }
+
+  function refThumbUrl(ref) {
+    if (!ref?.url) return "";
+    if (ref.url.startsWith("http")) return ref.url;
+    return `${ATTACHMENT_BASE_URL}${ref.url}`;
   }
 
   function isImage(mime) { return mime?.startsWith("image/") ?? false; }
@@ -2557,7 +2602,7 @@
   }
 
   async function sendChat() {
-    if (!chatMessage.trim() && !attachedFiles.length) return;
+    if (!chatMessage.trim() && !attachedFiles.length && !attachedRefs.length) return;
     sendingChat = true;
 
     if (isTyping) {
@@ -2568,9 +2613,11 @@
 
     const msgText = chatMessage.trim();
     const msgFiles = [...attachedFiles];
+    const msgRefs = [...attachedRefs];
     const msgReplyTo = replyTo; // capture before clearing
     chatMessage = "";
     attachedFiles = [];
+    attachedRefs = [];
     replyTo = null;
     // reset textarea height back to 1 row after clearing
     if (chatInputEl) { chatInputEl.style.height = "auto"; }
@@ -2580,6 +2627,7 @@
       const fd = new FormData();
       if (msgText) fd.append("message", msgText);
       for (const f of msgFiles) fd.append("files", f);
+      if (msgRefs.length) fd.append("references", JSON.stringify(msgRefs));
       if (msgReplyTo) fd.append("replyToId", String(msgReplyTo.id));
 
       const result = await authApiFetch(`${API_ROUTES.QUERY}/${queryId}/chat`, {
@@ -2627,11 +2675,12 @@
     } catch (e) {
       chatMessage = msgText;
       attachedFiles = msgFiles;
+      attachedRefs = msgRefs;
       replyTo = msgReplyTo; // restore reply context on failure
       const status = e?.status;
       const rawMsg = e?.data?.message;
       const msg = typeof rawMsg === "string" ? rawMsg : null;
-      const restoredNote = msgFiles.length > 0 ? "\n\nYour files have been restored — tap Send to retry." : "";
+      const restoredNote = (msgFiles.length > 0 || msgRefs.length > 0) ? "\n\nYour files have been restored — tap Send to retry." : "";
 
       if (e?.isTimeout) {
         Swal.fire({
@@ -3251,7 +3300,7 @@
   }
 
   async function sendSqChat() {
-    if (!sqChatMessage.trim() && !sqAttachedFiles.length) return;
+    if (!sqChatMessage.trim() && !sqAttachedFiles.length && !sqAttachedRefs.length) return;
     sqSendingChat = true;
     if (sqIsTyping) {
       sqIsTyping = false;
@@ -3260,12 +3309,14 @@
     }
     const msgText = sqChatMessage.trim();
     const msgFiles = [...sqAttachedFiles];
+    const msgRefs = [...sqAttachedRefs];
     const msgReplyTo = sqReplyTo;
-    sqChatMessage = ""; sqAttachedFiles = []; sqReplyTo = null;
+    sqChatMessage = ""; sqAttachedFiles = []; sqAttachedRefs = []; sqReplyTo = null;
     try {
       const fd = new FormData();
       if (msgText) fd.append("message", msgText);
       for (const f of msgFiles) fd.append("files", f);
+      if (msgRefs.length) fd.append("references", JSON.stringify(msgRefs));
       if (msgReplyTo) fd.append("replyToId", String(msgReplyTo.id));
       const result = await authApiFetch(`${API_ROUTES.QUERY}/${viewingSubQueryId}/chat`, { method: "POST", data: fd });
       const chat = result.data;
@@ -3291,7 +3342,7 @@
         inProgressList = [...inProgressList];
       }
     } catch (e) {
-      sqChatMessage = msgText; sqAttachedFiles = msgFiles; sqReplyTo = msgReplyTo;
+      sqChatMessage = msgText; sqAttachedFiles = msgFiles; sqAttachedRefs = msgRefs; sqReplyTo = msgReplyTo;
       Swal.fire({ icon: "error", title: "Failed to send", text: e?.data?.message ?? "Something went wrong." });
     } finally { sqSendingChat = false; }
   }
@@ -3524,7 +3575,7 @@
   }
 </script>
 
-<div class="page-wrapper">
+<div class="page-wrapper query-detail-page">
   <div class="content">
 
     {#if loading}
@@ -3533,6 +3584,12 @@
       <div class="text-center py-5 text-muted">Query not found.</div>
     {:else}
       <LightBox data={lightboxData} startIndex={lightboxStartIndex} />
+      <MediaPickerModal
+        bind:open={showMediaPicker}
+        maxSelect={mediaPickerTarget === "sq" ? sqAttachSlotsLeft : attachSlotsLeft}
+        on:confirm={onMediaPickerConfirm}
+        on:close={() => showMediaPicker = false}
+      />
 
       <!-- ── Reopen modal ───────────────────────────────────────────────────── -->
       {#if showEscalateModal}
@@ -3543,10 +3600,10 @@
               on:click={() => (showEscalateModal = false)}>
               <i class="ti ti-x"></i>
             </button>
-            <h5 class="fw-bold mb-1"><i class="ti ti-alert-triangle text-warning me-2"></i>Escalate Query</h5>
+            <h5 class="mb-1"><i class="ti ti-alert-triangle text-warning me-2"></i>Escalate Query</h5>
             <p class="text-muted small mb-3">Admin will be notified that the support member is unavailable or not responding.</p>
             <div class="mb-3">
-              <label class="form-label small fw-semibold">Reason <span class="text-muted fw-normal">(optional)</span></label>
+              <label class="form-label small">Reason <span class="text-muted fw-normal">(optional)</span></label>
               <textarea class="form-control form-control-sm" rows="3"
                 bind:value={escalateNote}
                 placeholder="e.g. No response for 2 days, tech seems unavailable"
@@ -3570,7 +3627,7 @@
               on:click={() => (showReopenModal = false)}>
               <i class="ti ti-x"></i>
             </button>
-            <h5 class="fw-bold mb-1">Reopen Query</h5>
+            <h5 class="mb-1">Reopen Query</h5>
             <p class="text-muted small mb-3">Choose how you want to reopen this query.</p>
 
             {#if reopenError}
@@ -3603,7 +3660,7 @@
                 The query will go back to the open queue for a new support member to pick up.
               </div>
               <div class="mb-3">
-                <label class="form-label small fw-semibold">Reason <span class="text-danger">*</span></label>
+                <label class="form-label small">Reason <span class="text-danger">*</span></label>
                 <textarea class="form-control form-control-sm" rows="3"
                   bind:value={reopenNote}
                   placeholder="Why is a different support member needed? (e.g. original member on leave)"
@@ -3732,13 +3789,13 @@
               <div class="card border-0 shadow-sm mb-3">
                 <div class="card-header py-2 d-flex align-items-center gap-2">
                   <i class="ti ti-receipt text-primary"></i>
-                  <span class="fw-semibold small">Current Linked Order</span>
+                  <span class="small">Current Linked Order</span>
                   <button class="btn btn-sm btn-outline-primary ms-auto py-0 px-2" style="font-size:11px;" on:click={() => openOrderDrawer(query.order.id)}>
                     <i class="ti ti-external-link me-1"></i>View
                   </button>
                 </div>
                 <div class="card-body py-2 px-3 small">
-                  <div class="fw-semibold text-dark d-flex align-items-center justify-content-between gap-2">
+                  <div class="text-dark d-flex align-items-center justify-content-between gap-2">
                     <span>{query.order.title ?? "-"} <b>#{query.order.pId}</b></span>
                     <span class="badge bg-secondary" style="font-size:10px;white-space:nowrap;">{$statusNamesStore[query.order.status]?.name ?? query.order.status}</span>
                   </div>
@@ -3937,7 +3994,7 @@
             <div class="modal-backdrop-custom" on:click={() => showSubQueriesModal = false} role="dialog" aria-modal="true">
               <div class="card shadow-lg p-4 position-relative" style="max-width:480px;width:100%;" on:click|stopPropagation>
                 <button class="modal-close-btn" on:click={() => showSubQueriesModal = false} aria-label="Close"><i class="ti ti-x"></i></button>
-                <h5 class="fw-bold mb-3">
+                <h5 class="mb-3">
                   <i class="ti ti-subtask me-2 text-primary"></i>{sqWordPlural}
                   {#if subQueries.length > 0}
                     <span class="badge {hasOpenSubQueries ? 'bg-warning text-dark' : 'bg-success'} ms-1" style="font-size:12px;">{subQueries.length}</span>
@@ -3996,7 +4053,7 @@
                 <button class="modal-close-btn" on:click={() => showSubQueryModal = false} aria-label="Close">
                   <i class="ti ti-x"></i>
                 </button>
-                <h5 class="fw-bold mb-3"><i class="ti ti-subtask me-2 text-primary"></i>Raise Query</h5>
+                <h5 class="mb-3"><i class="ti ti-subtask me-2 text-primary"></i>Raise Query</h5>
                 <div class="mb-3">
                   <label class="form-label">Subject <span class="text-danger">*</span></label>
                   <input class="form-control" type="text" placeholder="Brief subject…" bind:value={sqSubject} maxlength="120" />
@@ -4038,7 +4095,7 @@
             <div class="modal-backdrop-custom" on:click={() => showExportModal = false} role="dialog" aria-modal="true">
               <div class="card shadow-lg p-4 position-relative" style="max-width:420px;width:100%;" on:click|stopPropagation role="document">
                 <button class="modal-close-btn" on:click={() => showExportModal = false} aria-label="Close"><i class="ti ti-x"></i></button>
-                <h5 class="fw-bold mb-3"><i class="ti ti-file-type-pdf me-2 text-danger"></i>Export Chat as PDF</h5>
+                <h5 class="mb-3"><i class="ti ti-file-type-pdf me-2 text-danger"></i>Export Chat as PDF</h5>
                 <div class="mb-3">
                   <label class="form-label">Date Range</label>
                   <select class="form-select" bind:value={exportRangePreset}>
@@ -4082,7 +4139,7 @@
             <div class="card border-0 shadow-sm ip-card">
               <div class="card-header py-2 px-3 d-flex align-items-center gap-2">
                 <i class="ti ti-loader text-warning"></i>
-                <span class="fw-semibold small">In Progress</span>
+                <span class="small">In Progress</span>
                 <span class="badge bg-warning text-dark ms-1">{effectiveInProgressTotal || 0}</span>
                 <button class="ip-view-all-btn ms-auto" on:click={openAllQueriesPanel}>View all →</button>
               </div>
@@ -4168,22 +4225,26 @@
                       </div>
                       <span class="ip-sub {isTypingHere ? 'ip-sub--typing' : ''}">
                         {#if isTypingHere}
-                          <i class="ti ti-pencil" style="font-size:10px;"></i> typing…
+                          <i class="ti ti-pencil"></i> typing…
                         {:else if q.lastMessage}
                           {q.lastMessage.length > 42 ? q.lastMessage.slice(0, 42).trimEnd() + '…' : q.lastMessage}
                         {:else}
                           {typeLabel}
                         {/if}
                       </span>
-                      {#if q.createdAt}
-                        <span class="ip-raised">
-                          <i class="ti ti-calendar" style="font-size:9px;"></i> {formatDateTime(q.createdAt)}
-                        </span>
-                      {/if}
-                      {#if isMasterView(currentUser)}
-                        <span class="ip-meta">
-                          {#if q.raisedBy?.name}<i class="ti ti-user" style="font-size:9px;"></i> {maskTC(q.raisedBy.name)}{/if}{#if q.assignedTo?.name}&nbsp;·&nbsp;<i class="ti ti-user-check" style="font-size:9px;"></i> {maskTech(q.assignedTo.name)}{/if}
-                        </span>
+                      {#if q.createdAt || isMasterView(currentUser)}
+                        <div class="ip-foot">
+                          {#if q.createdAt}
+                            <span class="ip-raised">
+                              <i class="ti ti-calendar"></i> {formatDateTime(q.createdAt)}
+                            </span>
+                          {/if}
+                          {#if isMasterView(currentUser) && (q.raisedBy?.name || q.assignedTo?.name)}
+                            <span class="ip-meta">
+                              {#if q.raisedBy?.name}<i class="ti ti-user"></i> {maskTC(q.raisedBy.name)}{/if}{#if q.assignedTo?.name}<span class="ip-sep">·</span><i class="ti ti-user-check"></i> {maskTech(q.assignedTo.name)}{/if}
+                            </span>
+                          {/if}
+                        </div>
                       {/if}
                     </div>
 
@@ -4225,7 +4286,7 @@
                 <i class="ti ti-headset"></i>
               </div>
               <div class="flex-grow-1">
-                <div class="fw-semibold">Discussion Thread</div>
+                <div>Discussion Thread</div>
                 {#if otherTyping}
                   <div class="typing-indicator">
                     <span class="typing-dot"></span>
@@ -4239,28 +4300,29 @@
               </div>
               {#if !isSubQuery && (isTech(currentUser) || isMasterView(currentUser))}
                 <button
-                  class="btn btn-sm btn-outline-secondary sq-list-btn"
+                  type="button"
+                  class="btn btn-sm btn-outline-secondary chat-hdr-ctrl sq-list-btn"
                   on:click={() => showSubQueriesModal = true}
                 >
-                  <i class="ti ti-layout-list me-1"></i>{sqWordPlural}
+                  <i class="ti ti-layout-list"></i><span>{sqWordPlural}</span>
                   {#if subQueriesLoading}
                     <span class="spinner-border spinner-border-sm ms-1" style="width:10px;height:10px;border-width:1.5px;"></span>
                   {:else if subQueries.length > 0}
-                    <span class="badge {hasOpenSubQueries ? 'bg-warning text-dark' : 'bg-success'} ms-1" style="font-size:10px;">{subQueries.length}</span>
+                    <span class="badge {hasOpenSubQueries ? 'bg-warning text-dark' : 'bg-success'} chat-hdr-count">{subQueries.length}</span>
                   {/if}
                 </button>
               {/if}
               {#if canRaiseSubQuery()}
-                <button class="btn btn-sm btn-outline-warning" on:click={() => showSubQueryModal = true}>
-                  <i class="ti ti-plus me-1"></i>Query
+                <button type="button" class="btn btn-sm btn-outline-warning chat-hdr-ctrl" on:click={() => showSubQueryModal = true}>
+                  <i class="ti ti-plus"></i><span>Query</span>
                 </button>
               {/if}
               {#if currentUser?.role === 'admin' || currentUser?.role === 'master'}
-                <button class="btn btn-sm btn-outline-secondary" on:click={() => { exportRangePreset = 'all'; exportFromDate = ''; exportToDate = ''; showExportModal = true; }} title="Export Chat as PDF">
+                <button type="button" class="btn btn-sm btn-outline-secondary chat-hdr-ctrl chat-hdr-ctrl--icon" on:click={() => { exportRangePreset = 'all'; exportFromDate = ''; exportToDate = ''; showExportModal = true; }} title="Export Chat as PDF">
                   <i class="ti ti-file-type-pdf"></i>
                 </button>
               {/if}
-              <span class="badge {query.status === 'resolved' ? 'bg-success' : query.status === 'closed' ? 'bg-secondary' : query.status === 'in_progress' ? 'bg-warning text-dark' : 'bg-primary'} chat-status-badge">
+              <span class="badge {STATUS_COLORS[query.status] ?? 'bg-secondary'} chat-hdr-ctrl chat-status-badge">
                 {query.status?.replace("_", " ")}
               </span>
             </div>
@@ -4657,7 +4719,7 @@
                     </button>
                   </div>
                 {/if}
-                {#if attachedFiles.length > 0}
+                {#if attachedFiles.length > 0 || attachedRefs.length > 0}
                   <div class="chat-file-preview-row">
                     {#each attachedFiles as file, i}
                       <div
@@ -4679,7 +4741,21 @@
                         </button>
                       </div>
                     {/each}
-                    {#if attachedFiles.length >= 5}
+                    {#each attachedRefs as ref, i}
+                      <div class="chat-file-chip chat-file-chip--media" title="From Media">
+                        {#if isImage(ref.mime)}
+                          <img src={refThumbUrl(ref)} alt={ref.name} class="chip-thumb" />
+                        {:else}
+                          <i class="ti ti-photo"></i>
+                        {/if}
+                        <span class="chip-name">{ref.name}</span>
+                        <span class="chip-media-tag">Media</span>
+                        <button type="button" class="chip-remove" on:click={() => clearAttachedRef(i)} title="Remove">
+                          <i class="ti ti-x"></i>
+                        </button>
+                      </div>
+                    {/each}
+                    {#if attachTotal >= 5}
                       <span class="chip-limit-note">Max 5 files</span>
                     {/if}
                   </div>
@@ -4699,9 +4775,18 @@
                     class="chat-attach-btn"
                     title="Attach up to 5 files (image, PDF, doc…)"
                     on:click={triggerFilePicker}
-                    disabled={attachedFiles.length >= 5 || sendingChat}
+                    disabled={attachSlotsLeft <= 0 || sendingChat}
                   >
                     <i class="ti ti-paperclip"></i>
+                  </button>
+                  <button
+                    type="button"
+                    class="chat-attach-btn"
+                    title="Attach from Media library"
+                    on:click={() => openMediaPicker("main")}
+                    disabled={attachSlotsLeft <= 0 || sendingChat}
+                  >
+                    <i class="ti ti-photo"></i>
                   </button>
                   <div class="chat-input-grow-wrap">
                     <textarea
@@ -4720,7 +4805,7 @@
                       <div class="chat-char-count">{chatMessage.length}</div>
                     {/if}
                   </div>
-                  <button class="chat-send-btn" on:click={sendChat} disabled={sendingChat || (!chatMessage.trim() && !attachedFiles.length)}>
+                  <button class="chat-send-btn" on:click={sendChat} disabled={sendingChat || (!chatMessage.trim() && attachTotal === 0)}>
                     {#if sendingChat}
                       <span class="spinner-border spinner-border-sm"></span>
                     {:else}
@@ -4868,7 +4953,7 @@
                 <i class="ti ti-subtask"></i>
               </div>
               <div class="flex-grow-1 min-w-0">
-                <div class="fw-semibold text-truncate" style="font-size:13px;" title={sqViewQuery?.subject}>
+                <div class="text-truncate" style="font-size:13px;" title={sqViewQuery?.subject}>
                   {sqViewQuery?.subject ?? sqWord}
                 </div>
                 {#if sqOtherTyping}
@@ -5135,7 +5220,7 @@
             {#if canSendSqChat()}
               <input type="file" class="d-none" accept={ALLOWED_TYPES} multiple={true}
                 bind:this={sqFileInputEl}
-                on:change={(e) => { const picked = Array.from(e.target.files ?? []); if (picked.length) sqAttachedFiles = [...sqAttachedFiles, ...picked].slice(0, 5); e.target.value = ""; }} />
+                on:change={(e) => { const picked = Array.from(e.target.files ?? []); if (picked.length) sqAttachedFiles = [...sqAttachedFiles, ...picked].slice(0, 5 - sqAttachedRefs.length); e.target.value = ""; }} />
               <div class="chat-input-wrap">
                 {#if sqReplyTo}
                   <div class="chat-reply-preview">
@@ -5149,7 +5234,7 @@
                     <button class="chat-reply-preview-close" on:click={() => sqReplyTo = null} title="Cancel"><i class="ti ti-x"></i></button>
                   </div>
                 {/if}
-                {#if sqAttachedFiles.length > 0}
+                {#if sqAttachedFiles.length > 0 || sqAttachedRefs.length > 0}
                   <div class="chat-file-preview-row">
                     {#each sqAttachedFiles as file, i}
                       <div
@@ -5171,14 +5256,31 @@
                         </button>
                       </div>
                     {/each}
-                    {#if sqAttachedFiles.length >= 5}
+                    {#each sqAttachedRefs as ref, i}
+                      <div class="chat-file-chip chat-file-chip--media" title="From Media">
+                        {#if isImage(ref.mime)}
+                          <img src={refThumbUrl(ref)} alt={ref.name} class="chip-thumb" />
+                        {:else}
+                          <i class="ti ti-photo"></i>
+                        {/if}
+                        <span class="chip-name">{ref.name}</span>
+                        <span class="chip-media-tag">Media</span>
+                        <button type="button" class="chip-remove" on:click={() => clearSqAttachedRef(i)} title="Remove">
+                          <i class="ti ti-x"></i>
+                        </button>
+                      </div>
+                    {/each}
+                    {#if sqAttachTotal >= 5}
                       <span class="chip-limit-note">Max 5 files</span>
                     {/if}
                   </div>
                 {/if}
                 <div class="chat-input-bar">
-                  <button type="button" class="chat-attach-btn" title="Attach files" on:click={() => sqFileInputEl?.click()} disabled={sqAttachedFiles.length >= 5}>
+                  <button type="button" class="chat-attach-btn" title="Attach files" on:click={() => sqFileInputEl?.click()} disabled={sqAttachSlotsLeft <= 0}>
                     <i class="ti ti-paperclip"></i>
+                  </button>
+                  <button type="button" class="chat-attach-btn" title="Attach from Media library" on:click={() => openMediaPicker("sq")} disabled={sqAttachSlotsLeft <= 0}>
+                    <i class="ti ti-photo"></i>
                   </button>
                   <div class="chat-input-grow-wrap">
                     <textarea class="chat-input" rows="1"
@@ -5193,7 +5295,7 @@
                     {/if}
                   </div>
                   <button class="chat-send-btn" on:click={sendSqChat}
-                    disabled={sqSendingChat || (!sqChatMessage.trim() && !sqAttachedFiles.length)}>
+                    disabled={sqSendingChat || (!sqChatMessage.trim() && sqAttachTotal === 0)}>
                     {#if sqSendingChat}<span class="spinner-border spinner-border-sm"></span>{:else}<i class="ti ti-send"></i>{/if}
                   </button>
                 </div>
@@ -5239,7 +5341,7 @@
               <!-- Header -->
               <div class="card-header py-2 px-3 d-flex align-items-center gap-2">
                 <i class="ti ti-loader text-warning"></i>
-                <span class="fw-semibold small">In Progress</span>
+                <span class="small">In Progress</span>
                 <span class="badge bg-warning text-dark ms-1">{aqTotal || 0}</span>
                 <button class="btn-close btn-close-sm ms-auto" style="font-size:10px;" on:click={closeAllQueriesPanel}></button>
               </div>
@@ -5332,15 +5434,19 @@
                             {typeLabel}
                           {/if}
                         </span>
-                        {#if q.createdAt}
-                          <span class="ip-raised">
-                            <i class="ti ti-calendar" style="font-size:9px;"></i> {formatDateTime(q.createdAt)}
-                          </span>
-                        {/if}
-                        {#if isMasterView(currentUser)}
-                          <span class="ip-meta">
-                            {#if q.raisedBy?.name}<i class="ti ti-user" style="font-size:9px;"></i> {maskTC(q.raisedBy.name)}{/if}{#if q.assignedTo?.name}&nbsp;·&nbsp;<i class="ti ti-user-check" style="font-size:9px;"></i> {maskTech(q.assignedTo.name)}{/if}
-                          </span>
+                        {#if q.createdAt || isMasterView(currentUser)}
+                          <div class="ip-foot">
+                            {#if q.createdAt}
+                              <span class="ip-raised">
+                                <i class="ti ti-calendar"></i> {formatDateTime(q.createdAt)}
+                              </span>
+                            {/if}
+                            {#if isMasterView(currentUser) && (q.raisedBy?.name || q.assignedTo?.name)}
+                              <span class="ip-meta">
+                                {#if q.raisedBy?.name}<i class="ti ti-user"></i> {maskTC(q.raisedBy.name)}{/if}{#if q.assignedTo?.name}<span class="ip-sep">·</span><i class="ti ti-user-check"></i> {maskTech(q.assignedTo.name)}{/if}
+                              </span>
+                            {/if}
+                          </div>
                         {/if}
                       </div>
                     </div>
@@ -5375,7 +5481,7 @@
             >
               <div class="card-header py-2 px-3 d-flex align-items-center gap-2">
                 <i class="ti ti-receipt text-primary"></i>
-                <span class="fw-semibold small">Order Detail</span>
+                <span class="small">Order Detail</span>
                 {#if rightPanelStack.includes('subquery')}
                   <span class="badge bg-light text-muted border ms-1" style="font-size:10px;font-weight:500;">
                     <i class="ti ti-layers-subtract me-1"></i>{sqWord} below
@@ -5407,7 +5513,7 @@
                 {:else if orderNoLinkedOrder}
                   <div class="text-center py-5 px-3">
                     <i class="ti ti-receipt-off d-block mb-2" style="font-size:36px;color:#adb5bd;"></i>
-                    <div class="fw-semibold text-muted mb-1" style="font-size:13px;">No Order Linked</div>
+                    <div class="text-muted mb-1" style="font-size:13px;">No Order Linked</div>
                     <div class="text-muted" style="font-size:12px;">This query is not linked to any order.</div>
                   </div>
                 {:else if orderDrawerData}
@@ -5419,7 +5525,7 @@
                   <div class="op-section">
                     <div class="op-section-title"><i class="ti ti-receipt"></i>Title</div>
                     <div class="d-flex align-items-start gap-2 flex-wrap">
-                      <span class="fw-semibold flex-grow-1" style="font-size:13px;line-height:1.4;">{o.title ?? "-"}</span>
+                      <span class="flex-grow-1" style="font-size:13px;line-height:1.4;">{o.title ?? "-"}</span>
                       <div class="dropdown flex-shrink-0">
                         <a
                           class="badge bg-secondary text-white dropdown-toggle"
@@ -5932,6 +6038,75 @@
 </div>
 
 <style>
+  /* ── Cursor-like typography: small, clean, clear ───────────────────── */
+  .query-detail-page,
+  .query-detail-page :global(.content) {
+    font-size: 12px !important;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+  .query-detail-page :global(h4) {
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    letter-spacing: -0.01em;
+  }
+  .query-detail-page :global(h5),
+  .query-detail-page :global(h6) {
+    font-size: 13px !important;
+    font-weight: 600 !important;
+  }
+  .query-detail-page :global(.fw-bold),
+  .query-detail-page :global(.fw-semibold),
+  .query-detail-page :global(.fw-medium) {
+    font-weight: 500 !important;
+  }
+  .query-detail-page :global(.form-label) {
+    font-size: 11.5px !important;
+    font-weight: 500 !important;
+    color: #495057;
+  }
+  .query-detail-page :global(.form-control),
+  .query-detail-page :global(.form-select),
+  .query-detail-page :global(.btn),
+  .query-detail-page :global(.btn-sm) {
+    font-size: 11.5px !important;
+    line-height: 1.35 !important;
+  }
+  .query-detail-page :global(.form-control:not(textarea)),
+  .query-detail-page :global(.form-select) {
+    height: 28px !important;
+    min-height: 28px !important;
+    padding: 2px 8px !important;
+  }
+  .query-detail-page :global(textarea.form-control) {
+    height: auto !important;
+    min-height: 64px !important;
+    padding: 8px !important;
+    font-size: 12px !important;
+  }
+  .query-detail-page :global(.text-muted),
+  .query-detail-page :global(.small) {
+    font-size: 11px !important;
+    font-weight: 400 !important;
+  }
+  .query-detail-page :global(.badge) {
+    font-weight: 500 !important;
+    font-size: 10.5px !important;
+  }
+  /* Soften common inline rem/px sizes */
+  .query-detail-page :global([style*="font-size:13px"]),
+  .query-detail-page :global([style*="font-size: 13px"]),
+  .query-detail-page :global([style*="font-size:0.875rem"]),
+  .query-detail-page :global([style*="font-size:0.9rem"]) {
+    font-size: 12px !important;
+  }
+  .query-detail-page :global([style*="font-weight:600"]),
+  .query-detail-page :global([style*="font-weight: 600"]),
+  .query-detail-page :global([style*="font-weight:700"]),
+  .query-detail-page :global([style*="font-weight: 700"]) {
+    font-weight: 500 !important;
+  }
+
   /* ── Badge tab selector ─────────────────────────────── */
   /* ── Order drawer tabs ─────────────────────────────── */
   .op-tab-btn {
@@ -5960,7 +6135,7 @@
   .op-chat-list { flex: 1 1 0; overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
   .op-chat-msg { display: flex; flex-direction: column; gap: 2px; }
   .op-chat-meta { display: flex; align-items: baseline; gap: 6px; }
-  .op-chat-sender { font-size: 11px; font-weight: 600; color: #3b5bdb; }
+  .op-chat-sender { font-size: 11px; font-weight: 500; color: #3b5bdb; }
   .op-chat-time { font-size: 10px; color: #adb5bd; }
   .op-chat-bubble { background: #f1f3f5; border-radius: 0 8px 8px 8px; padding: 6px 10px; font-size: 12px; color: #212529; line-height: 1.5; word-break: break-word; }
   .op-chat-input-row { display: flex; gap: 6px; padding: 8px 12px; border-top: 1px solid #f0f0f0; background: #fafafa; flex-shrink: 0; }
@@ -5969,7 +6144,7 @@
   .op-attach-wrap { display: flex; flex-direction: column; height: 100%; position: relative; }
   .op-attach-list { flex: 1 1 0; overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
   .op-attach-item { background: #f8f9fa; border-radius: 8px; padding: 8px 10px; font-size: 12px; }
-  .op-attach-title { font-weight: 600; color: #343a40; margin-bottom: 2px; }
+  .op-attach-title { font-weight: 500; color: #343a40; margin-bottom: 2px; }
   .op-attach-link { font-size: 11px; color: #3b5bdb; word-break: break-all; display: block; }
   .op-attach-time { font-size: 10px; color: #adb5bd; margin-top: 4px; }
   .op-attach-thumb { width: 52px; height: 52px; object-fit: cover; border-radius: 6px; border: 1px solid #dee2e6; }
@@ -5991,7 +6166,7 @@
   .op-attach-chips { display: flex; flex-wrap: wrap; gap: 5px; }
   .op-attach-file-chip--new { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; background: #e7f0ff; color: #3b5bdb; border: 1px solid #bac8ff; border-radius: 20px; padding: 3px 8px; max-width: 180px; }
   .op-attach-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 130px; }
-  .op-attach-upload-btn { width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12.5px; font-weight: 600; padding: 7px 0; border: none; border-radius: 8px; background: linear-gradient(135deg, #4c6ef5, #748ffc); color: #fff; cursor: pointer; transition: opacity 0.15s, box-shadow 0.15s; box-shadow: 0 2px 6px rgba(76,110,245,0.25); }
+  .op-attach-upload-btn { width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px; font-weight: 500; padding: 7px 0; border: none; border-radius: 8px; background: linear-gradient(135deg, #4c6ef5, #748ffc); color: #fff; cursor: pointer; transition: opacity 0.15s, box-shadow 0.15s; box-shadow: 0 2px 6px rgba(76,110,245,0.25); }
   .op-attach-upload-btn:hover:not(:disabled) { opacity: 0.9; box-shadow: 0 4px 10px rgba(76,110,245,0.35); }
   .op-attach-upload-btn:disabled { background: #adb5bd; box-shadow: none; cursor: not-allowed; opacity: 0.7; }
 
@@ -6039,10 +6214,10 @@
   .chat-avatar {
     width: 40px; height: 40px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    font-weight: 700; font-size: 15px; flex-shrink: 0;
+    font-weight: 500; font-size: 13px; flex-shrink: 0;
   }
   .chat-avatar--sm { width: 32px; height: 32px; font-size: 12px; }
-  .chat-avatar--support    { background: #e8f0fe; color: #3b5bdb; font-size: 18px; }
+  .chat-avatar--support    { background: #e8f0fe; color: #3b5bdb; font-size: 15px; }
   /* own — blue */
   .chat-avatar--own        { background: #3b5bdb; color: #fff; }
   /* admin / master — purple */
@@ -6108,8 +6283,8 @@
     align-items: center;
     gap: 10px;
     color: #3b5bdb;
-    font-weight: 700;
-    font-size: 18px;
+    font-weight: 600;
+    font-size: 14px;
     background: rgba(255, 255, 255, 0.88);
     padding: 28px 40px;
     border-radius: 14px;
@@ -6132,11 +6307,7 @@
     background: #3b5bdb;
     color: #fff;
     font-size: 12px;
-    font-weight: 600;
-    border: none;
-    border-radius: 20px;
-    cursor: pointer;
-    box-shadow: 0 3px 10px rgba(59,91,219,0.35);
+    font-weight: 500;
     animation: new-msg-slide-up 0.2s ease;
     z-index: 10;
     white-space: nowrap;
@@ -6170,7 +6341,7 @@
     from { opacity: 0; transform: translateX(-50%) translateY(8px); }
     to   { opacity: 1; transform: translateX(-50%) translateY(0); }
   }
-  .chat-empty { text-align: center; color: #adb5bd; margin-top: 40px; font-size: 14px; }
+  .chat-empty { text-align: center; color: #adb5bd; margin-top: 40px; font-size: 12px; }
   .chat-empty i { font-size: 2.5rem; display: block; margin-bottom: 8px; }
   .chat-row { display: flex; align-items: flex-end; gap: 8px; }
   .chat-row--own { flex-direction: row-reverse; }
@@ -6285,7 +6456,7 @@
   }
   .chat-reply-quote:hover { opacity: 0.8; }
   .chat-reply-quote--own { background: rgba(59,91,219,0.1); border-left-color: rgba(59,91,219,0.4); }
-  .chat-reply-quote-sender { font-size: 10.5px; font-weight: 700; opacity: 0.85; }
+  .chat-reply-quote-sender { font-size: 10.5px; font-weight: 500; opacity: 0.85; }
   .chat-reply-quote-text {
     font-size: 11.5px; opacity: 0.75;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -6300,7 +6471,7 @@
   }
   .chat-reply-preview-icon { color: #3b5bdb; font-size: 16px; flex-shrink: 0; }
   .chat-reply-preview-body { flex: 1; display: flex; flex-direction: column; gap: 1px; overflow: hidden; }
-  .chat-reply-preview-sender { font-size: 11px; font-weight: 700; color: #3b5bdb; }
+  .chat-reply-preview-sender { font-size: 11px; font-weight: 500; color: #3b5bdb; }
   .chat-reply-preview-text {
     font-size: 12px; color: #6c757d;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -6312,8 +6483,8 @@
   }
   .chat-reply-preview-close:hover { color: #dc3545; background: #fff0f0; }
 
-  .chat-sender { font-size: 11px; font-weight: 600; margin-bottom: 3px; opacity: 0.75; letter-spacing: 0.3px; }
-  .chat-text { white-space: pre-line; font-size: 14px; }
+  .chat-sender { font-size: 11px; font-weight: 500; margin-bottom: 3px; opacity: 0.75; letter-spacing: 0.3px; }
+  .chat-text { white-space: pre-line; font-size: 12.5px; }
   .read-more-btn {
     display: inline-flex; align-items: center; gap: 3px;
     background: none; border: none; padding: 2px 0 0;
@@ -6335,7 +6506,7 @@
   .chat-time { font-size: 10px; opacity: 0.6; }
   .final-badge {
     display: inline-flex; align-items: center; gap: 3px;
-    font-size: 9.5px; font-weight: 700; letter-spacing: 0.3px;
+    font-size: 9.5px; font-weight: 600; letter-spacing: 0.3px;
     color: #0ca678; background: #e6fcf5; border: 1px solid #0ca678;
     padding: 1px 7px; border-radius: 20px;
   }
@@ -6369,7 +6540,7 @@
   }
   .chat-input {
     width: 100%; border: 1px solid #dee2e6; border-radius: 20px;
-    padding: 10px 16px; font-size: 14px; resize: none; outline: none;
+    padding: 8px 12px; font-size: 12.5px; resize: none; outline: none;
     line-height: 1.5; max-height: 200px; overflow-y: auto;
     transition: border-color 0.2s; box-sizing: border-box;
   }
@@ -6457,6 +6628,13 @@
     cursor: pointer; transition: background 0.15s, border-color 0.15s;
   }
   .chat-file-chip:hover { background: #dbe4ff; border-color: #748ffc; }
+  .chat-file-chip--media { background: #f3f0ff; border-color: #d0bfff; color: #5f3dc4; }
+  .chat-file-chip--media:hover { background: #e5dbff; border-color: #b197fc; }
+  .chat-file-chip--media .chip-remove { color: #5f3dc4; }
+  .chip-media-tag {
+    font-size: 9px; font-weight: 500; padding: 1px 5px; border-radius: 4px;
+    background: rgba(95, 61, 196, 0.12); color: #5f3dc4; flex-shrink: 0;
+  }
   .chip-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
   .chip-remove {
     background: none; border: none; padding: 0; line-height: 1;
@@ -6501,7 +6679,7 @@
     display: flex; align-items: center; gap: 8px;
     padding: 13px 16px;
     border-bottom: 1px solid #f1f3f5;
-    font-size: 13px; font-weight: 700; color: #212529;
+    font-size: 12.5px; font-weight: 600; color: #212529;
     flex-shrink: 0;
   }
   .pf-index {
@@ -6567,7 +6745,7 @@
   .pf-stage-file:hover .pf-stage-open-hint { opacity: 1; }
   .pf-stage-file-icon { font-size: 72px; color: #adb5bd; line-height: 1; transition: color 0.15s; }
   .pf-stage-ext {
-    font-size: 12px; font-weight: 700; color: #6c757d;
+    font-size: 12px; font-weight: 600; color: #6c757d;
     background: #e9ecef; padding: 3px 12px; border-radius: 20px;
     letter-spacing: 0.5px; text-transform: uppercase;
   }
@@ -6841,7 +7019,7 @@
   }
   .qd-card-label {
     display: flex; align-items: center; gap: 5px;
-    font-size: 10px; font-weight: 700; color: #868e96;
+    font-size: 10px; font-weight: 600; color: #868e96;
     text-transform: uppercase; letter-spacing: 0.6px;
     padding: 8px 14px 0;
   }
@@ -6867,15 +7045,14 @@
     gap: 8px; flex: 1; min-width: 0; flex-wrap: nowrap;
   }
   .qd-subject {
-    font-size: 15px; font-weight: 700;
+    font-size: 13.5px; font-weight: 600;
     color: #1a1a2e; margin: 0; line-height: 1.4;
     flex: 1; min-width: 0;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .qd-ticket-badge {
     flex-shrink: 0;
-    font-size: 11px; font-weight: 600; letter-spacing: 0.4px;
-    background: #f1f3f5; border: 1px solid #dee2e6;
+    font-size: 11px; font-weight: 500; letter-spacing: 0.4px;
     border-radius: 4px; padding: 2px 7px; color: #495057;
   }
   .qd-status-badge { flex-shrink: 0; font-size: 11px; padding: 4px 9px; border-radius: 20px; }
@@ -6901,14 +7078,13 @@
   /* description */
   .qd-description {
     padding: 12px 18px;
-    font-size: 13px; color: #6c757d;
+    font-size: 12px; color: #6c757d;
     white-space: pre-line; line-height: 1.6;
     border-bottom: 1px solid #f1f3f5;
   }
   .qd-description .qd-meta-label {
     display: inline-flex; align-items: center; gap: 5px;
-    font-size: 11px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase;
-    color: #3b5bdb;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase;
     background: #eef2ff; border-radius: 5px;
     padding: 2px 8px; margin-bottom: 6px;
   }
@@ -6947,19 +7123,24 @@
   /* actions */
   .qd-actions {
     padding: 12px 18px;
-    display: flex; flex-direction: column; gap: 8px;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
   }
   .qd-btn {
     display: flex; align-items: center; justify-content: center; gap: 6px;
-    padding: 8px 14px; border-radius: 8px;
-    font-size: 13px; font-weight: 500; cursor: pointer;
+    padding: 8px 10px; border-radius: 8px;
+    font-size: 12px; font-weight: 500; cursor: pointer;
     border: none; transition: opacity 0.15s, transform 0.1s;
-    width: 100%;
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
   }
   .qd-btn:disabled { opacity: 0.6; cursor: not-allowed; }
   .qd-btn:not(:disabled):hover { opacity: 0.88; }
   .qd-btn:not(:disabled):active { transform: scale(0.98); }
-  .qd-btn i { font-size: 15px; }
+  .qd-btn i { font-size: 14px; }
   .qd-btn--success       { background: #198754; color: #fff; }
   .qd-btn--warning       { background: #ffc107; color: #212529; }
   .qd-btn--danger-outline {
@@ -7015,17 +7196,18 @@
     overflow: hidden;
   }
   .ip-subject {
-    font-size: 13px; font-weight: 500; color: #e07b00;
+    font-size: 11.5px; font-weight: 400; color: #e07b00;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     flex: 1;
   }
   .ip-time {
-    font-size: 10px; color: #adb5bd; white-space: nowrap; flex-shrink: 0;
+    font-size: 9.5px; font-weight: 400; color: #adb5bd; white-space: nowrap; flex-shrink: 0;
   }
   .ip-sub {
-    font-size: 11px; color: #3b5bdb;
+    font-size: 10.5px; font-weight: 400; color: #3b5bdb;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
+  .ip-sub i { font-size: 9.5px; }
   .ip-sub--typing {
     animation: typing-fade 1.2s infinite ease-in-out;
     font-style: italic;
@@ -7034,10 +7216,25 @@
     0%, 100% { opacity: 0.45; }
     50%       { opacity: 1; }
   }
-  .ip-raised {
-    font-size: 10px; color: #adb5bd;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  .ip-foot {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    margin-top: 1px;
   }
+  .ip-raised {
+    font-size: 9px !important;
+    font-weight: 400 !important;
+    color: #868e96;
+    white-space: nowrap;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    line-height: 1.3;
+  }
+  .ip-raised i { font-size: 9px !important; }
 
   /* left column — same height as chat card */
   .query-left-col {
@@ -7080,11 +7277,25 @@
   .ip-list-body::-webkit-scrollbar-thumb { background: #dee2e6; border-radius: 10px; }
   .ip-list-body::-webkit-scrollbar-thumb:hover { background: #adb5bd; }
 
-  /* raised by / assigned to meta line */
+  /* raised by / assigned to — same row as date */
   .ip-meta {
-    font-size: 10px; color: #adb5bd;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    display: flex; align-items: center; gap: 2px; margin-top: 1px;
+    font-size: 9px !important;
+    font-weight: 400 !important;
+    color: #868e96;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    min-width: 0;
+    line-height: 1.3;
+  }
+  .ip-meta i { font-size: 9px !important; flex-shrink: 0; }
+  .ip-sep {
+    margin: 0 2px;
+    color: #ced4da;
+    flex-shrink: 0;
   }
 
   /* load-more bottom states */
@@ -7102,7 +7313,7 @@
     display: inline-flex; align-items: center; justify-content: center;
     min-width: 20px; height: 20px; padding: 0 5px;
     background: #dc3545; color: #fff; border-radius: 10px;
-    font-size: 10px; font-weight: 700; line-height: 1; flex-shrink: 0;
+    font-size: 10px; font-weight: 600; line-height: 1; flex-shrink: 0;
   }
 
   /* live status banner */
@@ -7167,20 +7378,61 @@
     display: flex; align-items: flex-start; gap: 8px;
     background: #fff9db; border: 1px solid #fcc419; border-radius: 8px;
     padding: 8px 12px; font-size: 12px; color: #7a4800;
+    flex: 1 1 100%;
   }
   .qd-sub-block-notice i { font-size: 14px; margin-top: 1px; flex-shrink: 0; color: #f08c00; }
 
   /* ─── sub-query pinned panel ─────────────────────────────────────────────── */
   /* ─── chat header — size-normalize buttons + status badge ── */
-  .sq-list-btn .badge { vertical-align: middle; font-size: 10px; }
-  .chat-status-badge {
-    font-size: 0.875rem;
-    padding: 0.25rem 0.6rem;
-    border-radius: 0.2rem;
+  .chat-header {
+    gap: 8px !important;
+    align-items: center !important;
   }
-
-  /* ─── sub-queries list modal ─────────────────────────── */
-  .sq-modal-table { font-size: 13px; }
+  .chat-header .chat-hdr-ctrl,
+  .chat-header .btn.chat-hdr-ctrl,
+  .chat-header .badge.chat-hdr-ctrl {
+    height: 28px !important;
+    min-height: 28px !important;
+    max-height: 28px !important;
+    padding: 0 10px !important;
+    font-size: 11.5px !important;
+    font-weight: 400 !important;
+    line-height: 1 !important;
+    border-radius: 6px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 5px;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+    vertical-align: middle;
+  }
+  .chat-header .chat-hdr-ctrl i {
+    font-size: 14px !important;
+    line-height: 1 !important;
+  }
+  .chat-header .chat-hdr-ctrl--icon {
+    width: 28px !important;
+    min-width: 28px !important;
+    padding: 0 !important;
+  }
+  .chat-header .chat-hdr-count {
+    font-size: 10px !important;
+    font-weight: 500 !important;
+    padding: 1px 5px !important;
+    border-radius: 4px !important;
+    line-height: 1.2 !important;
+  }
+  .sq-list-btn .badge { vertical-align: middle; }
+  .chat-header .chat-status-badge {
+    text-transform: lowercase;
+    letter-spacing: 0.01em;
+    border: none !important;
+    font-size: 11.5px !important;
+    font-weight: 400 !important;
+    padding: 0 10px !important;
+  }
+  .sq-modal-table { font-size: 12px; }
   /* ── Inline sub-query chat panel ───────────────────────── */
   .sq-inline-card { border: 1.5px solid #e0e7ff; }
   .sq-inline-icon-btn { padding: 2px 6px; font-size: 12px; line-height: 1.4; }
@@ -7216,7 +7468,7 @@
   }
   .modal-close-btn {
     position: absolute; top: 0.6rem; right: 0.75rem;
-    background: none; border: none; font-size: 1.25rem; line-height: 1;
+    background: none; border: none; font-size: 14px; line-height: 1;
     color: #6c757d; cursor: pointer; padding: 0.25rem 0.4rem;
     border-radius: 4px; transition: color 0.15s, background 0.15s; z-index: 10;
   }
@@ -7289,7 +7541,7 @@
     min-width: 18px; height: 18px; padding: 0 4px;
     background: #dc3545; color: #fff;
     border-radius: 9px; border: 2px solid #fff;
-    font-size: 10px; font-weight: 700; line-height: 14px;
+    font-size: 10px; font-weight: 600; line-height: 14px;
     display: inline-flex; align-items: center; justify-content: center;
   }
   .sq-event-link { font-size: 12px; }
@@ -7330,7 +7582,7 @@
   }
   .op-section-title {
     display: flex; align-items: center; gap: 5px;
-    font-size: 10px; font-weight: 700; color: #868e96;
+    font-size: 10px; font-weight: 600; color: #868e96;
     text-transform: uppercase; letter-spacing: 0.6px;
     margin-bottom: 6px;
   }
@@ -7380,7 +7632,7 @@
   /* Text */
   .op-description :global(p)          { margin: 0 0 6px; }
   .op-description :global(strong),
-  .op-description :global(b)          { font-weight: 700; }
+  .op-description :global(b)          { font-weight: 600; }
   .op-description :global(em),
   .op-description :global(i)          { font-style: italic; }
   .op-description :global(u)          { text-decoration: underline; }
@@ -7389,9 +7641,9 @@
   .op-description :global(a:hover)    { color: #1d4ed8; }
 
   /* Headings */
-  .op-description :global(h1) { font-size: 18px; font-weight: 700; margin: 8px 0 4px; }
-  .op-description :global(h2) { font-size: 15px; font-weight: 700; margin: 8px 0 4px; }
-  .op-description :global(h3) { font-size: 13px; font-weight: 700; margin: 6px 0 4px; }
+  .op-description :global(h1) { font-size: 15px; font-weight: 600; margin: 8px 0 4px; }
+  .op-description :global(h2) { font-size: 13.5px; font-weight: 600; margin: 8px 0 4px; }
+  .op-description :global(h3) { font-size: 12.5px; font-weight: 600; margin: 6px 0 4px; }
 
   /* Lists */
   .op-description :global(ul)         { list-style: disc;    padding-left: 20px; margin: 0 0 6px; }
@@ -7606,7 +7858,7 @@
             <div class="mb-3 text-muted small">Current: <strong>{orderDrawerData.client.name}</strong></div>
           {/if}
           <div class="d-flex align-items-center justify-content-between mb-2">
-            <label class="form-label mb-0 fw-semibold">
+            <label class="form-label mb-0">
               {#if opCcInlineCreate}<i class="ti ti-building-store me-1 text-primary"></i>New Client
               {:else}<i class="ti ti-search me-1 text-primary"></i>Search Client{/if}
             </label>
@@ -7630,7 +7882,7 @@
                 <div class="border rounded" style="max-height:200px;overflow-y:auto;">
                   {#each opChangeClientResults as client}
                     <button type="button" class="d-block w-100 text-start px-3 py-2 border-bottom" style="background:none;" on:click={() => { opChangeClientDropdown = false; opCcSelectedExisting = client; }}>
-                      <div class="fw-semibold"><i class="ti ti-building-store me-1 text-primary"></i>{client.name}</div>
+                      <div><i class="ti ti-building-store me-1 text-primary"></i>{client.name}</div>
                       {#if client.gstNumber}<div class="text-muted small">GST: {client.gstNumber}</div>{/if}
                       {#if client.contacts?.length > 0}<div class="text-muted small">{client.contacts.map(c => c.name).join(", ")}</div>{/if}
                     </button>
@@ -7644,7 +7896,7 @@
             {#if opCcSelectedExisting}
               <div class="border rounded p-3 mt-2 bg-light d-flex justify-content-between align-items-start">
                 <div>
-                  <div class="fw-semibold"><i class="ti ti-building-store me-1 text-primary"></i>{opCcSelectedExisting.name}</div>
+                  <div><i class="ti ti-building-store me-1 text-primary"></i>{opCcSelectedExisting.name}</div>
                   {#if opCcSelectedExisting.gstNumber}<div class="text-muted small">GST: {opCcSelectedExisting.gstNumber}</div>{/if}
                   {#if opCcSelectedExisting.contacts?.length > 0}<div class="text-muted small mt-1">{opCcSelectedExisting.contacts.map(c => c.name).join(", ")}</div>{/if}
                 </div>
@@ -7698,18 +7950,18 @@
           <div class="d-flex align-items-center gap-2 mb-4">
             <div class="d-flex align-items-center gap-1">
               <span class="badge rounded-pill {opNcStep >= 1 ? 'bg-primary' : 'bg-secondary'} px-3 py-2">1</span>
-              <span class="small fw-semibold {opNcStep >= 1 ? 'text-primary' : 'text-muted'}">Client</span>
+              <span class="small {opNcStep >= 1 ? 'text-primary' : 'text-muted'}">Client</span>
             </div>
             <div class="flex-grow-1 border-top mx-2"></div>
             <div class="d-flex align-items-center gap-1">
               <span class="badge rounded-pill {opNcStep >= 2 ? 'bg-primary' : 'bg-secondary'} px-3 py-2">2</span>
-              <span class="small fw-semibold {opNcStep >= 2 ? 'text-primary' : 'text-muted'}">Contact</span>
+              <span class="small {opNcStep >= 2 ? 'text-primary' : 'text-muted'}">Contact</span>
             </div>
           </div>
           {#if opNcStep === 1}
             {#if !opNcSelectedClient && !opNcCreateMode}
               <div class="mb-3 position-relative">
-                <label class="form-label fw-semibold">Search Existing Client</label>
+                <label class="form-label">Search Existing Client</label>
                 <div class="input-group">
                   <input type="text" class="form-control" placeholder="Type company name, mobile, email..." bind:value={opNcSearchQuery} on:input={opNcOnSearchInput} autocomplete="off" />
                   {#if opNcSearchLoading}<span class="input-group-text"><span class="spinner-border spinner-border-sm"></span></span>{/if}
@@ -7718,7 +7970,7 @@
                   <div class="border rounded bg-white position-absolute w-100 shadow" style="z-index:9999;max-height:220px;overflow-y:auto;top:100%;">
                     {#each opNcSearchResults as client}
                       <button type="button" class="d-block w-100 text-start px-3 py-2 border-bottom" style="background:none;" on:click={() => opNcSelectClient(client)}>
-                        <div class="fw-semibold"><i class="ti ti-building-store me-1 text-primary"></i>{client.name}</div>
+                        <div><i class="ti ti-building-store me-1 text-primary"></i>{client.name}</div>
                         {#if client.gstNumber}<div class="text-muted small">GST: {client.gstNumber}</div>{/if}
                         {#if client.contacts?.length > 0}<div class="text-muted small">Contacts: {client.contacts.map(c => c.name).join(", ")}</div>{/if}
                       </button>
@@ -7743,7 +7995,7 @@
               <div class="border rounded p-3 bg-light mb-3">
                 <div class="d-flex justify-content-between align-items-start">
                   <div>
-                    <div class="fw-bold"><i class="ti ti-building-store me-1 text-primary"></i>{opNcSelectedClient.name}</div>
+                    <div><i class="ti ti-building-store me-1 text-primary"></i>{opNcSelectedClient.name}</div>
                     {#if opNcSelectedClient.gstNumber}<div class="text-muted small">GST: {opNcSelectedClient.gstNumber}</div>{/if}
                     {#if opNcSelectedClient.contacts?.length > 0}<div class="text-muted small mt-1">Existing: {opNcSelectedClient.contacts.map(c => c.name).join(", ")}</div>{/if}
                   </div>
@@ -7754,7 +8006,7 @@
             {#if opNcCreateMode}
               <div class="border rounded p-3 bg-light mb-3">
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                  <h6 class="mb-0 fw-semibold">New Client</h6>
+                  <h6 class="mb-0">New Client</h6>
                   <button type="button" class="btn btn-sm btn-outline-secondary" on:click={() => { opNcCreateMode = false; opNcClientName = ""; }}><i class="ti ti-x"></i></button>
                 </div>
                 <div class="grid grid-cols-2 gap-3">
@@ -7775,7 +8027,7 @@
           {#if opNcStep === 2}
             <div class="mb-2 p-2 bg-light rounded border d-flex align-items-center gap-2">
               <i class="ti ti-building-store text-primary"></i>
-              <span class="fw-semibold">{opNcSelectedClient?.name || opNcClientName}</span>
+              <span>{opNcSelectedClient?.name || opNcClientName}</span>
               <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" on:click={() => opNcStep = 1}><i class="ti ti-edit me-1"></i>Change</button>
             </div>
             <div class="grid grid-cols-2 gap-3 mt-3">

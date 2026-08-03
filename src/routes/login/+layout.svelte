@@ -1,6 +1,7 @@
 <script>
   import "../../app.css";
   import "../../styles/main.css";
+  import "../../styles/typography.css";
   import { onMount } from "svelte";
   import jQuery from "jquery";
   import { goto } from "$app/navigation";

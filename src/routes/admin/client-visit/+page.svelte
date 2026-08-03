@@ -10,6 +10,7 @@
   import { companiesAllStore, usersAllStore } from "$lib/stores/dataStores";
   import { get } from "svelte/store";
   import { page } from "$app/stores";
+  import { showToast } from "$lib/stores/uiToast";
 
   let currentUser = null;
   let visits = [];
@@ -28,17 +29,45 @@
   let visitTypeFilter = "";
   let statusFilter = "";
   let outcomeFilter = "";
+  let cityFilter = "";
+  let stateFilter = "";
+  let followUpFilter = "";
+  let overdueOnly = false;
+  let hasOrderFilter = "";
   let byUserId = null;
   let byCompanyId = null;
   let firstLoad = false;
+  let cityOptions = [];
+  let stateOptions = [];
 
-  onMount(() => {
-    currentUser = checkAuth();
-    fetchVisits();
-    getAllUsers();
-    getAllCompanies();
-    setTimeout(() => { firstLoad = true; }, 500);
-  });
+  async function loadFilterOptions() {
+    try {
+      const data = await authApiFetch(`${API_ROUTES.CLIENT_VISIT}/filter-options`);
+      cityOptions = data?.cities ?? [];
+      stateOptions = data?.states ?? [];
+    } catch (_) {
+      cityOptions = [];
+      stateOptions = [];
+    }
+  }
+
+  $: hasActiveExtraFilters = !!(
+    cityFilter || stateFilter || followUpFilter || overdueOnly || hasOrderFilter
+  );
+
+  function clearExtraFilters() {
+    cityFilter = "";
+    stateFilter = "";
+    followUpFilter = "";
+    overdueOnly = false;
+    hasOrderFilter = "";
+    visitTypeFilter = "";
+    statusFilter = "";
+    outcomeFilter = "";
+    byUserId = null;
+    byCompanyId = null;
+    currentPage = 1;
+  }
 
   function getDateRange() {
     const now = new Date();
@@ -65,12 +94,18 @@
   async function fetchVisits() {
     loadingData = true;
     try {
-      const { startDate, endDate } = getDateRange();
+      // Overdue filter is date-absolute; don't also clamp to the period dropdown
+      const { startDate, endDate } = overdueOnly ? {} : getDateRange();
       const params = new URLSearchParams({ page: String(currentPage), limit: String(rowsPerPage) });
       if (searchTerm) params.set("search", searchTerm);
       if (visitTypeFilter) params.set("visitType", visitTypeFilter);
-      if (statusFilter) params.set("status", statusFilter);
+      if (statusFilter && !overdueOnly) params.set("status", statusFilter);
       if (outcomeFilter) params.set("outcome", outcomeFilter);
+      if (cityFilter) params.set("city", cityFilter);
+      if (stateFilter) params.set("state", stateFilter);
+      if (followUpFilter) params.set("followUp", followUpFilter);
+      if (overdueOnly) params.set("overdue", "true");
+      if (hasOrderFilter) params.set("hasOrder", hasOrderFilter);
       if (startDate) params.set("startDate", startDate);
       if (endDate) params.set("endDate", endDate);
       if (byUserId) params.set("byUserId", String(byUserId));
@@ -121,7 +156,7 @@
     debounceTimeout = setTimeout(() => { searchTerm = value; currentPage = 1; }, 300);
   }
 
-  $: [searchTerm, selectedFilter, customStartDate, customEndDate, currentPage, rowsPerPage, visitTypeFilter, statusFilter, outcomeFilter, byUserId, byCompanyId], checkFetch();
+  $: [searchTerm, selectedFilter, customStartDate, customEndDate, currentPage, rowsPerPage, visitTypeFilter, statusFilter, outcomeFilter, cityFilter, stateFilter, followUpFilter, overdueOnly, hasOrderFilter, byUserId, byCompanyId], checkFetch();
   function checkFetch() {
     if (firstLoad) {
       if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) return;
@@ -129,10 +164,36 @@
     }
   }
 
+  const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  /** Indian date: DD-MM-YYYY with weekday, e.g. Sat, 01-08-2026 */
   function formatDate(d) {
     if (!d) return "—";
     const dt = new Date(d);
-    return `${String(dt.getDate()).padStart(2,"0")}-${String(dt.getMonth()+1).padStart(2,"0")}-${dt.getFullYear()}`;
+    if (Number.isNaN(dt.getTime())) return "—";
+    const day = WEEKDAYS[dt.getDay()];
+    const datePart = `${String(dt.getDate()).padStart(2, "0")}-${String(dt.getMonth() + 1).padStart(2, "0")}-${dt.getFullYear()}`;
+    return `${day}, ${datePart}`;
+  }
+
+  /** HH:mm → 10:30 AM */
+  function formatTime12(t) {
+    if (!t) return "";
+    const [hStr, mStr = "00"] = String(t).split(":");
+    let h = parseInt(hStr, 10);
+    if (Number.isNaN(h)) return "";
+    const m = mStr.slice(0, 2).padStart(2, "0");
+    const ampm = h >= 12 ? "PM" : "AM";
+    h = h % 12 || 12;
+    return `${h}:${m} ${ampm}`;
+  }
+
+  /** Visit date with day + meeting time: Sat, 01-08-2026 · 10:30 AM */
+  function formatVisitDateTime(date, meetingTime) {
+    const dateStr = formatDate(date);
+    if (dateStr === "—") return "—";
+    const timeStr = formatTime12(meetingTime);
+    return timeStr ? `${dateStr} · ${timeStr}` : dateStr;
   }
 
   const STATUS_BADGE = {
@@ -141,29 +202,75 @@
     cancelled:  { cls: "bg-danger",   label: "Cancelled" },
   };
 
-  $: columns = [
+  // ── Column visibility (Actions + By hidden by default) ────────────────────
+  const COL_STORAGE_KEY = "cv-list-col-vis";
+  const DEFAULT_COL_VIS = {
+    status: true,
+    visitType: true,
+    visitDate: true,
+    client: true,
+    location: true,
+    order: true,
+    purpose: true,
+    outcome: true,
+    attendees: true,
+    nextFollowUpDate: true,
+    createdBy: false, // By — off by default
+    company: true,
+    _actions: false,  // Actions — off by default
+  };
+
+  let colVis = { ...DEFAULT_COL_VIS };
+  let colPanelOpen = false;
+
+  function loadColVis() {
+    try {
+      const raw = localStorage.getItem(COL_STORAGE_KEY);
+      if (raw) return { ...DEFAULT_COL_VIS, ...JSON.parse(raw) };
+    } catch (_) {}
+    return { ...DEFAULT_COL_VIS };
+  }
+
+  function saveColVis() {
+    try { localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(colVis)); } catch (_) {}
+  }
+
+  function toggleCol(key) {
+    colVis = { ...colVis, [key]: !colVis[key] };
+    saveColVis();
+  }
+
+  function resetColVis() {
+    colVis = { ...DEFAULT_COL_VIS };
+    saveColVis();
+    colPanelOpen = false;
+  }
+
+  function statusDueMeta(visitDate) {
+    if (!visitDate) return null;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const vd = new Date(visitDate); vd.setHours(0, 0, 0, 0);
+    const diff = Math.round((vd - today) / 86400000);
+    if (diff === 0) return { text: "Today", tone: "today" };
+    if (diff === 1) return { text: "Tomorrow", tone: "soon" };
+    if (diff > 1) return { text: `In ${diff} days`, tone: "soon" };
+    if (diff === -1) return { text: "Yesterday · Overdue", tone: "overdue" };
+    return { text: `${-diff} days ago · Overdue`, tone: "overdue" };
+  }
+
+  $: allColumnDefs = [
     {
       key: "status",
       label: "Status",
       render: (val, row) => {
         const s = STATUS_BADGE[row.status] ?? { cls: "bg-secondary", label: row.status ?? "—" };
-        const badge = `<span class="badge ${s.cls} status-change-btn" data-id="${row.id}" data-status="${row.status}" style="cursor:pointer;" title="Click to change status">${s.label} <i class="ti ti-chevron-down" style="font-size:10px;"></i></span>`;
-        if (row.status === 'scheduled' && row.visitDate) {
-          const today = new Date(); today.setHours(0,0,0,0);
-          const vd = new Date(row.visitDate); vd.setHours(0,0,0,0);
-          const diff = Math.round((vd - today) / 86400000);
-          let label, cls;
-          if (diff === 0)       { label = "Today";        cls = "text-warning fw-semibold"; }
-          else if (diff === 1)  { label = "Tomorrow";     cls = "text-success fw-semibold"; }
-          else if (diff > 1)    { label = `in ${diff}d`;  cls = "text-success"; }
-          else if (diff === -1) { label = "Yesterday";    cls = "text-danger fw-semibold"; }
-          else                  { label = `${-diff}d ago`; cls = "text-danger"; }
-          const overdueBadge = diff < 0
-            ? `<br><span class="badge bg-danger-subtle text-danger" style="font-size:10px;">Overdue</span>`
-            : '';
-          return `${badge}${overdueBadge}<br><small class="${cls}" style="font-size:10.5px;">${label}</small>`;
+        const badge = `<span class="badge ${s.cls} status-change-btn cv-status-badge" data-id="${row.id}" data-status="${row.status}" title="Click to change status">${s.label}<i class="ti ti-chevron-down ms-1"></i></span>`;
+        if (row.status !== "scheduled") {
+          return `<div class="cv-status-cell">${badge}</div>`;
         }
-        return badge;
+        const due = statusDueMeta(row.visitDate);
+        if (!due) return `<div class="cv-status-cell">${badge}</div>`;
+        return `<div class="cv-status-cell">${badge}<span class="cv-status-due cv-status-due--${due.tone}">${due.text}</span></div>`;
       },
     },
     {
@@ -178,14 +285,22 @@
     {
       key: "visitDate",
       label: "Visit Date",
-      render: (val, row) => formatDate(row.visitDate),
+      minWidth: "190px",
+      width: "190px",
+      render: (val, row) => formatVisitDateTime(row.visitDate, row.meetingTime),
     },
     {
       key: "client",
       label: "Client",
+      render: (val, row) => row.client?.name ?? "—",
+    },
+    {
+      key: "location",
+      label: "Location",
       render: (val, row) => {
-        const city = row.city ? `<div class="text-muted" style="font-size:10.5px;">${row.city}</div>` : "";
-        return `<div>${row.client?.name ?? "—"}${city}</div>`;
+        const parts = [row.city, row.state].filter(Boolean);
+        if (!parts.length) return `<span class="text-muted">—</span>`;
+        return `<div class="cv-location"><span class="cv-location-city">${row.city ?? "—"}</span>${row.state ? `<span class="cv-location-state text-muted">${row.state}</span>` : ""}</div>`;
       },
     },
     {
@@ -198,7 +313,7 @@
     {
       key: "purpose",
       label: "Purpose",
-      render: (val, row) => `<span title="${row.purpose}">${row.purpose?.length > 25 ? row.purpose.slice(0,25)+'…' : row.purpose}</span>`,
+      render: (val, row) => `<span title="${row.purpose ?? ""}">${row.purpose?.length > 25 ? row.purpose.slice(0,25)+'…' : (row.purpose ?? "—")}</span>`,
     },
     {
       key: "outcome",
@@ -232,6 +347,13 @@
     ] : []),
   ];
 
+  $: columns = allColumnDefs.filter((c) => colVis[c.key] !== false);
+  $: colPanelItems = [
+    ...allColumnDefs.map((c) => ({ key: c.key, label: c.label })),
+    { key: "_actions", label: "Actions" },
+  ];
+  $: hiddenColCount = colPanelItems.filter((i) => colVis[i.key] === false).length;
+
   let actions = [
     {
       label: "Edit",
@@ -253,6 +375,18 @@
     },
   ];
 
+  $: tableActions = colVis._actions ? actions : [];
+
+  onMount(() => {
+    currentUser = checkAuth();
+    colVis = loadColVis();
+    fetchVisits();
+    loadFilterOptions();
+    getAllUsers();
+    getAllCompanies();
+    setTimeout(() => { firstLoad = true; }, 500);
+  });
+
   async function quickStatusChange(id, currentStatus) {
     const options = [
       { value: "scheduled", label: "📅 Scheduled", color: "#0d6efd" },
@@ -264,7 +398,7 @@
 
     const btns = options.map(o =>
       `<button class="swal2-status-btn" data-val="${o.value}"
-        style="background:${o.color};color:#fff;border:none;border-radius:6px;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer;flex:1;transition:opacity .15s;"
+        style="background:${o.color};color:#fff;border:none;border-radius:6px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;flex:1;transition:opacity .15s;"
         onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
         ${o.label}
       </button>`
@@ -276,13 +410,13 @@
         <div style="display:flex;gap:8px;justify-content:center;margin-bottom:16px;">${btns}</div>
         <div id="swal-extra" style="display:none;">
           <div style="margin-bottom:10px;">
-            <label style="font-size:12px;color:#6c757d;display:block;text-align:left;margin-bottom:4px;" id="swal-date-label">Date</label>
+            <label style="font-size:11px;color:#6c757d;display:block;text-align:left;margin-bottom:4px;" id="swal-date-label">Date</label>
             <input id="swal-date" type="date" value="${today}"
-              style="width:100%;padding:7px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;" />
+              style="width:100%;padding:6px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:12px;" />
           </div>
           <div id="swal-reason-wrap" style="display:none;margin-bottom:10px;">
-            <label style="font-size:12px;color:#6c757d;display:block;text-align:left;margin-bottom:4px;">Reason</label>
-            <select id="swal-reason" style="width:100%;padding:7px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;">
+            <label style="font-size:11px;color:#6c757d;display:block;text-align:left;margin-bottom:4px;">Reason</label>
+            <select id="swal-reason" style="width:100%;padding:6px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:12px;">
               <option value="">Select reason...</option>
               <option>Client unavailable</option>
               <option>Internal conflict</option>
@@ -292,9 +426,9 @@
             </select>
           </div>
           <div style="margin-bottom:4px;">
-            <label style="font-size:12px;color:#6c757d;display:block;text-align:left;margin-bottom:4px;">Note (optional)</label>
+            <label style="font-size:11px;color:#6c757d;display:block;text-align:left;margin-bottom:4px;">Note (optional)</label>
             <input id="swal-note" type="text" placeholder="Add a note..."
-              style="width:100%;padding:7px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;" />
+              style="width:100%;padding:6px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:12px;" />
           </div>
         </div>`,
       showConfirmButton: true,
@@ -350,8 +484,11 @@
         ...(result.status === 'cancelled' ? { cancelledAt: result.date } : {}),
         ...(result.status === 'scheduled' ? { visitDate: result.date } : {}),
       } : v);
+      const label = STATUS_BADGE[result.status]?.label ?? result.status;
+      showToast({ type: "success", message: `Visit status updated to ${label}` });
     } catch (e) {
       errorHandle(e);
+      showToast({ type: "error", message: "Failed to update visit status" });
     }
   }
 
@@ -375,12 +512,12 @@
   }
 </script>
 
-<div class="page-wrapper">
+<div class="page-wrapper cv-list-page">
   <div class="content">
-    <!-- Page Header -->
-    <div class="flex items-center justify-between gap-2 mb-4 flex-wrap">
-      <div>
-        <h4 class="mb-1">Client Visits</h4>
+    <!-- Page Header + Search -->
+    <div class="cv-list-header mb-3">
+      <div class="cv-list-heading">
+        <h4 class="mb-1 cv-list-title">Client Visits</h4>
         <nav aria-label="breadcrumb">
           <ol class="breadcrumb mb-0 p-0">
             <li class="breadcrumb-item"><a href="/admin/dashboard">Home</a></li>
@@ -388,107 +525,156 @@
           </ol>
         </nav>
       </div>
-      <div class="gap-2 d-flex align-items-center flex-wrap">
+
+      <div class="cv-list-search">
+        <div class="input-icon input-icon-start position-relative">
+          <span class="input-icon-addon text-dark"><i class="ti ti-search"></i></span>
+          <input
+            type="text"
+            value={searchTerm}
+            on:input={(e) => handleSearchChange(e.target.value)}
+            class="form-control form-control-sm"
+            placeholder="Search client, purpose, address…"
+          />
+        </div>
+      </div>
+
+      <div class="cv-list-header-actions">
+        <div class="cv-col-panel-wrap">
+          <button
+            type="button"
+            class="btn btn-sm btn-outline-light shadow"
+            on:click={() => (colPanelOpen = !colPanelOpen)}
+            title="Show / hide columns"
+          >
+            <i class="ti ti-columns me-1"></i>Columns
+            {#if hiddenColCount > 0}
+              <span class="badge bg-warning text-dark ms-1">{hiddenColCount}</span>
+            {/if}
+          </button>
+          {#if colPanelOpen}
+            <div class="cv-col-panel-backdrop" on:click={() => (colPanelOpen = false)}></div>
+            <div class="cv-col-panel" role="dialog" aria-label="Column visibility">
+              <div class="cv-col-panel-head">
+                <span>Columns</span>
+                <button type="button" class="btn btn-link btn-sm p-0" on:click={resetColVis}>Reset</button>
+              </div>
+              <div class="cv-col-panel-body">
+                {#each colPanelItems as item}
+                  <label class="cv-col-item">
+                    <input
+                      type="checkbox"
+                      class="form-check-input m-0"
+                      checked={colVis[item.key] !== false}
+                      on:change={() => toggleCol(item.key)}
+                    />
+                    <span class:cv-col-item--off={colVis[item.key] === false}>{item.label}</span>
+                  </label>
+                {/each}
+              </div>
+            </div>
+          {/if}
+        </div>
         <a href="#refresh" on:click|preventDefault={refreshPage}
-          class="btn btn-icon btn-outline-light shadow"
+          class="btn btn-icon btn-sm btn-outline-light shadow"
           data-bs-toggle="tooltip" data-bs-placement="top"
           aria-label="Refresh" data-bs-original-title="Refresh">
           <i class="ti ti-refresh"></i>
         </a>
-        <a href="#collapse-header"
-          class="btn btn-icon btn-outline-light shadow"
-          data-bs-toggle="tooltip" data-bs-placement="top"
-          aria-label="Collapse" data-bs-original-title="Collapse"
-          id="collapse-header">
-          <i class="ti ti-transition-top"></i>
-        </a>
-      </div>
-    </div>
-
-    <!-- Filters -->
-    <div class="row g-2 align-items-center mb-3">
-      <div class="col-auto">
-        <div class="input-icon input-icon-start position-relative">
-          <span class="input-icon-addon text-dark"><i class="ti ti-search"></i></span>
-          <input type="text" value={searchTerm} on:input={(e) => handleSearchChange(e.target.value)}
-            class="form-control" placeholder="Search client, purpose, address.." style="min-width:200px;" />
-        </div>
-      </div>
-      <div class="col-auto">
-        <select bind:value={selectedFilter} class="form-select w-auto">
-          <option value="all">All</option>
-          <option value="upcoming">Upcoming (Next 7 Days)</option>
-          <option value="upcoming_all">Upcoming (All Future)</option>
-          <option value="today">Today</option>
-          <option value="last7days">Last 7 Days</option>
-          <option value="last30days">Last 30 Days</option>
-          <option value="custom">Custom Range</option>
-        </select>
-      </div>
-      {#if selectedFilter === "custom"}
-        <div class="col-auto">
-          <input type="date" bind:value={customStartDate} class="form-control" style="min-width:140px;" />
-        </div>
-        <div class="col-auto">
-          <input type="date" bind:value={customEndDate} class="form-control" style="min-width:140px;" />
-        </div>
-      {/if}
-      <div class="col-auto">
-        <select bind:value={visitTypeFilter} class="form-select w-auto">
-          <option value="">All Types</option>
-          <option value="incoming">They Came To Us</option>
-          <option value="outgoing">We Visited Client</option>
-          <option value="joint">Joint Site Visit</option>
-          <option value="job_discussion">Client Gave Job Details</option>
-          <option value="job_received">Job Received</option>
-          <option value="sample_sent">Sample Sent</option>
-        </select>
-      </div>
-      <div class="col-auto">
-        <select bind:value={statusFilter} class="form-select w-auto">
-          <option value="">All Statuses</option>
-          <option value="scheduled">Scheduled</option>
-          <option value="completed">Completed</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
-      </div>
-      <div class="col-auto">
-        <select bind:value={outcomeFilter} class="form-select w-auto">
-          <option value="">All Outcomes</option>
-          <option value="Positive">Positive</option>
-          <option value="Negative">Negative</option>
-          <option value="Pending">Pending</option>
-          <option value="No Response">No Response</option>
-        </select>
-      </div>
-      {#if currentUser?.role !== "user"}
-        <div class="col-auto">
-          <select bind:value={byUserId} class="form-select w-auto">
-            <option value={null}>Select User</option>
-            {#each users as u}
-              <option value={u.id}>{u.name}</option>
-            {/each}
-          </select>
-        </div>
-        <div class="col-auto">
-          <select bind:value={byCompanyId} class="form-select w-auto">
-            <option value={null}>Select Company</option>
-            {#each companies as c}
-              <option value={c.id}>{c.name}</option>
-            {/each}
-          </select>
-        </div>
-      {/if}
-      <div class="col"></div>
-      <div class="col-auto">
-        <a href="/admin/client-visit/add" class="btn btn-primary">
+        <a href="/admin/client-visit/add" class="btn btn-primary btn-sm">
           <i class="ti ti-square-rounded-plus-filled me-1"></i>Add New Visit
         </a>
       </div>
     </div>
 
+    <!-- Filters row -->
+    <div class="cv-list-filters mb-3">
+      <select bind:value={selectedFilter} class="form-select form-select-sm">
+        <option value="all">All Time</option>
+        <option value="upcoming">Upcoming (Next 7 Days)</option>
+        <option value="upcoming_all">Upcoming (All Future)</option>
+        <option value="today">Today</option>
+        <option value="last7days">Last 7 Days</option>
+        <option value="last30days">Last 30 Days</option>
+        <option value="custom">Custom Range</option>
+      </select>
+      {#if selectedFilter === "custom"}
+        <input type="date" bind:value={customStartDate} class="form-control form-control-sm cv-filter-date" />
+        <input type="date" bind:value={customEndDate} class="form-control form-control-sm cv-filter-date" />
+      {/if}
+      <select bind:value={visitTypeFilter} class="form-select form-select-sm">
+        <option value="">All Types</option>
+        <option value="incoming">They Came To Us</option>
+        <option value="outgoing">We Visited Client</option>
+        <option value="joint">Joint Site Visit</option>
+        <option value="job_discussion">Client Gave Job Details</option>
+        <option value="job_received">Job Received</option>
+        <option value="sample_sent">Sample Sent</option>
+      </select>
+      <select bind:value={statusFilter} class="form-select form-select-sm">
+        <option value="">All Statuses</option>
+        <option value="scheduled">Scheduled</option>
+        <option value="completed">Completed</option>
+        <option value="cancelled">Cancelled</option>
+      </select>
+      <select bind:value={outcomeFilter} class="form-select form-select-sm">
+        <option value="">All Outcomes</option>
+        <option value="Positive">Positive</option>
+        <option value="Negative">Negative</option>
+        <option value="Pending">Pending</option>
+        <option value="No Response">No Response</option>
+      </select>
+      <select bind:value={stateFilter} class="form-select form-select-sm" on:change={() => { currentPage = 1; }}>
+        <option value="">All States</option>
+        {#each stateOptions as s}
+          <option value={s}>{s}</option>
+        {/each}
+      </select>
+      <select bind:value={cityFilter} class="form-select form-select-sm" on:change={() => { currentPage = 1; }}>
+        <option value="">All Cities</option>
+        {#each cityOptions as c}
+          <option value={c}>{c}</option>
+        {/each}
+      </select>
+      <select bind:value={followUpFilter} class="form-select form-select-sm">
+        <option value="">Follow-up: All</option>
+        <option value="upcoming">Follow-up: Upcoming</option>
+        <option value="overdue">Follow-up: Overdue</option>
+        <option value="has">Has Follow-up</option>
+        <option value="none">No Follow-up</option>
+      </select>
+      <select bind:value={hasOrderFilter} class="form-select form-select-sm">
+        <option value="">Order link: All</option>
+        <option value="yes">Linked to Order</option>
+        <option value="no">No Order</option>
+      </select>
+      <label class="cv-overdue-toggle mb-0">
+        <input type="checkbox" bind:checked={overdueOnly} on:change={() => { currentPage = 1; }} />
+        <span>Overdue</span>
+      </label>
+      {#if currentUser?.role !== "user"}
+        <select bind:value={byUserId} class="form-select form-select-sm">
+          <option value={null}>All Users</option>
+          {#each users as u}
+            <option value={u.id}>{u.name}</option>
+          {/each}
+        </select>
+        <select bind:value={byCompanyId} class="form-select form-select-sm">
+          <option value={null}>All Companies</option>
+          {#each companies as c}
+            <option value={c.id}>{c.name}</option>
+          {/each}
+        </select>
+      {/if}
+      {#if hasActiveExtraFilters || visitTypeFilter || statusFilter || outcomeFilter || byUserId || byCompanyId}
+        <button type="button" class="btn btn-sm btn-outline-secondary" on:click={clearExtraFilters} title="Clear filters">
+          <i class="ti ti-filter-off me-1"></i>Clear
+        </button>
+      {/if}
+    </div>
+
     <!-- Table -->
-    <div class="card border-0 rounded-0">
+    <div class="card border-0 rounded-0 cv-list-card">
       <div class="card-body" on:click={(e) => {
         const btn = e.target.closest('.status-change-btn');
         if (btn) quickStatusChange(Number(btn.dataset.id), btn.dataset.status);
@@ -496,7 +682,7 @@
         <DynamicDataTable
           loading={loadingData}
           {columns}
-          {actions}
+          actions={tableActions}
           data={[...visits]}
           {currentPage}
           {rowsPerPage}
@@ -512,3 +698,278 @@
     </div>
   </div>
 </div>
+
+<style>
+  .cv-list-page {
+    font-size: var(--app-font-size, 0.75rem);
+    line-height: var(--app-line-height, 1.45);
+  }
+
+  .cv-list-page :global(.content),
+  .cv-list-page :global(.card-body),
+  .cv-list-page :global(.card-header),
+  .cv-list-page :global(.breadcrumb),
+  .cv-list-page :global(.form-control),
+  .cv-list-page :global(.form-select),
+  .cv-list-page :global(.form-control-sm),
+  .cv-list-page :global(.form-select-sm),
+  .cv-list-page :global(.btn),
+  .cv-list-page :global(.btn-sm),
+  .cv-list-page :global(table),
+  .cv-list-page :global(th),
+  .cv-list-page :global(td),
+  .cv-list-page :global(.dataTables_wrapper),
+  .cv-list-page :global(.dataTables_info),
+  .cv-list-page :global(.dataTables_paginate),
+  .cv-list-page :global(.pagination),
+  .cv-list-page :global(.page-link) {
+    font-size: var(--app-font-size, 0.75rem) !important;
+    line-height: var(--app-line-height, 1.45);
+  }
+
+  .cv-list-title {
+    font-size: var(--app-font-size-xl, 1rem) !important;
+    font-weight: 600;
+    line-height: 1.35;
+  }
+
+  .cv-list-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .cv-list-heading {
+    flex: 0 0 auto;
+    min-width: 140px;
+  }
+
+  .cv-list-search {
+    flex: 1 1 220px;
+    max-width: 360px;
+  }
+
+  .cv-list-search :global(.form-control) {
+    width: 100%;
+  }
+
+  .cv-list-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+  }
+
+  .cv-col-panel-wrap {
+    position: relative;
+  }
+
+  .cv-col-panel-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 98;
+  }
+
+  .cv-col-panel {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 99;
+    width: 220px;
+    max-height: 360px;
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  }
+
+  .cv-col-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border-bottom: 1px solid #f1f3f5;
+    font-size: var(--app-font-size, 0.75rem);
+    font-weight: 600;
+    color: #495057;
+  }
+
+  .cv-col-panel-body {
+    overflow-y: auto;
+    padding: 4px 0;
+  }
+
+  .cv-col-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    margin: 0;
+    cursor: pointer;
+    font-size: var(--app-font-size, 0.75rem);
+    color: #343a40;
+  }
+
+  .cv-col-item:hover {
+    background: #f8f9fa;
+  }
+
+  .cv-col-item--off {
+    opacity: 0.45;
+  }
+
+  .cv-list-filters {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .cv-list-filters :global(.form-control),
+  .cv-list-filters :global(.form-select) {
+    min-height: 32px;
+    width: auto;
+    flex: 0 0 auto;
+  }
+
+  .cv-list-filters .cv-filter-date {
+    min-width: 132px;
+  }
+
+  .cv-list-card :global(th),
+  .cv-list-card :global(td) {
+    font-size: var(--app-font-size, 0.75rem) !important;
+    vertical-align: middle;
+    padding: 0.45rem 0.6rem;
+  }
+
+  .cv-list-card :global(.badge) {
+    font-size: var(--app-font-size-sm, 0.6875rem) !important;
+    font-weight: 600;
+  }
+
+  .cv-list-card :global(small),
+  .cv-list-card :global(.text-muted),
+  .cv-list-page :global(.cv-meta) {
+    font-size: var(--app-font-size-sm, 0.6875rem) !important;
+  }
+
+  .cv-list-page :global(.btn-icon) {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Status column */
+  .cv-list-card :global(.cv-status-cell) {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    min-width: 108px;
+  }
+
+  .cv-list-card :global(.cv-status-badge) {
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 4px 8px;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+
+  .cv-list-card :global(.cv-status-badge .ti) {
+    font-size: 0.7rem !important;
+    opacity: 0.9;
+  }
+
+  .cv-list-card :global(.cv-status-due) {
+    display: inline-block;
+    font-size: var(--app-font-size-sm, 0.6875rem) !important;
+    font-weight: 600;
+    line-height: 1.25;
+    white-space: nowrap;
+  }
+
+  .cv-list-card :global(.cv-status-due--today) {
+    color: #e67700;
+  }
+
+  .cv-list-card :global(.cv-status-due--soon) {
+    color: #2b8a3e;
+  }
+
+  .cv-list-card :global(.cv-status-due--overdue) {
+    color: #c92a2a;
+  }
+
+  .cv-list-card :global(.cv-location) {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    line-height: 1.3;
+  }
+
+  .cv-list-card :global(.cv-location-city) {
+    font-weight: 500;
+  }
+
+  .cv-list-card :global(.cv-location-state) {
+    font-size: var(--app-font-size-sm, 0.6875rem) !important;
+  }
+
+  .cv-list-card :global(th.ddt-sn),
+  .cv-list-card :global(td.ddt-sn) {
+    width: 56px !important;
+    max-width: 64px !important;
+    min-width: 52px !important;
+    padding-left: 0.35rem !important;
+    padding-right: 0.35rem !important;
+    white-space: nowrap;
+    text-align: center;
+  }
+
+  .cv-list-card :global(th.ddt-col-visit-date),
+  .cv-list-card :global(td.ddt-col-visit-date) {
+    min-width: 190px !important;
+    width: 190px !important;
+    white-space: nowrap;
+  }
+
+  .cv-overdue-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    background: #fff;
+    font-size: var(--app-font-size, 0.75rem);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    min-height: 32px;
+  }
+
+  .cv-overdue-toggle:has(input:checked) {
+    border-color: #f03e3e;
+    background: #fff5f5;
+    color: #c92a2a;
+    font-weight: 600;
+  }
+
+  .cv-overdue-toggle input {
+    margin: 0;
+    accent-color: #c92a2a;
+  }
+</style>

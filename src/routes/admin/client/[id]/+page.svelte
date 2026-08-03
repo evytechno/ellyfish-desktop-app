@@ -239,17 +239,17 @@
   <Loader />
 {/if}
 
-<div class="page-wrapper">
+<div class="page-wrapper client-page">
   <div class="content pb-0">
 
     <!-- Page Header -->
-    <div class="d-flex align-items-center justify-content-between gap-2 mb-4 flex-wrap">
+    <div class="d-flex align-items-center justify-content-between gap-2 mb-3 flex-wrap">
       <div class="d-flex align-items-center gap-3">
         <button class="btn btn-warning btn-sm" on:click={() => window.history.back()}>
           <i class="ti ti-arrow-left me-1"></i>Back
         </button>
         <div>
-          <h4 class="mb-1">{client?.name || "Client Detail"}</h4>
+          <h4 class="mb-1 client-page-title">{client?.name || "Client Detail"}</h4>
           <nav aria-label="breadcrumb">
             <ol class="breadcrumb mb-0 p-0">
               <li class="breadcrumb-item"><a href="/admin/dashboard">Home</a></li>
@@ -266,11 +266,11 @@
         </div>
       </div>
       <div class="gap-2 d-flex align-items-center flex-wrap">
-        <a href="/admin/client-visit/add?clientId={clientId}" class="btn btn-success shadow">
+        <a href="/admin/client-visit/add?clientId={clientId}" class="btn btn-sm btn-success shadow">
           <i class="ti ti-map-pin me-1"></i>Create Visit
         </a>
         {#if canEdit}
-          <button class="btn btn-outline-danger shadow" on:click={deleteClient}>
+          <button class="btn btn-sm btn-outline-danger shadow" on:click={deleteClient}>
             <i class="ti ti-archive me-1"></i>Archive
           </button>
         {/if}
@@ -282,8 +282,8 @@
       <!-- Left: Client Info -->
       <div class="col-md-4">
         <div class="card border-0 rounded-0">
-          <div class="card-header d-flex align-items-center justify-content-between">
-            <h5 class="mb-0">
+          <div class="card-header d-flex align-items-center justify-content-between py-2">
+            <h5 class="mb-0 client-section-title">
               <i class="ti ti-building-store me-2 text-primary"></i>Client Info
             </h5>
             {#if canEdit && !isEditing}
@@ -384,8 +384,8 @@
 
         <!-- Contacts Card -->
         <div class="card border-0 rounded-0 mb-4">
-          <div class="card-header flex items-center justify-between gap-2 flex-wrap">
-            <h5 class="mb-0">
+          <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap py-2">
+            <h5 class="mb-0 client-section-title">
               <i class="ti ti-users me-2 text-primary"></i>Contacts
               <span class="badge bg-info text-white ms-1">{client?.contacts?.length || 0}</span>
             </h5>
@@ -554,8 +554,8 @@
 
         <!-- Orders Card -->
         <div class="card border-0 rounded-0">
-          <div class="card-header">
-            <h5 class="mb-0">
+          <div class="card-header py-2">
+            <h5 class="mb-0 client-section-title">
               <i class="ti ti-medal me-2 text-primary"></i>Orders
               <span class="badge bg-primary ms-1">{visibleOrders.length}</span>
             </h5>
@@ -612,6 +612,66 @@
 </div>
 
 <style>
+  .client-page {
+    font-size: var(--app-font-size, 0.75rem);
+    line-height: var(--app-line-height, 1.45);
+  }
+
+  .client-page :global(.content),
+  .client-page :global(.card-body),
+  .client-page :global(.card-header),
+  .client-page :global(.breadcrumb),
+  .client-page :global(.form-control),
+  .client-page :global(.form-select),
+  .client-page :global(.form-label),
+  .client-page :global(.btn),
+  .client-page :global(.btn-sm),
+  .client-page :global(table),
+  .client-page :global(th),
+  .client-page :global(td),
+  .client-page :global(label),
+  .client-page :global(input),
+  .client-page :global(textarea),
+  .client-page :global(select) {
+    font-size: var(--app-font-size, 0.75rem) !important;
+    line-height: var(--app-line-height, 1.45);
+  }
+
+  .client-page :global(.text-sm),
+  .client-page :global(.text-xs),
+  .client-page :global(.uppercase) {
+    font-size: var(--app-font-size, 0.75rem) !important;
+  }
+
+  .client-page :global(.text-muted),
+  .client-page :global(small),
+  .client-page :global(.badge) {
+    font-size: var(--app-font-size-sm, 0.6875rem) !important;
+  }
+
+  .client-page :global(thead th) {
+    font-size: var(--app-font-size, 0.75rem) !important;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .client-page-title {
+    font-size: var(--app-font-size-xl, 1rem) !important;
+    font-weight: 600;
+    line-height: 1.35;
+  }
+
+  .client-section-title {
+    font-size: var(--app-font-size-lg, 0.875rem) !important;
+    font-weight: 600;
+    line-height: 1.35;
+  }
+
+  .client-page :global(h6) {
+    font-size: var(--app-font-size-md, 0.8125rem) !important;
+    font-weight: 600;
+  }
+
   .client-info-table {
     table-layout: fixed;
     width: 100%;

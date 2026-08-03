@@ -5,27 +5,54 @@ export const uiToasts = writable([]);
 const ICONS = {
   success: '✓',
   error: '✕',
-  warning: '⚠',
-  info: 'ℹ',
+  warning: '!',
+  info: 'i',
+};
+
+const TITLES = {
+  success: 'Success',
+  error: 'Error',
+  warning: 'Warning',
+  info: 'Info',
 };
 
 const ACCENTS = {
   success: '#2f9e44',
-  error:   '#dc3545',
-  warning: '#f59f00',
+  error:   '#e03131',
+  warning: '#e67700',
   info:    '#3b5bdb',
 };
 
-export function showToast({ type = 'info', message, duration = 4000 }) {
-  const id = `${Date.now()}-${Math.random()}`;
-  uiToasts.update((list) => [
-    ...list,
-    { id, type, message, icon: ICONS[type] ?? 'ℹ', accent: ACCENTS[type] ?? '#6c757d', createdAt: new Date() },
-  ]);
-  setTimeout(() => dismissToast(id), duration);
+/** @type {Map<string, ReturnType<typeof setTimeout>>} */
+const timers = new Map();
+
+export function showToast({ type = 'info', message, duration = 3800, title } = {}) {
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const toast = {
+    id,
+    type,
+    message: String(message ?? ''),
+    title: title ?? TITLES[type] ?? 'Info',
+    icon: ICONS[type] ?? 'i',
+    accent: ACCENTS[type] ?? '#6c757d',
+    duration,
+    createdAt: new Date(),
+  };
+
+  uiToasts.update((list) => [...list.slice(-4), toast]);
+
+  if (duration > 0) {
+    const timer = setTimeout(() => dismissToast(id), duration);
+    timers.set(id, timer);
+  }
   return id;
 }
 
 export function dismissToast(id) {
+  const timer = timers.get(id);
+  if (timer) {
+    clearTimeout(timer);
+    timers.delete(id);
+  }
   uiToasts.update((list) => list.filter((t) => t.id !== id));
 }

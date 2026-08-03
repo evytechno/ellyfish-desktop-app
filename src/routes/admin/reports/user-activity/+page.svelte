@@ -8,6 +8,8 @@
   import { get } from "svelte/store";
   import * as XLSX from "xlsx";
   import Loader from "$lib/components/Loader.svelte";
+  import { slide } from "svelte/transition";
+  import { quintOut } from "svelte/easing";
 
   let currentUser = null;
   let loading = false;
@@ -231,11 +233,13 @@
 
   // Role badge
   function roleBadge(role, subRole) {
-    if (subRole === "telecaller") return { label: "Telecaller", cls: "bg-yellow-100 text-yellow-800" };
-    if (subRole === "tech") return { label: "Tech", cls: "bg-teal-100 text-teal-800" };
-    if (role === "manager") return { label: "Manager", cls: "bg-blue-100 text-blue-800" };
-    if (role === "admin") return { label: "Admin", cls: "bg-red-100 text-red-800" };
-    return { label: "User", cls: "bg-gray-100 text-gray-700" };
+    if (subRole === "telecaller") return { label: "Telecaller", cls: "ua-role--tc" };
+    if (subRole === "tech_helper") return { label: "Sr. Tech", cls: "ua-role--helper" };
+    if (subRole === "tech") return { label: "Tech", cls: "ua-role--tech" };
+    if (role === "manager") return { label: "Manager", cls: "ua-role--mgr" };
+    if (role === "admin") return { label: "Admin", cls: "ua-role--admin" };
+    if (role === "master") return { label: "Master", cls: "ua-role--admin" };
+    return { label: role || "User", cls: "ua-role--user" };
   }
 
   function fmt(val) {
@@ -308,13 +312,13 @@
   <Loader />
 {/if}
 
-<div class="page-wrapper">
+<div class="page-wrapper ua-page">
   <div class="content">
 
     <!-- Page Header -->
-    <div class="flex items-center justify-between gap-2 mb-4 flex-wrap">
+    <div class="ua-toolbar mb-3">
       <div>
-        <h4 class="mb-1">User Activity Report</h4>
+        <h4 class="mb-0 ua-title">User Activity Report</h4>
         <nav aria-label="breadcrumb">
           <ol class="breadcrumb mb-0 p-0">
             <li class="breadcrumb-item"><a href="/admin/dashboard">Home</a></li>
@@ -322,48 +326,39 @@
           </ol>
         </nav>
       </div>
-      <button class="btn btn-outline-success" on:click={exportExcel}>
+      <button type="button" class="btn btn-sm btn-outline-success" on:click={exportExcel}>
         <i class="ti ti-file-type-xls me-1"></i>Export Excel
       </button>
     </div>
 
     <!-- Filters -->
-    <div class="card border-0 mb-4">
-      <div class="card-body py-3">
-        <div class="flex items-center gap-3 flex-wrap">
-          <div>
-            <label class="form-label mb-1 text-xs text-muted">Financial Year</label>
-            <select
-              bind:value={selectedYear}
-              class="form-select form-select-sm"
-              style="min-width:130px"
-            >
+    <div class="card border-0 shadow-sm mb-3 ua-filter-card">
+      <div class="card-body py-2 px-3">
+        <div class="ua-filters">
+          <div class="ua-filter">
+            <label class="form-label mb-1 text-muted">Financial Year</label>
+            <select bind:value={selectedYear} class="form-select form-select-sm">
               {#each yearOptions as y}
                 <option value={y}>{fiscalYearLabel(y)}</option>
               {/each}
             </select>
           </div>
           {#if currentUser?.role !== "user"}
-            <div>
-              <label class="form-label mb-1 text-xs text-muted">Role</label>
+            <div class="ua-filter">
+              <label class="form-label mb-1 text-muted">Role</label>
               <select
                 bind:value={selectedRole}
                 on:change={() => { selectedUserId = ""; }}
                 class="form-select form-select-sm"
-                style="min-width:160px"
               >
                 {#each roleOptions as opt}
                   <option value={opt.value}>{opt.label}</option>
                 {/each}
               </select>
             </div>
-            <div>
-              <label class="form-label mb-1 text-xs text-muted">User</label>
-              <select
-                bind:value={selectedUserId}
-                class="form-select form-select-sm"
-                style="min-width:160px"
-              >
+            <div class="ua-filter">
+              <label class="form-label mb-1 text-muted">User</label>
+              <select bind:value={selectedUserId} class="form-select form-select-sm">
                 <option value="">All Users</option>
                 {#each users.filter(u => {
                   if (u.role === "master") return false;
@@ -378,8 +373,8 @@
               </select>
             </div>
           {/if}
-          <div class="mt-4">
-            <button class="btn btn-sm btn-primary" on:click={fetchStats}>
+          <div class="ua-filter ua-filter--action">
+            <button type="button" class="btn btn-sm btn-primary" on:click={fetchStats}>
               <i class="ti ti-refresh me-1"></i>Refresh
             </button>
           </div>
@@ -388,41 +383,37 @@
     </div>
 
     <!-- Summary Cards -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+    <div class="ua-summary mb-3">
       {#each summaryCards as card}
-        <div class="card border {card.color} mb-0">
-          <div class="card-body py-3 px-4 flex items-center gap-3">
-            <div class="rounded-lg p-2 {card.color}">
-              <i class="{card.icon} {card.iconColor} text-xl"></i>
-            </div>
-            <div>
-              <div class="text-xs text-muted">{card.label}</div>
-              <div class="text-lg font-bold">{card.value}</div>
-            </div>
+        <div class="ua-summary-card {card.color}">
+          <i class="{card.icon} {card.iconColor} ua-summary-icon"></i>
+          <div>
+            <div class="ua-summary-label">{card.label}</div>
+            <div class="ua-summary-value">{card.value}</div>
           </div>
         </div>
       {/each}
     </div>
 
     <!-- Monthly Breakdown Table -->
-    <div class="card border-0">
+    <div class="card border-0 shadow-sm mb-3">
       <div class="card-body p-0">
-        <div class="overflow-x-auto">
-          <table class="table table-bordered table-hover mb-0 text-sm" style="min-width:900px">
-            <thead class="table-light">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0 ua-table">
+            <thead>
               <tr>
-                <th class="sticky left-0 bg-light z-10" style="min-width:160px">User</th>
-                <th style="min-width:80px">Role</th>
+                <th class="ua-sticky ua-sticky--user">User</th>
+                <th class="ua-sticky ua-sticky--role">Role</th>
                 {#each fiscalMonths as m}
-                  <th class="text-center" style="min-width:72px">{m.label}</th>
+                  <th class="text-center">{m.label}</th>
                 {/each}
-                <th class="text-center bg-light" style="min-width:72px">Total</th>
+                <th class="text-center">Total</th>
               </tr>
             </thead>
             <tbody>
               {#if userRows.length === 0 && !loading}
                 <tr>
-                  <td colspan={fiscalMonths.length + 3} class="text-center text-muted py-5">
+                  <td colspan={fiscalMonths.length + 3} class="text-center text-muted py-4">
                     No data for {fiscalYearLabel(selectedYear)}
                   </td>
                 </tr>
@@ -432,20 +423,22 @@
                 {@const badge = roleBadge(u.userRole, u.userSubRole)}
                 {@const isExpanded = expandedUsers.has(u.userId)}
 
-                <!-- Main row: order counts -->
-                <tr class="align-middle">
-                  <td class="sticky left-0 bg-white z-10 font-medium">
+                <tr class="align-middle" class:ua-row--open={isExpanded}>
+                  <td class="ua-sticky ua-sticky--user">
                     <button
-                      class="btn btn-link btn-sm p-0 me-1 text-muted"
+                      type="button"
+                      class="ua-expand-btn"
+                      class:ua-expand-btn--open={isExpanded}
                       on:click={() => toggleExpand(u.userId)}
                       title={isExpanded ? "Collapse" : "Expand"}
+                      aria-expanded={isExpanded}
                     >
-                      <i class="ti {isExpanded ? 'ti-chevron-down' : 'ti-chevron-right'} text-xs"></i>
+                      <i class="ti ti-chevron-right"></i>
                     </button>
                     {u.userName}
                   </td>
-                  <td>
-                    <span class="badge {badge.cls} text-xs">{badge.label}</span>
+                  <td class="ua-sticky ua-sticky--role">
+                    <span class="ua-role-badge {badge.cls}">{badge.label}</span>
                   </td>
                   {#each fiscalMonths as m}
                     {@const cell = u.months[m.key]}
@@ -453,63 +446,74 @@
                       {cell?.orderCount ?? "—"}
                     </td>
                   {/each}
-                  <td class="text-center font-bold bg-gray-50">{u.totals.orderCount}</td>
+                  <td class="text-center ua-total-cell">{u.totals.orderCount}</td>
                 </tr>
 
-                <!-- Expanded: won / lost / revenue sub-rows -->
                 {#if isExpanded}
-                  <tr class="bg-gray-50 text-xs text-muted">
-                    <td class="sticky left-0 bg-gray-50 ps-8">Won</td>
-                    <td></td>
-                    {#each fiscalMonths as m}
-                      {@const cell = u.months[m.key]}
-                      <td class="text-center text-green-700">{cell?.wonCount ?? "—"}</td>
-                    {/each}
-                    <td class="text-center text-green-700 font-semibold">{u.totals.wonCount}</td>
-                  </tr>
-                  <tr class="bg-gray-50 text-xs text-muted">
-                    <td class="sticky left-0 bg-gray-50 ps-8">Lost</td>
-                    <td></td>
-                    {#each fiscalMonths as m}
-                      {@const cell = u.months[m.key]}
-                      <td class="text-center text-red-600">{cell?.lostCount ?? "—"}</td>
-                    {/each}
-                    <td class="text-center text-red-600 font-semibold">{u.totals.lostCount}</td>
-                  </tr>
-                  <tr class="bg-gray-50 text-xs text-muted border-b-2">
-                    <td class="sticky left-0 bg-gray-50 ps-8">Revenue</td>
-                    <td></td>
-                    {#each fiscalMonths as m}
-                      {@const cell = u.months[m.key]}
-                      <td class="text-center">{cell?.totalValue ? "₹" + Number(cell.totalValue).toLocaleString("en-IN", {maximumFractionDigits:0}) : "—"}</td>
-                    {/each}
-                    <td class="text-center font-semibold">{fmt(u.totals.totalValue)}</td>
+                  <tr class="ua-detail-row">
+                    <td colspan={fiscalMonths.length + 3} class="ua-detail-cell">
+                      <div
+                        class="ua-detail-panel"
+                        transition:slide={{ duration: 240, easing: quintOut }}
+                      >
+                        <table class="ua-detail-table">
+                          <tbody>
+                            <tr class="ua-subrow">
+                              <td class="ua-sticky ua-sticky--user ua-subrow-label">Won</td>
+                              <td class="ua-sticky ua-sticky--role"></td>
+                              {#each fiscalMonths as m}
+                                {@const cell = u.months[m.key]}
+                                <td class="text-center text-success">{cell?.wonCount ?? "—"}</td>
+                              {/each}
+                              <td class="text-center text-success">{u.totals.wonCount}</td>
+                            </tr>
+                            <tr class="ua-subrow">
+                              <td class="ua-sticky ua-sticky--user ua-subrow-label">Lost</td>
+                              <td class="ua-sticky ua-sticky--role"></td>
+                              {#each fiscalMonths as m}
+                                {@const cell = u.months[m.key]}
+                                <td class="text-center text-danger">{cell?.lostCount ?? "—"}</td>
+                              {/each}
+                              <td class="text-center text-danger">{u.totals.lostCount}</td>
+                            </tr>
+                            <tr class="ua-subrow ua-subrow--last">
+                              <td class="ua-sticky ua-sticky--user ua-subrow-label">Revenue</td>
+                              <td class="ua-sticky ua-sticky--role"></td>
+                              {#each fiscalMonths as m}
+                                {@const cell = u.months[m.key]}
+                                <td class="text-center">{cell?.totalValue ? "₹" + Number(cell.totalValue).toLocaleString("en-IN", {maximumFractionDigits:0}) : "—"}</td>
+                              {/each}
+                              <td class="text-center">{fmt(u.totals.totalValue)}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </td>
                   </tr>
                 {/if}
               {/each}
             </tbody>
 
-            <!-- Footer totals row -->
-            <tfoot class="table-light fw-bold">
+            <tfoot>
               <tr>
-                <td class="sticky left-0 bg-light">Total</td>
-                <td></td>
+                <td class="ua-sticky ua-sticky--user">Total</td>
+                <td class="ua-sticky ua-sticky--role"></td>
                 {#each fiscalMonths as m}
                   <td class="text-center">{monthTotals[m.key]?.orderCount ?? 0}</td>
                 {/each}
                 <td class="text-center">{grandTotal.orderCount}</td>
               </tr>
-              <tr class="text-xs text-green-700">
-                <td class="sticky left-0 bg-light">Won</td>
-                <td></td>
+              <tr class="ua-subrow">
+                <td class="ua-sticky ua-sticky--user">Won</td>
+                <td class="ua-sticky ua-sticky--role"></td>
                 {#each fiscalMonths as m}
-                  <td class="text-center">{monthTotals[m.key]?.wonCount ?? 0}</td>
+                  <td class="text-center text-success">{monthTotals[m.key]?.wonCount ?? 0}</td>
                 {/each}
-                <td class="text-center">{grandTotal.wonCount}</td>
+                <td class="text-center text-success">{grandTotal.wonCount}</td>
               </tr>
-              <tr class="text-xs text-purple-700">
-                <td class="sticky left-0 bg-light">Revenue</td>
-                <td></td>
+              <tr class="ua-subrow">
+                <td class="ua-sticky ua-sticky--user">Revenue</td>
+                <td class="ua-sticky ua-sticky--role"></td>
                 {#each fiscalMonths as m}
                   <td class="text-center">{monthTotals[m.key]?.totalValue ? "₹" + Number(monthTotals[m.key].totalValue).toLocaleString("en-IN",{maximumFractionDigits:0}) : "—"}</td>
                 {/each}
@@ -523,33 +527,28 @@
 
     <!-- Trend Bars per User -->
     {#if userRows.length > 0}
-      <div class="mt-4">
-        <h6 class="mb-3 text-sm font-semibold text-muted">Monthly Trend — Orders Created</h6>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div class="ua-trends">
+        <h6 class="ua-section-title mb-2">Monthly Trend — Orders Created</h6>
+        <div class="ua-trend-grid">
           {#each userRows as u}
             {@const maxVal = Math.max(1, ...fiscalMonths.map(m => u.months[m.key]?.orderCount ?? 0))}
-            <div class="card border-0 shadow-sm">
-              <div class="card-body py-3 px-4">
-                <div class="flex items-center justify-between mb-2">
-                  <span class="font-semibold text-sm">{u.userName}</span>
-                  <span class="text-xs text-muted">{u.totals.orderCount} total</span>
-                </div>
-                <div class="flex items-end gap-1" style="height:56px">
-                  {#each fiscalMonths as m}
-                    {@const val = u.months[m.key]?.orderCount ?? 0}
-                    {@const pct = Math.round((val / maxVal) * 100)}
+            <div class="ua-trend-card">
+              <div class="ua-trend-head">
+                <span class="ua-trend-name">{u.userName}</span>
+                <span class="text-muted">{u.totals.orderCount} total</span>
+              </div>
+              <div class="ua-trend-bars">
+                {#each fiscalMonths as m}
+                  {@const val = u.months[m.key]?.orderCount ?? 0}
+                  {@const pct = Math.round((val / maxVal) * 100)}
+                  <div class="ua-trend-col" title="{m.label}: {val} orders">
                     <div
-                      class="flex-1 flex flex-col items-center justify-end gap-0.5"
-                      title="{m.label}: {val} orders"
-                    >
-                      <div
-                        class="w-full rounded-t"
-                        style="height:{Math.max(pct * 0.52, val > 0 ? 4 : 0)}px; background: {val === 0 ? '#e9ecef' : val === maxVal ? '#0d6efd' : '#86b7fe'};"
-                      ></div>
-                      <span class="text-[9px] text-muted">{m.label.split(" ")[0]}</span>
-                    </div>
-                  {/each}
-                </div>
+                      class="ua-trend-bar"
+                      style="height:{Math.max(pct * 0.52, val > 0 ? 4 : 0)}px; background: {val === 0 ? '#e9ecef' : val === maxVal ? '#364fc7' : '#91a7ff'};"
+                    ></div>
+                    <span class="ua-trend-lbl">{m.label.split(" ")[0]}</span>
+                  </div>
+                {/each}
               </div>
             </div>
           {/each}
@@ -559,3 +558,394 @@
 
   </div>
 </div>
+
+<style>
+  /* Cursor-like — 12px, clean, clear */
+  .ua-page,
+  .ua-page :global(.content) {
+    font-size: 12px !important;
+    line-height: 1.45 !important;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .ua-page :global(.card-body),
+  .ua-page :global(.breadcrumb),
+  .ua-page :global(.breadcrumb-item),
+  .ua-page :global(.form-label),
+  .ua-page :global(.form-select),
+  .ua-page :global(.form-select-sm),
+  .ua-page :global(.btn),
+  .ua-page :global(.btn-sm),
+  .ua-page :global(table),
+  .ua-page :global(th),
+  .ua-page :global(td),
+  .ua-page :global(label),
+  .ua-page :global(select) {
+    font-size: 12px !important;
+    line-height: 1.45 !important;
+    font-weight: 400 !important;
+  }
+
+  .ua-page :global(.form-select),
+  .ua-page :global(.form-select-sm) {
+    height: 28px !important;
+    min-height: 28px !important;
+    padding: 2px 8px !important;
+  }
+
+  .ua-page :global(.btn-sm) {
+    padding: 4px 10px !important;
+    border-radius: 4px !important;
+  }
+
+  .ua-page :global(.text-muted),
+  .ua-page :global(small),
+  .ua-page :global(.small) {
+    font-size: 11px !important;
+    font-weight: 400 !important;
+  }
+
+  .ua-page :global(.badge) {
+    font-size: 10px !important;
+    font-weight: 400 !important;
+    padding: 2px 6px !important;
+  }
+
+  .ua-page :global(.fw-bold),
+  .ua-page :global(.fw-semibold),
+  .ua-page :global(.font-bold),
+  .ua-page :global(.font-semibold),
+  .ua-page :global(.font-medium) {
+    font-weight: 500 !important;
+  }
+
+  .ua-toolbar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .ua-title {
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    letter-spacing: -0.01em;
+    color: #212529;
+    line-height: 1.3;
+  }
+
+  .ua-section-title {
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    color: #495057 !important;
+    margin: 0;
+  }
+
+  .ua-filters {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .ua-filter {
+    min-width: 130px;
+  }
+
+  .ua-filter :global(.form-label) {
+    font-size: 11px !important;
+    font-weight: 400 !important;
+    margin-bottom: 4px;
+  }
+
+  .ua-filter--action {
+    min-width: auto;
+    padding-bottom: 0;
+  }
+
+  .ua-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .ua-summary-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid;
+    border-radius: 6px;
+    background: #fff;
+  }
+
+  .ua-summary-icon {
+    font-size: 16px !important;
+    flex-shrink: 0;
+  }
+
+  .ua-summary-label {
+    font-size: 11px !important;
+    font-weight: 400 !important;
+    color: #868e96;
+    line-height: 1.2;
+  }
+
+  .ua-summary-value {
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    line-height: 1.25;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+    color: #212529;
+  }
+
+  .ua-table {
+    min-width: 900px;
+    font-size: 12px !important;
+    border: none !important;
+  }
+
+  .ua-table :global(thead th) {
+    font-size: 11px !important;
+    font-weight: 400 !important;
+    color: #868e96 !important;
+    background: #f8f9fa !important;
+    border-top: none !important;
+    border-bottom: 1px solid #eef1f4 !important;
+    padding: 7px 8px !important;
+    white-space: nowrap;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .ua-table :global(td) {
+    font-size: 12px !important;
+    font-weight: 400 !important;
+    padding: 6px 8px !important;
+    vertical-align: middle;
+    border-color: #f1f3f5 !important;
+    color: #343a40;
+  }
+
+  .ua-table :global(tfoot td) {
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    background: #f8f9fa !important;
+    border-top: 1px solid #e9ecef !important;
+    padding: 7px 8px !important;
+  }
+
+  .ua-sticky {
+    position: sticky;
+    z-index: 2;
+    background: #fff;
+    white-space: nowrap;
+  }
+
+  .ua-sticky--user {
+    left: 0;
+    min-width: 150px;
+    max-width: 200px;
+    box-shadow: 1px 0 0 #eef1f4;
+  }
+
+  .ua-sticky--role {
+    left: 150px;
+    min-width: 88px;
+    width: 88px;
+    box-shadow: 2px 0 6px rgba(15, 23, 42, 0.06);
+  }
+
+  .ua-table :global(thead .ua-sticky),
+  .ua-table :global(tfoot .ua-sticky) {
+    background: #f8f9fa !important;
+    z-index: 3;
+  }
+
+  .ua-role-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 10px !important;
+    font-weight: 400 !important;
+    line-height: 1.3;
+    white-space: nowrap;
+  }
+
+  .ua-role--tc {
+    background: #fff9db;
+    color: #e67700;
+  }
+  .ua-role--tech {
+    background: #e6fcf5;
+    color: #0ca678;
+  }
+  .ua-role--helper {
+    background: #f3f0ff;
+    color: #7048e8;
+  }
+  .ua-role--mgr {
+    background: #edf2ff;
+    color: #364fc7;
+  }
+  .ua-role--admin {
+    background: #fff5f5;
+    color: #c92a2a;
+  }
+  .ua-role--user {
+    background: #f1f3f5;
+    color: #495057;
+  }
+
+  .ua-expand-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    margin-right: 4px;
+    border: none;
+    background: transparent;
+    color: #868e96;
+    cursor: pointer;
+    vertical-align: middle;
+  }
+
+  .ua-expand-btn :global(i) {
+    display: inline-block;
+    font-size: 14px;
+    transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .ua-expand-btn--open :global(i) {
+    transform: rotate(90deg);
+  }
+
+  .ua-expand-btn:hover {
+    color: #364fc7;
+  }
+
+  .ua-detail-cell {
+    padding: 0 !important;
+    border: none !important;
+    background: transparent !important;
+  }
+
+  .ua-detail-panel {
+    overflow: hidden;
+    border-bottom: 1px solid #e9ecef;
+  }
+
+  .ua-detail-table {
+    width: 100%;
+    min-width: 900px;
+    border-collapse: collapse;
+    table-layout: auto;
+  }
+
+  .ua-detail-table :global(td) {
+    font-size: 11px !important;
+    font-weight: 400 !important;
+    padding: 5px 8px !important;
+    vertical-align: middle;
+    border-color: #f1f3f5 !important;
+    color: #868e96;
+    background: #fafbfc !important;
+  }
+
+  .ua-total-cell {
+    background: #f8f9fa;
+    font-weight: 500 !important;
+  }
+
+  .ua-subrow :global(td) {
+    font-size: 11px !important;
+    color: #868e96;
+    background: #fafbfc !important;
+  }
+
+  .ua-subrow :global(.ua-sticky) {
+    background: #fafbfc !important;
+  }
+
+  .ua-subrow-label {
+    padding-left: 1.75rem !important;
+  }
+
+  .ua-subrow--last :global(td) {
+    border-bottom: 1px solid #e9ecef !important;
+  }
+
+  .ua-trends {
+    margin-top: 4px;
+  }
+
+  .ua-trend-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .ua-trend-card {
+    background: #fff;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    padding: 10px 12px;
+  }
+
+  .ua-trend-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .ua-trend-name {
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    color: #343a40;
+  }
+
+  .ua-trend-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 56px;
+  }
+
+  .ua-trend-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .ua-trend-bar {
+    width: 100%;
+    border-radius: 2px 2px 0 0;
+  }
+
+  .ua-trend-lbl {
+    font-size: 9px !important;
+    font-weight: 400 !important;
+    color: #adb5bd;
+    line-height: 1;
+  }
+
+  @media (max-width: 900px) {
+    .ua-summary {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .ua-trend-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

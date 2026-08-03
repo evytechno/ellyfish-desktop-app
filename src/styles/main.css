@@ -476,7 +476,7 @@ Author URL: https://themeforest.net/user/dreamstechnologies
   --crms-font-monospace: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --crms-gradient: linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0));
   --crms-body-font-family: var(--crms-font-sans-serif);
-  --crms-body-font-size: 0.875rem;
+  --crms-body-font-size: 0.75rem;
   --crms-body-font-weight: 400;
   --crms-body-line-height: 1.5;
   --crms-body-color: #707070;
@@ -9628,27 +9628,27 @@ textarea.form-control-lg {
 }
 
 .fs-7 {
-  font-size: 7px !important;
+  font-size: 0.6875rem !important; /* 11px */
 }
 
 .fs-10 {
-  font-size: 10px !important;
+  font-size: 0.6875rem !important; /* 11px */
 }
 
 .fs-11 {
-  font-size: 11px !important;
+  font-size: 0.6875rem !important; /* 11px */
 }
 
 .fs-12 {
-  font-size: 12px !important;
+  font-size: 0.75rem !important; /* 12px */
 }
 
 .fs-13 {
-  font-size: 13px !important;
+  font-size: 0.75rem !important; /* 12px */
 }
 
 .fs-14 {
-  font-size: 14px !important;
+  font-size: 0.75rem !important; /* 12px */
 }
 
 .fs-15 {
@@ -13310,11 +13310,16 @@ textarea.form-control-lg {
 }
 .navbar-header .header-search .form-control {
   background: transparent;
-  height: 38px;
-  font-size: 14px;
+  height: 28px;
+  min-height: 28px;
+  max-height: 28px;
+  padding: 0 26px 0 10px;
+  font-size: 12px;
+  line-height: 26px;
   color: var(--crms-topbar-item-color);
   border-color: var(--crms-topbar-item-border);
-  box-shadow: var(--crms-topbar-item-shadow);
+  border-radius: 6px;
+  box-shadow: none;
 }
 .navbar-header .header-search .form-control::placeholder {
   color: var(--crms-topbar-item-border);

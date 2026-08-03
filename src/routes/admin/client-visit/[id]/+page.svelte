@@ -44,7 +44,21 @@
 
   function fmtDate(d) {
     if (!d) return "—";
-    return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+    const dt = new Date(d);
+    if (Number.isNaN(dt.getTime())) return "—";
+    const day = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][dt.getDay()];
+    const datePart = `${String(dt.getDate()).padStart(2, "0")}-${String(dt.getMonth() + 1).padStart(2, "0")}-${dt.getFullYear()}`;
+    return `${day}, ${datePart}`;
+  }
+  function fmtTime12(t) {
+    if (!t) return "";
+    const [hStr, mStr = "00"] = String(t).split(":");
+    let h = parseInt(hStr, 10);
+    if (Number.isNaN(h)) return "";
+    const m = mStr.slice(0, 2).padStart(2, "0");
+    const ampm = h >= 12 ? "PM" : "AM";
+    h = h % 12 || 12;
+    return `${h}:${m} ${ampm}`;
   }
   function fmtDatetime(d) {
     if (!d) return "—";
@@ -131,7 +145,7 @@
             <span class="text-uppercase fw-semibold" style="font-size:11px;letter-spacing:.05em;color:#6c757d;">Section 1 — Client &amp; Visit Info</span>
           </div>
           <span style="font-size:12px;color:#6c757d;">
-            {fmtDate(visit.visitDate)}
+            {fmtDate(visit.visitDate)}{#if visit.meetingTime}&nbsp;·&nbsp;{fmtTime12(visit.meetingTime)}{/if}
             {#if tf.startEnd && (visit.startTime || visit.endTime)}
               &nbsp;·&nbsp; {fmtDatetime(visit.startTime)} – {fmtDatetime(visit.endTime)}
             {/if}

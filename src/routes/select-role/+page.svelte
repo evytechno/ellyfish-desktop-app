@@ -3,10 +3,8 @@
   import { goto } from "$app/navigation";
   import { apiFetch } from "$lib/api/client";
   import { API_ROUTES } from "$lib/constants/apiRoutes";
-  import { saveSession, clearPendingRoleSelection, getRolePermissions } from "$lib/utils/auth";
+  import { saveSession, clearPendingRoleSelection, getRolePermissions, setLoginWelcome } from "$lib/utils/auth";
   import { setUser } from "../../lib/stores/userStore";
-  import { errorHandle } from "$lib/utils/errorHandle";
-  import Swal from "sweetalert2";
 
   let roles = [];
   let userId = null;
@@ -14,6 +12,23 @@
   let loading = false;
   let selecting = null;
   let errorMessage = "";
+
+  function resolveSelectError(error) {
+    if (error?.isNetworkError || error?.status === 0) {
+      return error?.isTimeout
+        ? "Request timed out. Check your connection and try again."
+        : "Can't reach the server. Check your connection and try again.";
+    }
+    const raw = error?.data?.message;
+    const text = typeof raw === "string" ? raw : "";
+    if (error?.status === 403) return text || "You can't sign in with that role.";
+    if (error?.status >= 500) return "Server error. Please try again in a moment.";
+    return text || "Failed to select role. Please try again.";
+  }
+
+  function clearError() {
+    errorMessage = "";
+  }
 
   const ROLE_ORDER = ["master", "admin", "manager", "user"];
 
@@ -80,10 +95,16 @@
       await saveSession(data);
       setUser(data.user);
 
-      await Swal.fire("Success!", `Signed in as ${getRoleDisplayLabel(role)}.`, "success");
+      const label = getRoleDisplayLabel(role);
+      const welcomeName = data.user?.name?.trim();
+      setLoginWelcome(
+        welcomeName
+          ? `Welcome back, ${welcomeName} · ${label}`
+          : `Signed in as ${label}`
+      );
       window.location.href = "/admin/dashboard";
     } catch (error) {
-      errorMessage = errorHandle(error) || "Failed to select role. Please try again.";
+      errorMessage = resolveSelectError(error);
     } finally {
       loading = false;
       selecting = null;
@@ -95,16 +116,22 @@
   <title>Select Role</title>
 </head>
 
-<div class="flex justify-center items-center min-h-screen bg-gray-100">
-  <div class="bg-white p-8 rounded-lg shadow-md w-96">
+<div class="select-role-page flex justify-center items-center min-h-screen">
+  <div class="select-role-card bg-white p-8 rounded-lg shadow-md w-96" class:select-role-card--error={!!errorMessage}>
     <h2 class="text-2xl font-bold text-center text-gray-700 mb-2">Select Role</h2>
     <p class="text-center text-gray-500 mb-6">
       Your account has multiple roles. Choose how you want to sign in.
     </p>
 
     {#if errorMessage}
-      <div class="mb-4 p-3 bg-red-50 border border-red-200 rounded text-red-600 text-sm">
-        {errorMessage}
+      <div class="select-role-alert" role="alert" aria-live="assertive">
+        <div class="select-role-alert-icon" aria-hidden="true">
+          <i class="ti ti-alert-circle"></i>
+        </div>
+        <p class="select-role-alert-text">{errorMessage}</p>
+        <button type="button" class="select-role-alert-dismiss" on:click={clearError} aria-label="Dismiss">
+          <i class="ti ti-x"></i>
+        </button>
       </div>
     {/if}
 
@@ -115,7 +142,7 @@
             {selecting === role
               ? 'border-red-500 bg-red-50'
               : 'border-gray-200 hover:border-red-400 hover:bg-red-50'}"
-          on:click={() => selectRole(role)}
+          on:click={() => { clearError(); selectRole(role); }}
           disabled={loading}
         >
           <i class="{ROLE_ICONS[role] ?? 'ti ti-user'} text-2xl text-red-500"></i>
@@ -137,3 +164,64 @@
     </div>
   </div>
 </div>
+
+<style>
+  .select-role-page {
+    background: #f3f4f6;
+  }
+
+  .select-role-card--error {
+    animation: select-role-shake 0.35s ease;
+  }
+
+  @keyframes select-role-shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-4px); }
+    40% { transform: translateX(4px); }
+    60% { transform: translateX(-3px); }
+    80% { transform: translateX(3px); }
+  }
+
+  .select-role-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 14px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: #fff5f5;
+    border: 1px solid #ffc9c9;
+    color: #c92a2a;
+  }
+
+  .select-role-alert-icon {
+    flex-shrink: 0;
+    margin-top: 1px;
+    font-size: 16px;
+    color: #e03131;
+  }
+
+  .select-role-alert-text {
+    flex: 1;
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.4;
+    font-weight: 500;
+  }
+
+  .select-role-alert-dismiss {
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+    padding: 0;
+    color: #fa5252;
+    cursor: pointer;
+    opacity: 0.7;
+    line-height: 1;
+    font-size: 14px;
+  }
+
+  .select-role-alert-dismiss:hover {
+    opacity: 1;
+  }
+</style>

@@ -13,7 +13,7 @@
   import { statusNamesStore } from "$lib/stores/statusNames";
   import { maskAssignedName } from '$lib/utils/maskUser';
   import PIWOTIModal from "$lib/components/PIWOTIModal.svelte";
-  import OrderFeedbackModal from "../../order/[id]/components/OrderFeedbackModal.svelte";
+  import { OrderFeedbackModal } from "$lib/features/orders/detail";
   import { errorHandle } from "$lib/utils/errorHandle";
 
   // ── auth ─────────────────────────────────────────────────
@@ -1138,7 +1138,7 @@
     : DATE_RANGE_OPTIONS.find(d => d.value === filterDateRange)?.label || "All Time";
 </script>
 
-<div class="page-wrapper">
+<div class="page-wrapper excel-page">
   <div class="content container-fluid">
 
     <!-- Page Header -->
@@ -1146,7 +1146,7 @@
       <div class="row align-items-center">
         <div class="col">
           <h4 class="mb-1">Orders Excel View
-            <span class="text-xs font-normal text-muted">({dateRangeLabel})</span>
+            <span class="font-normal text-muted excel-meta">({dateRangeLabel})</span>
           </h4>
           <nav aria-label="breadcrumb">
             <ol class="breadcrumb mb-0 p-0">
@@ -1327,7 +1327,7 @@
                   style={col.key === 'pId' ? `left:${snoWidth}px;` : ''}
                 >
                   <div class="flex items-center justify-between px-2 py-1.5 gap-1">
-                    <span class="uppercase tracking-wide text-[10px] font-semibold text-gray-500">{col.label}</span>
+                    <span class="excel-th uppercase tracking-wide font-semibold text-gray-600">{col.label}</span>
                     <div
                       class="resize-handle w-1.5 min-w-[6px] h-full min-h-[20px] cursor-col-resize bg-transparent border-r-2 border-gray-300 -mr-2"
                       on:mousedown={(e) => startResize(e, i)}
@@ -1806,7 +1806,7 @@
 
 <!-- Client Edit Modal -->
 {#if clientEditModal}
-  <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,0.45);" on:click|self={closeClientEditModal}>
+  <div class="modal fade show d-block excel-page" tabindex="-1" style="background:rgba(0,0,0,0.45);" on:click|self={closeClientEditModal}>
     <div class="modal-dialog modal-md modal-dialog-centered modal-dialog-scrollable">
       <div class="modal-content border-0 shadow-lg rounded-3">
         <div class="modal-header py-2 px-3 border-bottom">
@@ -1980,13 +1980,13 @@
   <div class="fixed inset-0 bg-black/30 z-[1040]" on:click={closeDrawer}></div>
 {/if}
 <div
-  class="fixed top-0 right-0 w-[380px] h-screen bg-white z-[1050] flex flex-col shadow-[-4px_0_16px_rgba(0,0,0,0.12)] transition-transform duration-[250ms] ease-in-out"
+  class="excel-page fixed top-0 right-0 w-[380px] h-screen bg-white z-[1050] flex flex-col shadow-[-4px_0_16px_rgba(0,0,0,0.12)] transition-transform duration-[250ms] ease-in-out"
   class:translate-x-full={!drawerOpen}
   class:translate-x-0={drawerOpen}
 >
   <!-- Drawer Header -->
-  <div class="flex items-center justify-between px-4 py-3.5 border-b border-gray-200 text-sm">
-    <h5 class="mb-0 text-sm font-semibold">Add Order</h5>
+  <div class="flex items-center justify-between px-4 py-3.5 border-b border-gray-200">
+    <h5 class="mb-0 font-semibold">Add Order</h5>
     <button class="btn-close" on:click={closeDrawer}></button>
   </div>
 
@@ -2132,7 +2132,7 @@
 
 <!-- Link Client Modal -->
 {#if showLinkClientModal}
-  <div class="fixed inset-0 bg-black/40 z-[1060] flex items-center justify-center">
+  <div class="excel-page fixed inset-0 bg-black/40 z-[1060] flex items-center justify-center">
     <div class="bg-white rounded-xl shadow-xl z-[1061] w-full max-w-md mx-3 overflow-hidden" on:click|stopPropagation>
       <div class="d-flex align-items-center justify-content-between px-4 py-3 border-bottom">
         <h6 class="mb-0 fw-semibold">
@@ -2329,4 +2329,84 @@
 
   /* status badge-select — remove browser default appearance */
   .status-select { appearance: none; -webkit-appearance: none; text-align: center; }
+
+  /* ── Typography: Cursor-like clean / clear / small (12px base) ── */
+  :global(.excel-page) {
+    font-size: var(--app-font-size, 0.75rem);
+    line-height: var(--app-line-height, 1.45);
+  }
+
+  :global(.excel-page),
+  :global(.excel-page .content),
+  :global(.excel-page .card-body),
+  :global(.excel-page .breadcrumb),
+  :global(.excel-page table),
+  :global(.excel-page th),
+  :global(.excel-page td),
+  :global(.excel-page label),
+  :global(.excel-page .form-label),
+  :global(.excel-page .form-control),
+  :global(.excel-page .form-select),
+  :global(.excel-page .form-control-sm),
+  :global(.excel-page .form-select-sm),
+  :global(.excel-page .btn),
+  :global(.excel-page .btn-sm),
+  :global(.excel-page .btn-xs),
+  :global(.excel-page .input-group-text),
+  :global(.excel-page .dropdown-item),
+  :global(.excel-page .modal-body),
+  :global(.excel-page .modal-footer),
+  :global(.excel-page .alert),
+  :global(.excel-page .invalid-feedback),
+  :global(.excel-page input),
+  :global(.excel-page select),
+  :global(.excel-page textarea),
+  :global(.excel-page .status-select) {
+    font-size: var(--app-font-size, 0.75rem) !important;
+    line-height: var(--app-line-height, 1.45);
+  }
+
+  /* Normalize Tailwind arbitrary / utility sizes that were too tiny */
+  :global(.excel-page .text-\[9px\]),
+  :global(.excel-page .text-\[10px\]),
+  :global(.excel-page .text-\[11px\]),
+  :global(.excel-page .\!text-\[11px\]),
+  :global(.excel-page .text-xs),
+  :global(.excel-page .\!text-xs),
+  :global(.excel-page .text-sm) {
+    font-size: var(--app-font-size, 0.75rem) !important;
+  }
+
+  :global(.excel-page .excel-meta),
+  :global(.excel-page .text-muted),
+  :global(.excel-page .text-gray-400),
+  :global(.excel-page .text-gray-500),
+  :global(.excel-page small),
+  :global(.excel-page .badge) {
+    font-size: var(--app-font-size-sm, 0.6875rem) !important;
+  }
+
+  /* Table headers — same clear 12px as body (not muted meta size) */
+  :global(.excel-page thead th),
+  :global(.excel-page thead th *),
+  :global(.excel-page .excel-th) {
+    font-size: var(--app-font-size, 0.75rem) !important;
+    line-height: 1.35 !important;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  :global(.excel-page h4) {
+    font-size: var(--app-font-size-xl, 1rem) !important;
+    font-weight: 600;
+    line-height: 1.35;
+  }
+
+  :global(.excel-page h5),
+  :global(.excel-page h6),
+  :global(.excel-page .modal-title) {
+    font-size: var(--app-font-size-lg, 0.875rem) !important;
+    font-weight: 600;
+    line-height: 1.35;
+  }
 </style>

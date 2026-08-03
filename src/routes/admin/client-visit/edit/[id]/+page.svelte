@@ -63,6 +63,7 @@
   let visitStatus = "completed";
   let companyId = "";
   let visitDate = "";
+  let meetingTime = "";
   let startTime = "";
   let endTime = "";
   let transportMedium = "";
@@ -172,6 +173,7 @@
       }
       companyId = visit.company?.id ? String(visit.company.id) : "";
       visitDate = visit.visitDate?.slice(0, 10) ?? "";
+      meetingTime = (visit.meetingTime ?? "").slice(0, 5);
       startTime = toDatetimeLocal(visit.startTime);
       endTime = toDatetimeLocal(visit.endTime);
       transportMedium = visit.transportMedium ?? "";
@@ -272,11 +274,15 @@
   async function handleSubmit(e) {
     if (e?.preventDefault) e.preventDefault();
     errorMessage = "";
+    if (!city.trim()) { errorMessage = "City is required."; return; }
+    if (!state.trim()) { errorMessage = "State is required."; return; }
+    if (!meetingTime) { errorMessage = "Meeting time is required."; return; }
     loading = true;
     try {
       // save visit fields
       const payload = {
         visitType, visitDate,
+        meetingTime,
         status: visitStatus,
         orderId: currentUser?.role === 'master' ? (linkedOrder?.id ?? null) : undefined,
         startTime: startTime || undefined,
@@ -284,8 +290,8 @@
         transportMedium: transportMedium || undefined,
         location: location || undefined,
         addressLine: addressLine || undefined,
-        city: city || undefined,
-        state: state || undefined,
+        city: city.trim(),
+        state: state.trim(),
         pincode: pincode || undefined,
         purpose,
         outcome: outcome || undefined,
@@ -652,6 +658,10 @@
                 <input type="date" class="form-control" bind:value={visitDate} required />
               </div>
               <div class="col-md-3">
+                <label class="form-label fw-semibold">Meeting Time <span class="text-danger">*</span></label>
+                <input type="time" class="form-control" bind:value={meetingTime} required />
+              </div>
+              <div class="col-md-3">
                 <label class="form-label fw-semibold">Status <span class="text-danger">*</span></label>
                 <select class="form-select" bind:value={visitStatus}>
                   <option value="scheduled">Scheduled (Planned)</option>
@@ -742,12 +752,15 @@
                 <input type="text" class="form-control" placeholder="Street / Area / Building" bind:value={addressLine} />
               </div>
               <div class="col-md-4">
-                <input type="text" class="form-control" placeholder="City" bind:value={city} />
+                <label class="form-label fw-semibold">City <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" placeholder="City" bind:value={city} required />
               </div>
               <div class="col-md-4">
-                <input type="text" class="form-control" placeholder="State" bind:value={state} />
+                <label class="form-label fw-semibold">State <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" placeholder="State" bind:value={state} required />
               </div>
               <div class="col-md-4">
+                <label class="form-label fw-semibold">Pincode</label>
                 <input type="text" class="form-control" placeholder="Pincode" bind:value={pincode} />
               </div>
             </div>

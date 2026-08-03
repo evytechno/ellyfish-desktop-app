@@ -1094,7 +1094,10 @@
             </div>
           </div>
         {/if}
-        <div class="col-auto">
+        <div class="col-auto d-flex align-items-center gap-2 flex-wrap">
+          <a href="/admin/invoice/tax" class="btn btn-outline-primary">
+            <i class="ti ti-receipt-tax me-1"></i>Invoice (TAX)
+          </a>
           {#if currentUser?.role === "master" || currentUser?.role === "admin"}
             <a href="/admin/invoice/add" class="btn btn-primary">
               <i class="ti ti-square-rounded-plus-filled me-1"></i>Add New Invoice

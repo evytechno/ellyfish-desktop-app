@@ -11,6 +11,8 @@
   import { statusNamesStore } from "$lib/stores/statusNames";
   import { queryUnreadCounts } from "$lib/stores/queryUnreadCounts";
   import { queryFilterStore } from "$lib/stores/filterStore";
+  import { showToast } from "$lib/stores/uiToast";
+  import QueryQuickView from "$lib/components/QueryQuickView.svelte";
 
   let currentUser;
   let queries = [];
@@ -37,9 +39,126 @@
 
   let searchTimeout;
 
+  // Bulk selection (master/admin/manager)
+  let selectedIds = new Set();
+  let bulkStatus = "";
+  let bulkUpdating = false;
+  $: selectedCount = selectedIds.size;
+  $: allPageSelected = queries.length > 0 && queries.every((q) => selectedIds.has(q.id));
+
+  // Quick view drawer
+  let drawerOpen = false;
+  let drawerQueryId = null;
+
+  function openQuickView(id) {
+    drawerQueryId = id;
+    drawerOpen = true;
+  }
+
+  function closeQuickView() {
+    drawerOpen = false;
+    drawerQueryId = null;
+  }
+
+  function canEditQuickView(q) {
+    if (!q || !currentUser) return false;
+    return isMasterView(currentUser) || isTelecaller(currentUser);
+  }
+
   const isTelecaller = (u) => u?.subRole === "telecaller";
   const isTech = (u) => u?.subRole === "tech";
   const isMasterView = (u) => u?.role !== "user";
+
+  const BULK_STATUSES = [
+    { value: "open", label: "Open" },
+    { value: "in_progress", label: "In Progress" },
+    { value: "resolved", label: "Resolved" },
+    { value: "reopened", label: "Reopened" },
+    { value: "closed", label: "Closed" },
+  ];
+
+  function toggleRow(id) {
+    if (selectedIds.has(id)) selectedIds.delete(id);
+    else selectedIds.add(id);
+    selectedIds = selectedIds;
+  }
+
+  function toggleAll() {
+    if (allPageSelected) queries.forEach((q) => selectedIds.delete(q.id));
+    else queries.forEach((q) => selectedIds.add(q.id));
+    selectedIds = selectedIds;
+  }
+
+  function clearSelection() {
+    selectedIds = new Set();
+    bulkStatus = "";
+  }
+
+  async function applyBulkStatus() {
+    if (!bulkStatus || !selectedIds.size || bulkUpdating) return;
+    const ids = [...selectedIds];
+    const label = BULK_STATUSES.find((s) => s.value === bulkStatus)?.label || bulkStatus;
+    const result = await Swal.fire({
+      title: "Update status",
+      html: `
+        <div class="qp-bulk-confirm">
+          <p class="qp-bulk-confirm__text">
+            Change status for
+            <span class="qp-bulk-confirm__count">${ids.length}</span>
+            selected quer${ids.length === 1 ? "y" : "ies"} to
+          </p>
+          <span class="qp-bulk-confirm__status">${label}</span>
+        </div>
+      `,
+      showCancelButton: true,
+      focusConfirm: false,
+      reverseButtons: true,
+      buttonsStyling: false,
+      confirmButtonText: "Update status",
+      cancelButtonText: "Cancel",
+      heightAuto: false,
+      scrollbarPadding: false,
+      customClass: {
+        popup: "qp-bulk-swal",
+        title: "qp-bulk-swal__title",
+        htmlContainer: "qp-bulk-swal__html",
+        actions: "qp-bulk-swal__actions",
+        confirmButton: "btn btn-primary btn-sm qp-bulk-swal__btn",
+        cancelButton: "btn btn-outline-secondary btn-sm qp-bulk-swal__btn",
+      },
+    });
+    if (!result.isConfirmed) return;
+    bulkUpdating = true;
+    try {
+      const res = await authApiFetch(`${API_ROUTES.QUERY}/bulk/status`, {
+        method: "PATCH",
+        data: { ids, status: bulkStatus },
+      });
+      const updated = res?.data?.updated?.length ?? res?.updated?.length ?? 0;
+      const failed = res?.data?.failed ?? res?.failed ?? [];
+      clearSelection();
+      await loadData();
+      if (isMasterView(currentUser)) loadStats();
+      if (failed.length) {
+        showToast({
+          type: "warning",
+          message: `${updated} updated, ${failed.length} failed`,
+        });
+      } else {
+        showToast({
+          type: "success",
+          message: `${updated} quer${updated === 1 ? "y" : "ies"} set to ${label}`,
+        });
+      }
+    } catch (e) {
+      showToast({
+        type: "error",
+        message: e?.data?.message || e?.message || "Could not update status",
+      });
+    } finally {
+      bulkUpdating = false;
+    }
+  }
 
   const STATUS_COLORS = {
     open: "badge bg-primary text-white",
@@ -75,6 +194,25 @@
     { value: "reopened", label: "Reopened" },
     { value: "closed", label: "Closed" },
   ];
+
+  const QUICK_FILTERS = [
+    { value: "unpicked", label: "Unpicked", hint: "Raised but not assigned yet", icon: "ti-user-off" },
+    { value: "noReply", label: "No reply", hint: "Active with no chat yet", icon: "ti-message-off" },
+    { value: "slaBreached", label: "SLA delayed", hint: "First response past SLA", icon: "ti-clock-exclamation" },
+    { value: "stale", label: "Stale 48h+", hint: "In progress, idle over 48 hours", icon: "ti-clock-pause" },
+    { value: "noFinal", label: "No final quot.", hint: "Missing final quotation flag", icon: "ti-flag-off" },
+    { value: "dealWon", label: "Deal Won", hint: "Linked order won / dispatched / completed", icon: "ti-trophy" },
+  ];
+
+  function setQuickFilter(value) {
+    filterQuick = filterQuick === value ? "" : value;
+    if (filterQuick === "unpicked") assignedToId = "";
+    currentPage = 1;
+    saveFilterStore();
+    loadData();
+  }
+
+  $: activeQuick = QUICK_FILTERS.find((f) => f.value === filterQuick) || null;
 
   // raise query form
   let showRaiseForm = false;
@@ -359,7 +497,7 @@
       if (filterStatus) q.set("status", filterStatus);
       if (filterType) q.set("type", filterType);
       if (filterPriority) q.set("priority", filterPriority);
-      if (filterQuick === "dealWon") q.set("dealWon", "true");
+      if (filterQuick) q.set("quick", filterQuick);
       if (dateParams.dateFrom) q.set("dateFrom", dateParams.dateFrom);
       if (dateParams.dateTo) q.set("dateTo", dateParams.dateTo);
 
@@ -371,13 +509,14 @@
         res = await authApiFetch(`${API_ROUTES.QUERY}/assigned?${q}`);
       } else {
         if (raisedById) q.set("raisedById", raisedById);
-        if (assignedToId) q.set("assignedToId", assignedToId);
+        if (assignedToId !== "") q.set("assignedToId", assignedToId);
         if (dateField !== "createdAt") q.set("dateField", dateField);
         res = await authApiFetch(`${API_ROUTES.QUERY}?${q}`);
       }
       queries = res.data ?? [];
       totalItems = res.total ?? 0;
       totalPages = res.totalPages ?? 0;
+      clearSelection();
     } catch (e) {
       if (!e?.isNetworkError && e?.status !== 0) errorHandle(e);
     } finally {
@@ -409,6 +548,7 @@
   }
 
   function onFilterChange() {
+    if (filterQuick === "unpicked") assignedToId = "";
     currentPage = 1;
     saveFilterStore();
     loadData();
@@ -496,6 +636,28 @@
     });
   }
 
+  /** Compact duration — e.g. 45m, 3h, 2d. Defaults end to now when omitted. */
+  function formatDuration(fromStr, toStr = null) {
+    if (!fromStr) return "";
+    const start = new Date(fromStr).getTime();
+    const end = toStr ? new Date(toStr).getTime() : Date.now();
+    const ms = end - start;
+    if (Number.isNaN(ms) || ms < 0) return "0m";
+    const mins = Math.floor(ms / 60000);
+    if (mins < 60) return `${Math.max(1, mins)}m`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h`;
+    const days = Math.floor(hours / 24);
+    if (days < 30) return `${days}d`;
+    const months = Math.floor(days / 30);
+    if (months < 12) return `${months}mo`;
+    return `${Math.floor(months / 12)}y`;
+  }
+
+  function isClosedOrResolved(status) {
+    return status === "closed" || status === "resolved";
+  }
+
   $: isRoleUser       = currentUser?.role === "user";
   $: isTechSubRole    = currentUser?.subRole === "tech" || currentUser?.subRole === "tech_helper";
   $: isTCSubRole      = currentUser?.subRole === "telecaller";
@@ -516,20 +678,19 @@
   };
 </script>
 
-<div class="page-wrapper">
+<div class="page-wrapper query-page">
   <div class="content">
     <!-- Header -->
-    <div
-      class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2"
-    >
+    <div class="qp-toolbar mb-3">
       <div>
-        <h4 class="fw-bold mb-0">
+        <h4 class="mb-0">
           {#if isTelecaller(currentUser)}
             My Queries
           {:else}
             All Queries
           {/if}
         </h4>
+        <p class="qp-sub mb-0">Support query overview</p>
       </div>
       {#if isTelecaller(currentUser)}
         <button
@@ -543,170 +704,172 @@
 
     <!-- Stats bar — master/admin/manager -->
     {#if isMasterView(currentUser)}
-      <div class="row g-3 mb-4">
-        <div class="col-6 col-md-3">
-          <div class="card border-0 shadow-sm text-center py-3">
-            <div class="fs-4 fw-bold text-primary">{stats.open}</div>
-            <div class="text-muted small">Open</div>
-          </div>
+      <div class="qp-stats mb-3" role="list">
+        <div class="qp-stat qp-stat--blue" role="listitem">
+          <span class="qp-stat-lbl">Open</span>
+          <span class="qp-stat-val">{stats.open}</span>
         </div>
-        <div class="col-6 col-md-3">
-          <div class="card border-0 shadow-sm text-center py-3">
-            <div class="fs-4 fw-bold text-warning">{stats.inProgress}</div>
-            <div class="text-muted small">In Progress</div>
-          </div>
+        <div class="qp-stat qp-stat--yellow" role="listitem">
+          <span class="qp-stat-lbl">In Progress</span>
+          <span class="qp-stat-val">{stats.inProgress}</span>
         </div>
-        <div class="col-6 col-md-3">
-          <div class="card border-0 shadow-sm text-center py-3">
-            <div class="fs-4 fw-bold text-success">{stats.resolvedToday}</div>
-            <div class="text-muted small">Resolved Today</div>
-          </div>
+        <div class="qp-stat qp-stat--green" role="listitem">
+          <span class="qp-stat-lbl">Resolved Today</span>
+          <span class="qp-stat-val">{stats.resolvedToday}</span>
         </div>
-        <div class="col-6 col-md-3">
-          <div class="card border-0 shadow-sm text-center py-3">
-            <div class="fs-4 fw-bold text-secondary">{stats.totalResolved}</div>
-            <div class="text-muted small">Total Resolved</div>
-          </div>
+        <div class="qp-stat qp-stat--gray" role="listitem">
+          <span class="qp-stat-lbl">Total Resolved</span>
+          <span class="qp-stat-val">{stats.totalResolved}</span>
         </div>
       </div>
     {/if}
 
     <!-- ── Filter Bar ──────────────────────────────────────────────────────── -->
-    <div class="flex items-center gap-2 flex-wrap mb-3">
-      <div>
-        <div class="input-icon input-icon-start position-relative">
-          <span class="input-icon-addon text-dark"
-            ><i class="ti ti-search"></i></span
-          >
-          <input
-            type="text"
-            class="form-control"
-            placeholder="Search.."
-            bind:value={search}
-            on:input={onSearchInput}
-          />
-        </div>
+    <div class="qp-filters mb-3">
+      <div class="input-icon input-icon-start position-relative qp-search">
+        <span class="input-icon-addon text-dark"><i class="ti ti-search"></i></span>
+        <input
+          type="text"
+          class="form-control"
+          placeholder="Search.."
+          bind:value={search}
+          on:input={onSearchInput}
+        />
       </div>
       {#if isMasterView(currentUser)}
-        <div>
-          <select
-            class="form-select"
-            style="width: auto"
-            bind:value={dateField}
-            on:change={onFilterChange}
-          >
-            <option value="createdAt">Sort: Raised</option>
-            <option value="updatedAt">Sort: Updated</option>
-            <option value="lastActivityAt">Sort: Activity</option>
-          </select>
-        </div>
-      {/if}
-      <div>
         <select
           class="form-select"
-          bind:value={selectedFilter}
+          bind:value={dateField}
           on:change={onFilterChange}
         >
-          <option value="all">All Time</option>
-          <option value="today">Today</option>
-          <option value="yesterday">Yesterday</option>
-          <option value="last7days">Last 7 Days</option>
-          <option value="last30days">Last 30 Days</option>
-          <option value="custom">Custom Range</option>
+          <option value="createdAt">Sort: Raised</option>
+          <option value="updatedAt">Sort: Updated</option>
+          <option value="lastActivityAt">Sort: Activity</option>
         </select>
-      </div>
+      {/if}
+      <select
+        class="form-select"
+        bind:value={selectedFilter}
+        on:change={onFilterChange}
+      >
+        <option value="all">All Time</option>
+        <option value="today">Today</option>
+        <option value="yesterday">Yesterday</option>
+        <option value="last7days">Last 7 Days</option>
+        <option value="last30days">Last 30 Days</option>
+        <option value="custom">Custom Range</option>
+      </select>
       {#if selectedFilter === "custom"}
-        <div>
-          <input
-            type="date"
-            class="form-control"
-            bind:value={customStartDate}
-            on:change={onFilterChange}
-          />
-        </div>
-        <div>
-          <input
-            type="date"
-            class="form-control"
-            bind:value={customEndDate}
-            on:change={onFilterChange}
-          />
-        </div>
+        <input
+          type="date"
+          class="form-control qp-date"
+          bind:value={customStartDate}
+          on:change={onFilterChange}
+        />
+        <input
+          type="date"
+          class="form-control qp-date"
+          bind:value={customEndDate}
+          on:change={onFilterChange}
+        />
       {/if}
-      <div>
-        <select
-          class="form-select"
-          bind:value={filterType}
-          on:change={onFilterChange}
-        >
-          {#each QUERY_TYPES as t}
-            <option value={t.value}>{t.label}</option>
-          {/each}
-        </select>
-      </div>
-      <div>
-        <select
-          class="form-select"
-          bind:value={filterPriority}
-          on:change={onFilterChange}
-        >
-          <option value="">All Priorities</option>
-          <option value="high">High</option>
-          <option value="medium">Medium</option>
-          <option value="low">Low</option>
-        </select>
-      </div>
-      <div>
-        <select
-          class="form-select"
-          bind:value={filterStatus}
-          on:change={onFilterChange}
-        >
-          {#each STATUSES as s}
-            <option value={s.value}>{s.label}</option>
-          {/each}
-        </select>
-      </div>
-      <div>
-        <select class="form-select" bind:value={filterQuick} on:change={onFilterChange}>
-          <option value="">All</option>
-          <option value="dealWon">🏆 Deal Won</option>
-        </select>
-      </div>
+      <select
+        class="form-select"
+        bind:value={filterType}
+        on:change={onFilterChange}
+      >
+        {#each QUERY_TYPES as t}
+          <option value={t.value}>{t.label}</option>
+        {/each}
+      </select>
+      <select
+        class="form-select"
+        bind:value={filterPriority}
+        on:change={onFilterChange}
+      >
+        <option value="">All Priorities</option>
+        <option value="high">High</option>
+        <option value="medium">Medium</option>
+        <option value="low">Low</option>
+      </select>
+      <select
+        class="form-select"
+        bind:value={filterStatus}
+        on:change={onFilterChange}
+      >
+        {#each STATUSES as s}
+          <option value={s.value}>{s.label}</option>
+        {/each}
+      </select>
+      <select class="form-select" bind:value={filterQuick} on:change={onFilterChange} title="Edge cases / quick filters">
+        <option value="">All queries</option>
+        {#each QUICK_FILTERS as f}
+          <option value={f.value}>{f.label}</option>
+        {/each}
+      </select>
       {#if isMasterView(currentUser)}
-        <div>
-          <select
-            class="form-select"
-            bind:value={raisedById}
-            on:change={onFilterChange}
-          >
-            <option value="">Raised By</option>
-            {#each allUsers.filter(u => u.subRole === "telecaller" || u.subRole === "tech") as u}
-              <option value={u.id}>{u.subRole === "telecaller" ? maskTC(u.name) : maskTech(u.name)}</option>
-            {/each}
-          </select>
-        </div>
-        <div>
-          <select
-            class="form-select"
-            bind:value={assignedToId}
-            on:change={onFilterChange}
-          >
-            <option value="">Assigned To</option>
-            {#each allUsers.filter(u => u.subRole === "tech" || u.subRole === "tech_helper") as u}
-              <option value={u.id}>{u.subRole === "tech_helper" ? maskHelper(u.name) : maskTech(u.name)}</option>
-            {/each}
-          </select>
-        </div>
+        <select
+          class="form-select"
+          bind:value={raisedById}
+          on:change={onFilterChange}
+        >
+          <option value="">Raised By</option>
+          {#each allUsers.filter(u => u.subRole === "telecaller" || u.subRole === "tech") as u}
+            <option value={u.id}>{u.subRole === "telecaller" ? maskTC(u.name) : maskTech(u.name)}</option>
+          {/each}
+        </select>
+        <select
+          class="form-select"
+          bind:value={assignedToId}
+          on:change={onFilterChange}
+        >
+          <option value="">Assigned To</option>
+          <option value="0">Unassigned</option>
+          {#each allUsers.filter(u => u.subRole === "tech" || u.subRole === "tech_helper") as u}
+            <option value={u.id}>{u.subRole === "tech_helper" ? maskHelper(u.name) : maskTech(u.name)}</option>
+          {/each}
+        </select>
       {/if}
       {#if hasFilters}
-        <div>
-          <button class="btn btn-outline-secondary" on:click={clearFilters}>
-            <i class="ti ti-x me-1"></i>Clear
-          </button>
-        </div>
+        <button class="btn btn-outline-secondary btn-sm qp-clear" on:click={clearFilters}>
+          <i class="ti ti-x me-1"></i>Clear
+        </button>
       {/if}
     </div>
+
+    {#if isMasterView(currentUser) || isTelecaller(currentUser)}
+      <div class="attn-bar mb-3" aria-label="Query attention filters">
+        <div class="attn-bar__head">
+          <div class="attn-bar__title">
+            <i class="ti ti-filter"></i>
+            <span>Needs attention</span>
+            {#if activeQuick}
+              <span class="attn-bar__active-tag">{activeQuick.label}</span>
+            {/if}
+          </div>
+          {#if filterQuick}
+            <button type="button" class="attn-bar__clear" on:click={() => setQuickFilter("")}>
+              <i class="ti ti-x"></i> Clear
+            </button>
+          {/if}
+        </div>
+        <div class="attn-bar__seg" role="group">
+          {#each QUICK_FILTERS as f}
+            <button
+              type="button"
+              class="attn-bar__btn"
+              class:attn-bar__btn--on={filterQuick === f.value}
+              title={f.hint}
+              aria-pressed={filterQuick === f.value}
+              on:click={() => setQuickFilter(f.value)}
+            >
+              <i class="ti {f.icon}"></i>
+              <span>{f.label}</span>
+            </button>
+          {/each}
+        </div>
+      </div>
+    {/if}
 
     <!-- Raise Query Modal -->
     {#if showRaiseForm}
@@ -721,7 +884,7 @@
             on:click={() => (showRaiseForm = false)}
             aria-label="Close"
           ><i class="ti ti-x"></i></button>
-          <h5 class="fw-bold mb-3">Raise New Query</h5>
+          <h5 class="mb-3">Raise New Query</h5>
           {#if raiseError}
             <div class="alert alert-danger py-2">{raiseError}</div>
           {/if}
@@ -809,14 +972,13 @@
                         class="order-dropdown-item"
                         on:click={() => selectOrder(o)}
                       >
-                        <span class="fw-semibold text-primary">#{o.pId}</span>
+                        <span class="text-primary">#{o.pId}</span>
                         {#if o.title}<span class="ms-1">{o.title}</span>{/if}
                         {#if o.company}<span class="text-muted ms-1 small"
                             >· {o.company}</span
                           >{/if}
                         <span
-                          class="badge bg-secondary ms-auto"
-                          style="font-size:10px;">{$statusNamesStore[o.status]?.name ?? o.status}</span
+                          class="badge bg-secondary ms-auto qp-badge">{$statusNamesStore[o.status]?.name ?? o.status}</span
                         >
                       </button>
                     {/each}
@@ -828,11 +990,11 @@
           <div class="mb-3">
             <label class="form-label">Requirement <span class="text-muted">(optional)</span></label>
             <textarea
-              class="form-control"
+              style="resize:vertical;"
+              class="form-control qp-textarea"
               rows="3"
               bind:value={raiseDescription}
               placeholder="Describe your requirement in detail..."
-              style="font-size:13px;resize:vertical;"
             ></textarea>
           </div>
           <div class="d-flex gap-2 justify-content-end">
@@ -864,7 +1026,7 @@
             on:click={() => (showEditForm = false)}
             aria-label="Close"
           ><i class="ti ti-x"></i></button>
-          <h5 class="fw-bold mb-3">Edit Query</h5>
+          <h5 class="mb-3">Edit Query</h5>
           {#if editError}
             <div class="alert alert-danger py-2">{editError}</div>
           {/if}
@@ -881,11 +1043,11 @@
           <div class="mb-3">
             <label class="form-label">Requirement <span class="text-muted">(optional)</span></label>
             <textarea
-              class="form-control"
+              style="resize:vertical;"
+              class="form-control qp-textarea"
               rows="3"
               bind:value={editDescription}
               placeholder="Describe your requirement in detail..."
-              style="font-size:13px;resize:vertical;"
             ></textarea>
           </div>
           <div class="mb-3">
@@ -945,10 +1107,10 @@
                   {:else}
                     {#each editOrderResults as o}
                       <button type="button" class="order-dropdown-item" on:click={() => selectEditOrder(o)}>
-                        <span class="fw-semibold text-primary">#{o.pId}</span>
+                        <span class="text-primary">#{o.pId}</span>
                         {#if o.title}<span class="ms-1">{o.title}</span>{/if}
                         {#if o.company}<span class="text-muted ms-1 small">· {o.company}</span>{/if}
-                        <span class="badge bg-secondary ms-auto" style="font-size:10px;">{$statusNamesStore[o.status]?.name ?? o.status}</span>
+                        <span class="badge bg-secondary ms-auto qp-badge">{$statusNamesStore[o.status]?.name ?? o.status}</span>
                       </button>
                     {/each}
                   {/if}
@@ -973,6 +1135,33 @@
       </div>
     {/if}
 
+    <!-- Bulk status bar — master/admin/manager -->
+    {#if isMasterView(currentUser) && selectedCount > 0}
+      <div class="d-flex align-items-center gap-2 mb-2 p-2 px-3 bg-primary-subtle border border-primary rounded flex-wrap">
+        <span class="fw-semibold text-primary">{selectedCount} selected</span>
+        <select class="form-select form-select-sm" style="width:auto;min-width:140px;" bind:value={bulkStatus}>
+          <option value="">Set status…</option>
+          {#each BULK_STATUSES as s}
+            <option value={s.value}>{s.label}</option>
+          {/each}
+        </select>
+        <button
+          class="btn btn-sm btn-primary"
+          disabled={!bulkStatus || bulkUpdating}
+          on:click={applyBulkStatus}
+        >
+          {#if bulkUpdating}
+            <span class="spinner-border spinner-border-sm me-1"></span>Updating…
+          {:else}
+            <i class="ti ti-check me-1"></i>Apply
+          {/if}
+        </button>
+        <button class="btn btn-sm btn-outline-secondary ms-auto" on:click={clearSelection}>
+          <i class="ti ti-x me-1"></i>Clear
+        </button>
+      </div>
+    {/if}
+
     <!-- Query Table -->
     {#if loading}
       <div class="text-center py-5">
@@ -984,12 +1173,23 @@
         No queries found.
       </div>
     {:else}
-      <div class="card border-0 rounded-0 mb-0">
-        <div class="card-body p-3">
+      <div class="card border-0 rounded-0 mb-0 qp-table-card">
+        <div class="card-body p-0">
           <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
+            <table class="table table-hover align-middle mb-0 qp-table">
               <thead class="table-light">
                 <tr>
+                  {#if isMasterView(currentUser)}
+                    <th style="width:36px;">
+                      <input
+                        type="checkbox"
+                        class="form-check-input"
+                        checked={allPageSelected}
+                        on:change={toggleAll}
+                        title="Select all on page"
+                      />
+                    </th>
+                  {/if}
                   <th>#</th>
                   <th>Subject</th>
                   {#if isMasterView(currentUser)}
@@ -1011,16 +1211,37 @@
               <tbody>
                 {#each queries as q, i}
                   {@const unread = $queryUnreadCounts[q.id] ?? 0}
-                  <tr>
+                  <tr class={selectedIds.has(q.id) ? "table-active" : ""}>
+                    {#if isMasterView(currentUser)}
+                      <td>
+                        <input
+                          type="checkbox"
+                          class="form-check-input"
+                          checked={selectedIds.has(q.id)}
+                          on:change={() => toggleRow(q.id)}
+                        />
+                      </td>
+                    {/if}
                     <td>{(currentPage - 1) * rowsPerPage + i + 1}</td>
                     <td style="max-width:260px;">
                       {#if q.ticketCode}
-                        <div class="text-muted" style="font-size:10.5px;font-weight:600;letter-spacing:0.3px;margin-bottom:2px;">{q.ticketCode}</div>
+                        <div class="qp-ticket">{q.ticketCode}</div>
                       {/if}
                       <div class="d-flex align-items-center gap-1 flex-wrap" style="min-width:0;">
-                        <a href="/admin/query/{q.id}" class="text-primary fw-semibold" title={q.subject} style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{q.subject}</a>
-                        {#if unread > 0}<span class="badge bg-danger rounded-pill" style="font-size:10px;flex-shrink:0;">{unread > 99 ? "99+" : unread}</span>{/if}
-                        {#if ['Deal Won', 'Dispatched', 'Completed'].includes(q.order?.status)}<span class="badge bg-success" style="font-size:10px;flex-shrink:0;">🏆 Deal Won</span>{/if}
+                        <button
+                          type="button"
+                          class="qp-subject qp-qv-open"
+                          title={q.subject}
+                          on:click={() => openQuickView(q.id)}
+                        >{q.subject}</button>
+                        {#if unread > 0}<span class="badge bg-danger rounded-pill qp-badge">{unread > 99 ? "99+" : unread}</span>{/if}
+                        {#if !q.assignedTo && ['open', 'reopened'].includes(q.status)}
+                          <span class="badge bg-warning text-dark qp-badge" title="Raised but not picked">Unpicked</span>
+                        {/if}
+                        {#if q.slaBreached}
+                          <span class="badge bg-danger text-white qp-badge" title="SLA delayed">SLA</span>
+                        {/if}
+                        {#if ['Deal Won', 'Dispatched', 'Completed'].includes(q.order?.status)}<span class="badge bg-success qp-badge">🏆 Deal Won</span>{/if}
                       </div>
                     </td>
                     {#if isMasterView(currentUser)}
@@ -1040,10 +1261,7 @@
                       </td>
                     {/if}
                     <td>
-                      <span
-                        class="badge bg-light text-dark border"
-                        style="font-size:11px;"
-                      >
+                      <span class="badge bg-light text-dark border qp-badge">
                         {QUERY_TYPES.find((t) => t.value === q.type)?.label ??
                           q.type ??
                           "-"}
@@ -1051,16 +1269,15 @@
                     </td>
                     <td>
                       <span
-                        class={PRIORITY_COLORS[q.priority] ??
-                          "badge bg-secondary"}
-                        style="font-size:11px;"
+                        class="{PRIORITY_COLORS[q.priority] ??
+                          'badge bg-secondary'} qp-badge"
                       >
                         {q.priority ?? "-"}
                       </span>
                     </td>
                     <td>
                       <span
-                        class={STATUS_COLORS[q.status] ?? "badge bg-secondary"}
+                        class="{STATUS_COLORS[q.status] ?? 'badge bg-secondary'} qp-badge"
                       >
                         {q.status?.replace("_", " ")}
                       </span>
@@ -1080,34 +1297,59 @@
                         <span class="text-muted">-</span>
                       {/if}
                     </td>
-                    <td>{formatDate(q.createdAt)}</td>
+                    <td class="qp-raised-cell">
+                      <div class="qp-raised-date">{formatDate(q.createdAt)}</div>
+                      {#if q.status === "closed" && q.resolvedAt}
+                        <div class="qp-raised-meta qp-raised-meta--closed" title="Closed on">
+                          Closed {formatDate(q.resolvedAt)}
+                          <span class="qp-raised-dur">· {formatDuration(q.createdAt, q.resolvedAt)}</span>
+                        </div>
+                      {:else if q.status === "resolved" && q.resolvedAt}
+                        <div class="qp-raised-meta qp-raised-meta--closed" title="Resolved on">
+                          Resolved {formatDate(q.resolvedAt)}
+                          <span class="qp-raised-dur">· {formatDuration(q.createdAt, q.resolvedAt)}</span>
+                        </div>
+                      {:else if !isClosedOrResolved(q.status)}
+                        <div class="qp-raised-meta qp-raised-meta--progress" title="Open duration till today">
+                          {formatDuration(q.createdAt)} in progress
+                        </div>
+                      {/if}
+                    </td>
                     {#if isMasterView(currentUser)}
                       <td>
                         {#if q.hasFinalQuotation}
-                          <span class="badge bg-success" style="font-size:10px;"><i class="ti ti-flag-check me-1"></i>Sent</span>
+                          <span class="badge bg-success qp-badge"><i class="ti ti-flag-check me-1"></i>Sent</span>
                         {:else}
-                          <span class="badge bg-light text-muted border" style="font-size:10px;">Pending</span>
+                          <span class="badge bg-light text-muted border qp-badge">Pending</span>
                         {/if}
                       </td>
                       <td>
                         {#if q.slaBreached}
-                          <span class="badge bg-danger text-white" style="font-size:10px;" title="{q.firstResponseMins}m">
+                          <span class="badge bg-danger text-white qp-badge" title="{q.firstResponseMins}m">
                             <i class="ti ti-clock-exclamation me-1"></i>{fmtMins(q.firstResponseMins)}
                           </span>
                         {:else if q.firstResponseMins !== null}
-                          <span class="badge bg-success text-white" style="font-size:10px;">{fmtMins(q.firstResponseMins)}</span>
+                          <span class="badge bg-success text-white qp-badge">{fmtMins(q.firstResponseMins)}</span>
                         {:else}
                           <span class="text-muted small">-</span>
                         {/if}
                       </td>
                     {/if}
                     <td class="d-flex gap-1">
-                      <a
-                        href="/admin/query/{q.id}"
+                      <button
+                        type="button"
                         class="btn btn-sm btn-outline-primary"
-                        title="View"
+                        title="Quick view"
+                        on:click={() => openQuickView(q.id)}
                       >
                         <i class="ti ti-eye"></i>
+                      </button>
+                      <a
+                        href="/admin/query/{q.id}"
+                        class="btn btn-sm btn-outline-secondary"
+                        title="Open full"
+                      >
+                        <i class="ti ti-external-link"></i>
                       </a>
                       {#if isMasterView(currentUser) || isTelecaller(currentUser)}
                         <button
@@ -1124,44 +1366,383 @@
               </tbody>
             </table>
           </div>
-          <Pagination
-            {currentPage}
-            {totalPages}
-            {rowsPerPage}
-            on:pageChange={(e) => {
-              currentPage = e.detail;
-              saveFilterStore();
-              loadData();
-            }}
-            on:rowsPerPageChange={(e) => {
-              rowsPerPage = e.detail;
-              currentPage = 1;
-              saveFilterStore();
-              loadData();
-            }}
-          />
+          <div class="qp-pager">
+            <Pagination
+              {currentPage}
+              {totalPages}
+              {rowsPerPage}
+              on:pageChange={(e) => {
+                currentPage = e.detail;
+                saveFilterStore();
+                loadData();
+              }}
+              on:rowsPerPageChange={(e) => {
+                rowsPerPage = e.detail;
+                currentPage = 1;
+                saveFilterStore();
+                loadData();
+              }}
+            />
+          </div>
         </div>
       </div>
     {/if}
   </div>
 </div>
 
+<QueryQuickView
+  bind:open={drawerOpen}
+  queryId={drawerQueryId}
+  {currentUser}
+  canEdit={canEditQuickView}
+  on:edit={(e) => openEditForm(e.detail)}
+  on:close={closeQuickView}
+/>
+
 <style>
+  /* Small, clean, clear — Cursor-like 12px */
+  .query-page,
+  .query-page :global(.content) {
+    font-size: 12px !important;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+  .query-page :global(h4) {
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    letter-spacing: -0.01em;
+    color: #212529;
+  }
+  .query-page :global(h5) {
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    color: #212529;
+  }
+  .query-page :global(.fw-bold),
+  .query-page :global(.fw-semibold) {
+    font-weight: 500 !important;
+  }
+  .query-page :global(.form-label) {
+    font-size: 11.5px !important;
+    font-weight: 500 !important;
+    color: #495057;
+    margin-bottom: 4px;
+  }
+  .query-page :global(.form-control),
+  .query-page :global(.form-select),
+  .query-page :global(.btn),
+  .query-page :global(.btn-sm) {
+    font-size: 11.5px !important;
+    line-height: 1.35 !important;
+  }
+  .query-page :global(.form-control),
+  .query-page :global(.form-select) {
+    height: 28px !important;
+    min-height: 28px !important;
+    padding: 2px 8px !important;
+  }
+  .query-page :global(textarea.form-control),
+  .query-page :global(.qp-textarea) {
+    height: auto !important;
+    min-height: 72px !important;
+    padding: 8px !important;
+    font-size: 12px !important;
+  }
+  .query-page :global(.text-muted),
+  .query-page :global(.small) {
+    font-size: 11px !important;
+    font-weight: 400 !important;
+  }
+  .query-page :global(.badge) {
+    font-weight: 500 !important;
+  }
+
+  .qp-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .qp-sub {
+    font-size: 11px;
+    color: #868e96;
+    margin-top: 2px;
+    font-weight: 400;
+  }
+
+  .qp-stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0;
+    background: #fff;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .qp-stat {
+    padding: 10px 12px;
+    border-right: 1px solid #f1f3f5;
+  }
+  .qp-stat:last-child { border-right: none; }
+  .qp-stat-lbl {
+    display: block;
+    font-size: 10.5px;
+    font-weight: 500;
+    color: #868e96;
+    margin-bottom: 3px;
+  }
+  .qp-stat-val {
+    display: block;
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.15;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+  .qp-stat--blue .qp-stat-val { color: #364fc7; }
+  .qp-stat--yellow .qp-stat-val { color: #e67700; }
+  .qp-stat--green .qp-stat-val { color: #2b8a3e; }
+  .qp-stat--gray .qp-stat-val { color: #495057; }
+
+  .qp-filters {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .qp-search {
+    width: 160px;
+    flex-shrink: 0;
+  }
+  .qp-filters :global(.form-select) {
+    width: auto;
+    min-width: 108px;
+    max-width: 148px;
+  }
+  .qp-date { width: 118px; }
+  .qp-clear {
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .qp-edge-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .qp-edge-chip {
+    border: 1px solid #dee2e6;
+    background: #fff;
+    color: #495057;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 4px 10px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  }
+  .qp-edge-chip:hover {
+    border-color: #91a7ff;
+    color: #364fc7;
+    background: #edf2ff;
+  }
+  .qp-edge-chip--active {
+    border-color: #364fc7;
+    background: #364fc7;
+    color: #fff;
+  }
+  .qp-edge-chip--active:hover {
+    background: #3b5bdb;
+    border-color: #3b5bdb;
+    color: #fff;
+  }
+
+  .attn-bar {
+    background: #fff;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .attn-bar__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .attn-bar__title {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #343a40;
+  }
+  .attn-bar__title :global(i) {
+    color: #868e96;
+    font-size: 14px;
+  }
+  .attn-bar__active-tag {
+    font-size: 10.5px;
+    font-weight: 500;
+    color: #364fc7;
+    background: #edf2ff;
+    border: 1px solid #bac8ff;
+    border-radius: 4px;
+    padding: 1px 7px;
+  }
+  .attn-bar__clear {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    border: none;
+    background: transparent;
+    color: #868e96;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 2px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .attn-bar__clear:hover {
+    color: #c92a2a;
+    background: #fff5f5;
+  }
+  .attn-bar__seg {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0;
+    background: #f1f3f5;
+    border-radius: 6px;
+    padding: 2px;
+  }
+  .attn-bar__btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border: none;
+    background: transparent;
+    color: #495057;
+    font-size: 11.5px;
+    font-weight: 500;
+    line-height: 1.2;
+    padding: 5px 9px;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .attn-bar__btn :global(i) {
+    font-size: 13px;
+    opacity: 0.75;
+  }
+  .attn-bar__btn:hover {
+    color: #212529;
+    background: rgba(255, 255, 255, 0.7);
+  }
+  .attn-bar__btn--on {
+    background: #fff !important;
+    color: #212529 !important;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+  }
+  .attn-bar__btn--on :global(i) {
+    color: #364fc7;
+    opacity: 1;
+  }
+
+  .qp-table-card :global(.card-body) { padding: 0; }
+  .qp-table {
+    font-size: 12px !important;
+  }
+  .qp-table :global(th) {
+    font-size: 10.5px !important;
+    font-weight: 600 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    color: #868e96 !important;
+    padding: 8px 12px !important;
+    white-space: nowrap;
+    border-bottom: 1px solid #e9ecef !important;
+  }
+  .qp-raised-cell {
+    white-space: nowrap;
+    min-width: 118px;
+  }
+  .qp-raised-date {
+    font-size: 11.5px;
+    font-weight: 500;
+    color: #343a40;
+    line-height: 1.3;
+  }
+  .qp-raised-meta {
+    margin-top: 2px;
+    font-size: 10px;
+    font-weight: 500;
+    line-height: 1.25;
+  }
+  .qp-raised-meta--progress {
+    color: #e67700;
+  }
+  .qp-raised-meta--closed {
+    color: #868e96;
+  }
+  .qp-raised-dur {
+    font-weight: 600;
+    color: #495057;
+  }
+
+  .qp-table :global(td) {
+    font-size: 12px !important;
+    font-weight: 400 !important;
+    padding: 8px 12px !important;
+    color: #343a40;
+    vertical-align: middle;
+  }
+  .qp-ticket {
+    font-size: 10.5px;
+    font-weight: 500;
+    color: #868e96;
+    letter-spacing: 0.2px;
+    margin-bottom: 2px;
+  }
+  .qp-subject {
+    color: #364fc7;
+    font-weight: 500;
+    text-decoration: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 240px;
+    display: inline-block;
+  }
+  .qp-subject:hover { text-decoration: underline; }
+  .qp-badge {
+    font-size: 10.5px !important;
+    font-weight: 500 !important;
+    padding: 2px 6px !important;
+  }
+  .qp-pager {
+    padding: 8px 12px;
+    border-top: 1px solid #f1f3f5;
+  }
+
   .user-link:hover { text-decoration: underline !important; color: #3b5bdb !important; }
 
   /* ── Badge tab selector ─────────────────────────────── */
   .badge-tab {
     display: inline-block;
-    padding: 4px 12px;
-    border-radius: 20px;
-    border: 1.5px solid #dee2e6;
+    padding: 3px 10px;
+    border-radius: 5px;
+    border: 1px solid #dee2e6;
     background: transparent;
-    font-size: 12px;
+    font-size: 11.5px;
     font-weight: 500;
     cursor: pointer;
     color: #6c757d;
-    transition: all 0.15s ease;
-    line-height: 1.5;
+    transition: all 0.12s ease;
+    line-height: 1.4;
     white-space: nowrap;
   }
   .badge-tab:hover {
@@ -1195,7 +1776,7 @@
     right: 0.75rem;
     background: none;
     border: none;
-    font-size: 1.25rem;
+    font-size: 14px;
     line-height: 1;
     color: #6c757d;
     cursor: pointer;
@@ -1209,9 +1790,7 @@
     background: rgba(220, 53, 69, 0.08);
   }
 
-  .order-search-wrap {
-    position: relative;
-  }
+  .order-search-wrap { position: relative; }
   .order-dropdown {
     position: absolute;
     top: 100%;
@@ -1226,19 +1805,92 @@
     align-items: center;
     gap: 4px;
     width: 100%;
-    padding: 8px 12px;
+    padding: 7px 10px;
     border: none;
     background: none;
     text-align: left;
-    font-size: 13px;
+    font-size: 12px;
+    font-weight: 400;
     cursor: pointer;
     border-bottom: 1px solid #f0f0f0;
   }
-  .order-dropdown-item:hover {
-    background: #f8f9fa;
-  }
-  .order-dropdown-item:last-child {
-    border-bottom: none;
+  .order-dropdown-item:hover { background: #f8f9fa; }
+  .order-dropdown-item:last-child { border-bottom: none; }
+
+  @media (max-width: 700px) {
+    .qp-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .qp-stat:nth-child(2n) { border-right: none; }
+    .qp-stat:nth-child(n+3) { border-top: 1px solid #f1f3f5; }
   }
 
+  /* Swal mounts on body */
+  :global(.qp-bulk-swal) {
+    width: min(360px, calc(100vw - 32px)) !important;
+    padding: 1.25rem 1.25rem 1rem !important;
+    border-radius: 10px !important;
+    box-shadow: 0 12px 40px rgba(15, 23, 42, 0.14) !important;
+  }
+  :global(.qp-bulk-swal__title) {
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    color: #212529 !important;
+    padding: 0 0 4px !important;
+    margin: 0 !important;
+  }
+  :global(.qp-bulk-swal__html) {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  :global(.qp-bulk-confirm) {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0 4px;
+  }
+  :global(.qp-bulk-confirm__text) {
+    margin: 0;
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: #495057;
+    text-align: center;
+  }
+  :global(.qp-bulk-confirm__count) {
+    font-weight: 600;
+    color: #212529;
+    font-variant-numeric: tabular-nums;
+  }
+  :global(.qp-bulk-confirm__status) {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #364fc7;
+    background: #edf2ff;
+    border: 1px solid #bac8ff;
+  }
+  :global(.qp-bulk-swal__actions) {
+    margin: 1rem 0 0 !important;
+    gap: 8px !important;
+  }
+  :global(.qp-bulk-swal__btn) {
+    margin: 0 !important;
+    min-width: 96px;
+  }
+
+  /* Subject as quick-view trigger */
+  .qp-qv-open {
+    background: none;
+    border: none;
+    padding: 0;
+    text-align: left;
+    cursor: pointer;
+    max-width: 100%;
+  }
+  .qp-qv-open:hover {
+    text-decoration: underline;
+  }
 </style>
+

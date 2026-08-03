@@ -57,10 +57,10 @@
 /* Header Search */
 .navbar-header .header-search .header-search-icon {
   position: absolute;
-  right: 5px;
-  width: 22px;
-  height: 22px;
-  border-radius: 0.25rem;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
   top: 50%;
   transform: translateY(-50%);
   display: flex;
@@ -70,20 +70,27 @@
 
 .navbar-header .header-search .input-icon-addon {
   color: var(--topbar-item-color);
+  font-size: 12px;
 }
 
 .navbar-header .header-search .form-control {
   background: transparent;
-  height: 38px;
-  font-size: 14px;
+  height: 28px !important;
+  min-height: 28px !important;
+  max-height: 28px !important;
+  padding: 0 26px 0 10px !important;
+  font-size: 12px !important;
+  line-height: 26px !important;
   color: var(--topbar-item-color);
   border-color: var(--topbar-item-border);
-  box-shadow: var(--topbar-item-shadow);
+  box-shadow: none !important;
+  border-radius: 6px !important;
 }
 
 .navbar-header .header-search .form-control::placeholder {
   color: var(--topbar-item-border);
   opacity: 1;
+  font-size: 12px;
 }
 
 /* Topbar Menu */
@@ -116,13 +123,15 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  width: 38px;
-  height: 38px;
-  border-radius: var(--border-radius-sm);
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  border-radius: 6px;
   color: var(--topbar-item-color);
   border: 1px solid var(--topbar-item-border);
-  box-shadow: var(--topbar-item-shadow);
-  padding: 5px;
+  box-shadow: none;
+  padding: 0;
   position: relative;
 }
 
@@ -132,7 +141,8 @@
 }
 
 .navbar-header .topbar-menu .header-item .topbar-link i {
-  font-size: 16px;
+  font-size: 14px;
+  line-height: 1;
 }
 
 /* Specific link colors */
@@ -293,7 +303,7 @@ html[data-bs-theme="dark"] #light-dark-mode .ti-moon::before {
   right: -8px;
   border: 2px solid var(--card-bg);
   line-height: 18px;
-  font-size: 11px;
+  font-size: 0.8125rem;
 }
 
 .notification-item:hover .notification-item-close {

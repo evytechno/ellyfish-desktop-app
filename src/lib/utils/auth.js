@@ -103,6 +103,28 @@ export const canAccess = (moduleKey, level = 'view', user = null) => {
 };
 
 /**
+ * Queue a welcome toast to show after login (consumed by admin layout).
+ */
+export const setLoginWelcome = (message) => {
+  try {
+    sessionStorage.setItem("login_welcome", message);
+  } catch (_) {}
+};
+
+/**
+ * Read and clear the pending login welcome message.
+ */
+export const consumeLoginWelcome = () => {
+  try {
+    const msg = sessionStorage.getItem("login_welcome");
+    if (msg) sessionStorage.removeItem("login_welcome");
+    return msg || "";
+  } catch (_) {
+    return "";
+  }
+};
+
+/**
  * Load tokens from secure storage into localStorage on app start
  * Call this once on app mount to restore session
  */

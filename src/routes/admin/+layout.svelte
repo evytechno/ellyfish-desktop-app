@@ -1,6 +1,7 @@
 <script>
   import "../../app.css";
   import "../../styles/main.css";
+  import "../../styles/typography.css";
   import { onMount } from "svelte";
   import jQuery from "jquery";
   import Header from "$lib/components/Header.svelte";
@@ -12,7 +13,7 @@
   import ServerOffline from "$lib/components/ServerOffline.svelte";
   import InactivityWarning from "$lib/components/InactivityWarning.svelte";
   import { startInactivityTimer, stopInactivityTimer } from "$lib/utils/inactivityTimer";
-  import { logoutUser, checkAuth } from "$lib/utils/auth";
+  import { logoutUser, checkAuth, consumeLoginWelcome } from "$lib/utils/auth";
   import { onDestroy } from "svelte";
   import { io } from "socket.io-client";
   import {
@@ -23,6 +24,7 @@
   import GroupChatToast from "$lib/components/GroupChatToast.svelte";
   import QueryToast from "$lib/components/QueryToast.svelte";
   import WorkWarning from "$lib/components/WorkWarning.svelte";
+  import { showToast } from "$lib/stores/uiToast";
 
   let gcSocket = null;
   let warnSocket = null;
@@ -176,6 +178,12 @@
 
     setupBootstrapHandlers();
     fetchSetting();
+
+    // Quiet welcome after login (replaces blocking success popup)
+    const welcome = consumeLoginWelcome();
+    if (welcome) {
+      setTimeout(() => showToast({ type: "success", message: welcome, duration: 3500 }), 450);
+    }
 
     // Start inactivity timer (auto-logout after 30 min)
     startInactivityTimer({

@@ -1,0 +1,244 @@
+/* ── Project-wide typography — small, clean, clear ───────────────────────── */
+/* Dense admin UI: 12px base, light hierarchy, consistent everywhere.         */
+
+:root {
+  --crms-body-font-size: 0.75rem; /* 12px */
+  --app-font-size: 0.75rem; /* 12px body */
+  --app-font-size-sm: 0.6875rem; /* 11px meta / muted */
+  --app-font-size-md: 0.8125rem; /* 13px emphasis */
+  --app-font-size-lg: 0.875rem; /* 14px section titles */
+  --app-font-size-xl: 1rem; /* 16px page titles */
+  --app-line-height: 1.45;
+}
+
+html {
+  font-size: 16px;
+}
+
+body,
+.main-wrapper,
+.page-wrapper {
+  font-family: "Golos Text", sans-serif !important;
+  font-size: var(--app-font-size) !important;
+  line-height: var(--app-line-height) !important;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Content surfaces */
+.page-wrapper p,
+.page-wrapper span:not(.badge):not(.avatar):not(.ti):not([class*="ti-"]),
+.page-wrapper label,
+.page-wrapper .form-label,
+.page-wrapper .card-body,
+.page-wrapper .card-header,
+.page-wrapper .breadcrumb,
+.page-wrapper .breadcrumb-item,
+.page-wrapper .dropdown-item,
+.page-wrapper .nav-link,
+.page-wrapper .list-group-item,
+.page-wrapper table,
+.page-wrapper th,
+.page-wrapper td,
+.page-wrapper .table,
+.page-wrapper .modal-body,
+.page-wrapper .offcanvas-body,
+.page-wrapper .alert,
+.page-wrapper .toast,
+.page-wrapper .pagination {
+  font-size: var(--app-font-size);
+  line-height: var(--app-line-height);
+}
+
+.page-wrapper .text-muted,
+.page-wrapper small,
+.page-wrapper .small {
+  font-size: var(--app-font-size-sm) !important;
+  line-height: var(--app-line-height);
+}
+
+/* Headings — compact hierarchy */
+.page-wrapper h4,
+.page-wrapper .modal-title,
+.page-wrapper .offcanvas-title {
+  font-size: var(--app-font-size-xl) !important; /* 16px */
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+}
+
+.page-wrapper h5 {
+  font-size: var(--app-font-size-lg) !important; /* 14px */
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.page-wrapper h6 {
+  font-size: var(--app-font-size-md) !important; /* 13px */
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+/* Forms & controls */
+.form-control,
+.form-select,
+.form-control-sm,
+.form-select-sm,
+textarea.form-control,
+.select2-container--default .select2-selection--single,
+.select2-container--default .select2-results__option,
+.input-group-text {
+  font-size: var(--app-font-size) !important;
+  line-height: var(--app-line-height) !important;
+}
+
+/* Buttons */
+.btn,
+.btn-sm,
+.btn-group-sm > .btn {
+  font-size: var(--app-font-size) !important;
+  line-height: 1.35 !important;
+}
+
+.btn-lg,
+.btn-group-lg > .btn {
+  font-size: var(--app-font-size-lg) !important;
+}
+
+/* Utility scale — small & clear, not all identical */
+.fs-7,
+.fs-10,
+.fs-11 {
+  font-size: var(--app-font-size-sm) !important; /* 11px */
+}
+
+.fs-12,
+.fs-13,
+.fs-14 {
+  font-size: var(--app-font-size) !important; /* 12px */
+}
+
+.fs-15,
+.fs-16 {
+  font-size: var(--app-font-size-md) !important; /* 13px */
+}
+
+.text-xs,
+.text-sm {
+  font-size: var(--app-font-size-sm) !important;
+}
+
+/* Sidebar */
+.sidebar .sidebar-menu > ul > li > a,
+.sidebar .sidebar-menu > ul > li > a span,
+.sidebar .sidebar-menu > ul > li.submenu ul li a,
+.sidebar .sidebar-menu > ul li a,
+.sidebar .submenu > ul li a,
+.sidebar li.menu-title {
+  font-size: var(--app-font-size) !important;
+  line-height: var(--app-line-height) !important;
+}
+
+/* Header */
+.header,
+.header .dropdown-item,
+.header .nav-link {
+  font-size: var(--app-font-size) !important;
+}
+
+/* Tables / DataTables */
+.page-wrapper .dataTables_wrapper,
+.page-wrapper .dataTables_info,
+.page-wrapper .dataTables_length,
+.page-wrapper .dataTables_filter input,
+.page-wrapper .dataTables_paginate {
+  font-size: var(--app-font-size) !important;
+}
+
+/* SweetAlert — dialogs */
+.swal2-popup,
+.swal2-html-container,
+.swal2-confirm,
+.swal2-cancel,
+.swal2-deny {
+  font-family: "Golos Text", sans-serif !important;
+  font-size: var(--app-font-size) !important;
+  font-weight: 400 !important;
+  line-height: var(--app-line-height) !important;
+}
+
+.swal2-title {
+  font-family: "Golos Text", sans-serif !important;
+  font-size: var(--app-font-size-md) !important; /* 13px */
+  font-weight: 500 !important;
+  line-height: 1.35 !important;
+}
+
+.swal2-html-container {
+  font-size: var(--app-font-size) !important;
+  font-weight: 400 !important;
+}
+
+/* SweetAlert toasts — match app flash (small, clean) */
+.swal2-container.swal2-top-end > .swal2-toast,
+.swal2-popup.swal2-toast {
+  font-family: "Golos Text", sans-serif !important;
+  font-size: var(--app-font-size) !important;
+  padding: 10px 14px !important;
+  border-radius: 8px !important;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.1) !important;
+}
+
+.swal2-popup.swal2-toast .swal2-title {
+  font-size: var(--app-font-size) !important; /* 12px */
+  font-weight: 500 !important;
+  margin: 0 !important;
+  line-height: 1.4 !important;
+  color: #212529 !important;
+}
+
+.swal2-popup.swal2-toast .swal2-html-container {
+  font-size: var(--app-font-size-sm) !important; /* 11px */
+  font-weight: 400 !important;
+  margin: 2px 0 0 !important;
+  color: #6c757d !important;
+}
+
+.swal2-popup.swal2-toast .swal2-icon {
+  width: 1.4em !important;
+  min-width: 1.4em !important;
+  height: 1.4em !important;
+  margin: 0 0.5em 0 0 !important;
+}
+
+.swal2-popup.swal2-toast .swal2-timer-progress-bar {
+  background: rgba(47, 158, 68, 0.45) !important;
+  height: 2px !important;
+}
+
+/* Badges — compact */
+.badge {
+  font-size: var(--app-font-size-sm) !important; /* 11px */
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* Inline overrides — normalize tiny text to the clean scale */
+[style*="font-size:9px"],
+[style*="font-size: 9px"],
+[style*="font-size:10px"],
+[style*="font-size: 10px"],
+[style*="font-size:10.5px"],
+[style*="font-size: 10.5px"] {
+  font-size: var(--app-font-size-sm) !important;
+}
+
+[style*="font-size:11px"],
+[style*="font-size: 11px"],
+[style*="font-size:12px"],
+[style*="font-size: 12px"],
+[style*="font-size:13px"],
+[style*="font-size: 13px"] {
+  font-size: var(--app-font-size) !important;
+}

@@ -341,18 +341,19 @@
 {/if}
 
 <div class="page-wrapper">
-  <div class="content pb-4">
+  <div class="content db-layout pb-4">
 
+    <div class="db-main">
     <!-- ── Page Title ──────────────────────────────────────────────────── -->
-    <div class="db-title-bar mb-4">
+    <div class="db-title-bar mb-3">
       <div>
-        <h4 class="mb-0 fw-bold">Admin Dashboard</h4>
-        <p class="text-muted small mb-0">Sales & activity overview</p>
+        <h4 class="mb-0">Admin Dashboard</h4>
+        <p class="db-page-sub mb-0">Sales &amp; activity overview</p>
       </div>
     </div>
 
     <!-- ── ROW 1: Section 1 + Section 2 ───────────────────────────────── -->
-    <div class="db-grid-2 mb-4">
+    <div class="db-grid-2 mb-3">
 
       <!-- ── SECTION 1: Role-wise Sales ─────────────────────────────── -->
       <div class="db-card">
@@ -396,6 +397,9 @@
                 <option value={u.id}>{u.name}</option>
               {/each}
             </select>
+            <button type="button" class="db-refresh-btn" title="Refresh" on:click={fetchS1} disabled={s1Loading}>
+              <i class="ti ti-refresh" class:spin={s1Loading}></i>
+            </button>
           </div>
         </div>
         <!-- summary chips -->
@@ -410,8 +414,8 @@
           </div>
         </div>
         <!-- body -->
-        <div class="db-card-body">
-          {#if s1Loading}
+        <div class="db-card-body" class:db-card-body--refreshing={s1Loading && s1Data.length > 0}>
+          {#if s1Loading && s1Data.length === 0}
             <table class="db-table">
               <thead><tr><th>User</th><th class="text-center">Orders</th><th class="text-end">Value</th><th class="text-end">Share</th></tr></thead>
               <tbody>
@@ -509,6 +513,9 @@
               <option value="">All Statuses</option>
               {#each STATUSES as st}<option value={st}>{statusLabel(st)}</option>{/each}
             </select>
+            <button type="button" class="db-refresh-btn" title="Refresh" on:click={fetchS2} disabled={s2Loading}>
+              <i class="ti ti-refresh" class:spin={s2Loading}></i>
+            </button>
           </div>
         </div>
         <div class="db-chips">
@@ -525,8 +532,8 @@
             <span class="db-chip-lbl">Categories</span>
           </div>
         </div>
-        <div class="db-card-body">
-          {#if s2Loading}
+        <div class="db-card-body" class:db-card-body--refreshing={s2Loading && s2Data.length > 0}>
+          {#if s2Loading && s2Data.length === 0}
             <table class="db-table">
               <thead><tr><th>Category</th><th class="text-center">Orders</th><th class="text-end">Value</th><th class="text-end">Share</th></tr></thead>
               <tbody>
@@ -587,7 +594,7 @@
     <!-- end row 1 -->
 
     <!-- ── ROW 2: Section 3 + Section 5 ───────────────────────────────── -->
-    <div class="db-grid-2 mb-4">
+    <div class="db-grid-2 mb-3">
 
       <!-- ── SECTION 3: Contact Report ──────────────────────────────── -->
       <div class="db-card">
@@ -625,7 +632,7 @@
               <input type="date" bind:value={s3CustomStart} class="db-date" />
               <input type="date" bind:value={s3CustomEnd} class="db-date" />
             {/if}
-            <button class="db-refresh-btn" title="Refresh" on:click={fetchS3} disabled={s3Loading}>
+            <button type="button" class="db-refresh-btn" title="Refresh" on:click={fetchS3} disabled={s3Loading}>
               <i class="ti ti-refresh" class:spin={s3Loading}></i>
             </button>
           </div>
@@ -648,8 +655,8 @@
             <span class="db-chip-lbl">Total</span>
           </div>
         </div>
-        <div class="db-card-body">
-          {#if s3Loading}
+        <div class="db-card-body" class:db-card-body--refreshing={s3Loading && s3Data.length > 0}>
+          {#if s3Loading && s3Data.length === 0}
             <table class="db-table">
               <thead><tr><th>User</th><th class="text-center">📞</th><th class="text-center">WA</th><th class="text-center">✉️</th><th class="text-center">All</th><th class="text-center">Total</th></tr></thead>
               <tbody>
@@ -746,6 +753,9 @@
               <input type="date" bind:value={s5CustomStart} class="db-date" />
               <input type="date" bind:value={s5CustomEnd} class="db-date" />
             {/if}
+            <button type="button" class="db-refresh-btn" title="Refresh" on:click={fetchS5} disabled={s5Loading}>
+              <i class="ti ti-refresh" class:spin={s5Loading}></i>
+            </button>
           </div>
         </div>
         <div class="db-chips">
@@ -766,8 +776,8 @@
             <span class="db-chip-lbl">Deal Lost</span>
           </div>
         </div>
-        <div class="db-card-body" style="overflow-x:auto;">
-          {#if s5Loading}
+        <div class="db-card-body" style="overflow-x:auto;" class:db-card-body--refreshing={s5Loading && s5Data.length > 0}>
+          {#if s5Loading && s5Data.length === 0}
             <table class="db-table" style="min-width:700px;">
               <thead>
                 <tr>
@@ -811,7 +821,7 @@
                     <td class="text-center">
                       <span class="db-badge db-badge--purple">{row.total}</span>
                       <div class="db-bar mt-1 mx-auto" style="max-width:50px;">
-                        <div class="db-bar-fill" style="width:{barPct}%;background:#7950f2;"></div>
+                        <div class="db-bar-fill" style="width:{barPct}%;background:#495057;"></div>
                       </div>
                     </td>
                     {#each STATUSES as st}
@@ -853,7 +863,7 @@
     <!-- end row 2 -->
 
     <!-- ── ROW 3: Section 4 — Order Activity Status (full width) ──────── -->
-    <div class="db-card mb-4">
+    <div class="db-card mb-3">
       <div class="db-card-head">
         <div class="db-card-title-block">
           <span class="db-section-icon bg-danger-soft text-danger">
@@ -888,6 +898,9 @@
             <input type="date" bind:value={s4CustomStart} class="db-date" />
             <input type="date" bind:value={s4CustomEnd} class="db-date" />
           {/if}
+          <button type="button" class="db-refresh-btn" title="Refresh" on:click={fetchS4} disabled={s4Loading}>
+            <i class="ti ti-refresh" class:spin={s4Loading}></i>
+          </button>
         </div>
       </div>
       <!-- chips -->
@@ -905,13 +918,13 @@
           <span class="db-chip-lbl">Active</span>
         </div>
       </div>
-      <div class="db-card-body">
-        {#if s4Loading}
+      <div class="db-card-body" class:db-card-body--refreshing={s4Loading && s4Data.length > 0}>
+        {#if s4Loading && s4Data.length === 0}
           <div class="table-responsive">
             <table class="db-table">
               <thead>
                 <tr>
-                  <th style="width:40px">#</th>
+                  <th class="db-sn">S.N.</th>
                   <th>Order</th><th>Status</th><th>Assigned To</th>
                   <th class="text-center">Last Activity</th><th class="text-center">Flag</th>
                 </tr>
@@ -919,12 +932,7 @@
               <tbody>
                 {#each Array(6) as _}
                   <tr>
-                    <td><div class="skel-line" style="width:20px"></div></td>
-                    <td><div class="skel-line" style="width:75%"></div></td>
-                    <td><div class="skel-line" style="width:70px"></div></td>
-                    <td><div class="skel-line" style="width:80px"></div></td>
-                    <td><div class="skel-line mx-auto" style="width:50px"></div></td>
-                    <td><div class="skel-line mx-auto" style="width:60px"></div></td>
+                    <td class="db-sn"><div class="skel-line mx-auto" style="width:16px"></div></td>
                   </tr>
                 {/each}
               </tbody>
@@ -937,7 +945,7 @@
             <table class="db-table">
               <thead>
                 <tr>
-                  <th style="width:40px">#</th>
+                  <th class="db-sn">S.N.</th>
                   <th>Order</th>
                   <th>Status</th>
                   <th>Assigned To</th>
@@ -950,7 +958,7 @@
                   {@const stale = isStale(order)}
                   {@const ago = timeAgo(order)}
                   <tr class:db-row-stale={stale}>
-                    <td class="text-muted small">{(s4Page-1)*s4Limit+i+1}</td>
+                    <td class="db-sn text-muted small">{(s4Page-1)*s4Limit+i+1}</td>
                     <td>
                       <a href="/admin/order/{order.id}" class="fw-semibold text-primary text-decoration-none">
                         #{order.pId}{order.title ? ` — ${order.title}` : ""}
@@ -992,269 +1000,835 @@
       </div>
     </div>
 
-    <!-- ── ROW 4: Customer Feedback Stats ─────────────────────────────── -->
-    <div class="mb-4">
-      <div class="db-card">
-        <div class="db-card-head px-4 pt-3 pb-2">
-          <div>
-            <div class="db-card-title">Customer Feedback</div>
-            <div class="db-card-subtitle">
-              {#if s6Filter === "custom" && s6CustomStart && s6CustomEnd}
-                {s6CustomStart} → {s6CustomEnd}
-              {:else if s6Filter === "last7days"}Last 7 Days
-              {:else if s6Filter === "last30days"}Last 30 Days
-              {:else if s6Filter === "today"}Today
-              {:else}All Time{/if}
+    </div><!-- /.db-main -->
+
+    <!-- ── Fixed rightbar: Customer Feedback ─────────────────────────── -->
+    <aside class="db-rightbar" aria-label="Customer Feedback">
+      <div class="db-card db-rightbar-card">
+        <div class="fb-head">
+          <div class="fb-head-top">
+            <div class="fb-head-title">
+              <span class="db-section-icon bg-success-soft text-success">
+                <i class="ti ti-message-star"></i>
+              </span>
+              <div>
+                <div class="db-card-title">Customer Feedback</div>
+                <div class="db-card-subtitle">Satisfaction overview</div>
+              </div>
             </div>
+            <button type="button" class="db-refresh-btn" title="Refresh" on:click={fetchS6} disabled={s6Loading}>
+              <i class="ti ti-refresh" class:spin={s6Loading}></i>
+            </button>
           </div>
-          <div class="d-flex gap-2 align-items-center flex-wrap">
-            <select class="db-filter-select" bind:value={s6Filter} style="min-width:130px;">
-              <option value="today">Today</option>
-              <option value="last7days">Last 7 Days</option>
-              <option value="last30days">Last 30 Days</option>
-              <option value="custom">Custom</option>
-            </select>
-            {#if s6Filter === "custom"}
-              <input type="date" class="db-filter-select" bind:value={s6CustomStart} />
-              <input type="date" class="db-filter-select" bind:value={s6CustomEnd} />
-            {/if}
+          <div class="fb-period" role="tablist" aria-label="Period">
+            {#each [["today","Today"],["last7days","7d"],["last30days","30d"],["custom","Custom"]] as [val, label]}
+              <button
+                type="button"
+                class="fb-period-btn"
+                class:active={s6Filter === val}
+                on:click={() => (s6Filter = val)}
+              >{label}</button>
+            {/each}
           </div>
+          {#if s6Filter === "custom"}
+            <div class="fb-custom-dates">
+              <input type="date" class="db-date db-rightbar-date" bind:value={s6CustomStart} />
+              <span class="fb-date-sep">–</span>
+              <input type="date" class="db-date db-rightbar-date" bind:value={s6CustomEnd} />
+            </div>
+          {/if}
         </div>
-        <div class="px-4 pb-3">
-          {#if s6Loading}
-            <div class="text-center py-3"><span class="spinner-border spinner-border-sm text-primary"></span></div>
+
+        <div class="db-rightbar-body" class:db-rightbar-body--refreshing={s6Loading && !!s6Data}>
+          {#if s6Loading && !s6Data}
+            <div class="db-empty"><span class="spinner-border spinner-border-sm"></span></div>
           {:else if !s6Data || s6Data.total === 0}
-            <div class="text-center text-muted py-3" style="font-size:13px;">No feedback recorded for this period.</div>
+            <div class="db-empty fb-empty">
+              <i class="ti ti-mood-empty"></i>
+              <span>No feedback for this period</span>
+            </div>
           {:else}
-            <!-- Summary Counts -->
-            <div class="d-flex gap-3 flex-wrap mb-3 mt-1">
-              <div class="d-flex align-items-center gap-2 px-3 py-2 rounded" style="background:#ebfbee; min-width:110px;">
-                <i class="ti ti-mood-smile text-success" style="font-size:1.4rem;"></i>
-                <div>
-                  <div style="font-size:11px; color:#2f9e44; font-weight:600;">Satisfied</div>
-                  <div style="font-size:1.3rem; font-weight:700; color:#2f9e44; line-height:1.1;">{s6Data.satisfactionCounts?.SATISFIED ?? 0}</div>
+            {@const sat = s6Data.satisfactionCounts?.SATISFIED ?? 0}
+            {@const neu = s6Data.satisfactionCounts?.NEUTRAL ?? 0}
+            {@const dis = s6Data.satisfactionCounts?.DISSATISFIED ?? 0}
+            {@const total = s6Data.total || 1}
+            {@const satPct = Math.round((sat / total) * 100)}
+            {@const neuPct = Math.round((neu / total) * 100)}
+            {@const disPct = Math.round((dis / total) * 100)}
+
+            <div class="fb-score">
+              <div class="fb-score-col">
+                <div class="fb-score-ring" style="--pct:{satPct}">
+                  <span class="fb-score-num">{satPct}<small>%</small></span>
                 </div>
+                <span class="fb-score-lbl">Satisfied</span>
               </div>
-              <div class="d-flex align-items-center gap-2 px-3 py-2 rounded" style="background:#fff9db; min-width:110px;">
-                <i class="ti ti-mood-empty text-warning" style="font-size:1.4rem;"></i>
-                <div>
-                  <div style="font-size:11px; color:#e67700; font-weight:600;">Neutral</div>
-                  <div style="font-size:1.3rem; font-weight:700; color:#e67700; line-height:1.1;">{s6Data.satisfactionCounts?.NEUTRAL ?? 0}</div>
+              <div class="fb-score-meta">
+                <div class="fb-score-total">{s6Data.total} <span>responses</span></div>
+                <div class="fb-seg" title="Satisfied / Neutral / Dissatisfied">
+                  <span class="fb-seg-sat" style="width:{satPct}%"></span>
+                  <span class="fb-seg-neu" style="width:{neuPct}%"></span>
+                  <span class="fb-seg-dis" style="width:{disPct}%"></span>
                 </div>
-              </div>
-              <div class="d-flex align-items-center gap-2 px-3 py-2 rounded" style="background:#fff5f5; min-width:110px;">
-                <i class="ti ti-mood-sad text-danger" style="font-size:1.4rem;"></i>
-                <div>
-                  <div style="font-size:11px; color:#e03131; font-weight:600;">Dissatisfied</div>
-                  <div style="font-size:1.3rem; font-weight:700; color:#e03131; line-height:1.1;">{s6Data.satisfactionCounts?.DISSATISFIED ?? 0}</div>
-                </div>
-              </div>
-              <div class="d-flex align-items-center gap-2 px-3 py-2 rounded" style="background:#f1f3f5; min-width:110px;">
-                <i class="ti ti-messages" style="font-size:1.4rem; color:#495057;"></i>
-                <div>
-                  <div style="font-size:11px; color:#495057; font-weight:600;">Total</div>
-                  <div style="font-size:1.3rem; font-weight:700; color:#495057; line-height:1.1;">{s6Data.total}</div>
+                <div class="fb-seg-legend">
+                  <span><i class="dot sat"></i>{sat} sat</span>
+                  <span><i class="dot neu"></i>{neu} neu</span>
+                  <span><i class="dot dis"></i>{dis} dis</span>
                 </div>
               </div>
             </div>
 
-            <!-- Top Reasons -->
+            <div class="fb-stats">
+              <div class="fb-stat fb-stat--green">
+                <i class="ti ti-mood-smile"></i>
+                <div>
+                  <strong>{sat}</strong>
+                  <span>Satisfied</span>
+                </div>
+              </div>
+              <div class="fb-stat fb-stat--yellow">
+                <i class="ti ti-mood-empty"></i>
+                <div>
+                  <strong>{neu}</strong>
+                  <span>Neutral</span>
+                </div>
+              </div>
+              <div class="fb-stat fb-stat--red">
+                <i class="ti ti-mood-sad"></i>
+                <div>
+                  <strong>{dis}</strong>
+                  <span>Dissatisfied</span>
+                </div>
+              </div>
+            </div>
+
             {#if s6Data.topReasons?.length > 0}
-              <div style="font-size:12px; font-weight:600; color:#495057; margin-bottom:6px;">Top Feedback Reasons</div>
-              <div class="d-flex flex-column gap-1">
-                {#each s6Data.topReasons as item}
-                  {@const LABELS = {
-                    CALL_NOT_PICKED: "Call Not Pick",
-                    TRANSPORTATION_ISSUE: "Transportation Issue",
-                    DAMAGED_POOR_QUALITY_MATERIAL: "Damaged / Poor Quality Material",
-                    DELAY_MACHINE_MATERIAL: "Delay Machine / Material",
-                    SATISFIED: "Satisfied",
-                    DOCUMENTATION_ISSUE: "Documentation Issue",
-                    WRONG_MATERIAL_DISPATCH: "Wrong Material Dispatch",
-                    TIMELY_INSTALLATION_PENDING: "Timely Installation Pending",
-                    OTHER: "Other",
-                  }}
-                  {@const maxCount = s6Data.topReasons[0]?.count ?? 1}
-                  <div class="d-flex align-items-center gap-2" style="font-size:12px;">
-                    <span style="min-width:200px; color:#495057;">{LABELS[item.reason] ?? item.reason}</span>
-                    <div style="flex:1; background:#f1f3f5; border-radius:4px; height:8px; overflow:hidden;">
-                      <div style="width:{Math.round((item.count / maxCount) * 100)}%; height:100%; background:#3b5bdb; border-radius:4px;"></div>
+              <div class="fb-reasons">
+                <div class="fb-reasons-head">
+                  <span>Top reasons</span>
+                  <span class="fb-reasons-count">{s6Data.topReasons.length}</span>
+                </div>
+                <div class="fb-reason-list">
+                  {#each s6Data.topReasons as item, i}
+                    {@const LABELS = {
+                      CALL_NOT_PICKED: "Call Not Pick",
+                      TRANSPORTATION_ISSUE: "Transportation Issue",
+                      DAMAGED_POOR_QUALITY_MATERIAL: "Damaged / Poor Quality Material",
+                      DELAY_MACHINE_MATERIAL: "Delay Machine / Material",
+                      SATISFIED: "Satisfied",
+                      DOCUMENTATION_ISSUE: "Documentation Issue",
+                      WRONG_MATERIAL_DISPATCH: "Wrong Material Dispatch",
+                      TIMELY_INSTALLATION_PENDING: "Timely Installation Pending",
+                      OTHER: "Other",
+                    }}
+                    {@const maxCount = s6Data.topReasons[0]?.count ?? 1}
+                    {@const pct = Math.round((item.count / maxCount) * 100)}
+                    <div class="fb-reason">
+                      <span class="fb-reason-rank">{i + 1}</span>
+                      <div class="fb-reason-main">
+                        <div class="fb-reason-top">
+                          <span class="fb-reason-label" title={LABELS[item.reason] ?? item.reason}>
+                            {LABELS[item.reason] ?? item.reason}
+                          </span>
+                          <span class="fb-reason-count">{item.count}</span>
+                        </div>
+                        <div class="fb-reason-bar">
+                          <div class="fb-reason-fill" style="width:{pct}%"></div>
+                        </div>
+                      </div>
                     </div>
-                    <span style="min-width:24px; text-align:right; font-weight:600; color:#3b5bdb;">{item.count}</span>
-                  </div>
-                {/each}
+                  {/each}
+                </div>
               </div>
             {/if}
           {/if}
         </div>
       </div>
-    </div>
+    </aside>
 
   </div>
 </div>
 
 <style>
+  /* Small, clean, clear — 12px base */
+  .page-wrapper,
+  .content {
+    font-size: 12px !important;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+
   /* ── Layout ── */
+  .db-layout {
+    --db-rightbar-w: 300px;
+    --db-rightbar-gap: 16px;
+    position: relative;
+    padding-right: 0 !important;
+  }
+  .db-main {
+    min-width: 0;
+    padding-right: calc(var(--db-rightbar-w) + var(--db-rightbar-gap));
+  }
+  .db-rightbar {
+    position: fixed;
+    top: var(--crms-topbar-height, 56px);
+    right: 0;
+    bottom: 0;
+    width: var(--db-rightbar-w);
+    height: calc(100vh - var(--crms-topbar-height, 56px));
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+  }
+  .db-rightbar-card {
+    height: 100%;
+    max-height: 100%;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border-radius: 0 !important;
+    border-top: none;
+    border-right: none;
+    border-bottom: none;
+  }
+  .db-rightbar-body {
+    padding: 12px;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+  }
+  .db-rightbar-date {
+    width: 0;
+    min-width: 0;
+    flex: 1;
+  }
+
+  /* ── Feedback panel ── */
+  .fb-head {
+    padding: 12px 12px 10px;
+    border-bottom: 1px solid #f1f3f5;
+    background: #fcfcfd;
+    flex-shrink: 0;
+  }
+  .fb-head-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .fb-head-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .fb-period {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 3px;
+    padding: 3px;
+    background: #f1f3f5;
+    border-radius: 6px;
+  }
+  .fb-period-btn {
+    height: 24px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: #868e96;
+    font-size: 10.5px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.12s, color 0.12s;
+  }
+  .fb-period-btn:hover { color: #495057; }
+  .fb-period-btn.active {
+    background: #fff;
+    color: #212529;
+    box-shadow: 0 1px 2px rgba(33, 37, 41, 0.08);
+  }
+  .fb-custom-dates {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 8px;
+  }
+  .fb-date-sep { color: #adb5bd; font-size: 11px; }
+
+  .fb-empty { padding: 36px 12px; }
+
+  .fb-score {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 10px 12px;
+    margin-bottom: 10px;
+    background: linear-gradient(180deg, #f8f9fa 0%, #fff 100%);
+    border: 1px solid #f1f3f5;
+    border-radius: 8px;
+  }
+  .fb-score-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    flex-shrink: 0;
+    width: 68px;
+  }
+  .fb-score-ring {
+    --pct: 0;
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background:
+      radial-gradient(circle at center, #fff 58%, transparent 59%),
+      conic-gradient(#2b8a3e calc(var(--pct) * 1%), #e9ecef 0);
+  }
+  .fb-score-num {
+    font-size: 15px;
+    font-weight: 700;
+    color: #212529;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .fb-score-num small {
+    font-size: 9px;
+    font-weight: 650;
+    margin-left: 1px;
+    color: #868e96;
+  }
+  .fb-score-lbl {
+    font-size: 9.5px;
+    color: #868e96;
+    font-weight: 600;
+    text-align: center;
+    line-height: 1.1;
+    letter-spacing: 0.01em;
+  }
+  .fb-score-meta { flex: 1; min-width: 0; }
+  .fb-score-total {
+    font-size: 13px;
+    font-weight: 700;
+    color: #212529;
+    margin-bottom: 8px;
+    font-variant-numeric: tabular-nums;
+  }
+  .fb-score-total span {
+    font-weight: 500;
+    color: #868e96;
+    font-size: 11px;
+  }
+  .fb-seg {
+    display: flex;
+    height: 6px;
+    border-radius: 99px;
+    overflow: hidden;
+    background: #e9ecef;
+    margin-bottom: 6px;
+  }
+  .fb-seg-sat { background: #2b8a3e; }
+  .fb-seg-neu { background: #e67700; }
+  .fb-seg-dis { background: #c92a2a; }
+  .fb-seg-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    font-size: 10px;
+    color: #868e96;
+    font-variant-numeric: tabular-nums;
+  }
+  .fb-seg-legend .dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    margin-right: 3px;
+    vertical-align: 1px;
+  }
+  .fb-seg-legend .dot.sat { background: #2b8a3e; }
+  .fb-seg-legend .dot.neu { background: #e67700; }
+  .fb-seg-legend .dot.dis { background: #c92a2a; }
+
+  .fb-stats {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+  .fb-stat {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 9px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+  }
+  .fb-stat i { font-size: 16px; flex-shrink: 0; }
+  .fb-stat strong {
+    display: block;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.15;
+    font-variant-numeric: tabular-nums;
+  }
+  .fb-stat span {
+    display: block;
+    font-size: 10px;
+    color: #868e96;
+    font-weight: 500;
+  }
+  .fb-stat--green { background: #ebfbee; border-color: #d3f9d8; color: #2b8a3e; }
+  .fb-stat--green strong { color: #2b8a3e; }
+  .fb-stat--yellow { background: #fff9db; border-color: #ffec99; color: #e67700; }
+  .fb-stat--yellow strong { color: #e67700; }
+  .fb-stat--red { background: #fff5f5; border-color: #ffc9c9; color: #c92a2a; }
+  .fb-stat--red strong { color: #c92a2a; }
+
+  .fb-reasons-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 11px;
+    font-weight: 650;
+    color: #495057;
+  }
+  .fb-reasons-count {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 99px;
+    background: #f1f3f5;
+    color: #868e96;
+    font-size: 10px;
+    font-weight: 650;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .fb-reason-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .fb-reason {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .fb-reason-rank {
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    background: #f1f3f5;
+    color: #868e96;
+    font-size: 10px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 1px;
+    font-variant-numeric: tabular-nums;
+  }
+  .fb-reason-main { flex: 1; min-width: 0; }
+  .fb-reason-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .fb-reason-label {
+    font-size: 11.5px;
+    color: #343a40;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .fb-reason-count {
+    font-size: 11px;
+    font-weight: 700;
+    color: #212529;
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+  }
+  .fb-reason-bar {
+    height: 4px;
+    background: #f1f3f5;
+    border-radius: 99px;
+    overflow: hidden;
+  }
+  .fb-reason-fill {
+    height: 100%;
+    background: #495057;
+    border-radius: 99px;
+    transition: width 0.25s ease;
+  }
+
+  @media (max-width: 1100px) {
+    .db-layout { padding-right: 1.25rem !important; }
+    .db-main { padding-right: 0; }
+    .db-rightbar {
+      position: static;
+      width: 100%;
+      height: auto;
+      margin-top: 14px;
+    }
+    .db-rightbar-card {
+      max-height: none;
+      height: auto;
+      border-radius: 0 !important;
+      border: 1px solid #e9ecef;
+    }
+    .fb-stats { grid-template-columns: repeat(3, 1fr); }
+  }
+
   .db-title-bar { display: flex; align-items: center; justify-content: space-between; }
-  .db-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-  @media (max-width: 900px) { .db-grid-2 { grid-template-columns: 1fr; } }
+  .db-title-bar h4 {
+    font-size: 15px !important;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    color: #212529;
+  }
+  .db-page-sub {
+    font-size: 11px;
+    color: #868e96;
+    margin-top: 2px;
+  }
+  .db-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  @media (max-width: 1100px) {
+    .db-grid-2 { grid-template-columns: 1fr; }
+  }
 
   /* ── Card ── */
   .db-card {
     background: #fff;
-    border-radius: 12px;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.04);
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+    box-shadow: none;
     overflow: hidden;
+    font-size: 12px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
   }
   .db-card-head {
     display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    flex-wrap: wrap;
+    flex-direction: column;
+    align-items: stretch;
     gap: 10px;
-    padding: 14px 18px 12px;
+    padding: 12px 14px;
     border-bottom: 1px solid #f1f3f5;
+    background: #fcfcfd;
   }
-  .db-card-title-block { display: flex; align-items: center; gap: 10px; }
+  .db-card-title-block {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
   .db-section-icon {
-    width: 36px; height: 36px; border-radius: 9px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 17px; flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
   }
-  .db-card-title { font-size: 13.5px; font-weight: 700; color: #1a1a2e; line-height: 1.2; }
-  .db-card-subtitle { font-size: 11px; color: #adb5bd; margin-top: 2px; }
+  .db-card-title {
+    font-size: 12.5px;
+    font-weight: 650;
+    color: #212529;
+    line-height: 1.25;
+  }
+  .db-card-subtitle {
+    font-size: 10.5px;
+    color: #868e96;
+    margin-top: 1px;
+  }
 
   /* ── Filters ── */
-  .db-filters { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .db-select {
-    font-size: 12px; padding: 4px 28px 4px 8px; height: 30px;
-    border: 1px solid #dee2e6; border-radius: 6px;
-    background: #f8f9fa url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 8px center;
-    background-size: 12px;
-    -webkit-appearance: none; -moz-appearance: none; appearance: none;
-    color: #495057; min-width: 100px; max-width: 150px;
-    cursor: pointer; outline: none;
+  .db-filters {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap;
   }
-  .db-select:focus { border-color: #3b5bdb; box-shadow: 0 0 0 2px rgba(59,91,219,0.12); }
+  .db-select,
+  .db-filter-select {
+    font-size: 11.5px !important;
+    padding: 3px 24px 3px 8px;
+    height: 26px;
+    border: 1px solid #dee2e6;
+    border-radius: 5px;
+    background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%2368686e' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 6px center;
+    background-size: 10px;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    color: #495057;
+    min-width: 96px;
+    max-width: 148px;
+    cursor: pointer;
+    outline: none;
+  }
+  .db-select:focus,
+  .db-filter-select:focus,
+  .db-date:focus {
+    border-color: #868e96;
+    box-shadow: 0 0 0 2px rgba(33, 37, 41, 0.06);
+  }
   .db-date {
-    font-size: 12px; padding: 4px 6px; height: 30px;
-    border: 1px solid #dee2e6; border-radius: 6px;
-    background: #f8f9fa; color: #495057; width: 130px;
+    font-size: 11.5px;
+    padding: 3px 6px;
+    height: 26px;
+    border: 1px solid #dee2e6;
+    border-radius: 5px;
+    background: #fff;
+    color: #495057;
+    width: 124px;
   }
 
   /* ── Role tabs ── */
-  .db-role-tabs { display: flex; gap: 3px; }
+  .db-role-tabs { display: flex; gap: 3px; flex-wrap: wrap; }
   .db-role-btn {
-    font-size: 11.5px; font-weight: 600; padding: 3px 10px; height: 28px;
-    border: 1.5px solid #dee2e6; border-radius: 6px;
-    background: #fff; color: #6c757d; cursor: pointer;
-    transition: all 0.15s ease;
+    font-size: 10.5px;
+    font-weight: 600;
+    padding: 2px 8px;
+    height: 26px;
+    border: 1px solid #dee2e6;
+    border-radius: 5px;
+    background: #fff;
+    color: #6c757d;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
   }
   .db-role-btn.active {
-    background: var(--rc); border-color: var(--rc);
+    background: var(--rc);
+    border-color: var(--rc);
     color: #fff;
   }
-  .db-role-btn:not(.active):hover { background: #f1f3f5; }
+  .db-role-btn:not(.active):hover {
+    background: #f8f9fa;
+    border-color: #ced4da;
+  }
 
   /* ── Summary chips ── */
   .db-chips {
-    display: flex; gap: 0; border-bottom: 1px solid #f1f3f5;
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid #f1f3f5;
+    background: #fff;
   }
   .db-chip {
-    flex: 1; padding: 10px 14px; text-align: center;
+    flex: 1;
+    padding: 8px 10px;
+    text-align: center;
     border-right: 1px solid #f1f3f5;
   }
   .db-chip:last-child { border-right: none; }
-  .db-chip-val { display: block; font-size: 18px; font-weight: 700; line-height: 1.1; }
-  .db-chip-lbl { display: block; font-size: 10.5px; color: #adb5bd; margin-top: 2px; }
-  .db-chip--blue  .db-chip-val { color: #3b5bdb; }
-  .db-chip--green .db-chip-val { color: #2f9e44; }
-  .db-chip--teal  .db-chip-val { color: #0ca678; }
-  .db-chip--purple .db-chip-val { color: #7950f2; }
-  .db-chip--yellow .db-chip-val { color: #f08c00; }
-  .db-chip--red   .db-chip-val { color: #e03131; }
-  .db-chip--gray  .db-chip-val { color: #495057; }
+  .db-chip-val {
+    display: block;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.15;
+    font-variant-numeric: tabular-nums;
+  }
+  .db-chip-lbl {
+    display: block;
+    font-size: 10px;
+    color: #868e96;
+    margin-top: 2px;
+    font-weight: 500;
+  }
+  .db-chip--blue  .db-chip-val { color: #364fc7; }
+  .db-chip--green .db-chip-val { color: #2b8a3e; }
+  .db-chip--teal  .db-chip-val { color: #087f5b; }
+  .db-chip--purple .db-chip-val { color: #495057; }
+  .db-chip--yellow .db-chip-val { color: #e67700; }
+  .db-chip--red   .db-chip-val { color: #c92a2a; }
+  .db-chip--gray  .db-chip-val { color: #343a40; }
 
   /* ── Table ── */
-  .db-card-body { padding: 0; }
-  .db-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .db-card-body { padding: 0; flex: 1; }
+  .db-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
   .db-table thead tr { background: #f8f9fa; }
   .db-table th {
-    padding: 8px 14px; font-size: 11px; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.4px;
-    color: #868e96; border-bottom: 1px solid #f1f3f5;
+    padding: 6px 12px;
+    font-size: 10px;
+    font-weight: 650;
+    text-transform: uppercase;
+    letter-spacing: 0.35px;
+    color: #868e96;
+    border-bottom: 1px solid #e9ecef;
     white-space: nowrap;
   }
   .db-table td {
-    padding: 9px 14px; border-bottom: 1px solid #f8f9fa;
-    vertical-align: middle; color: #343a40;
+    padding: 6px 12px;
+    border-bottom: 1px solid #f1f3f5;
+    vertical-align: middle;
+    color: #343a40;
+    font-size: 12px;
+  }
+  .db-table :global(th.db-sn),
+  .db-table :global(td.db-sn) {
+    width: 36px;
+    max-width: 40px;
+    padding-left: 0.25rem !important;
+    padding-right: 0.25rem !important;
+    text-align: center !important;
+    white-space: nowrap;
   }
   .db-table tbody tr:last-child td { border-bottom: none; }
-  .db-table tbody tr:hover td { background: #f8f9fb; }
+  .db-table tbody tr:hover td { background: #f8f9fa; }
   .db-table tfoot td {
-    padding: 9px 14px; border-top: 2px solid #f1f3f5;
-    background: #f8f9fa; font-size: 12px;
+    padding: 7px 12px;
+    border-top: 1px solid #e9ecef;
+    background: #f8f9fa;
+    font-size: 12px;
   }
   .db-row-stale td { background: #fff5f5 !important; }
-  .db-row-stale:hover td { background: #ffeded !important; }
+  .db-row-stale:hover td { background: #ffe3e3 !important; }
 
   /* ── Badges ── */
   .db-badge {
-    display: inline-flex; align-items: center; justify-content: center;
-    min-width: 24px; padding: 2px 8px; border-radius: 20px;
-    font-size: 11.5px; font-weight: 700; line-height: 1.4;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    padding: 1px 7px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 650;
+    line-height: 1.4;
+    font-variant-numeric: tabular-nums;
   }
-  .db-badge--blue   { background: #e7f0ff; color: #3b5bdb; }
-  .db-badge--green  { background: #ebfbee; color: #2f9e44; }
-  .db-badge--teal   { background: #e6fcf5; color: #0ca678; }
-  .db-badge--purple { background: #f3f0ff; color: #7950f2; }
-  .db-badge--yellow { background: #fff9db; color: #f08c00; }
-  .db-badge--red    { background: #fff5f5; color: #e03131; }
+  .db-badge--blue   { background: #edf2ff; color: #364fc7; }
+  .db-badge--green  { background: #ebfbee; color: #2b8a3e; }
+  .db-badge--teal   { background: #e6fcf5; color: #087f5b; }
+  .db-badge--purple { background: #f1f3f5; color: #343a40; }
+  .db-badge--yellow { background: #fff9db; color: #e67700; }
+  .db-badge--red    { background: #fff5f5; color: #c92a2a; }
   .db-badge--gray   { background: #f1f3f5; color: #495057; }
-  .db-badge--orange { background: #fff4e6; color: #e8590c; }
+  .db-badge--orange { background: #fff4e6; color: #d9480f; }
 
   /* ── Progress bar ── */
-  .db-bar-cell { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
-  .db-bar { flex: 1; height: 5px; background: #e9ecef; border-radius: 99px; min-width: 40px; max-width: 80px; }
-  .db-bar-fill { height: 5px; border-radius: 99px; transition: width 0.3s ease; }
-  .db-bar-pct { font-size: 11px; color: #adb5bd; min-width: 30px; text-align: right; }
+  .db-bar-cell {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    justify-content: flex-end;
+  }
+  .db-bar {
+    flex: 1;
+    height: 4px;
+    background: #e9ecef;
+    border-radius: 99px;
+    min-width: 36px;
+    max-width: 72px;
+    overflow: hidden;
+  }
+  .db-bar-fill {
+    height: 100%;
+    border-radius: 99px;
+    transition: width 0.25s ease;
+  }
+  .db-bar-pct {
+    font-size: 10.5px;
+    color: #868e96;
+    min-width: 28px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
 
   /* ── Status pill ── */
   .db-status-pill {
-    display: inline-block; font-size: 11px; padding: 2px 8px;
-    border-radius: 20px; background: #f1f3f5; color: #495057;
-    border: 1px solid #dee2e6;
+    display: inline-block;
+    font-size: 10.5px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: #f1f3f5;
+    color: #495057;
+    border: 1px solid #e9ecef;
   }
 
   /* ── Flags ── */
   .db-flag {
-    display: inline-flex; align-items: center; font-size: 11px;
-    font-weight: 600; padding: 3px 8px; border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    font-size: 10.5px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 4px;
   }
-  .db-flag--red   { background: #fff5f5; color: #e03131; }
-  .db-flag--green { background: #ebfbee; color: #2f9e44; }
+  .db-flag--red   { background: #fff5f5; color: #c92a2a; }
+  .db-flag--green { background: #ebfbee; color: #2b8a3e; }
 
-  /* ── Loading / empty ── */
-  .db-empty { text-align: center; padding: 32px; color: #adb5bd; font-size: 13px; }
+  /* ── Empty ── */
+  .db-empty {
+    text-align: center;
+    padding: 28px 16px;
+    color: #adb5bd;
+    font-size: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  .db-empty i { font-size: 22px; opacity: 0.7; }
 
-  /* ── Skeleton loader ── */
+  /* ── Skeleton / refresh ── */
   @keyframes spin { to { transform: rotate(360deg); } }
   .spin { animation: spin 0.7s linear infinite; display: inline-block; }
   .db-refresh-btn {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 30px; height: 30px; padding: 0;
-    border: 1px solid #dee2e6; border-radius: 6px;
-    background: #fff; color: #495057; font-size: 14px;
-    cursor: pointer; transition: background 0.15s, color 0.15s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 1px solid #dee2e6;
+    border-radius: 5px;
+    background: #fff;
+    color: #495057;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
   }
-  .db-refresh-btn:hover:not(:disabled) { background: #f1f3f5; color: #3b5bdb; border-color: #3b5bdb; }
-  .db-refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .db-refresh-btn:hover:not(:disabled) {
+    background: #f8f9fa;
+    color: #212529;
+  }
+  .db-refresh-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .db-card-body--refreshing,
+  .db-rightbar-body--refreshing {
+    opacity: 0.55;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+  }
   @keyframes skel-shimmer {
     0%   { background-position: -400px 0; }
     100% { background-position: 400px 0; }
   }
   .skel-line {
-    height: 12px; border-radius: 6px;
+    height: 10px;
+    border-radius: 4px;
     background: linear-gradient(90deg, #f1f3f5 25%, #e9ecef 50%, #f1f3f5 75%);
     background-size: 800px 100%;
     animation: skel-shimmer 1.4s infinite linear;
@@ -1262,37 +1836,52 @@
 
   /* ── Pagination ── */
   .db-pagination {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 16px; border-top: 1px solid #f1f3f5;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border-top: 1px solid #f1f3f5;
   }
   .db-page-btn {
-    width: 28px; height: 28px; border: 1px solid #dee2e6;
-    background: #fff; border-radius: 6px; font-size: 14px;
-    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    width: 26px;
+    height: 26px;
+    border: 1px solid #dee2e6;
+    background: #fff;
+    border-radius: 5px;
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
   .db-page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-  .db-page-info { font-size: 12px; color: #6c757d; padding: 0 4px; }
+  .db-page-info { font-size: 11px; color: #6c757d; padding: 0 4px; }
 
-  /* ── Status badges (Section 5) ── */
+  /* ── Status badges ── */
   :global(.db-status-badge) {
-    display: inline-flex; align-items: center; justify-content: center;
-    min-width: 22px; padding: 2px 7px; border-radius: 20px;
-    font-size: 11px; font-weight: 700; line-height: 1.4;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 10.5px;
+    font-weight: 650;
+    line-height: 1.4;
     border: 1px solid transparent;
   }
-  :global(.dsb--primary)   { background: #dbe4ff; color: #3b5bdb; border-color: #bac8ff; }
+  :global(.dsb--primary)   { background: #edf2ff; color: #364fc7; border-color: #bac8ff; }
   :global(.dsb--info)      { background: #e3fafc; color: #0c8599; border-color: #99e9f2; }
   :global(.dsb--secondary) { background: #f1f3f5; color: #495057; border-color: #dee2e6; }
   :global(.dsb--warning)   { background: #fff9db; color: #e67700; border-color: #ffe066; }
-  :global(.dsb--success)   { background: #ebfbee; color: #2f9e44; border-color: #b2f2bb; }
-  :global(.dsb--danger)    { background: #fff5f5; color: #e03131; border-color: #ffc9c9; }
+  :global(.dsb--success)   { background: #ebfbee; color: #2b8a3e; border-color: #b2f2bb; }
+  :global(.dsb--danger)    { background: #fff5f5; color: #c92a2a; border-color: #ffc9c9; }
   :global(.dsb--dark)      { background: #f1f3f5; color: #212529; border-color: #ced4da; }
 
-  /* ── Soft icon backgrounds ── */
-  :global(.bg-primary-soft) { background: #e7f0ff; }
+  :global(.bg-primary-soft) { background: #edf2ff; }
   :global(.bg-success-soft) { background: #ebfbee; }
   :global(.bg-warning-soft) { background: #fff9db; }
   :global(.bg-danger-soft)  { background: #fff5f5; }
-  :global(.bg-purple-soft)  { background: #f3f0ff; }
-  :global(.text-purple) { color: #7950f2; }
+  :global(.bg-purple-soft)  { background: #f1f3f5; }
+  :global(.text-purple) { color: #495057; }
 </style>

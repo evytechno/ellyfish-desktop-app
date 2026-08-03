@@ -3,7 +3,7 @@
   import jQuery from "jquery";
   import { goto } from "$app/navigation";
   import { clearUser, setUser } from "../../stores/userStore";
-  import { checkAuth, logoutUser, getAvailableRoles, getRolePermissions, saveSession } from "$lib/utils/auth";
+  import { checkAuth, logoutUser, getAvailableRoles, getRolePermissions, saveSession, canAccess } from "$lib/utils/auth";
   import { apiFetch } from "$lib/api/client";
   import Swal from "sweetalert2";
   import Notification from "./Notification.svelte";
@@ -13,14 +13,18 @@
   import { API_ROUTES } from "$lib/constants/apiRoutes";
   import DynamicDataTable from "$lib/components/DynamicDataTable.svelte";
   import { statusNamesStore } from "$lib/stores/statusNames";
-  import { settingStore } from "$lib/stores/dataStores";
+  import { settingStore, usersAllStore } from "$lib/stores/dataStores";
   import { get } from "svelte/store";
+  import { page } from "$app/stores";
+  import { showToast } from "$lib/stores/uiToast";
 
   let setting;
 
   let currentUser;
   let availableRoles = [];
   let rolePermissions = null;
+
+  $: currentPath = $page.url.pathname;
 
   const SUBROLE_LABELS = { telecaller: "Telecaller", tech: "Tech", tech_helper: "Tech Helper" };
 
@@ -239,7 +243,7 @@
   const updateOnlineStatus = (onlineStatus) => {
     Swal.fire({
       title: "Update Online Status",
-      text: `Are you sure you want to set your status to "${onlineStatus ? "Online" : "Offline"}"?`,
+      text: `Are you sure you want to set employee login to "${onlineStatus ? "Online" : "Offline"}"?`,
       icon: "question",
       showCancelButton: true,
       confirmButtonText: "Yes, update",
@@ -260,6 +264,181 @@
       }
     });
   };
+
+  function emergencyActive() {
+    return (
+      !!setting?.emergencyLoginEnabled ||
+      (Array.isArray(setting?.emergencyLoginUserIds) &&
+        setting.emergencyLoginUserIds.length > 0)
+    );
+  }
+
+  function emergencyButtonLabel() {
+    if (setting?.emergencyLoginEnabled) return "Emergency ON";
+    const n = setting?.emergencyLoginUserIds?.length || 0;
+    if (n > 0) return `Emergency (${n})`;
+    return "Allow login";
+  }
+
+  function escapeHtml(str) {
+    return String(str ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  async function openEmergencyLoginDialog() {
+    const selected = new Set(
+      (setting?.emergencyLoginUserIds || []).map((id) => Number(id)),
+    );
+    const modeAll = !!setting?.emergencyLoginEnabled;
+
+    // Open immediately (no wait → no delayed “pop” jerk)
+    const result = await Swal.fire({
+      title: "Emergency employee login",
+      html: `
+        <p class="emg-swal-hint">
+          Login is locked. Choose who may sign in until you turn this off.
+        </p>
+        <div class="emg-swal-modes">
+          <label class="emg-swal-mode">
+            <input type="radio" name="emg-mode" value="all" ${modeAll ? "checked" : ""} />
+            Allow all employees
+          </label>
+          <label class="emg-swal-mode">
+            <input type="radio" name="emg-mode" value="specific" ${!modeAll ? "checked" : ""} />
+            Allow specific employees
+          </label>
+        </div>
+        <div id="emg-user-list" class="emg-swal-list" style="${!modeAll ? "" : "opacity:0.45;pointer-events:none;"}">
+          <p class="emg-swal-loading">Loading employees…</p>
+        </div>
+      `,
+      showCancelButton: true,
+      showDenyButton: emergencyActive(),
+      confirmButtonText: "Save",
+      denyButtonText: "Disable all",
+      denyButtonColor: "#dc3545",
+      width: 480,
+      heightAuto: false,
+      scrollbarPadding: false,
+      focusConfirm: false,
+      allowOutsideClick: () => !Swal.isLoading(),
+      showClass: { popup: "swal2-show emg-swal-show" },
+      hideClass: { popup: "swal2-hide" },
+      customClass: {
+        popup: "emg-swal-popup",
+        htmlContainer: "emg-swal-html",
+      },
+      didOpen: async () => {
+        const list = document.getElementById("emg-user-list");
+        const radios = document.querySelectorAll('input[name="emg-mode"]');
+        const syncListState = () => {
+          const specific = document.querySelector(
+            'input[name="emg-mode"][value="specific"]',
+          )?.checked;
+          if (list) {
+            list.style.opacity = specific ? "1" : "0.45";
+            list.style.pointerEvents = specific ? "auto" : "none";
+          }
+        };
+        radios.forEach((r) => r.addEventListener("change", syncListState));
+
+        let users = [];
+        try {
+          const cached = get(usersAllStore);
+          if (cached?.length) {
+            users = cached;
+          } else {
+            const data = await authApiFetch(`${API_ROUTES.USER}/all`);
+            users = Array.isArray(data) ? data : data?.data ?? data?.users ?? [];
+            if (users?.length) usersAllStore.set(users);
+          }
+        } catch (err) {
+          if (list) {
+            list.innerHTML = `<p class="emg-swal-loading">${escapeHtml(errorHandle(err) || "Failed to load users")}</p>`;
+          }
+          return;
+        }
+
+        if (!list) return;
+        list.innerHTML =
+          users
+            .map((u) => {
+              const id = Number(u.id);
+              const checked = selected.has(id) ? "checked" : "";
+              const role = escapeHtml(u.role || "");
+              const name = escapeHtml(u.name || "User");
+              return `<label class="emg-swal-user">
+                <input type="checkbox" class="emg-user" value="${id}" ${checked} />
+                <span><strong>${name}</strong> <span class="emg-swal-role">(${role})</span></span>
+              </label>`;
+            })
+            .join("") || `<p class="emg-swal-loading">No employees found.</p>`;
+        syncListState();
+      },
+      preConfirm: () => {
+        const mode =
+          document.querySelector('input[name="emg-mode"]:checked')?.value ||
+          "specific";
+        if (mode === "all") return { mode: "all" };
+        const ids = [...document.querySelectorAll(".emg-user:checked")].map(
+          (el) => Number(el.value),
+        );
+        if (!ids.length) {
+          Swal.showValidationMessage(
+            "Select at least one employee, or choose Allow all.",
+          );
+          return false;
+        }
+        return { mode: "specific", userIds: ids };
+      },
+    });
+
+    const toastOk = (msg) =>
+      showToast({ type: "success", message: msg, duration: 2800 });
+
+    if (result.isDenied) {
+      try {
+        const data = await authApiFetch(`${API_ROUTES.SETTING}/emergency-login`, {
+          method: "PUT",
+          data: { enabled: false },
+        });
+        setting = data.data;
+        settingStore.set(data.data);
+        toastOk(data.message);
+      } catch (err) {
+        showToast({ type: "error", message: errorHandle(err) || "Failed to update" });
+      }
+      return;
+    }
+
+    if (!result.isConfirmed || !result.value) return;
+
+    try {
+      let data;
+      if (result.value.mode === "all") {
+        data = await authApiFetch(`${API_ROUTES.SETTING}/emergency-login`, {
+          method: "PUT",
+          data: { enabled: true },
+        });
+      } else {
+        data = await authApiFetch(
+          `${API_ROUTES.SETTING}/emergency-login-users`,
+          {
+            method: "PUT",
+            data: { userIds: result.value.userIds },
+          },
+        );
+      }
+      setting = data.data;
+      settingStore.set(data.data);
+      toastOk(data.message);
+    } catch (err) {
+      showToast({ type: "error", message: errorHandle(err) || "Failed to update" });
+    }
+  }
 
   let timerText = "";
   let intervalId;
@@ -556,39 +735,84 @@
         <i class="ti ti-arrow-bar-to-right"></i>
       </button>
 
-      <!-- Search — visible to telecaller and master only -->
-      {#if currentUser?.subRole === "telecaller" || currentUser?.role === "master"}
-        <div class="me-auto flex items-center header-search d-lg-flex d-none">
-          <!-- Search -->
-          <div class="input-icon relative me-2">
-            <input
-              type="text"
-              bind:value={headerInput}
-              on:keydown={handleSearchKeydown}
-              class="form-control"
-              placeholder="Search Keyword"
-            />
-            <button class="input-icon-addon d-inline-flex p-0 header-search-icon">
-              <i class="ti ti-command"></i>
-            </button>
-          </div>
+      <!-- Search + quick links -->
+      <div class="me-auto flex items-center header-search gap-2">
+        {#if currentUser?.subRole === "telecaller" || currentUser?.role === "master"}
+          <div class="header-search-group flex items-center d-lg-flex d-none">
+            <div class="input-icon relative">
+              <input
+                type="text"
+                bind:value={headerInput}
+                on:keydown={handleSearchKeydown}
+                class="form-control header-search-input"
+                placeholder="Search Keyword"
+              />
+              <button class="input-icon-addon d-inline-flex p-0 header-search-icon" type="button" tabindex="-1">
+                <i class="ti ti-command"></i>
+              </button>
+            </div>
 
-          <button
-            id="header-search-btn"
-            href="#order_lists"
-            data-bs-toggle="modal"
-            data-bs-target="#order_lists"
-            class="fw-medium bg-primary text-white p-1.5 px-2 rounded"
-            on:click={commitAndSearch}
-          >
-            <i class="ti ti-search"></i>
-          </button>
-          <!-- /Search -->
-          <div class="text-primary pl-2">
-            {timerText}
+            <button
+              id="header-search-btn"
+              href="#order_lists"
+              data-bs-toggle="modal"
+              data-bs-target="#order_lists"
+              class="header-control-btn header-search-submit"
+              on:click={commitAndSearch}
+              type="button"
+              title="Search"
+            >
+              <i class="ti ti-search"></i>
+            </button>
+            <div class="header-timer text-primary">
+              {timerText}
+            </div>
           </div>
+        {/if}
+
+        <div class="header-quick-links flex items-center gap-1">
+          <a
+            href="/admin/media"
+            class="header-quick-link"
+            class:active={currentPath.startsWith("/admin/media")}
+            title="Media"
+          >
+            <i class="ti ti-photo"></i>
+            <span class="d-none d-md-inline">Media</span>
+          </a>
+          {#if ((currentUser?.subRole !== "tech" && currentUser?.subRole !== "tech_helper") || currentUser?.orderAccess) && canAccess("orders", "view", currentUser)}
+            <a
+              href="/admin/order"
+              class="header-quick-link"
+              class:active={currentPath === "/admin/order" || (currentPath.startsWith("/admin/order/") && !["/admin/order/won", "/admin/order/lost", "/admin/order/last-activity"].some((p) => currentPath.startsWith(p)))}
+              title="Orders"
+            >
+              <i class="ti ti-shopping-cart"></i>
+              <span class="d-none d-md-inline">Orders</span>
+            </a>
+            <a
+              href="/admin/order-list/excel"
+              class="header-quick-link"
+              class:active={currentPath.startsWith("/admin/order-list/excel")}
+              title="Excel Orders"
+            >
+              <i class="ti ti-file-spreadsheet"></i>
+              <span class="d-none d-md-inline">Excel Orders</span>
+            </a>
+          {/if}
+          {#if ((currentUser?.subRole !== "tech" && currentUser?.subRole !== "tech_helper") || currentUser?.orderAccess) && canAccess("work_order", "view", currentUser)}
+            <a
+              href="/admin/workorder"
+              class="header-quick-link"
+              class:active={currentPath.startsWith("/admin/workorder")}
+              title="Work Order"
+            >
+              <i class="ti ti-file-description"></i>
+              <span class="d-none d-md-inline">Work Order</span>
+            </a>
+          {/if}
         </div>
-      {/if}
+      </div>
     </div>
 
     <div class="flex items-center">
@@ -628,26 +852,65 @@
       </div> -->
       {#if currentUser?.role === "master"}
         {#key reactive}
-          <button
-            on:click={() => setOnlineStatus()}
-            class="header-item d-none d-sm-flex"
-            title="Status"
-          >
-            <div class="dropdown me-2">
-              <div class="btn topbar-link">
-                {#if setting?.onlineStatus}
-                  <i class="ti ti-circle-filled text-success"></i>
+          <div class="header-item header-login-ctrls">
+            {#if !setting?.onlineStatus}
+              <button
+                type="button"
+                class="header-login-btn"
+                class:is-emergency={emergencyActive()}
+                class:is-locked={!emergencyActive()}
+                on:click={() => openEmergencyLoginDialog()}
+                title={emergencyActive()
+                  ? "Emergency login active — click to manage"
+                  : "Login locked — click to allow emergency employee login"}
+              >
+                {#if emergencyActive()}
+                  <i class="ti ti-alert-triangle-filled"></i>
+                  <span>{emergencyButtonLabel()}</span>
                 {:else}
-                  <i class="ti ti-circle text-secondary"></i>
+                  <i class="ti ti-lock"></i>
+                  <span>Allow login</span>
                 {/if}
-              </div>
-            </div>
-          </button>
+              </button>
+            {/if}
+            <button
+              type="button"
+              class="header-login-btn"
+              class:is-online={!!setting?.onlineStatus}
+              class:is-offline={!setting?.onlineStatus}
+              on:click={() => setOnlineStatus()}
+              title={setting?.onlineStatus
+                ? "Employee login Online — click to go Offline"
+                : "Employee login Offline — click to go Online"}
+            >
+              {#if setting?.onlineStatus}
+                <i class="ti ti-circle-filled"></i>
+                <span>Online</span>
+              {:else}
+                <i class="ti ti-circle"></i>
+                <span>Offline</span>
+              {/if}
+            </button>
+          </div>
         {/key}
       {/if}
 
       <!-- Notification Dropdown -->
       <Notification />
+
+      {#if canAccess("client_visits", "view", currentUser)}
+        <div class="header-item">
+          <a
+            href="/admin/client-visit"
+            class="header-quick-link me-2"
+            class:active={currentPath.startsWith("/admin/client-visit")}
+            title="Client Visits"
+          >
+            <i class="ti ti-map-pin"></i>
+            <span class="d-none d-md-inline">Visits</span>
+          </a>
+        </div>
+      {/if}
 
       <!-- User Dropdown -->
       <div class="dropdown profile-dropdown flex items-center justify-center">
@@ -661,7 +924,8 @@
         >
           <img
             src="/assets/img/profiles/user.png"
-            width="38"
+            width="28"
+            height="28"
             class="rounded-1 flex"
             alt="userImage"
           />
@@ -794,6 +1058,337 @@
   @media print {
     .no-print {
       display: none;
+    }
+  }
+
+  /* Shared Cursor-like control size across the whole header */
+  :global(.navbar-header) {
+    --header-control-h: 28px;
+    --header-control-fs: 12px;
+    --header-control-radius: 6px;
+  }
+
+  .header-search {
+    gap: 6px;
+    align-items: center;
+  }
+
+  /* Search input — match 28px control height (overrides main.css 38px) */
+  :global(.navbar-header .header-search .header-search-input),
+  :global(.navbar-header .header-search .form-control) {
+    box-sizing: border-box !important;
+    width: 180px !important;
+    height: var(--header-control-h) !important;
+    min-height: var(--header-control-h) !important;
+    max-height: var(--header-control-h) !important;
+    padding: 0 26px 0 10px !important;
+    font-size: var(--header-control-fs) !important;
+    line-height: calc(var(--header-control-h) - 2px) !important;
+    border-radius: var(--header-control-radius) !important;
+    border: 1px solid var(--topbar-item-border, #e8e8e8) !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: var(--topbar-item-color, #495057);
+  }
+  :global(.navbar-header .header-search .form-control::placeholder) {
+    font-size: var(--header-control-fs) !important;
+    color: #adb5bd;
+    opacity: 1;
+  }
+  :global(.navbar-header .header-search .header-search-icon) {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 20px;
+    padding: 0 !important;
+    border: none;
+    background: transparent;
+    color: #868e96;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  :global(.navbar-header .header-search .input-icon) {
+    display: inline-flex;
+    align-items: center;
+    height: var(--header-control-h);
+  }
+
+  .header-control-btn,
+  .header-quick-link,
+  :global(.navbar-header .topbar-menu .header-item .topbar-link),
+  :global(.navbar-header .header-item .topbar-link) {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    height: var(--header-control-h) !important;
+    min-height: var(--header-control-h) !important;
+    max-height: var(--header-control-h);
+    border-radius: var(--header-control-radius) !important;
+    font-size: var(--header-control-fs) !important;
+    font-weight: 500;
+    line-height: 1 !important;
+    white-space: nowrap;
+    border: 1px solid transparent;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  }
+
+  :global(.navbar-header .topbar-menu .header-item .topbar-link),
+  :global(.navbar-header .header-item .topbar-link) {
+    width: var(--header-control-h) !important;
+    min-width: var(--header-control-h) !important;
+    padding: 0 !important;
+  }
+
+  .header-control-btn,
+  .header-quick-link {
+    padding: 0 8px;
+  }
+
+  .header-control-btn i,
+  .header-quick-link i,
+  :global(.navbar-header .topbar-link i),
+  :global(.navbar-header .header-item .topbar-link i) {
+    font-size: 14px !important;
+    line-height: 1;
+  }
+
+  .header-search-submit {
+    width: var(--header-control-h) !important;
+    min-width: var(--header-control-h) !important;
+    max-width: var(--header-control-h);
+    padding: 0 !important;
+    margin: 0 0 0 6px !important;
+    gap: 0 !important;
+    background: var(--primary, #e41f07);
+    color: #fff;
+    border-color: var(--primary, #e41f07);
+  }
+
+  .header-search-submit i {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .header-search-group {
+    gap: 0;
+    align-items: center;
+  }
+
+  .header-search-submit:hover {
+    filter: brightness(0.95);
+    color: #fff;
+  }
+
+  .header-timer {
+    font-size: var(--header-control-fs);
+    line-height: var(--header-control-h);
+    padding-left: 6px;
+    white-space: nowrap;
+  }
+
+  .header-quick-link {
+    color: var(--bs-gray-700, #495057);
+    text-decoration: none;
+    border-color: var(--topbar-item-border, #e8e8e8);
+    background: transparent;
+  }
+
+  .header-quick-link:hover {
+    background: var(--bs-light, #f8f9fa);
+    color: var(--primary, #e41f07);
+    border-color: var(--topbar-item-hover-bg, #f0f0f0);
+  }
+
+  .header-quick-link.active {
+    background: color-mix(in srgb, var(--primary, #e41f07) 10%, transparent);
+    color: var(--primary, #e41f07);
+    border-color: color-mix(in srgb, var(--primary, #e41f07) 25%, transparent);
+  }
+
+  /* Profile avatar matches control height */
+  :global(.navbar-header .profile-dropdown > .topbar-link) {
+    width: var(--header-control-h) !important;
+    min-width: var(--header-control-h) !important;
+    height: var(--header-control-h) !important;
+    padding: 0 !important;
+    border: 1px solid var(--topbar-item-border, #e8e8e8);
+    overflow: visible;
+  }
+  :global(.navbar-header .profile-dropdown > .topbar-link img) {
+    width: 26px !important;
+    height: 26px !important;
+    object-fit: cover;
+  }
+
+  /* Master: login lock / emergency / online controls */
+  .header-login-ctrls {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-right: 8px;
+    flex-shrink: 0;
+  }
+
+  .header-login-btn {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    height: var(--header-control-h, 32px);
+    min-height: var(--header-control-h, 32px);
+    padding: 0 10px;
+    margin: 0;
+    border-radius: var(--header-control-radius, 6px);
+    border: 1px solid transparent;
+    background: transparent;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  }
+
+  .header-login-btn i {
+    font-size: 14px;
+    line-height: 1;
+  }
+
+  .header-login-btn span {
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
+  }
+
+  .header-login-btn.is-locked {
+    color: #b42318;
+    background: #fef3f2;
+    border-color: #fecdca;
+  }
+
+  .header-login-btn.is-locked:hover {
+    background: #fee4e2;
+    border-color: #fda29b;
+  }
+
+  .header-login-btn.is-emergency {
+    color: #b54708;
+    background: #fffaeb;
+    border-color: #fedf89;
+  }
+
+  .header-login-btn.is-emergency:hover {
+    background: #fef0c7;
+    border-color: #fec84b;
+  }
+
+  .header-login-btn.is-online {
+    color: #067647;
+    background: #ecfdf3;
+    border-color: #abefc6;
+  }
+
+  .header-login-btn.is-online:hover {
+    background: #dcfae6;
+    border-color: #75e0a7;
+  }
+
+  .header-login-btn.is-offline {
+    color: #475467;
+    background: #f9fafb;
+    border-color: #d0d5dd;
+  }
+
+  .header-login-btn.is-offline:hover {
+    background: #f2f4f7;
+    border-color: #98a2b3;
+  }
+
+  @media (max-width: 575.98px) {
+    .header-login-btn span {
+      display: none;
+    }
+    .header-login-btn {
+      padding: 0 8px;
+      min-width: var(--header-control-h, 32px);
+    }
+  }
+
+  /* Emergency Swal — fixed height list so popup doesn’t resize/jerk */
+  :global(.emg-swal-popup) {
+    padding: 1.25rem 1.25rem 1rem !important;
+  }
+  :global(.emg-swal-html) {
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+  :global(.emg-swal-hint) {
+    font-size: 13px;
+    margin: 0 0 12px;
+    text-align: left;
+    color: #555;
+  }
+  :global(.emg-swal-modes) {
+    text-align: left;
+    margin-bottom: 10px;
+  }
+  :global(.emg-swal-mode) {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  :global(.emg-swal-list) {
+    height: 240px;
+    max-height: 240px;
+    overflow: auto;
+    border: 1px solid #e5e5e5;
+    border-radius: 6px;
+    padding: 4px 8px;
+    text-align: left;
+    box-sizing: border-box;
+  }
+  :global(.emg-swal-user) {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 4px;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
+    font-size: 13px;
+    text-align: left;
+  }
+  :global(.emg-swal-role) {
+    color: #888;
+    font-size: 11px;
+  }
+  :global(.emg-swal-loading) {
+    font-size: 12px;
+    color: #888;
+    margin: 12px 0;
+    text-align: center;
+  }
+  :global(.emg-swal-show) {
+    animation: emg-swal-in 0.18s ease-out;
+  }
+  @keyframes emg-swal-in {
+    from {
+      opacity: 0;
+      transform: scale(0.98) translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
     }
   }
 </style>

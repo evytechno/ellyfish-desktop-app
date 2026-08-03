@@ -14,12 +14,15 @@
   import ChatQuickModal from "$lib/components/ChatQuickModal.svelte";
   import ChangeListVisiableStatus from "$lib/components/ChangeListVisiableStatus.svelte";
 
-  import OrderFilters from "./components/OrderFilters.svelte";
-  import OrderCreateForm from "./components/OrderCreateForm.svelte";
-  import OrderBulkToolbar from "./components/OrderBulkToolbar.svelte";
-  import OrderListTable from "./components/OrderListTable.svelte";
-  import { generatePdfFromList, generateExcelFromList } from "./components/orderExport.js";
-  import OrderFeedbackModal from "./[id]/components/OrderFeedbackModal.svelte";
+  import {
+    OrderFilters,
+    OrderCreateForm,
+    OrderBulkToolbar,
+    OrderListTable,
+    generatePdfFromList,
+    generateExcelFromList,
+  } from "$lib/features/orders/list";
+  import { OrderFeedbackModal } from "$lib/features/orders/detail";
 
   let currentUser = null;
   let loadingData = true;
@@ -81,6 +84,7 @@
   let filterStatus = null;
   let filterCategory = "";
   let filterSource = "";
+  let filterQuick = "";
   let searchTerm = "";
   let selectedFilter = "last7days";
   let customStartDate = null;
@@ -155,9 +159,30 @@
       filterStatus,
       filterCategory,
       filterSource,
+      filterQuick,
       _refreshKey: gridRefreshKey,
     };
   })();
+
+  const ATTENTION_FILTERS = [
+    { value: "needsAction", label: "Active pipeline", hint: "Open deals still in progress", icon: "ti-briefcase", group: "pipeline" },
+    { value: "needsQuotation", label: "Needs quotation", hint: "Not yet at Quotation Sent", icon: "ti-file-invoice", group: "pipeline" },
+    { value: "quotationSent", label: "Quotation sent", hint: "Awaiting next step after quotation", icon: "ti-send", group: "pipeline" },
+    { value: "followUp", label: "Follow up", hint: "Marked for follow-up", icon: "ti-refresh", group: "pipeline" },
+    { value: "pendingReminder", label: "Reminders", hint: "Unsent reminders for you", icon: "ti-bell", group: "followup" },
+    { value: "reminderDue", label: "Due now", hint: "Reminder time has passed", icon: "ti-bell-ringing", group: "followup" },
+    { value: "noFollowUp", label: "Idle 7 days", hint: "No activity in the last 7 days", icon: "ti-clock-pause", group: "followup" },
+    { value: "noCall", label: "No call", hint: "No Call logged", icon: "ti-phone-off", group: "contact" },
+    { value: "noEmail", label: "No email", hint: "No Email logged", icon: "ti-mail-off", group: "contact" },
+    { value: "noWhatsApp", label: "No WhatsApp", hint: "No WhatsApp logged", icon: "ti-brand-whatsapp", group: "contact" },
+    { value: "noChat", label: "No contact", hint: "No Call, Email, or WhatsApp logged", icon: "ti-message-off", group: "contact" },
+  ];
+
+  const ATTENTION_GROUPS = [
+    { key: "pipeline", label: "Pipeline" },
+    { key: "followup", label: "Follow-up" },
+    { key: "contact", label: "Missing contact" },
+  ];
 
   const allStatuses = [
     "New Lead", "Contacted", "Quotation Sent", "Follow Up", "Needs Assessment",
@@ -199,6 +224,7 @@
     if (filterStatus) q.set("status", filterStatus);
     if (filterCategory) q.set("category", filterCategory);
     if (filterSource) q.set("source", filterSource);
+    if (filterQuick) q.set("quick", filterQuick);
     q.set("page", String(listCurrentPage));
     q.set("limit", String(listRowsPerPage));
     return q;
@@ -281,7 +307,7 @@
     }
   }
 
-  $: [searchTerm, filterStatus, filterCategory, selectedFilter, customStartDate, customEndDate, orderBy, userId, companyId, trashBin],
+  $: [searchTerm, filterStatus, filterCategory, filterQuick, selectedFilter, customStartDate, customEndDate, orderBy, userId, companyId, trashBin],
     onFilterChange();
 
   // ── View type ─────────────────────────────────────────────────────────────
@@ -417,14 +443,14 @@
   });
 </script>
 
-<div class="page-wrapper">
+<div class="page-wrapper order-page">
   <div class="content">
     <!-- Page Header -->
-    <div class="flex items-center justify-between gap-2 mb-4 flex-wrap">
+    <div class="order-page-header mb-3">
       <div>
-        <h4 class="mb-1">
+        <h4 class="mb-1 order-page-title">
           Orders
-          <span class="text-xs font-normal">{searchString ? `(${searchString})` : ""}</span>
+          <span class="order-page-sub">{searchString ? `(${searchString})` : ""}</span>
         </h4>
         <nav aria-label="breadcrumb">
           <ol class="breadcrumb mb-0 p-0">
@@ -434,16 +460,16 @@
         </nav>
       </div>
       {#if !trashBin}
-        <div class="gap-2 flex items-center flex-wrap">
+        <div class="order-page-actions">
           {#if viewType === "grid"}
-            <a href="#order_lists_status" class="btn btn-outline-light" data-bs-toggle="modal" data-bs-target="#order_lists_status">
+            <a href="#order_lists_status" class="btn btn-sm btn-outline-light" data-bs-toggle="modal" data-bs-target="#order_lists_status">
               Lists Title
             </a>
           {/if}
           {#if !["telecaller", "tech", "tech_helper"].includes(currentUser?.subRole)}
             <div class="dropdown">
-              <a href="#Export" class="dropdown-toggle btn btn-outline-light px-2 shadow" data-bs-toggle="dropdown">
-                <i class="ti ti-package-export me-2"></i>Export
+              <a href="#Export" class="dropdown-toggle btn btn-sm btn-outline-light px-2 shadow" data-bs-toggle="dropdown">
+                <i class="ti ti-package-export me-1"></i>Export
               </a>
               <div class="dropdown-menu dropdown-menu-end">
                 <ul>
@@ -461,9 +487,9 @@
               </div>
             </div>
           {/if}
-          <a href="#refresh" on:click={refreshPage} class="btn btn-icon btn-outline-light shadow"
+          <a href="#refresh" on:click={refreshPage} class="btn btn-sm btn-icon btn-outline-light shadow"
             aria-label="Refresh"><i class="ti ti-refresh"></i></a>
-          <a href="#collapse-header" id="collapse-header" class="btn btn-icon btn-outline-light shadow"
+          <a href="#collapse-header" id="collapse-header" class="btn btn-sm btn-icon btn-outline-light shadow"
             aria-label="Collapse"><i class="ti ti-transition-top"></i></a>
         </div>
       {/if}
@@ -472,8 +498,11 @@
     <!-- Filters -->
     <OrderFilters
       {users} {companies} {allStatuses} {currentUser} {viewType} {trashBin}
+      attentionFilters={ATTENTION_FILTERS}
+      attentionGroups={ATTENTION_GROUPS}
       bind:userId bind:companyId bind:filterStatus bind:filterCategory
       bind:searchTerm bind:selectedFilter bind:customStartDate bind:customEndDate bind:orderBy bind:filterSource
+      bind:filterQuick
       on:filterChange={onFilterChange}
       on:viewTypeChange={(e) => changeViewType(e.detail)}
       on:trashToggle={() => { trashBin = !trashBin; }}
@@ -566,3 +595,123 @@
     }
   }}
 />
+
+<style>
+  /* Cursor-like — small, clean, clear 12px */
+  .order-page,
+  .order-page :global(.content) {
+    font-size: var(--app-font-size, 0.75rem) !important;
+    line-height: var(--app-line-height, 1.45) !important;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .order-page :global(.card-body),
+  .order-page :global(.card-header),
+  .order-page :global(.breadcrumb),
+  .order-page :global(.breadcrumb-item),
+  .order-page :global(.form-control),
+  .order-page :global(.form-select),
+  .order-page :global(.form-control-sm),
+  .order-page :global(.form-select-sm),
+  .order-page :global(.btn),
+  .order-page :global(.btn-sm),
+  .order-page :global(.dropdown-item),
+  .order-page :global(table),
+  .order-page :global(th),
+  .order-page :global(td),
+  .order-page :global(.dataTables_wrapper),
+  .order-page :global(.dataTables_info),
+  .order-page :global(.dataTables_paginate),
+  .order-page :global(.pagination),
+  .order-page :global(.page-link),
+  .order-page :global(input),
+  .order-page :global(select),
+  .order-page :global(label),
+  .order-page :global(.modal-body),
+  .order-page :global(.modal-title) {
+    font-size: var(--app-font-size, 0.75rem) !important;
+    line-height: var(--app-line-height, 1.45) !important;
+  }
+
+  .order-page :global(.form-control),
+  .order-page :global(.form-select) {
+    height: 28px !important;
+    min-height: 28px !important;
+    padding: 2px 8px !important;
+  }
+
+  .order-page :global(.text-muted),
+  .order-page :global(small),
+  .order-page :global(.small),
+  .order-page :global(.text-xs),
+  .order-page :global(.text-sm) {
+    font-size: 12px !important;
+    font-weight: 400 !important;
+  }
+
+  .order-page :global(.badge) {
+    font-size: 10px !important;
+    font-weight: 400 !important;
+    padding: 1px 6px !important;
+  }
+
+  .order-page :global(thead th) {
+    font-size: 12px !important;
+    font-weight: 400 !important;
+    letter-spacing: 0;
+    color: #495057;
+    white-space: nowrap;
+  }
+
+  .order-page :global(td) {
+    font-size: 12px !important;
+    font-weight: 400 !important;
+    padding: 0.4rem 0.55rem !important;
+    vertical-align: middle;
+  }
+
+  .order-page :global(.fw-bold),
+  .order-page :global(.fw-semibold) {
+    font-weight: 400 !important;
+  }
+
+  .order-page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .order-page-title {
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    letter-spacing: -0.01em;
+    color: #212529;
+    line-height: 1.3;
+  }
+
+  .order-page-sub {
+    font-size: var(--app-font-size-sm, 0.6875rem) !important;
+    font-weight: 400 !important;
+    color: #868e96;
+  }
+
+  .order-page-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .order-page :global(.attn-bar) {
+    font-size: var(--app-font-size, 0.75rem);
+  }
+
+  /* Grid / kanban cards */
+  .order-page :global(.kanban-drag-wrap),
+  .order-page :global(.kanban-card),
+  .order-page :global([class*="order-card"]) {
+    font-size: var(--app-font-size, 0.75rem) !important;
+  }
+</style>

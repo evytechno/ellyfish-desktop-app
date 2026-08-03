@@ -1,6 +1,8 @@
 <script>
   import { onDestroy, onMount } from "svelte";
   import { fly } from "svelte/transition";
+  import { cubicOut, cubicIn } from "svelte/easing";
+  import { flip } from "svelte/animate";
   import { authApiFetch } from "$lib/api/client";
   import { API_ROUTES } from "$lib/constants/apiRoutes";
   import { errorHandle } from "$lib/utils/errorHandle";
@@ -376,7 +378,7 @@
       aria-haspopup="false"
       aria-expanded="false"
     >
-      <i class="ti ti-bell-check fs-16 animate-ring"></i>
+      <i class="ti ti-bell-check animate-ring"></i>
       {#if unreadCount > 0}
         <span class="badge rounded-pill">{unreadCount}</span>
       {/if}
@@ -468,24 +470,30 @@
   <!-- UI toasts (showToast) -->
   {#each $uiToasts as t (t.id)}
     <div
-      class="ntf-card"
-      style="--accent: {t.accent}"
-      in:fly={{ x: 380, duration: 380, opacity: 0 }}
-      out:fly={{ x: 380, duration: 280, opacity: 0 }}
+      class="ntf-flash ntf-flash--{t.type}"
+      style="--accent: {t.accent}; --flash-dur: {t.duration}ms"
+      in:fly={{ x: 28, y: 10, duration: 420, opacity: 0, easing: cubicOut }}
+      out:fly={{ x: 36, y: 0, duration: 260, opacity: 0, easing: cubicIn }}
+      animate:flip={{ duration: 280, easing: cubicOut }}
       role="alert"
     >
       <button
-        class="ntf-close"
+        class="ntf-flash__close"
         on:click={() => dismissToast(t.id)}
         aria-label="Dismiss"
       >&#x2715;</button>
-      <div class="ntf-body">
-        <span class="ntf-ui-icon" style="background: {t.accent}22; color: {t.accent};">{t.icon}</span>
-        <div class="ntf-content">
-          <p class="ntf-msg">{t.message}</p>
+      <div class="ntf-flash__body">
+        <span class="ntf-flash__icon" aria-hidden="true">{t.icon}</span>
+        <div class="ntf-flash__text">
+          <span class="ntf-flash__title">{t.title}</span>
+          <p class="ntf-flash__msg">{t.message}</p>
         </div>
       </div>
-      <div class="ntf-line"></div>
+      {#if t.duration > 0}
+        <div class="ntf-flash__track" aria-hidden="true">
+          <div class="ntf-flash__bar"></div>
+        </div>
+      {/if}
     </div>
   {/each}
 
@@ -494,8 +502,8 @@
     <div
       class="ntf-card"
       style="--accent: {toastAccent(toast.notification.type)}"
-      in:fly={{ x: 380, duration: 380, opacity: 0 }}
-      out:fly={{ x: 380, duration: 280, opacity: 0 }}
+      in:fly={{ x: 28, duration: 400, opacity: 0, easing: cubicOut }}
+      out:fly={{ x: 36, duration: 260, opacity: 0, easing: cubicIn }}
       on:click={() => clickToast(toast)}
       role="button"
       tabindex="0"
@@ -551,9 +559,122 @@
     z-index: 99999;
     display: flex;
     flex-direction: column-reverse;
-    gap: 12px;
+    gap: 10px;
     pointer-events: none;
+    max-width: min(380px, calc(100vw - 32px));
   }
+
+  /* ── Flash toast (showToast) ──────────────────────────────────────────── */
+  .ntf-flash {
+    pointer-events: all;
+    position: relative;
+    width: 100%;
+    min-width: 260px;
+    max-width: 340px;
+    background: #fff;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    box-shadow:
+      0 6px 20px rgba(15, 23, 42, 0.08),
+      0 1px 4px rgba(15, 23, 42, 0.04);
+    overflow: hidden;
+    will-change: transform, opacity;
+    font-family: "Golos Text", sans-serif;
+  }
+  .ntf-flash::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--accent);
+  }
+  .ntf-flash__title {
+    display: block;
+    font-size: var(--app-font-size, 12px);
+    font-weight: 500;
+    color: #212529;
+    letter-spacing: 0;
+    line-height: 1.35;
+    margin-bottom: 2px;
+  }
+  .ntf-flash__msg {
+    margin: 0;
+    font-size: var(--app-font-size, 12px);
+    font-weight: 400;
+    color: #495057;
+    line-height: 1.45;
+    word-break: break-word;
+  }
+  .ntf-flash__icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+    color: #fff;
+    background: var(--accent);
+    box-shadow: none;
+  }
+  .ntf-flash__body {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 32px 10px 12px;
+  }
+  .ntf-flash__text {
+    flex: 1;
+    min-width: 0;
+    padding-top: 1px;
+  }
+  .ntf-flash__close {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 22px;
+    height: 22px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #adb5bd;
+    font-size: 11px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .ntf-flash__close:hover {
+    background: #f1f3f5;
+    color: #495057;
+  }
+  .ntf-flash__track {
+    height: 2px;
+    background: #f1f3f5;
+  }
+  .ntf-flash__bar {
+    height: 100%;
+    width: 100%;
+    background: var(--accent);
+    transform-origin: left center;
+    animation: ntf-flash-drain var(--flash-dur, 3800ms) linear forwards;
+  }
+  @keyframes ntf-flash-drain {
+    from { transform: scaleX(1); opacity: 0.9; }
+    to   { transform: scaleX(0); opacity: 0.55; }
+  }
+  .ntf-flash--success .ntf-flash__title { color: #2b8a3e; }
+  .ntf-flash--error .ntf-flash__title { color: #c92a2a; }
+  .ntf-flash--warning .ntf-flash__title { color: #e67700; }
+  .ntf-flash--info .ntf-flash__title { color: #364fc7; }
 
   /* ── Card ─────────────────────────────────────────────────────────────── */
   .ntf-card {
@@ -737,20 +858,6 @@
   .ntf-snooze-btn:hover {
     background: rgba(253, 126, 20, 0.25);
     border-color: #fd7e14;
-  }
-
-  /* ── UI Toast icon (showToast) ───────────────────────────────────────────── */
-  .ntf-ui-icon {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 15px;
-    font-weight: 700;
-    flex-shrink: 0;
-    margin-top: 1px;
   }
 
 </style>

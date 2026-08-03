@@ -2,13 +2,38 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+  /* Prevent layout shift when modals lock body scroll */
+  scrollbar-gutter: stable;
+}
+
 body {
   font-family: "Golos Text", sans-serif;
+  font-size: 0.75rem; /* 12px — small, clean, clear */
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* Applied by query detail page via classList — overrides any jQuery inline style reset */
 body.query-no-scroll {
   overflow: hidden !important;
+}
+
+/* SweetAlert2 — no page jump / shake when opening */
+body.swal2-shown:not(.swal2-no-backdrop):not(.swal2-toast-shown),
+html.swal2-shown:not(.swal2-no-backdrop):not(.swal2-toast-shown) {
+  overflow-y: auto !important;
+  padding-right: 0 !important;
+}
+body.swal2-height-auto {
+  height: auto !important;
+}
+.swal2-container {
+  overflow-y: auto !important;
+}
+.swal2-popup {
+  will-change: transform, opacity;
 }
 
 /* ── Global scrollbar theme ─────────────────────────────────────────────── */

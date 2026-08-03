@@ -150,7 +150,10 @@
   >
     <thead>
       <tr class="bg-gray-100 text-left text-gray-700 uppercase text-sm">
-        <th class="px-4 py-2 cursor-pointer whitespace-nowrap">
+        <th
+          class="px-2 py-2 cursor-pointer whitespace-nowrap ddt-sn text-center"
+          style="width:56px;max-width:64px;min-width:52px;"
+        >
           {#if _checkboxActive}
             <div class="flex items-center gap-2">
               <input
@@ -168,6 +171,10 @@
         {#each columns as col}
           <th
             class="px-4 py-2 cursor-pointer whitespace-nowrap"
+            class:ddt-col-visit-date={col.key === "visitDate"}
+            style={col.width || col.minWidth
+              ? `${col.width ? `width:${col.width};` : ""}${col.minWidth ? `min-width:${col.minWidth};` : ""}`
+              : undefined}
             on:click={() => sortBy(col.key)}
           >
             {@html col.label}
@@ -190,8 +197,9 @@
             class:hover:bg-red-100={row.deletedAt}
           >
             <td
-              class="px-4 py-2 border-red-500"
+              class="px-2 py-2 border-red-500 ddt-sn text-center"
               class:border-l-4={row.deletedAt}
+              style="width:56px;max-width:64px;min-width:52px;"
             >
               {#if _checkboxActive}
                 <div class="flex items-center gap-2">
@@ -213,7 +221,14 @@
               {/if}
             </td>
             {#each columns as col}
-              <td class="px-4 py-2" class:max-w-sm={col.key === "description"}>
+              <td
+                class="px-4 py-2"
+                class:max-w-sm={col.key === "description"}
+                class:ddt-col-visit-date={col.key === "visitDate"}
+                style={col.width || col.minWidth
+                  ? `${col.width ? `width:${col.width};` : ""}${col.minWidth ? `min-width:${col.minWidth};` : ""}`
+                  : undefined}
+              >
                 {#if col.render}
                   {@html col.render(row[col.key], row)}
                 {:else}
