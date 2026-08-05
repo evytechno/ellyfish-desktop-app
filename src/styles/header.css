@@ -182,22 +182,6 @@
   color: var(--white);
 }
 
-.navbar-header .topbar-menu .header-item .topbar-link .badge {
-  color: var(--white);
-  font-weight: 700;
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  background: var(--primary);
-  width: 12px;
-  height: 12px;
-  font-weight: var(--font-weight-normal);
-  padding: 0;
-  font-size: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
 
 /* Mobile Breakpoint */
 @media (max-width: 992px) {

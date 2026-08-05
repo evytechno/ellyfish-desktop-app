@@ -1772,7 +1772,7 @@
       ]);
       sqViewQuery = sqDetail ?? sq;
       sqViewChats = Array.isArray(chatsRes.data)
-        ? chatsRes.data.map(c => ({ ...c, senderType: deriveSenderType(c.isOwn, c.senderLabel, c.senderSubRole), isFinal: c.isFinal ?? false, finalSetById: c.finalSetById ?? null }))
+        ? chatsRes.data.map(c => ({ ...c, senderType: deriveSenderType(c.isOwn, c.senderLabel, c.senderSubRole), replyTo: c.replyTo ? { ...c.replyTo, senderType: deriveSenderType(c.replyTo.isOwn, c.replyTo.senderLabel, c.replyTo.senderSubRole) } : null, isFinal: c.isFinal ?? false, finalSetById: c.finalSetById ?? null }))
         : [];
       sqViewHasMore = chatsRes.hasMore ?? false;
       sqHasMoreOlder = chatsRes.hasMore ?? false;
@@ -1997,7 +1997,7 @@
     // atomic swap — single render tick, no blank flash
     query = newQuery;
     chats = Array.isArray(newChatsRes.data)
-      ? newChatsRes.data.map((c) => ({ ...c, senderType: deriveSenderType(c.isOwn, c.senderLabel, c.senderSubRole), isFinal: c.isFinal ?? false, finalSetById: c.finalSetById ?? null }))
+      ? newChatsRes.data.map((c) => ({ ...c, senderType: deriveSenderType(c.isOwn, c.senderLabel, c.senderSubRole), replyTo: c.replyTo ? { ...c.replyTo, senderType: deriveSenderType(c.replyTo.isOwn, c.replyTo.senderLabel, c.replyTo.senderSubRole) } : null, isFinal: c.isFinal ?? false, finalSetById: c.finalSetById ?? null }))
       : [];
     hasMoreOlderChats = newChatsRes.hasMore ?? false;
     loadingOlder = false;
@@ -2356,7 +2356,8 @@
         subQueries[idx] = { ...subQueries[idx], status: data.status };
         subQueries = [...subQueries];
       } else if (data.eventType === 'created') {
-        subQueries = [...subQueries, { id: data.subQueryId, subject: data.subject, type: data.type, status: data.status }];
+        const _subject = isTelecaller(currentUser) ? null : data.subject;
+        subQueries = [...subQueries, { id: data.subQueryId, subject: _subject, type: data.type, status: data.status }];
       }
       // append inline event card to chat (if payload carries it)
       // Telecaller: only append 'created' events — status changes shown reactively on existing card
@@ -2426,7 +2427,7 @@
     try {
       const res = await authApiFetch(`${API_ROUTES.QUERY}/${id}/chat?limit=${CHAT_LIMIT}`);
       chats = Array.isArray(res.data)
-        ? res.data.map((c) => ({ ...c, senderType: deriveSenderType(c.isOwn, c.senderLabel, c.senderSubRole), isFinal: c.isFinal ?? false, finalSetById: c.finalSetById ?? null }))
+        ? res.data.map((c) => ({ ...c, senderType: deriveSenderType(c.isOwn, c.senderLabel, c.senderSubRole), replyTo: c.replyTo ? { ...c.replyTo, senderType: deriveSenderType(c.replyTo.isOwn, c.replyTo.senderLabel, c.replyTo.senderSubRole) } : null, isFinal: c.isFinal ?? false, finalSetById: c.finalSetById ?? null }))
         : [];
       hasMoreOlderChats = res.hasMore ?? false;
       await tick(); // wait for messages to render
@@ -2443,7 +2444,7 @@
     try {
       const res = await authApiFetch(`${API_ROUTES.QUERY}/${queryId}/chat?limit=${CHAT_LIMIT}&before=${oldestId}`);
       const older = Array.isArray(res.data)
-        ? res.data.map((c) => ({ ...c, senderType: deriveSenderType(c.isOwn, c.senderLabel, c.senderSubRole), isFinal: c.isFinal ?? false, finalSetById: c.finalSetById ?? null }))
+        ? res.data.map((c) => ({ ...c, senderType: deriveSenderType(c.isOwn, c.senderLabel, c.senderSubRole), replyTo: c.replyTo ? { ...c.replyTo, senderType: deriveSenderType(c.replyTo.isOwn, c.replyTo.senderLabel, c.replyTo.senderSubRole) } : null, isFinal: c.isFinal ?? false, finalSetById: c.finalSetById ?? null }))
         : [];
       hasMoreOlderChats = res.hasMore ?? false;
       chats = [...older, ...chats]; // prepend older messages
@@ -3290,7 +3291,7 @@
     try {
       const res = await authApiFetch(`${API_ROUTES.QUERY}/${viewingSubQueryId}/chat?limit=${CHAT_LIMIT}&before=${oldestId}`);
       const older = Array.isArray(res.data)
-        ? res.data.map(c => ({ ...c, senderType: deriveSenderType(c.isOwn, c.senderLabel, c.senderSubRole), isFinal: c.isFinal ?? false, finalSetById: c.finalSetById ?? null }))
+        ? res.data.map(c => ({ ...c, senderType: deriveSenderType(c.isOwn, c.senderLabel, c.senderSubRole), replyTo: c.replyTo ? { ...c.replyTo, senderType: deriveSenderType(c.replyTo.isOwn, c.replyTo.senderLabel, c.replyTo.senderSubRole) } : null, isFinal: c.isFinal ?? false, finalSetById: c.finalSetById ?? null }))
         : [];
       sqHasMoreOlder = res.hasMore ?? false;
       sqViewChats = [...older, ...sqViewChats];
@@ -4023,7 +4024,7 @@
                             {#if isTech(currentUser) || isMasterView(currentUser)}
                               <button type="button" class="sq-modal-subject-btn" on:click={() => openSubQueryInline(sq)}>{sq.subject}</button>
                             {:else}
-                              <span class="sq-modal-subject-plain">{sq.subject}</span>
+                              <span class="sq-modal-subject-plain text-muted fst-italic">Internal query</span>
                             {/if}
                             {#if ($queryUnreadCounts[sq.id] ?? 0) > 0}
                               <span class="badge bg-danger ms-1" style="font-size:10px;vertical-align:middle;">{$queryUnreadCounts[sq.id]}</span>

@@ -39,11 +39,12 @@
     e.preventDefault();
     formErrors = {};
     if (!reminderTime) { formErrors.reminderTime = ["Reminder time is required."]; return; }
-    if (new Date(reminderTime) <= new Date()) { formErrors.reminderTime = ["Reminder time cannot be in the past."]; return; }
+    const reminderDate = new Date(reminderTime);
+    if (reminderDate <= new Date()) { formErrors.reminderTime = ["Reminder time cannot be in the past."]; return; }
     if (!reminderMessage.trim()) { formErrors.message = ["Message is required."]; return; }
     loading = true;
     try {
-      await addReminder({ reminderTime, message: reminderMessage });
+      await addReminder({ reminderTime: reminderDate.toISOString(), message: reminderMessage });
       reminderTime = null; reminderMessage = "";
       const $ = window.jQuery || window.$;
       if ($) { $("#create_reminder").modal("hide"); }

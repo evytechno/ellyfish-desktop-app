@@ -328,14 +328,14 @@
       </div>
     </div>
 
-    <div class="flex items-center mb-3">
+    <div class="flex items-center gap-2 mb-3">
       <input
         type="checkbox"
         id="rememberMe"
         class="login-check"
         bind:checked={rememberMe}
       />
-      <label for="rememberMe" class="ml-2 login-label mb-0">Remember Me</label>
+      <label for="rememberMe" class="login-label mb-0" style="cursor:pointer;">Remember Me</label>
     </div>
 
     <button
@@ -495,9 +495,12 @@
   }
 
   .login-check {
-    width: 14px;
-    height: 14px;
+    width: 16px;
+    height: 16px;
+    min-width: 16px;
     accent-color: #ef4444;
+    cursor: pointer;
+    margin: 0;
   }
 
   .login-submit {

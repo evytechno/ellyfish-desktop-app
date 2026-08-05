@@ -196,12 +196,42 @@
   ];
 
   const QUICK_FILTERS = [
-    { value: "unpicked", label: "Unpicked", hint: "Raised but not assigned yet", icon: "ti-user-off" },
-    { value: "noReply", label: "No reply", hint: "Active with no chat yet", icon: "ti-message-off" },
-    { value: "slaBreached", label: "SLA delayed", hint: "First response past SLA", icon: "ti-clock-exclamation" },
-    { value: "stale", label: "Stale 48h+", hint: "In progress, idle over 48 hours", icon: "ti-clock-pause" },
-    { value: "noFinal", label: "No final quot.", hint: "Missing final quotation flag", icon: "ti-flag-off" },
-    { value: "dealWon", label: "Deal Won", hint: "Linked order won / dispatched / completed", icon: "ti-trophy" },
+    {
+      value: "unpicked",
+      label: "Unpicked",
+      hint: "Raised but not assigned yet",
+      icon: "ti-user-off",
+    },
+    {
+      value: "noReply",
+      label: "No reply",
+      hint: "Active with no chat yet",
+      icon: "ti-message-off",
+    },
+    {
+      value: "slaBreached",
+      label: "SLA delayed",
+      hint: "First response past SLA",
+      icon: "ti-clock-exclamation",
+    },
+    {
+      value: "stale",
+      label: "Stale 48h+",
+      hint: "In progress, idle over 48 hours",
+      icon: "ti-clock-pause",
+    },
+    {
+      value: "noFinal",
+      label: "No final quot.",
+      hint: "Missing final quotation flag",
+      icon: "ti-flag-off",
+    },
+    {
+      value: "dealWon",
+      label: "Deal Won",
+      hint: "Linked order won / dispatched / completed",
+      icon: "ti-trophy",
+    },
   ];
 
   function setQuickFilter(value) {
@@ -378,15 +408,12 @@
 
   function selectOrder(order) {
     raiseOrderId = order.id;
-    raiseOrderText = order.title
-      ? `#${order.pId} — ${order.title}`
-      : `#${order.pId}`;
+    raiseOrderText = order.title ? `#${order.pId} — ${order.title}` : `#${order.pId}`;
     orderSearch = raiseOrderText;
     orderResults = [];
     showOrderDropdown = false;
     // Auto-fill subject/description with order title if the field is still empty
-    if (!raiseSubject.trim())     raiseSubject     = order.title ?? "";
-
+    if (!raiseSubject.trim()) raiseSubject = order.title ?? "";
   }
 
   function clearOrder() {
@@ -421,11 +448,7 @@
       d.setDate(d.getDate() - 29);
       params.dateFrom = fmt(d);
       params.dateTo = fmt(today);
-    } else if (
-      selectedFilter === "custom" &&
-      customStartDate &&
-      customEndDate
-    ) {
+    } else if (selectedFilter === "custom" && customStartDate && customEndDate) {
       params.dateFrom = customStartDate;
       params.dateTo = customEndDate;
     }
@@ -433,7 +456,21 @@
   }
 
   function saveFilterStore() {
-    queryFilterStore.set({ search, filterStatus, filterType, filterPriority, filterQuick, selectedFilter, customStartDate, customEndDate, dateField, raisedById, assignedToId, rowsPerPage, currentPage });
+    queryFilterStore.set({
+      search,
+      filterStatus,
+      filterType,
+      filterPriority,
+      filterQuick,
+      selectedFilter,
+      customStartDate,
+      customEndDate,
+      dateField,
+      raisedById,
+      assignedToId,
+      rowsPerPage,
+      currentPage,
+    });
   }
 
   onMount(async () => {
@@ -457,19 +494,19 @@
 
     const saved = $queryFilterStore;
     if (saved && Object.keys(saved).length > 0) {
-      if (saved.search          !== undefined) search          = saved.search;
-      if (saved.filterStatus    !== undefined) filterStatus    = saved.filterStatus;
-      if (saved.filterType      !== undefined) filterType      = saved.filterType;
-      if (saved.filterPriority  !== undefined) filterPriority  = saved.filterPriority;
-      if (saved.filterQuick     !== undefined) filterQuick     = saved.filterQuick;
-      if (saved.selectedFilter  !== undefined) selectedFilter  = saved.selectedFilter;
+      if (saved.search !== undefined) search = saved.search;
+      if (saved.filterStatus !== undefined) filterStatus = saved.filterStatus;
+      if (saved.filterType !== undefined) filterType = saved.filterType;
+      if (saved.filterPriority !== undefined) filterPriority = saved.filterPriority;
+      if (saved.filterQuick !== undefined) filterQuick = saved.filterQuick;
+      if (saved.selectedFilter !== undefined) selectedFilter = saved.selectedFilter;
       if (saved.customStartDate !== undefined) customStartDate = saved.customStartDate;
-      if (saved.customEndDate   !== undefined) customEndDate   = saved.customEndDate;
-      if (saved.dateField       !== undefined) dateField       = saved.dateField;
-      if (saved.raisedById      !== undefined) raisedById      = saved.raisedById;
-      if (saved.assignedToId    !== undefined) assignedToId    = saved.assignedToId;
-      if (saved.rowsPerPage     !== undefined) rowsPerPage     = saved.rowsPerPage;
-      if (saved.currentPage     !== undefined) currentPage     = saved.currentPage;
+      if (saved.customEndDate !== undefined) customEndDate = saved.customEndDate;
+      if (saved.dateField !== undefined) dateField = saved.dateField;
+      if (saved.raisedById !== undefined) raisedById = saved.raisedById;
+      if (saved.assignedToId !== undefined) assignedToId = saved.assignedToId;
+      if (saved.rowsPerPage !== undefined) rowsPerPage = saved.rowsPerPage;
+      if (saved.currentPage !== undefined) currentPage = saved.currentPage;
     }
 
     if (isMasterView(currentUser)) {
@@ -487,8 +524,7 @@
   }
 
   async function loadData() {
-    if (selectedFilter === "custom" && (!customStartDate || !customEndDate))
-      return;
+    if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) return;
     loading = true;
     try {
       const dateParams = buildDateParams();
@@ -616,9 +652,7 @@
       const msg = e?.data?.message;
       if (typeof msg === "string") raiseError = msg;
       else if (Array.isArray(msg))
-        raiseError = msg
-          .flatMap((m) => Object.values(m.constraints ?? {}))
-          .join(" • ");
+        raiseError = msg.flatMap((m) => Object.values(m.constraints ?? {})).join(" • ");
       else raiseError = "Failed to raise query.";
     } finally {
       raising = false;
@@ -658,22 +692,37 @@
     return status === "closed" || status === "resolved";
   }
 
-  $: isRoleUser       = currentUser?.role === "user";
-  $: isTechSubRole    = currentUser?.subRole === "tech" || currentUser?.subRole === "tech_helper";
-  $: isTCSubRole      = currentUser?.subRole === "telecaller";
-  $: maskTC     = (name, ownName) => {
+  $: isRoleUser = currentUser?.role === "user";
+  $: isTechSubRole = currentUser?.subRole === "tech" || currentUser?.subRole === "tech_helper";
+  $: isTCSubRole = currentUser?.subRole === "telecaller";
+  $: maskTC = (name, ownName) => {
     if (isRoleUser && name && name !== (ownName ?? currentUser?.name)) return "Telecaller";
-    if (!isRoleUser && (isTechSubRole || (currentUser?.role === "master" && $queryPrivacy.telecaller)) && name) return "Telecaller";
+    if (
+      !isRoleUser &&
+      (isTechSubRole || (currentUser?.role === "master" && $queryPrivacy.telecaller)) &&
+      name
+    )
+      return "Telecaller";
     return name ?? "-";
   };
-  $: maskTech   = (name, ownName) => {
+  $: maskTech = (name, ownName) => {
     if (isRoleUser && name && name !== (ownName ?? currentUser?.name)) return "Tech";
-    if (!isRoleUser && (isTCSubRole || (currentUser?.role === "master" && $queryPrivacy.tech)) && name) return "Tech";
+    if (
+      !isRoleUser &&
+      (isTCSubRole || (currentUser?.role === "master" && $queryPrivacy.tech)) &&
+      name
+    )
+      return "Tech";
     return name ?? "-";
   };
   $: maskHelper = (name, ownName) => {
     if (isRoleUser && name && name !== (ownName ?? currentUser?.name)) return "Senior Tech";
-    if (!isRoleUser && (isTCSubRole || (currentUser?.role === "master" && $queryPrivacy.techHelper)) && name) return "Senior Tech";
+    if (
+      !isRoleUser &&
+      (isTCSubRole || (currentUser?.role === "master" && $queryPrivacy.techHelper)) &&
+      name
+    )
+      return "Senior Tech";
     return name ?? "-";
   };
 </script>
@@ -693,10 +742,7 @@
         <p class="qp-sub mb-0">Support query overview</p>
       </div>
       {#if isTelecaller(currentUser)}
-        <button
-          class="btn btn-primary btn-sm"
-          on:click={() => (showRaiseForm = true)}
-        >
+        <button class="btn btn-primary btn-sm" on:click={() => (showRaiseForm = true)}>
           <i class="ti ti-plus me-1"></i> Raise New Query
         </button>
       {/if}
@@ -726,32 +772,25 @@
 
     <!-- ── Filter Bar ──────────────────────────────────────────────────────── -->
     <div class="qp-filters mb-3">
-      <div class="input-icon input-icon-start position-relative qp-search">
-        <span class="input-icon-addon text-dark"><i class="ti ti-search"></i></span>
+      <div class="input-icon input-icon-start position-relative" style="width:170px;flex-shrink:0;">
+        <span class="input-icon-addon p-2 text-dark"><i class="ti ti-search"></i></span>
         <input
           type="text"
+          value={search}
+          on:input={onSearchInput}
           class="form-control"
           placeholder="Search.."
-          bind:value={search}
-          on:input={onSearchInput}
+          style="width:170px;height:32px;font-size:0.75rem;padding-left:25px !important;"
         />
       </div>
       {#if isMasterView(currentUser)}
-        <select
-          class="form-select"
-          bind:value={dateField}
-          on:change={onFilterChange}
-        >
+        <select class="form-select" bind:value={dateField} on:change={onFilterChange}>
           <option value="createdAt">Sort: Raised</option>
           <option value="updatedAt">Sort: Updated</option>
           <option value="lastActivityAt">Sort: Activity</option>
         </select>
       {/if}
-      <select
-        class="form-select"
-        bind:value={selectedFilter}
-        on:change={onFilterChange}
-      >
+      <select class="form-select" bind:value={selectedFilter} on:change={onFilterChange}>
         <option value="all">All Time</option>
         <option value="today">Today</option>
         <option value="yesterday">Yesterday</option>
@@ -773,60 +812,49 @@
           on:change={onFilterChange}
         />
       {/if}
-      <select
-        class="form-select"
-        bind:value={filterType}
-        on:change={onFilterChange}
-      >
+      <select class="form-select" bind:value={filterType} on:change={onFilterChange}>
         {#each QUERY_TYPES as t}
           <option value={t.value}>{t.label}</option>
         {/each}
       </select>
-      <select
-        class="form-select"
-        bind:value={filterPriority}
-        on:change={onFilterChange}
-      >
+      <select class="form-select" bind:value={filterPriority} on:change={onFilterChange}>
         <option value="">All Priorities</option>
         <option value="high">High</option>
         <option value="medium">Medium</option>
         <option value="low">Low</option>
       </select>
-      <select
-        class="form-select"
-        bind:value={filterStatus}
-        on:change={onFilterChange}
-      >
+      <select class="form-select" bind:value={filterStatus} on:change={onFilterChange}>
         {#each STATUSES as s}
           <option value={s.value}>{s.label}</option>
         {/each}
       </select>
-      <select class="form-select" bind:value={filterQuick} on:change={onFilterChange} title="Edge cases / quick filters">
+      <select
+        class="form-select"
+        bind:value={filterQuick}
+        on:change={onFilterChange}
+        title="Edge cases / quick filters"
+      >
         <option value="">All queries</option>
         {#each QUICK_FILTERS as f}
           <option value={f.value}>{f.label}</option>
         {/each}
       </select>
       {#if isMasterView(currentUser)}
-        <select
-          class="form-select"
-          bind:value={raisedById}
-          on:change={onFilterChange}
-        >
+        <select class="form-select" bind:value={raisedById} on:change={onFilterChange}>
           <option value="">Raised By</option>
-          {#each allUsers.filter(u => u.subRole === "telecaller" || u.subRole === "tech") as u}
-            <option value={u.id}>{u.subRole === "telecaller" ? maskTC(u.name) : maskTech(u.name)}</option>
+          {#each allUsers.filter((u) => u.subRole === "telecaller" || u.subRole === "tech") as u}
+            <option value={u.id}
+              >{u.subRole === "telecaller" ? maskTC(u.name) : maskTech(u.name)}</option
+            >
           {/each}
         </select>
-        <select
-          class="form-select"
-          bind:value={assignedToId}
-          on:change={onFilterChange}
-        >
+        <select class="form-select" bind:value={assignedToId} on:change={onFilterChange}>
           <option value="">Assigned To</option>
           <option value="0">Unassigned</option>
-          {#each allUsers.filter(u => u.subRole === "tech" || u.subRole === "tech_helper") as u}
-            <option value={u.id}>{u.subRole === "tech_helper" ? maskHelper(u.name) : maskTech(u.name)}</option>
+          {#each allUsers.filter((u) => u.subRole === "tech" || u.subRole === "tech_helper") as u}
+            <option value={u.id}
+              >{u.subRole === "tech_helper" ? maskHelper(u.name) : maskTech(u.name)}</option
+            >
           {/each}
         </select>
       {/if}
@@ -882,16 +910,14 @@
           <button
             class="modal-close-btn"
             on:click={() => (showRaiseForm = false)}
-            aria-label="Close"
-          ><i class="ti ti-x"></i></button>
+            aria-label="Close"><i class="ti ti-x"></i></button
+          >
           <h5 class="mb-3">Raise New Query</h5>
           {#if raiseError}
             <div class="alert alert-danger py-2">{raiseError}</div>
           {/if}
           <div class="mb-3">
-            <label class="form-label"
-              >Subject <span class="text-danger">*</span></label
-            >
+            <label class="form-label">Subject <span class="text-danger">*</span></label>
             <input
               type="text"
               class="form-control"
@@ -904,21 +930,26 @@
             <label class="form-label">Type</label>
             <div class="d-flex flex-wrap gap-2">
               {#each QUERY_TYPES.slice(1) as t}
-                <button type="button"
+                <button
+                  type="button"
                   class="badge-tab {raiseType === t.value ? 'badge-tab--type-active' : ''}"
-                  on:click={() => raiseType = t.value}
-                >{t.label}</button>
+                  on:click={() => (raiseType = t.value)}>{t.label}</button
+                >
               {/each}
             </div>
           </div>
           <div class="mb-3">
             <label class="form-label">Priority</label>
             <div class="d-flex flex-wrap gap-2">
-              {#each ['low','medium','high'] as p}
-                <button type="button"
-                  class="badge-tab badge-tab--priority-{p} {raisePriority === p ? 'badge-tab--active' : ''}"
-                  on:click={() => raisePriority = p}
-                >{p.charAt(0).toUpperCase() + p.slice(1)}</button>
+              {#each ["low", "medium", "high"] as p}
+                <button
+                  type="button"
+                  class="badge-tab badge-tab--priority-{p} {raisePriority === p
+                    ? 'badge-tab--active'
+                    : ''}"
+                  on:click={() => (raisePriority = p)}
+                  >{p.charAt(0).toUpperCase() + p.slice(1)}</button
+                >
               {/each}
             </div>
           </div>
@@ -940,11 +971,7 @@
                   autocomplete="off"
                 />
                 {#if raiseOrderId}
-                  <button
-                    class="btn btn-outline-secondary"
-                    type="button"
-                    on:click={clearOrder}
-                  >
+                  <button class="btn btn-outline-secondary" type="button" on:click={clearOrder}>
                     <i class="ti ti-x"></i>
                   </button>
                 {/if}
@@ -958,13 +985,10 @@
                 <div class="order-dropdown shadow-sm border rounded bg-white">
                   {#if orderLoading}
                     <div class="px-3 py-2 text-muted small">
-                      <span class="spinner-border spinner-border-sm me-1"
-                      ></span>Searching...
+                      <span class="spinner-border spinner-border-sm me-1"></span>Searching...
                     </div>
                   {:else if orderResults.length === 0}
-                    <div class="px-3 py-2 text-muted small">
-                      No orders found.
-                    </div>
+                    <div class="px-3 py-2 text-muted small">No orders found.</div>
                   {:else}
                     {#each orderResults as o}
                       <button
@@ -974,11 +998,9 @@
                       >
                         <span class="text-primary">#{o.pId}</span>
                         {#if o.title}<span class="ms-1">{o.title}</span>{/if}
-                        {#if o.company}<span class="text-muted ms-1 small"
-                            >· {o.company}</span
-                          >{/if}
-                        <span
-                          class="badge bg-secondary ms-auto qp-badge">{$statusNamesStore[o.status]?.name ?? o.status}</span
+                        {#if o.company}<span class="text-muted ms-1 small">· {o.company}</span>{/if}
+                        <span class="badge bg-secondary ms-auto qp-badge"
+                          >{$statusNamesStore[o.status]?.name ?? o.status}</span
                         >
                       </button>
                     {/each}
@@ -998,15 +1020,10 @@
             ></textarea>
           </div>
           <div class="d-flex gap-2 justify-content-end">
-            <button
-              class="btn btn-secondary btn-sm"
-              on:click={() => (showRaiseForm = false)}>Cancel</button
+            <button class="btn btn-secondary btn-sm" on:click={() => (showRaiseForm = false)}
+              >Cancel</button
             >
-            <button
-              class="btn btn-primary btn-sm"
-              on:click={submitRaiseQuery}
-              disabled={raising}
-            >
+            <button class="btn btn-primary btn-sm" on:click={submitRaiseQuery} disabled={raising}>
               {raising ? "Submitting..." : "Submit Query"}
             </button>
           </div>
@@ -1021,11 +1038,9 @@
           class="card shadow-lg p-4 position-relative"
           style="max-width:560px;width:100%;margin:auto;margin-top:60px;"
         >
-          <button
-            class="modal-close-btn"
-            on:click={() => (showEditForm = false)}
-            aria-label="Close"
-          ><i class="ti ti-x"></i></button>
+          <button class="modal-close-btn" on:click={() => (showEditForm = false)} aria-label="Close"
+            ><i class="ti ti-x"></i></button
+          >
           <h5 class="mb-3">Edit Query</h5>
           {#if editError}
             <div class="alert alert-danger py-2">{editError}</div>
@@ -1054,26 +1069,33 @@
             <label class="form-label">Type</label>
             <div class="d-flex flex-wrap gap-2">
               {#each QUERY_TYPES.slice(1) as t}
-                <button type="button"
+                <button
+                  type="button"
                   class="badge-tab {editType === t.value ? 'badge-tab--type-active' : ''}"
-                  on:click={() => editType = t.value}
-                >{t.label}</button>
+                  on:click={() => (editType = t.value)}>{t.label}</button
+                >
               {/each}
             </div>
           </div>
           <div class="mb-3">
             <label class="form-label">Priority</label>
             <div class="d-flex flex-wrap gap-2">
-              {#each ['low','medium','high'] as p}
-                <button type="button"
-                  class="badge-tab badge-tab--priority-{p} {editPriority === p ? 'badge-tab--active' : ''}"
-                  on:click={() => editPriority = p}
-                >{p.charAt(0).toUpperCase() + p.slice(1)}</button>
+              {#each ["low", "medium", "high"] as p}
+                <button
+                  type="button"
+                  class="badge-tab badge-tab--priority-{p} {editPriority === p
+                    ? 'badge-tab--active'
+                    : ''}"
+                  on:click={() => (editPriority = p)}
+                  >{p.charAt(0).toUpperCase() + p.slice(1)}</button
+                >
               {/each}
             </div>
           </div>
           <div class="mb-3">
-            <label class="form-label">Link to Order <span class="text-muted">(optional)</span></label>
+            <label class="form-label"
+              >Link to Order <span class="text-muted">(optional)</span></label
+            >
             <div class="order-search-wrap">
               <div class="input-group">
                 <input
@@ -1082,7 +1104,9 @@
                   placeholder="Search by order title or ID..."
                   bind:value={editOrderSearch}
                   on:input={onEditOrderInput}
-                  on:focus={() => { if (editOrderResults.length) showEditOrderDropdown = true; }}
+                  on:focus={() => {
+                    if (editOrderResults.length) showEditOrderDropdown = true;
+                  }}
                   autocomplete="off"
                 />
                 {#if editOrderId}
@@ -1106,11 +1130,17 @@
                     <div class="px-3 py-2 text-muted small">No orders found.</div>
                   {:else}
                     {#each editOrderResults as o}
-                      <button type="button" class="order-dropdown-item" on:click={() => selectEditOrder(o)}>
+                      <button
+                        type="button"
+                        class="order-dropdown-item"
+                        on:click={() => selectEditOrder(o)}
+                      >
                         <span class="text-primary">#{o.pId}</span>
                         {#if o.title}<span class="ms-1">{o.title}</span>{/if}
                         {#if o.company}<span class="text-muted ms-1 small">· {o.company}</span>{/if}
-                        <span class="badge bg-secondary ms-auto qp-badge">{$statusNamesStore[o.status]?.name ?? o.status}</span>
+                        <span class="badge bg-secondary ms-auto qp-badge"
+                          >{$statusNamesStore[o.status]?.name ?? o.status}</span
+                        >
                       </button>
                     {/each}
                   {/if}
@@ -1119,15 +1149,10 @@
             </div>
           </div>
           <div class="d-flex gap-2 justify-content-end">
-            <button
-              class="btn btn-secondary btn-sm"
-              on:click={() => (showEditForm = false)}>Cancel</button
+            <button class="btn btn-secondary btn-sm" on:click={() => (showEditForm = false)}
+              >Cancel</button
             >
-            <button
-              class="btn btn-primary btn-sm"
-              on:click={submitEditQuery}
-              disabled={editing}
-            >
+            <button class="btn btn-primary btn-sm" on:click={submitEditQuery} disabled={editing}>
               {editing ? "Saving..." : "Save Changes"}
             </button>
           </div>
@@ -1137,9 +1162,15 @@
 
     <!-- Bulk status bar — master/admin/manager -->
     {#if isMasterView(currentUser) && selectedCount > 0}
-      <div class="d-flex align-items-center gap-2 mb-2 p-2 px-3 bg-primary-subtle border border-primary rounded flex-wrap">
+      <div
+        class="d-flex align-items-center gap-2 mb-2 p-2 px-3 bg-primary-subtle border border-primary rounded flex-wrap"
+      >
         <span class="fw-semibold text-primary">{selectedCount} selected</span>
-        <select class="form-select form-select-sm" style="width:auto;min-width:140px;" bind:value={bulkStatus}>
+        <select
+          class="form-select form-select-sm"
+          style="width:auto;min-width:140px;"
+          bind:value={bulkStatus}
+        >
           <option value="">Set status…</option>
           {#each BULK_STATUSES as s}
             <option value={s.value}>{s.label}</option>
@@ -1232,66 +1263,78 @@
                           type="button"
                           class="qp-subject qp-qv-open"
                           title={q.subject}
-                          on:click={() => openQuickView(q.id)}
-                        >{q.subject}</button>
-                        {#if unread > 0}<span class="badge bg-danger rounded-pill qp-badge">{unread > 99 ? "99+" : unread}</span>{/if}
-                        {#if !q.assignedTo && ['open', 'reopened'].includes(q.status)}
-                          <span class="badge bg-warning text-dark qp-badge" title="Raised but not picked">Unpicked</span>
+                          on:click={() => openQuickView(q.id)}>{q.subject}</button
+                        >
+                        {#if unread > 0}<span class="badge bg-danger rounded-pill qp-badge"
+                            >{unread > 99 ? "99+" : unread}</span
+                          >{/if}
+                        {#if !q.assignedTo && ["open", "reopened"].includes(q.status)}
+                          <span
+                            class="badge bg-warning text-dark qp-badge"
+                            title="Raised but not picked">Unpicked</span
+                          >
                         {/if}
                         {#if q.slaBreached}
-                          <span class="badge bg-danger text-white qp-badge" title="SLA delayed">SLA</span>
+                          <span class="badge bg-danger text-white qp-badge" title="SLA delayed"
+                            >SLA</span
+                          >
                         {/if}
-                        {#if ['Deal Won', 'Dispatched', 'Completed'].includes(q.order?.status)}<span class="badge bg-success qp-badge">🏆 Deal Won</span>{/if}
+                        {#if ["Deal Won", "Dispatched", "Completed"].includes(q.order?.status)}<span
+                            class="badge bg-success qp-badge">🏆 Deal Won</span
+                          >{/if}
                       </div>
                     </td>
                     {#if isMasterView(currentUser)}
                       <td>
                         {#if q.raisedBy}
-                          <a href="/admin/query/user/{q.raisedBy.id}" class="text-body text-decoration-none user-link">
+                          <a
+                            href="/admin/query/user/{q.raisedBy.id}"
+                            class="text-body text-decoration-none user-link"
+                          >
                             {maskTC(q.raisedBy.name)}
                           </a>
                         {:else}-{/if}
                       </td>
                       <td>
                         {#if q.assignedTo}
-                          <a href="/admin/query/user/{q.assignedTo.id}" class="text-body text-decoration-none user-link">
-                            {q.parentQueryId ? maskHelper(q.assignedTo.name) : maskTech(q.assignedTo.name)}
+                          <a
+                            href="/admin/query/user/{q.assignedTo.id}"
+                            class="text-body text-decoration-none user-link"
+                          >
+                            {q.parentQueryId
+                              ? maskHelper(q.assignedTo.name)
+                              : maskTech(q.assignedTo.name)}
                           </a>
                         {:else}<span class="text-muted">Unassigned</span>{/if}
                       </td>
                     {/if}
                     <td>
                       <span class="badge bg-light text-dark border qp-badge">
-                        {QUERY_TYPES.find((t) => t.value === q.type)?.label ??
-                          q.type ??
-                          "-"}
+                        {QUERY_TYPES.find((t) => t.value === q.type)?.label ?? q.type ?? "-"}
                       </span>
                     </td>
                     <td>
-                      <span
-                        class="{PRIORITY_COLORS[q.priority] ??
-                          'badge bg-secondary'} qp-badge"
-                      >
+                      <span class="{PRIORITY_COLORS[q.priority] ?? 'badge bg-secondary'} qp-badge">
                         {q.priority ?? "-"}
                       </span>
                     </td>
                     <td>
-                      <span
-                        class="{STATUS_COLORS[q.status] ?? 'badge bg-secondary'} qp-badge"
-                      >
+                      <span class="{STATUS_COLORS[q.status] ?? 'badge bg-secondary'} qp-badge">
                         {q.status?.replace("_", " ")}
                       </span>
                     </td>
-                    <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                    <td
+                      style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                    >
                       {#if q.order}
                         <a
                           href="/admin/order/{q.order.id}"
                           class="text-primary small"
-                          title={q.order.title ? `#${q.order.pId} — ${q.order.title}` : `#${q.order.pId}`}
+                          title={q.order.title
+                            ? `#${q.order.pId} — ${q.order.title}`
+                            : `#${q.order.pId}`}
                         >
-                          #{q.order.pId}{q.order.title
-                            ? ` — ${q.order.title}`
-                            : ""}
+                          #{q.order.pId}{q.order.title ? ` — ${q.order.title}` : ""}
                         </a>
                       {:else}
                         <span class="text-muted">-</span>
@@ -1302,15 +1345,22 @@
                       {#if q.status === "closed" && q.resolvedAt}
                         <div class="qp-raised-meta qp-raised-meta--closed" title="Closed on">
                           Closed {formatDate(q.resolvedAt)}
-                          <span class="qp-raised-dur">· {formatDuration(q.createdAt, q.resolvedAt)}</span>
+                          <span class="qp-raised-dur"
+                            >· {formatDuration(q.createdAt, q.resolvedAt)}</span
+                          >
                         </div>
                       {:else if q.status === "resolved" && q.resolvedAt}
                         <div class="qp-raised-meta qp-raised-meta--closed" title="Resolved on">
                           Resolved {formatDate(q.resolvedAt)}
-                          <span class="qp-raised-dur">· {formatDuration(q.createdAt, q.resolvedAt)}</span>
+                          <span class="qp-raised-dur"
+                            >· {formatDuration(q.createdAt, q.resolvedAt)}</span
+                          >
                         </div>
                       {:else if !isClosedOrResolved(q.status)}
-                        <div class="qp-raised-meta qp-raised-meta--progress" title="Open duration till today">
+                        <div
+                          class="qp-raised-meta qp-raised-meta--progress"
+                          title="Open duration till today"
+                        >
                           {formatDuration(q.createdAt)} in progress
                         </div>
                       {/if}
@@ -1318,18 +1368,27 @@
                     {#if isMasterView(currentUser)}
                       <td>
                         {#if q.hasFinalQuotation}
-                          <span class="badge bg-success qp-badge"><i class="ti ti-flag-check me-1"></i>Sent</span>
+                          <span class="badge bg-success qp-badge"
+                            ><i class="ti ti-flag-check me-1"></i>Sent</span
+                          >
                         {:else}
                           <span class="badge bg-light text-muted border qp-badge">Pending</span>
                         {/if}
                       </td>
                       <td>
                         {#if q.slaBreached}
-                          <span class="badge bg-danger text-white qp-badge" title="{q.firstResponseMins}m">
-                            <i class="ti ti-clock-exclamation me-1"></i>{fmtMins(q.firstResponseMins)}
+                          <span
+                            class="badge bg-danger text-white qp-badge"
+                            title="{q.firstResponseMins}m"
+                          >
+                            <i class="ti ti-clock-exclamation me-1"></i>{fmtMins(
+                              q.firstResponseMins,
+                            )}
                           </span>
                         {:else if q.firstResponseMins !== null}
-                          <span class="badge bg-success text-white qp-badge">{fmtMins(q.firstResponseMins)}</span>
+                          <span class="badge bg-success text-white qp-badge"
+                            >{fmtMins(q.firstResponseMins)}</span
+                          >
                         {:else}
                           <span class="text-muted small">-</span>
                         {/if}
@@ -1484,7 +1543,9 @@
     padding: 10px 12px;
     border-right: 1px solid #f1f3f5;
   }
-  .qp-stat:last-child { border-right: none; }
+  .qp-stat:last-child {
+    border-right: none;
+  }
   .qp-stat-lbl {
     display: block;
     font-size: 10.5px;
@@ -1500,10 +1561,18 @@
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.02em;
   }
-  .qp-stat--blue .qp-stat-val { color: #364fc7; }
-  .qp-stat--yellow .qp-stat-val { color: #e67700; }
-  .qp-stat--green .qp-stat-val { color: #2b8a3e; }
-  .qp-stat--gray .qp-stat-val { color: #495057; }
+  .qp-stat--blue .qp-stat-val {
+    color: #364fc7;
+  }
+  .qp-stat--yellow .qp-stat-val {
+    color: #e67700;
+  }
+  .qp-stat--green .qp-stat-val {
+    color: #2b8a3e;
+  }
+  .qp-stat--gray .qp-stat-val {
+    color: #495057;
+  }
 
   .qp-filters {
     display: flex;
@@ -1519,8 +1588,12 @@
     width: auto;
     min-width: 108px;
     max-width: 148px;
+    height: 32px;
+    font-size: 0.75rem;
   }
-  .qp-date { width: 118px; }
+  .qp-date {
+    width: 118px;
+  }
   .qp-clear {
     height: 28px;
     display: inline-flex;
@@ -1541,7 +1614,10 @@
     padding: 4px 10px;
     border-radius: 999px;
     cursor: pointer;
-    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    transition:
+      background 0.15s ease,
+      border-color 0.15s ease,
+      color 0.15s ease;
   }
   .qp-edge-chip:hover {
     border-color: #91a7ff;
@@ -1632,7 +1708,10 @@
     border-radius: 4px;
     cursor: pointer;
     white-space: nowrap;
-    transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+    transition:
+      background 0.15s ease,
+      color 0.15s ease,
+      box-shadow 0.15s ease;
   }
   .attn-bar__btn :global(i) {
     font-size: 13px;
@@ -1652,7 +1731,9 @@
     opacity: 1;
   }
 
-  .qp-table-card :global(.card-body) { padding: 0; }
+  .qp-table-card :global(.card-body) {
+    padding: 0;
+  }
   .qp-table {
     font-size: 12px !important;
   }
@@ -1717,7 +1798,9 @@
     max-width: 240px;
     display: inline-block;
   }
-  .qp-subject:hover { text-decoration: underline; }
+  .qp-subject:hover {
+    text-decoration: underline;
+  }
   .qp-badge {
     font-size: 10.5px !important;
     font-weight: 500 !important;
@@ -1728,7 +1811,10 @@
     border-top: 1px solid #f1f3f5;
   }
 
-  .user-link:hover { text-decoration: underline !important; color: #3b5bdb !important; }
+  .user-link:hover {
+    text-decoration: underline !important;
+    color: #3b5bdb !important;
+  }
 
   /* ── Badge tab selector ─────────────────────────────── */
   .badge-tab {
@@ -1755,9 +1841,21 @@
     color: #fff;
     border-color: #2563eb;
   }
-  .badge-tab--priority-low.badge-tab--active    { background: #198754; color: #fff; border-color: #198754; }
-  .badge-tab--priority-medium.badge-tab--active { background: #ffc107; color: #000; border-color: #ffc107; }
-  .badge-tab--priority-high.badge-tab--active   { background: #dc3545; color: #fff; border-color: #dc3545; }
+  .badge-tab--priority-low.badge-tab--active {
+    background: #198754;
+    color: #fff;
+    border-color: #198754;
+  }
+  .badge-tab--priority-medium.badge-tab--active {
+    background: #ffc107;
+    color: #000;
+    border-color: #ffc107;
+  }
+  .badge-tab--priority-high.badge-tab--active {
+    background: #dc3545;
+    color: #fff;
+    border-color: #dc3545;
+  }
 
   .modal-backdrop-custom {
     position: fixed;
@@ -1782,7 +1880,9 @@
     cursor: pointer;
     padding: 0.25rem 0.4rem;
     border-radius: 4px;
-    transition: color 0.15s, background 0.15s;
+    transition:
+      color 0.15s,
+      background 0.15s;
     z-index: 10;
   }
   .modal-close-btn:hover {
@@ -1790,7 +1890,9 @@
     background: rgba(220, 53, 69, 0.08);
   }
 
-  .order-search-wrap { position: relative; }
+  .order-search-wrap {
+    position: relative;
+  }
   .order-dropdown {
     position: absolute;
     top: 100%;
@@ -1814,13 +1916,23 @@
     cursor: pointer;
     border-bottom: 1px solid #f0f0f0;
   }
-  .order-dropdown-item:hover { background: #f8f9fa; }
-  .order-dropdown-item:last-child { border-bottom: none; }
+  .order-dropdown-item:hover {
+    background: #f8f9fa;
+  }
+  .order-dropdown-item:last-child {
+    border-bottom: none;
+  }
 
   @media (max-width: 700px) {
-    .qp-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .qp-stat:nth-child(2n) { border-right: none; }
-    .qp-stat:nth-child(n+3) { border-top: 1px solid #f1f3f5; }
+    .qp-stats {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .qp-stat:nth-child(2n) {
+      border-right: none;
+    }
+    .qp-stat:nth-child(n + 3) {
+      border-top: 1px solid #f1f3f5;
+    }
   }
 
   /* Swal mounts on body */
@@ -1893,4 +2005,3 @@
     text-decoration: underline;
   }
 </style>
-

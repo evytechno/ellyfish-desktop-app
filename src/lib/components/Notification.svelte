@@ -378,9 +378,9 @@
       aria-haspopup="false"
       aria-expanded="false"
     >
-      <i class="ti ti-bell-check animate-ring"></i>
+      <i class="ti ti-bell-ringing animate-ring"></i>
       {#if unreadCount > 0}
-        <span class="badge rounded-pill">{unreadCount}</span>
+        <span class="badge ntf-badge">{unreadCount}</span>
       {/if}
     </button>
 
@@ -551,6 +551,27 @@
 </div>
 
 <style>
+  /* ── Bell badge ──────────────────────────────────────────────────────── */
+  .ntf-badge {
+    position: absolute;
+    top: 0;
+    right: 0;
+    background: #E41F07;
+    color: #fff;
+    width: 14px;
+    height: 14px;
+    font-size: 8px;
+    font-weight: 600;
+    line-height: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    padding: 0;
+    min-width: unset;
+    box-shadow: 0 0 0 1.5px #fff;
+  }
+
   /* ── Stack container ──────────────────────────────────────────────────── */
   .ntf-stack {
     position: fixed;

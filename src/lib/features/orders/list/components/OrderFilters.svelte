@@ -75,150 +75,125 @@
     </button>
   </div>
 {:else}
-  <div class="row g-2 align-items-center mb-2">
+  <div class="filter-bar mb-2">
     <!-- Search -->
-    <div class="col-auto">
-      <div class="input-icon input-icon-start position-relative">
-        <span class="input-icon-addon text-dark"><i class="ti ti-search"></i></span>
-        <input
-          type="text"
-          value={searchTerm}
-          on:input={handleSearchInput}
-          class="form-control"
-          placeholder="Search.."
-          style="min-width:160px;"
-        />
-      </div>
-    </div>
-
-    <!-- Order By -->
-    <div class="col-auto">
-      <select bind:value={orderBy} on:change={onSelectChange} class="form-select w-auto">
-        <option value="createdAt">Created At</option>
-        <option value="orderDate">Order Date</option>
-      </select>
+    <div class="input-icon input-icon-start position-relative" style="width:170px;flex-shrink:0;">
+      <span class="input-icon-addon p-0"><i class="ti ti-search"></i></span>
+      <input
+        type="text"
+        value={searchTerm}
+        on:input={handleSearchInput}
+        class="form-control"
+        placeholder="Search.."
+        style="width:170px;height:32px;font-size:0.75rem;padding-left:25px !important;"
+      />
     </div>
 
     <!-- Date Range -->
-    <div class="col-auto">
-      <select bind:value={selectedFilter} on:change={onSelectChange} class="form-select w-auto">
-        <option value="all">All Orders</option>
-        <option value="today">Today</option>
-        <option value="yesterday">Yesterday</option>
-        <option value="last7days">Last 7 Days</option>
-        <option value="last30days">Last 30 Days</option>
-        <option value="custom">Custom Range</option>
-      </select>
-    </div>
+    <select bind:value={selectedFilter} on:change={onSelectChange} class="form-select" style="width:150px;height:32px;font-size:0.75rem;">
+      <option value="all">All Orders</option>
+      <option value="today">Today</option>
+      <option value="yesterday">Yesterday</option>
+      <option value="last7days">Last 7 Days</option>
+      <option value="last30days">Last 30 Days</option>
+      <option value="custom">Custom Range</option>
+    </select>
 
     {#if selectedFilter === "custom"}
-      <div class="col-auto">
-        <input type="date" bind:value={customStartDate} on:change={onSelectChange} class="form-control w-auto" />
-      </div>
-      <div class="col-auto">
-        <input type="date" bind:value={customEndDate} on:change={onSelectChange} class="form-control w-auto" />
-      </div>
+      <input type="date" bind:value={customStartDate} on:change={onSelectChange} class="form-control" style="width:140px;height:32px;font-size:0.75rem;" />
+      <input type="date" bind:value={customEndDate} on:change={onSelectChange} class="form-control" style="width:140px;height:32px;font-size:0.75rem;" />
     {/if}
+
+    <!-- Status filter -->
+    <select bind:value={filterStatus} on:change={onSelectChange} class="form-select" style="width:150px;height:32px;font-size:0.75rem;">
+      <option value={null}>All Status</option>
+      {#each allStatuses as status}
+        <option value={status}>{$statusNamesStore[status]?.name ?? status}</option>
+      {/each}
+    </select>
 
     <!-- User filter -->
     {#if currentUser?.role !== "user"}
-      <div class="col-auto">
-        <select bind:value={userId} on:change={onSelectChange} class="form-select w-auto">
-          <option value={null}>Select User</option>
-          {#each users.filter((u) => {
-            if (["master", "admin", "manager"].includes(currentUser?.role)) return true;
-            return u.subRole === currentUser?.subRole;
-          }) as user}
-            <option value={user?.id}>{user?.name}</option>
-          {/each}
-        </select>
-      </div>
+      <select bind:value={userId} on:change={onSelectChange} class="form-select" style="width:150px;height:32px;font-size:0.75rem;">
+        <option value={null}>Select User</option>
+        {#each users.filter((u) => {
+          if (["master", "admin", "manager"].includes(currentUser?.role)) return true;
+          return u.subRole === currentUser?.subRole;
+        }) as user}
+          <option value={user?.id}>{user?.name}</option>
+        {/each}
+      </select>
     {/if}
 
     <!-- Company filter -->
     {#if currentUser?.role !== "user"}
-      <div class="col-auto">
-        <select bind:value={companyId} on:change={onSelectChange} class="form-select w-auto">
-          <option value={null}>Select Company</option>
-          {#each companies as company}
-            <option value={company?.id}>{company?.name}</option>
-          {/each}
-        </select>
-      </div>
-    {/if}
-
-    <!-- Status filter -->
-    <div class="col-auto">
-      <select bind:value={filterStatus} on:change={onSelectChange} class="form-select w-auto">
-        <option value={null}>All Status</option>
-        {#each allStatuses as status}
-          <option value={status}>{$statusNamesStore[status]?.name ?? status}</option>
+      <select bind:value={companyId} on:change={onSelectChange} class="form-select" style="width:150px;height:32px;font-size:0.75rem;">
+        <option value={null}>Select Company</option>
+        {#each companies as company}
+          <option value={company?.id}>{company?.name}</option>
         {/each}
       </select>
-    </div>
-
-    <!-- Category filter -->
-    <div class="col-auto">
-      <input
-        type="text"
-        value={filterCategory}
-        on:input={handleCategoryInput}
-        class="form-control"
-        placeholder="Category.."
-        style="min-width:120px;"
-      />
-    </div>
-
-    <!-- Source filter -->
-    <div class="col-auto">
-      <select bind:value={filterSource} on:change={onSelectChange} class="form-select w-auto">
-        <option value="">All Sources</option>
-        <option value="old_import">Old Import</option>
-      </select>
-    </div>
-
-    <!-- Spacer -->
-    <div class="col"></div>
-
-    <!-- Trash bin -->
-    {#if currentUser?.role !== "user"}
-      <div class="col-auto">
-        <div class="d-flex align-items-center shadow p-1 rounded border view-icons bg-white">
-          <button
-            on:click={() => dispatch("trashToggle")}
-            class="flex-shrink-0 btn btn-sm p-1 border-0 fs-14 bg-primary text-white"
-          >
-            <i class="ti ti-trash"></i>
-          </button>
-        </div>
-      </div>
     {/if}
 
-    <!-- View type toggle -->
-    <div class="col-auto">
-      <div class="d-flex align-items-center shadow p-1 rounded border view-icons bg-white">
+    <!-- Category filter -->
+    <input
+      type="text"
+      value={filterCategory}
+      on:input={handleCategoryInput}
+      class="form-control"
+      placeholder="Category.."
+      style="width:130px;height:32px;font-size:0.75rem;"
+    />
+
+    <!-- Source filter -->
+    <select bind:value={filterSource} on:change={onSelectChange} class="form-select" style="width:140px;height:32px;font-size:0.75rem;">
+      <option value="">All Sources</option>
+      <option value="old_import">Old Import</option>
+    </select>
+
+    <!-- Order By -->
+    <select bind:value={orderBy} on:change={onSelectChange} class="form-select" style="width:145px;height:32px;font-size:0.75rem;">
+      <option value="createdAt">Date Created</option>
+      <option value="orderDate">Order Date</option>
+    </select>
+
+    <!-- Spacer -->
+    <div class="filter-spacer"></div>
+
+    <!-- View type toggle + Trash -->
+    <div class="filter-actions">
+      {#if currentUser?.role !== "user"}
+        <button
+          on:click={() => dispatch("trashToggle")}
+          class="btn btn-sm btn-icon border shadow-sm bg-white"
+          title="Trash"
+        >
+          <i class="ti ti-trash text-danger"></i>
+        </button>
+      {/if}
+
+      <div class="view-toggle shadow-sm border bg-white">
         <button
           on:click={() => changeViewType("list")}
-          class="btn btn-sm p-1 border-0 fs-14"
+          class="btn btn-sm btn-icon border-0"
           class:active={viewType === "list"}
+          title="List view"
         >
           <i class="ti ti-list-tree"></i>
         </button>
         <button
           on:click={() => changeViewType("grid")}
-          class="flex-shrink-0 btn btn-sm p-1 border-0 ms-1 fs-14"
+          class="btn btn-sm btn-icon border-0"
           class:active={viewType === "grid"}
+          title="Grid view"
         >
           <i class="ti ti-grid-dots"></i>
         </button>
       </div>
-    </div>
 
-    <!-- Add order -->
-    <div class="col-auto">
       <a
         href="#offcanvas_add"
-        class="btn btn-primary"
+        class="btn btn-primary btn-sm"
         data-bs-toggle="offcanvas"
         data-bs-target="#offcanvas_add"
       >
@@ -382,18 +357,94 @@
     opacity: 1;
   }
 
-  /* Compact filter controls */
-  :global(.order-page) .form-control,
-  :global(.order-page) .form-select,
-  .row :global(.form-control),
-  .row :global(.form-select) {
-    font-size: var(--app-font-size, 0.75rem) !important;
-    height: 28px;
-    min-height: 28px;
-    padding: 2px 8px;
+  /* Filter bar layout */
+  .filter-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
   }
-  .row :global(.btn),
-  .row :global(.btn-sm) {
+  .filter-spacer {
+    flex: 1;
+  }
+  .filter-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  /* Uniform filter controls */
+  .filter-select {
+    width: 150px !important;
+    min-width: 0;
     font-size: var(--app-font-size, 0.75rem) !important;
+    height: 32px;
+    min-height: 32px;
+    padding: 4px 8px;
+  }
+  .filter-date {
+    width: 140px;
+    font-size: var(--app-font-size, 0.75rem) !important;
+    height: 32px;
+    min-height: 32px;
+    padding: 4px 8px;
+  }
+  .filter-search {
+    width: 170px !important;
+    font-size: var(--app-font-size, 0.75rem) !important;
+    height: 32px;
+    min-height: 32px;
+    padding-left: 1.9rem;
+  }
+
+  /* Search icon */
+  .input-icon {
+    position: relative;
+    width: 170px;
+    flex-shrink: 0;
+  }
+  .input-icon-addon {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    left: 0.6rem;
+    z-index: 4;
+    pointer-events: none;
+    color: #adb5bd;
+    font-size: 13px;
+  }
+
+  /* View toggle */
+  .view-toggle {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 6px;
+    padding: 2px;
+  }
+  .view-toggle .btn-icon {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    color: #6c757d;
+    font-size: 14px;
+    padding: 0;
+  }
+  .view-toggle .btn-icon.active {
+    background: #e9ecef;
+    color: #212529;
+  }
+  .btn-icon {
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    padding: 0;
+    font-size: 14px;
   }
 </style>
