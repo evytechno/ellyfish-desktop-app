@@ -65,8 +65,8 @@
     return isMasterView(currentUser) || isTelecaller(currentUser);
   }
 
-  const isTelecaller = (u) => u?.subRole === "telecaller";
-  const isTech = (u) => u?.subRole === "tech";
+  const isTelecaller = (u) => u?.role === "user" && u?.subRole === "telecaller";
+  const isTech = (u) => u?.role === "user" && u?.subRole === "tech";
   const isMasterView = (u) => u?.role !== "user";
 
   const BULK_STATUSES = [
@@ -549,7 +549,13 @@
         if (dateField !== "createdAt") q.set("dateField", dateField);
         res = await authApiFetch(`${API_ROUTES.QUERY}?${q}`);
       }
-      queries = res.data ?? [];
+      let rows = res.data ?? [];
+      // Client-side ownership guard for telecallers (raisedById present on /my payload)
+      if (isTelecaller(currentUser)) {
+        const uid = Number(currentUser.id);
+        rows = rows.filter((row) => Number(row.raisedById) === uid);
+      }
+      queries = rows;
       totalItems = res.total ?? 0;
       totalPages = res.totalPages ?? 0;
       clearSelection();
@@ -776,7 +782,7 @@
         <span class="input-icon-addon p-2 text-dark"><i class="ti ti-search"></i></span>
         <input
           type="text"
-          value={search}
+          bind:value={search}
           on:input={onSearchInput}
           class="form-control"
           placeholder="Search.."
