@@ -134,12 +134,14 @@
 
     checkingSession = false;
 
+    // Show reason when redirected here by an expired/invalidated session
+    const urlReason = new URLSearchParams(window.location.search).get("reason");
+    if (urlReason) errorMessage = urlReason;
+
     const lastEmail = localStorage.getItem("last_email");
     if (lastEmail) {
       email = lastEmail;
       rememberMe = true;
-      const lastPassword = await secureStorage.get("last_password");
-      if (lastPassword) password = lastPassword;
     }
 
     await autoDetectDeviceName();

@@ -1,4 +1,6 @@
 import Swal from "sweetalert2";
+import { get } from "svelte/store";
+import { isOnline, isServerReachable } from "$lib/stores/network";
 
 export const AUTH_REDIRECT_ERROR = "AUTH_REDIRECT";
 
@@ -8,7 +10,10 @@ export const errorHandle = (error) => {
 
     // ── Network / timeout errors ───────────────────────────────────────────────
     if (error?.isNetworkError || error?.status === 0) {
-        const title = error?.isTimeout ? "Request Timed Out" : "Server Unreachable";
+        // The blocking modal is already visible — skip the redundant SweetAlert popup
+        if (!get(isOnline) || !get(isServerReachable)) return {};
+
+        const title = error?.isTimeout ? "Request Timed Out" : "Connection Error";
         const text  = error?.data?.message
             ?? (error?.isTimeout
                 ? "The request took too long. Your connection may be slow — please try again."

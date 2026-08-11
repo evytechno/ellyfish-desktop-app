@@ -155,6 +155,28 @@
     return `${ATTACHMENT_BASE_URL || ""}${url}`;
   }
 
+  async function downloadFile(url, name) {
+    try {
+      const token = localStorage.getItem('access_token');
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error('Download failed');
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = name || 'attachment';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      // fallback: open in new tab
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  }
+
   async function load(id) {
     const token = ++loadToken;
     loading = true;
@@ -475,6 +497,14 @@
     <div class="qp-fp-header">
       <div class="qp-fp-title text-truncate" title={filePreview.name}>{filePreview.name}</div>
       <div class="qp-fp-actions">
+        <button
+          type="button"
+          class="btn btn-sm btn-outline-light"
+          title="Download"
+          on:click={() => downloadFile(filePreview.url, filePreview.name)}
+        >
+          <i class="ti ti-download"></i>
+        </button>
         <a
           href={filePreview.url}
           target="_blank"
@@ -498,7 +528,19 @@
       {#if isImageAtt(filePreview.mime, filePreview.name)}
         <img src={filePreview.url} alt={filePreview.name} class="qp-fp-img" />
       {:else if isPdfAtt(filePreview.mime, filePreview.name)}
-        <iframe src={filePreview.url} title={filePreview.name} class="qp-fp-iframe"></iframe>
+        <object data={filePreview.url} type="application/pdf" class="qp-fp-iframe">
+          <div class="qp-fp-fallback">
+            <i class="ti ti-file-type-pdf qp-fp-fallback-icon"></i>
+            <p class="mb-1 fw-semibold">{filePreview.name}</p>
+            <p class="text-muted small mb-3">PDF preview not supported in this browser</p>
+            <a href={filePreview.url} download={filePreview.name} class="btn btn-sm btn-primary me-2">
+              <i class="ti ti-download me-1"></i>Download
+            </a>
+            <a href={filePreview.url} target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-secondary">
+              <i class="ti ti-external-link me-1"></i>Open
+            </a>
+          </div>
+        </object>
       {:else}
         <div class="qp-fp-fallback">
           <i class="ti ti-file qp-fp-fallback-icon"></i>

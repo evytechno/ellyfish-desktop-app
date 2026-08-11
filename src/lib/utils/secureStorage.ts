@@ -7,35 +7,49 @@
  * In browser (dev/fallback): falls back to localStorage
  */
 
-const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI__;
+// __TAURI_INTERNALS__ is the Tauri v2 global injected into the webview.
+// Check for it specifically — __TAURI__ alone doesn't guarantee invoke is ready.
+const isTauri =
+  typeof window !== 'undefined' &&
+  typeof (window as any).__TAURI_INTERNALS__?.invoke === 'function';
 
 async function invoke(cmd: string, args: object): Promise<any> {
-  const { invoke } = await import('@tauri-apps/api/tauri');
-  return invoke(cmd, args);
+  return (window as any).__TAURI_INTERNALS__.invoke(cmd, args);
 }
 
 export const secureStorage = {
   async set(key: string, value: string): Promise<void> {
     if (isTauri) {
-      await invoke('secure_set', { key, value });
-    } else {
-      localStorage.setItem(key, value);
+      try {
+        await invoke('secure_set', { key, value });
+        return;
+      } catch {
+        // Keychain unavailable — fall through to localStorage
+      }
     }
+    localStorage.setItem(key, value);
   },
 
   async get(key: string): Promise<string | null> {
     if (isTauri) {
-      return await invoke('secure_get', { key });
+      try {
+        return await invoke('secure_get', { key });
+      } catch {
+        // Keychain unavailable — fall through to localStorage
+      }
     }
     return localStorage.getItem(key);
   },
 
   async delete(key: string): Promise<void> {
     if (isTauri) {
-      await invoke('secure_delete', { key });
-    } else {
-      localStorage.removeItem(key);
+      try {
+        await invoke('secure_delete', { key });
+      } catch {
+        // Keychain unavailable — fall through to localStorage
+      }
     }
+    localStorage.removeItem(key);
   },
 
   async clear(keys: string[]): Promise<void> {

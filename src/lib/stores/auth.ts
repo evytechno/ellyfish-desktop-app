@@ -14,4 +14,11 @@ if (typeof localStorage !== "undefined") {
   });
 }
 
-export const authUser = localStorage.getItem("user");
+// Writable store — populated after restoreSession() completes in layout onMount.
+// Never read directly from localStorage at module load; that value may be stale
+// or empty before the keychain restore has run.
+export const authUser = writable<any>(null);
+
+export function setAuthUser(userData: any) {
+  authUser.set(userData);
+}

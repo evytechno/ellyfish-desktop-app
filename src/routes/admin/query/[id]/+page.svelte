@@ -49,7 +49,41 @@
     if (isImg) {
       openImageLightbox([url], 0);
     } else {
-      window.open(url, "_blank", "noopener,noreferrer");
+      const a = document.createElement("a");
+      a.href = url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+  }
+
+  async function downloadFile(url, name) {
+    try {
+      const token = localStorage.getItem('access_token');
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error('Download failed');
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = name || 'attachment';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  }
+
+  async function downloadAllAttachments(attachments) {
+    for (let i = 0; i < attachments.length; i++) {
+      if (i > 0) await new Promise(r => setTimeout(r, 300));
+      await downloadFile(ATTACHMENT_BASE_URL + attachments[i].url, attachments[i].name);
     }
   }
 
@@ -3124,7 +3158,13 @@
       setTimeout(() => urls.forEach(u => URL.revokeObjectURL(u)), 60_000);
     } else {
       const url = URL.createObjectURL(file);
-      window.open(url, "_blank", "noopener,noreferrer");
+      const a = document.createElement("a");
+      a.href = url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     }
   }
@@ -3409,7 +3449,13 @@
       setTimeout(() => urls.forEach(u => URL.revokeObjectURL(u)), 60_000);
     } else {
       const url = URL.createObjectURL(file);
-      window.open(url, "_blank", "noopener,noreferrer");
+      const a = document.createElement("a");
+      a.href = url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     }
   }
@@ -4653,6 +4699,15 @@
                         {/if}
                       </button>
                     {/if}
+                    {#if chat.attachments?.length && !chat.isDeleted}
+                      <button
+                        class="chat-download-btn"
+                        title="Download attachment{chat.attachments.length > 1 ? 's' : ''}"
+                        on:click={() => downloadAllAttachments(chat.attachments)}
+                      >
+                        <i class="ti ti-download"></i>
+                      </button>
+                    {/if}
                     {#if canSendChat() && !chat.isDeleted}
                       <button
                         class="chat-reply-btn"
@@ -5191,6 +5246,15 @@
                               {:else}
                                 <i class="ti ti-trash"></i>
                               {/if}
+                            </button>
+                          {/if}
+                          {#if chat.attachments?.length && !chat.isDeleted}
+                            <button
+                              class="chat-download-btn"
+                              title="Download attachment{chat.attachments.length > 1 ? 's' : ''}"
+                              on:click={() => downloadAllAttachments(chat.attachments)}
+                            >
+                              <i class="ti ti-download"></i>
                             </button>
                           {/if}
                           {#if canSendSqChat() && !chat.isDeleted}
@@ -6927,6 +6991,15 @@
   }
   .chat-delete-btn:hover { background: #ffe3e3; color: #c92a2a; border-color: #ffc9c9; }
   .chat-delete-btn:disabled { opacity: 0.5; cursor: default; }
+  .chat-download-btn {
+    display: flex;
+    align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 50%;
+    background: #f1f3f5; border: 1px solid #e9ecef;
+    color: #6c757d; font-size: 13px; cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .chat-download-btn:hover { background: #d3f9d8; color: #2b8a3e; border-color: #b2f2bb; }
 
   .chat-deleted-text {
     font-size: 12.5px;

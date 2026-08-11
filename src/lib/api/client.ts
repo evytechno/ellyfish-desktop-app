@@ -14,25 +14,23 @@ const BASE_URL = import.meta.env.VITE_PUBLIC_API_URL;
 // ── Axios instance ────────────────────────────────────────────────────────────
 const axiosInstance = axios.create({
   baseURL: BASE_URL,
-  timeout: 12000,                      // 12s per request — handles weak networks
+  timeout: 12000,
   headers: { "Content-Type": "application/json" },
 });
 
 // ── Retry helpers ─────────────────────────────────────────────────────────────
 const MAX_RETRIES    = 2;
-const RETRY_DELAYS   = [1000, 2500];  // 1s then 2.5s between retries
+const RETRY_DELAYS   = [1000, 2500];
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-/** Returns true for errors worth retrying (network drop, timeout, no response) */
 function isRetryable(err: any): boolean {
-  if (err.code === 'ECONNABORTED') return true;  // axios timeout
+  if (err.code === 'ECONNABORTED') return true;
   if (err.code === 'ERR_NETWORK')  return true;
-  if (!err.response)               return true;  // no response at all
+  if (!err.response)               return true;
   return false;
 }
 
-/** Wraps an axios config with automatic retry on retryable failures */
 async function requestWithRetry(config: AxiosRequestConfig): Promise<any> {
   let lastErr: any;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -41,16 +39,13 @@ async function requestWithRetry(config: AxiosRequestConfig): Promise<any> {
       return await axiosInstance.request(config);
     } catch (err: any) {
       lastErr = err;
-      // Stop retrying if it's a real HTTP error or we've used all attempts
       if (!isRetryable(err) || attempt === MAX_RETRIES) break;
     }
   }
   throw lastErr;
 }
 
-/** Normalise any axios/network error into a consistent shape */
 function normaliseError(err: any): never {
-  // Network-level failure (no response received, or timed out after retries)
   if (!err.response) {
     const isTimeout = err.code === 'ECONNABORTED';
     const msg = isTimeout
@@ -63,8 +58,6 @@ function normaliseError(err: any): never {
     (netErr as any).data            = { message: msg };
     throw netErr;
   }
-
-  // Normal HTTP error response
   const errorData = err.response.data || {};
   const error     = new Error(errorData.message || "API request failed");
   (error as any).status = err.response.status;
@@ -72,9 +65,37 @@ function normaliseError(err: any): never {
   throw error;
 }
 
-// ── Public API ─────────────────────────────────────────────────────────────────
+// ── Token refresh — shared promise prevents parallel refresh races ─────────────
+// If two requests both get 401 simultaneously, only one refresh call is made.
+// Both requests wait on the same promise and get the new token.
+let _refreshPromise: Promise<string> | null = null;
 
-/** Unauthenticated fetch — used for login, refresh, health check */
+async function getRefreshedToken(): Promise<string> {
+  if (_refreshPromise) return _refreshPromise;
+  _refreshPromise = (async () => {
+    const { secureStorage } = await import('$lib/utils/secureStorage');
+
+    // Prefer localStorage (fast sync read). Fall back to keychain in case
+    // localStorage was cleared while the keychain still holds the token.
+    let refreshToken = localStorage.getItem("refresh_token");
+    if (!refreshToken) {
+      refreshToken = await secureStorage.get('refresh_token').catch(() => null);
+    }
+    if (!refreshToken) throw new Error("no refresh token");
+
+    const res = await apiFetch("/auth/refresh", {
+      method: "POST",
+      data:   { refresh_token: refreshToken },
+    });
+    await secureStorage.set('access_token', res.access_token);
+    localStorage.setItem("access_token", res.access_token);
+    return res.access_token as string;
+  })().finally(() => { _refreshPromise = null; });
+  return _refreshPromise;
+}
+
+// ── Public API ────────────────────────────────────────────────────────────────
+
 export async function apiFetch(
   endpoint: string,
   options: AxiosRequestConfig = {}
@@ -87,13 +108,12 @@ export async function apiFetch(
   }
 }
 
-/** Authenticated fetch with automatic token refresh + retry on network errors */
 export async function authApiFetch(
   endpoint: string,
   options: AxiosRequestConfig = {}
 ) {
-  let authToken      = localStorage.getItem("access_token");
-  const isFormData   = options.data instanceof FormData;
+  let authToken    = localStorage.getItem("access_token");
+  const isFormData = options.data instanceof FormData;
 
   const buildHeaders = (token: string | null) => ({
     ...(token ? {
@@ -112,41 +132,28 @@ export async function authApiFetch(
     });
     return response.data;
   } catch (err: any) {
-    // ── 401 → try token refresh ──────────────────────────────────────────────
+    // ── 401 → shared token refresh (race-safe) ───────────────────────────────
     if (err.response?.status === 401) {
-      const refreshToken = localStorage.getItem("refresh_token");
-      if (refreshToken) {
-        try {
-          const refreshResponse = await apiFetch("/auth/refresh", {
-            method: "POST",
-            data:   { refresh_token: refreshToken },
-          });
-
-          const { secureStorage } = await import('$lib/utils/secureStorage');
-          await secureStorage.set('access_token', refreshResponse.access_token);
-          localStorage.setItem("access_token", refreshResponse.access_token);
-
-          authToken = refreshResponse.access_token;
-          const retryResponse = await requestWithRetry({
-            url:     endpoint,
-            headers: buildHeaders(authToken),
-            data:    options.data,
-            ...options,
-          });
-          return retryResponse.data;
-        } catch {
-          logoutUser();
-          goto("/login");
-          throwAuthRedirect();
-        }
-      } else {
-        logoutUser();
-        goto("/login");
+      try {
+        authToken = await getRefreshedToken();
+        const retryResponse = await requestWithRetry({
+          url:     endpoint,
+          headers: buildHeaders(authToken),
+          data:    options.data,
+          ...options,
+        });
+        return retryResponse.data;
+      } catch (refreshErr: any) {
+        await logoutUser();
+        // Surface the server's reason (e.g. "logged in on another device") so
+        // users understand why they were logged out rather than seeing a blank redirect.
+        const reason = refreshErr?.data?.message || refreshErr?.message || '';
+        const query  = reason ? `?reason=${encodeURIComponent(reason)}` : '';
+        goto(`/login${query}`);
         throwAuthRedirect();
       }
     }
 
-    // ── All other errors ─────────────────────────────────────────────────────
     normaliseError(err);
   }
 }

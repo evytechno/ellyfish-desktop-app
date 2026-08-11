@@ -1,4 +1,5 @@
 import { secureStorage } from './secureStorage';
+import { setAuthUser } from '$lib/stores/auth';
 
 const TOKEN_KEYS = ['access_token', 'refresh_token', 'user', 'statusNames', 'device_name', 'pending_user_id', 'available_roles', 'role_permissions'];
 
@@ -11,9 +12,10 @@ export const checkAuth = () => {
   return currentUser ? currentUser : false;
 };
 
-const PRESERVE_KEYS = ["device_name", "last_email", "last_password"];
+const PRESERVE_KEYS = ["device_name", "last_email"];
 
 export const logoutUser = async () => {
+  setAuthUser(null);
   // Clear from secure storage (OS keychain)
   await secureStorage.clear(TOKEN_KEYS);
 
@@ -41,6 +43,9 @@ export const saveSession = async (data) => {
   localStorage.setItem('access_token',  data.access_token);
   localStorage.setItem('refresh_token', data.refresh_token);
   localStorage.setItem('user',          JSON.stringify(data.user));
+
+  // Keep the reactive store in sync so components update immediately
+  setAuthUser(data.user);
 
   // Store available roles and permissions for Switch Role button / role picker
   const userRoles = data.user?.roles ?? [data.user?.role];
@@ -138,10 +143,19 @@ export const restoreSession = async () => {
     if (refreshToken) localStorage.setItem('refresh_token', refreshToken);
     if (user)         localStorage.setItem('user',          user);
 
+    // Populate the reactive store so components that subscribe to authUser
+    // get the correct value immediately after session restore
+    if (user) {
+      try { setAuthUser(JSON.parse(user)); } catch (_) {}
+    }
+
     return !!accessToken;
   } catch {
-    // Keychain unavailable (app just updated, OS locked, etc.) — fall back to
-    // whatever is already in localStorage so the session survives if possible.
+    // Keychain unavailable — fall back to localStorage
+    const user = localStorage.getItem('user');
+    if (user) {
+      try { setAuthUser(JSON.parse(user)); } catch (_) {}
+    }
     return !!localStorage.getItem('access_token');
   }
 };
