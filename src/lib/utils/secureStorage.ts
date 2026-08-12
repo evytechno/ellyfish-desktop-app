@@ -1,17 +1,19 @@
 /**
  * Secure storage utility
  *
- * In Tauri (desktop): uses OS keychain via Rust keyring crate
- *   → Windows Credential Manager
+ * In Tauri (desktop): uses the session file via Rust commands
+ * In browser (dev/fallback): uses localStorage
  *
- * In browser (dev/fallback): falls back to localStorage
+ * Tauri availability is checked at call time — the webview may inject
+ * __TAURI_INTERNALS__ after this module first loads.
  */
 
-// __TAURI_INTERNALS__ is the Tauri v2 global injected into the webview.
-// Check for it specifically — __TAURI__ alone doesn't guarantee invoke is ready.
-const isTauri =
-  typeof window !== 'undefined' &&
-  typeof (window as any).__TAURI_INTERNALS__?.invoke === 'function';
+function isTauri(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof (window as any).__TAURI_INTERNALS__?.invoke === 'function'
+  );
+}
 
 async function invoke(cmd: string, args: object): Promise<any> {
   return (window as any).__TAURI_INTERNALS__.invoke(cmd, args);
@@ -19,7 +21,7 @@ async function invoke(cmd: string, args: object): Promise<any> {
 
 export const secureStorage = {
   async set(key: string, value: string): Promise<void> {
-    if (isTauri) {
+    if (isTauri()) {
       try {
         await invoke('secure_set', { key, value });
         return;
@@ -31,9 +33,10 @@ export const secureStorage = {
   },
 
   async get(key: string): Promise<string | null> {
-    if (isTauri) {
+    if (isTauri()) {
       try {
-        return await invoke('secure_get', { key });
+        const value = await invoke('secure_get', { key });
+        if (value != null && value !== '') return value;
       } catch {
         // Keychain unavailable — fall through to localStorage
       }
@@ -42,7 +45,7 @@ export const secureStorage = {
   },
 
   async delete(key: string): Promise<void> {
-    if (isTauri) {
+    if (isTauri()) {
       try {
         await invoke('secure_delete', { key });
       } catch {

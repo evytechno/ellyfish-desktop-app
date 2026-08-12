@@ -196,8 +196,10 @@
       if (rememberMe) {
         localStorage.setItem("last_email", email.trim());
         await secureStorage.set("last_password", password);
+        localStorage.setItem("last_password", password);
       } else {
         localStorage.removeItem("last_email");
+        localStorage.removeItem("last_password");
         await secureStorage.delete("last_password");
       }
 

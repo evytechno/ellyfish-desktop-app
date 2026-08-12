@@ -12,7 +12,7 @@ export const checkAuth = () => {
   return currentUser ? currentUser : false;
 };
 
-const PRESERVE_KEYS = ["device_name", "last_email"];
+const PRESERVE_KEYS = ["device_name", "last_email", "last_password"];
 
 export const logoutUser = async () => {
   setAuthUser(null);

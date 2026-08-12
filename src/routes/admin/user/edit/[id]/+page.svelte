@@ -82,14 +82,61 @@
     }
   }
 
+  const blankPerms = () => ({
+    subRole: null,
+    orderAccess: true,
+    queryAccessTelecaller: true,
+    queryAccessTech: true,
+    queryAccessTechHelper: true,
+  });
+
   // Per-role permissions
   let rolePerms = {
-    admin:   { subRole: null, orderAccess: true, queryAccessTelecaller: true, queryAccessTech: true, queryAccessTechHelper: true },
-    manager: { subRole: null, orderAccess: true, queryAccessTelecaller: true, queryAccessTech: true, queryAccessTechHelper: true },
-    user:    { subRole: null, orderAccess: true, queryAccessTelecaller: true, queryAccessTech: true, queryAccessTechHelper: true },
+    admin: blankPerms(),
+    manager: blankPerms(),
+    user: blankPerms(),
   };
 
   const availableRoles = ["admin", "manager", "user"];
+
+  function permsFromFlat(data, role) {
+    return {
+      subRole: role === "user" ? (data.subRole ?? null) : null,
+      orderAccess: data.orderAccess ?? true,
+      queryAccessTelecaller: data.queryAccessTelecaller ?? true,
+      queryAccessTech: data.queryAccessTech ?? true,
+      queryAccessTechHelper: data.queryAccessTechHelper ?? true,
+    };
+  }
+
+  function loadRolePerms(data) {
+    const next = {
+      admin: blankPerms(),
+      manager: blankPerms(),
+      user: blankPerms(),
+    };
+    const saved = data.rolePermissions && typeof data.rolePermissions === "object"
+      ? data.rolePermissions
+      : {};
+    const roles = data.roles?.length ? data.roles : [data.role ?? "user"];
+    const primary = data.role ?? roles[0] ?? "user";
+
+    for (const r of availableRoles) {
+      if (saved[r]) {
+        next[r] = { ...blankPerms(), ...saved[r] };
+        if (r !== "user") next[r].subRole = null;
+      } else if (roles.includes(r) || r === primary) {
+        // Role was selected but never stored under rolePermissions — use old flat fields
+        next[r] = permsFromFlat(data, r);
+      }
+    }
+
+    if (!saved.user) {
+      next.user.subRole = data.subRole ?? next.user.subRole ?? null;
+    }
+
+    rolePerms = next;
+  }
 
   let userId;
   $: userId = $page.params.id;
@@ -112,30 +159,14 @@
       companyId = data?.company?.id || null;
       loginStartTime = data.loginStartTime || "09:00";
       loginEndTime = data.loginEndTime || "18:10";
-      allowedSalesUserIds = data.allowedSalesUserIds ?? null;
+      allowedSalesUserIds = Array.isArray(data.allowedSalesUserIds)
+        ? data.allowedSalesUserIds.map(Number).filter((id) => Number.isFinite(id))
+        : null;
+      if (allowedSalesUserIds && !allowedSalesUserIds.length) allowedSalesUserIds = null;
       modulePermissions = data.modulePermissions ?? null;
 
-      // Load roles
       selectedRoles = data.roles && data.roles.length > 0 ? data.roles : [data.role ?? "user"];
-
-      // Load rolePermissions — fallback to flat fields if missing
-      if (data.rolePermissions) {
-        for (const r of selectedRoles) {
-          if (data.rolePermissions[r]) {
-            rolePerms[r] = { ...rolePerms[r], ...data.rolePermissions[r] };
-          }
-        }
-      } else {
-        // Legacy user — build from flat fields
-        const primaryRole = data.role ?? "user";
-        rolePerms[primaryRole] = {
-          subRole: primaryRole === "user" ? (data.subRole ?? null) : null,
-          orderAccess: data.orderAccess ?? true,
-          queryAccessTelecaller: data.queryAccessTelecaller ?? true,
-          queryAccessTech: data.queryAccessTech ?? true,
-          queryAccessTechHelper: data.queryAccessTechHelper ?? true,
-        };
-      }
+      loadRolePerms(data);
     } catch (error) {
       errorMessage = "Failed to load user data.";
     } finally {
@@ -154,18 +185,19 @@
   }
 
   function toggleSalesUser(id) {
+    const nid = Number(id);
     if (!allowedSalesUserIds) {
-      allowedSalesUserIds = [id];
-    } else if (allowedSalesUserIds.includes(id)) {
-      const updated = allowedSalesUserIds.filter(x => x !== id);
+      allowedSalesUserIds = [nid];
+    } else if (allowedSalesUserIds.includes(nid)) {
+      const updated = allowedSalesUserIds.filter(x => x !== nid);
       allowedSalesUserIds = updated.length ? updated : null;
     } else {
-      allowedSalesUserIds = [...allowedSalesUserIds, id];
+      allowedSalesUserIds = [...allowedSalesUserIds, nid];
     }
   }
 
   function toggleGroup(users) {
-    const ids = users.map(u => u.id);
+    const ids = users.map(u => Number(u.id));
     const allSelected = ids.every(id => allowedSalesUserIds?.includes(id));
     if (allSelected) {
       const updated = (allowedSalesUserIds ?? []).filter(id => !ids.includes(id));
@@ -182,6 +214,19 @@
       selectedRoles = selectedRoles.filter(r => r !== role);
     } else {
       selectedRoles = [...selectedRoles, role];
+      const source = rolePerms.user || rolePerms.admin || rolePerms.manager;
+      rolePerms = {
+        ...rolePerms,
+        [role]: {
+          ...blankPerms(),
+          ...rolePerms[role],
+          queryAccessTelecaller: source.queryAccessTelecaller,
+          queryAccessTech: source.queryAccessTech,
+          queryAccessTechHelper: source.queryAccessTechHelper,
+          orderAccess: source.orderAccess,
+          subRole: role === "user" ? rolePerms.user.subRole : null,
+        },
+      };
     }
   }
 
@@ -206,11 +251,12 @@
 
     const primaryRole = selectedRoles[0];
     const primaryPerms = rolePermissions[primaryRole];
+    const userSubRole = selectedRoles.includes("user") ? (rolePerms.user.subRole ?? null) : null;
 
     const updatedUser = {
       name, email, mobile, whatsapp,
       role: primaryRole,
-      subRole: primaryPerms.subRole ?? null,
+      subRole: userSubRole,
       orderAccess: primaryPerms.orderAccess,
       queryAccessTelecaller: primaryPerms.queryAccessTelecaller,
       queryAccessTech: primaryPerms.queryAccessTech,
@@ -430,8 +476,8 @@
                         <input
                           type="checkbox"
                           id="group_{group}"
-                          checked={users.every(u => allowedSalesUserIds?.includes(u.id))}
-                          indeterminate={users.some(u => allowedSalesUserIds?.includes(u.id)) && !users.every(u => allowedSalesUserIds?.includes(u.id))}
+                          checked={users.every(u => allowedSalesUserIds?.includes(Number(u.id)))}
+                          indeterminate={users.some(u => allowedSalesUserIds?.includes(Number(u.id))) && !users.every(u => allowedSalesUserIds?.includes(Number(u.id)))}
                           on:change={() => toggleGroup(users)}
                           class="form-check-input mt-0"
                         />
@@ -439,8 +485,8 @@
                       </div>
                       <div class="ps-4 d-flex flex-wrap gap-2">
                         {#each users as user}
-                          <label class="user-chip" class:selected={allowedSalesUserIds?.includes(user.id)}>
-                            <input type="checkbox" class="d-none" checked={allowedSalesUserIds?.includes(user.id)} on:change={() => toggleSalesUser(user.id)} />
+                          <label class="user-chip" class:selected={allowedSalesUserIds?.includes(Number(user.id))}>
+                            <input type="checkbox" class="d-none" checked={allowedSalesUserIds?.includes(Number(user.id))} on:change={() => toggleSalesUser(user.id)} />
                             {user.name}
                           </label>
                         {/each}
