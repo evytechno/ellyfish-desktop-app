@@ -142,6 +142,8 @@
     if (lastEmail) {
       email = lastEmail;
       rememberMe = true;
+      const lastPassword = await secureStorage.get("last_password").catch(() => null);
+      if (lastPassword) password = lastPassword;
     }
 
     await autoDetectDeviceName();
