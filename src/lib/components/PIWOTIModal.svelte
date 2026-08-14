@@ -54,6 +54,7 @@
   let remarks          = "";
   let discount         = 0;
   let totalAmountTitle = "Total Amount";
+  /** Manual override only. 0 / empty = use calculated total. */
   let totalAmountValue = 0;
 
   // Bill To
@@ -131,12 +132,19 @@
   let extraSubtotal = 0;
   let baseAmount    = 0;
   let taxTotal      = 0;
+  let calculatedTotal = 0;
 
   $: currencySymbol = currency === "USD" ? "$" : "₹";
+  /** Display / submit total: override when > 0, else calculated. */
+  $: effectiveTotal =
+    (parseFloat(totalAmountValue) || 0) > 0
+      ? Math.round(parseFloat(totalAmountValue))
+      : calculatedTotal;
 
   /**
    * Explicit recompute — called after any change that affects totals.
    * Avoids Svelte reactive-ordering issues entirely.
+   * Does NOT overwrite totalAmountValue (manual override).
    */
   function recompute() {
     itemsSubtotal    = items.reduce((s, i) => s + (parseFloat(i.total) || 0), 0);
@@ -146,7 +154,7 @@
     baseAmount       = itemsSubtotal + taxableExtraSubtotal - (parseFloat(discount) || 0);
     taxTotal         = taxItems.reduce((s, t) =>
       s + parseFloat(((baseAmount * (parseFloat(t.percentage) || 0)) / 100).toFixed(2)), 0);
-    totalAmountValue = Math.round(itemsSubtotal + extraSubtotal - (parseFloat(discount) || 0) + taxTotal);
+    calculatedTotal  = Math.round(itemsSubtotal + extraSubtotal - (parseFloat(discount) || 0) + taxTotal);
   }
 
   // Helper: single tax item amount for template display
@@ -205,6 +213,8 @@
       termsConditions  = "";
       remarks          = "";
       discount         = 0;
+      totalAmountTitle = "Total Amount";
+      totalAmountValue = 0;
 
       const client = order?.orderContacts?.[0]?.clientContact || order?.orderClients?.[0];
       billToName      = client?.name    || order?.company || "";
@@ -254,6 +264,9 @@
       termsConditions = pi?.termsConditions || "";
       remarks         = pi?.remarks || "";
       discount        = pi?.discount || 0;
+      totalAmountTitle = pi?.totalAmountTitle || "Total Amount";
+      // First create / open: leave override empty (0 = auto). Do not prefill calculated total.
+      totalAmountValue = 0;
 
       billToName      = pi?.billToName      || "";
       billToAddress   = pi?.billToAddress   || "";
@@ -384,7 +397,7 @@
       if (!items.length) { Swal.fire("Warning", "Add at least one item.", "warning"); return; }
       const emptyIdx = items.findIndex(i => !i.item.trim());
       if (emptyIdx !== -1) { Swal.fire("Warning", `Item #${emptyIdx + 1} has no description.`, "warning"); return; }
-      if (totalAmountValue === 0) { Swal.fire("Warning", "Total amount cannot be zero.", "warning"); return; }
+      if (effectiveTotal === 0) { Swal.fire("Warning", "Total amount cannot be zero.", "warning"); return; }
     }
 
     if (type === "WO") {
@@ -411,7 +424,7 @@
       termsConditions, remarks,
       discount: Math.round(discount || 0),
       totalAmountTitle,
-      totalAmountValue: Math.round(totalAmountValue || 0),
+      totalAmountValue: Math.round(effectiveTotal || 0),
       items,
       extraItems,
       taxItems: taxItems.map(t => ({ ...t, total: taxItemTotal(t) })),
@@ -469,7 +482,7 @@
       title: piTitle, currency,
       discount: Math.round(discount || 0),
       totalAmountTitle,
-      totalAmountValue: Math.round(totalAmountValue || 0),
+      totalAmountValue: Math.round(effectiveTotal || 0),
       items,
       extraItems,
       taxItems: taxItems.map(t => ({ ...t, total: taxItemTotal(t) })),
@@ -987,7 +1000,7 @@
                     <div class="col-md-3 d-flex align-items-end justify-content-end pb-1">
                       <div class="text-end">
                         <div class="text-muted" style="font-size:11px;">{totalAmountTitle || "Grand Total"}</div>
-                        <div class="fw-bold text-success fs-5">{currencySymbol} {(totalAmountValue || 0).toLocaleString("en-IN")}</div>
+                        <div class="fw-bold text-success fs-5">{currencySymbol} {(effectiveTotal || 0).toLocaleString("en-IN")}</div>
                       </div>
                     </div>
                   </div>
@@ -1372,7 +1385,7 @@
                     <div class="col-md-3 d-flex align-items-end justify-content-end pb-1">
                       <div class="text-end">
                         <div class="text-muted" style="font-size:11px;">{totalAmountTitle || "Grand Total"}</div>
-                        <div class="fw-bold text-success fs-5">{currencySymbol} {(totalAmountValue || 0).toLocaleString("en-IN")}</div>
+                        <div class="fw-bold text-success fs-5">{currencySymbol} {(effectiveTotal || 0).toLocaleString("en-IN")}</div>
                       </div>
                     </div>
                   </div>

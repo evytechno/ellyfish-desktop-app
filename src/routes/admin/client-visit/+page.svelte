@@ -13,6 +13,7 @@
   import { showToast } from "$lib/stores/uiToast";
   import { clientVisitFilterStore } from "$lib/stores/filterStore";
   import ClientVisitQuickView from "$lib/components/ClientVisitQuickView.svelte";
+  import OrderQuickView from "$lib/components/OrderQuickView.svelte";
 
   let currentUser = null;
   let visits = [];
@@ -22,8 +23,12 @@
   let refresh = false;
   let drawerOpen = false;
   let drawerVisitId = null;
+  let orderDrawerOpen = false;
+  let drawerOrderId = null;
 
   function openQuickView(id) {
+    orderDrawerOpen = false;
+    drawerOrderId = null;
     drawerVisitId = id;
     drawerOpen = true;
   }
@@ -31,6 +36,18 @@
   function closeQuickView() {
     drawerOpen = false;
     drawerVisitId = null;
+  }
+
+  function openOrderQuickView(id) {
+    drawerOpen = false;
+    drawerVisitId = null;
+    drawerOrderId = id;
+    orderDrawerOpen = true;
+  }
+
+  function closeOrderQuickView() {
+    orderDrawerOpen = false;
+    drawerOrderId = null;
   }
 
   let searchTerm = "";
@@ -360,9 +377,11 @@
     {
       key: "order",
       label: "Order",
-      render: (val, row) => row.order
-        ? `<a href="/admin/order/${row.order.id}" class="text-primary">#${row.order.id}</a>`
-        : "—",
+      render: (val, row) => {
+        if (!row.order) return "—";
+        const no = row.order.pId != null ? row.order.pId : row.order.id;
+        return `<button type="button" class="cv-order-qv-open btn btn-link p-0 text-decoration-none fw-semibold" data-id="${row.order.id}" title="Order quick view">#${escapeHtml(no)}</button>`;
+      },
     },
     {
       key: "purpose",
@@ -760,6 +779,12 @@
     <!-- Table -->
     <div class="card border-0 rounded-0 cv-list-card">
       <div class="card-body" on:click={(e) => {
+        const orderBtn = e.target.closest('.cv-order-qv-open');
+        if (orderBtn) {
+          e.preventDefault();
+          openOrderQuickView(Number(orderBtn.dataset.id));
+          return;
+        }
         const qv = e.target.closest('.cv-qv-open');
         if (qv) {
           openQuickView(Number(qv.dataset.id));
@@ -793,6 +818,13 @@
   visitId={drawerVisitId}
   {currentUser}
   on:close={closeQuickView}
+/>
+
+<OrderQuickView
+  bind:open={orderDrawerOpen}
+  orderId={drawerOrderId}
+  {currentUser}
+  on:close={closeOrderQuickView}
 />
 
 <style>
@@ -966,6 +998,14 @@
     text-overflow: ellipsis;
   }
   .cv-list-card :global(.cv-qv-open:hover) {
+    text-decoration: underline !important;
+  }
+  .cv-list-card :global(.cv-order-qv-open) {
+    color: #c92a2a !important;
+    font-size: inherit !important;
+    line-height: inherit !important;
+  }
+  .cv-list-card :global(.cv-order-qv-open:hover) {
     text-decoration: underline !important;
   }
 
