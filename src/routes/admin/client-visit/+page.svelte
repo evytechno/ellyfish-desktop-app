@@ -11,6 +11,8 @@
   import { get } from "svelte/store";
   import { page } from "$app/stores";
   import { showToast } from "$lib/stores/uiToast";
+  import { clientVisitFilterStore } from "$lib/stores/filterStore";
+  import ClientVisitQuickView from "$lib/components/ClientVisitQuickView.svelte";
 
   let currentUser = null;
   let visits = [];
@@ -18,6 +20,18 @@
   let companies = [];
   let loadingData = true;
   let refresh = false;
+  let drawerOpen = false;
+  let drawerVisitId = null;
+
+  function openQuickView(id) {
+    drawerVisitId = id;
+    drawerOpen = true;
+  }
+
+  function closeQuickView() {
+    drawerOpen = false;
+    drawerVisitId = null;
+  }
 
   let searchTerm = "";
   let currentPage = 1;
@@ -54,6 +68,31 @@
   $: hasActiveExtraFilters = !!(
     cityFilter || stateFilter || followUpFilter || overdueOnly || hasOrderFilter
   );
+
+  function updateFilterStore(newValues) {
+    clientVisitFilterStore.update((s) => ({ ...s, ...newValues }));
+  }
+
+  function persistFilters() {
+    updateFilterStore({
+      searchTerm,
+      currentPage,
+      rowsPerPage,
+      selectedFilter,
+      customStartDate,
+      customEndDate,
+      visitTypeFilter,
+      statusFilter,
+      outcomeFilter,
+      cityFilter,
+      stateFilter,
+      followUpFilter,
+      overdueOnly,
+      hasOrderFilter,
+      byUserId,
+      byCompanyId,
+    });
+  }
 
   function clearExtraFilters() {
     cityFilter = "";
@@ -93,6 +132,7 @@
 
   async function fetchVisits() {
     loadingData = true;
+    persistFilters();
     try {
       // Overdue filter is date-absolute; don't also clamp to the period dropdown
       const { startDate, endDate } = overdueOnly ? {} : getDateRange();
@@ -168,6 +208,14 @@
   }
 
   const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  function escapeHtml(s) {
+    return String(s ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
 
   /** Indian date: DD-MM-YYYY with weekday, e.g. Sat, 01-08-2026 */
   function formatDate(d) {
@@ -280,7 +328,7 @@
       key: "visitType",
       label: "Type",
       render: (val, row) => {
-        const BADGES = { incoming: 'bg-info', outgoing: 'bg-warning text-dark', joint: 'bg-primary', job_discussion: 'bg-success', job_received: 'bg-secondary', sample_sent: 'bg-danger' };
+        const BADGES = { incoming: 'bg-info text-white', outgoing: 'bg-warning text-dark', joint: 'bg-primary', job_discussion: 'bg-success', job_received: 'bg-secondary', sample_sent: 'bg-danger' };
         const LABELS = { incoming: 'They Came To Us', outgoing: 'We Visited Client', joint: 'Joint Site Visit', job_discussion: 'Client Gave Job Details', job_received: 'Job Received', sample_sent: 'Sample Sent' };
         return `<span class="badge ${BADGES[row.visitType] ?? 'bg-secondary'}">${LABELS[row.visitType] ?? row.visitType}</span>`;
       },
@@ -295,7 +343,10 @@
     {
       key: "client",
       label: "Client",
-      render: (val, row) => row.client?.name ?? "—",
+      render: (val, row) => {
+        const name = row.client?.name ?? "—";
+        return `<button type="button" class="cv-qv-open btn btn-link p-0 text-start text-decoration-none fw-medium" data-id="${row.id}" title="Quick view">${escapeHtml(name)}</button>`;
+      },
     },
     {
       key: "location",
@@ -316,7 +367,11 @@
     {
       key: "purpose",
       label: "Purpose",
-      render: (val, row) => `<span title="${row.purpose ?? ""}">${row.purpose?.length > 25 ? row.purpose.slice(0,25)+'…' : (row.purpose ?? "—")}</span>`,
+      render: (val, row) => {
+        const text = row.purpose ?? "—";
+        const shown = text.length > 25 ? text.slice(0, 25) + "…" : text;
+        return `<button type="button" class="cv-qv-open btn btn-link p-0 text-start text-decoration-none text-body" data-id="${row.id}" title="${escapeHtml(text)}">${escapeHtml(shown)}</button>`;
+      },
     },
     {
       key: "outcome",
@@ -359,6 +414,12 @@
 
   let actions = [
     {
+      label: "Quick View",
+      icon: "ti ti-eye",
+      onClick: (id) => openQuickView(id),
+      color: "btn-soft-success",
+    },
+    {
       label: "Edit",
       icon: "ti ti-edit",
       onClick: (id) => goto(`/admin/client-visit/edit/${id}`),
@@ -370,12 +431,6 @@
       onClick: (id) => deleteVisit(id),
       color: "btn-soft-danger",
     },
-    {
-      label: "View",
-      icon: "ti ti-eye",
-      onClick: (id) => goto(`/admin/client-visit/${id}`),
-      color: "btn-soft-success",
-    },
   ];
 
   $: tableActions = colVis._actions ? actions : [];
@@ -383,6 +438,32 @@
   onMount(() => {
     currentUser = checkAuth();
     colVis = loadColVis();
+
+    const saved = $clientVisitFilterStore;
+    if (saved && Object.keys(saved).length > 0) {
+      if (saved.searchTerm !== undefined) searchTerm = saved.searchTerm || "";
+      if (saved.currentPage !== undefined) currentPage = saved.currentPage || 1;
+      if (saved.rowsPerPage !== undefined) rowsPerPage = saved.rowsPerPage || 10;
+      if (saved.selectedFilter !== undefined) selectedFilter = saved.selectedFilter || "last7days";
+      if (saved.customStartDate !== undefined) customStartDate = saved.customStartDate || null;
+      if (saved.customEndDate !== undefined) customEndDate = saved.customEndDate || null;
+      if (saved.visitTypeFilter !== undefined) visitTypeFilter = saved.visitTypeFilter || "";
+      if (saved.statusFilter !== undefined) statusFilter = saved.statusFilter || "";
+      if (saved.outcomeFilter !== undefined) outcomeFilter = saved.outcomeFilter || "";
+      if (saved.cityFilter !== undefined) cityFilter = saved.cityFilter || "";
+      if (saved.stateFilter !== undefined) stateFilter = saved.stateFilter || "";
+      if (saved.followUpFilter !== undefined) followUpFilter = saved.followUpFilter || "";
+      if (saved.overdueOnly !== undefined) overdueOnly = !!saved.overdueOnly;
+      if (saved.hasOrderFilter !== undefined) hasOrderFilter = saved.hasOrderFilter || "";
+      if (saved.byUserId !== undefined) byUserId = saved.byUserId ?? null;
+      if (saved.byCompanyId !== undefined) byCompanyId = saved.byCompanyId ?? null;
+    }
+    if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) {
+      selectedFilter = "last7days";
+      customStartDate = null;
+      customEndDate = null;
+    }
+
     fetchVisits();
     loadFilterOptions();
     getAllUsers();
@@ -679,6 +760,11 @@
     <!-- Table -->
     <div class="card border-0 rounded-0 cv-list-card">
       <div class="card-body" on:click={(e) => {
+        const qv = e.target.closest('.cv-qv-open');
+        if (qv) {
+          openQuickView(Number(qv.dataset.id));
+          return;
+        }
         const btn = e.target.closest('.status-change-btn');
         if (btn) quickStatusChange(Number(btn.dataset.id), btn.dataset.status);
       }}>
@@ -701,6 +787,13 @@
     </div>
   </div>
 </div>
+
+<ClientVisitQuickView
+  bind:open={drawerOpen}
+  visitId={drawerVisitId}
+  {currentUser}
+  on:close={closeQuickView}
+/>
 
 <style>
   .cv-list-page {
@@ -826,23 +919,34 @@
 
   .cv-list-filters {
     display: flex;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
-    overflow-x: auto;
-    padding-bottom: 2px;
-    -webkit-overflow-scrolling: touch;
+    gap: 6px;
   }
 
   .cv-list-filters :global(.form-control),
   .cv-list-filters :global(.form-select) {
     min-height: 32px;
+    flex: 1 1 118px;
+    max-width: 148px;
+    min-width: 0;
     width: auto;
-    flex: 0 0 auto;
+    padding-left: 6px;
+    padding-right: 22px;
+    font-size: 0.72rem;
   }
 
   .cv-list-filters .cv-filter-date {
-    min-width: 132px;
+    flex: 1 1 128px;
+    max-width: 140px;
+  }
+
+  .cv-list-filters .cv-overdue-toggle {
+    flex: 0 0 auto;
+  }
+
+  .cv-list-filters :global(.btn) {
+    flex: 0 0 auto;
   }
 
   .cv-list-card :global(th),
@@ -850,6 +954,19 @@
     font-size: var(--app-font-size, 0.75rem) !important;
     vertical-align: middle;
     padding: 0.45rem 0.6rem;
+  }
+
+  .cv-list-card :global(.cv-qv-open) {
+    color: #185fa5 !important;
+    font-size: inherit !important;
+    line-height: inherit !important;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cv-list-card :global(.cv-qv-open:hover) {
+    text-decoration: underline !important;
   }
 
   .cv-list-card :global(.badge) {

@@ -37,3 +37,4 @@ export const queryOpenFilterStore = createFilterStore('queryOpenFilter');
 export const queryAssignedFilterStore = createFilterStore('queryAssignedFilter');
 export const querySubQueueFilterStore = createFilterStore('querySubQueueFilter');
 export const mediaFilterStore = createFilterStore('mediaFilter');
+export const clientVisitFilterStore = createFilterStore('clientVisitFilter');

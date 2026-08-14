@@ -111,7 +111,7 @@
           <button type="button" class="btn btn-warning btn-sm" on:click={() => history.length > 2 ? history.back() : goto('/admin/client-visit')}>← Back</button>
           <i class="ti ti-map-pin text-muted" style="font-size:18px;"></i>
           <span class="fw-semibold" style="font-size:16px;">Visit #{visit.id}</span>
-          {#each [{ incoming: ['bg-info','They Came To Us'], outgoing: ['bg-warning text-dark','We Visited Client'], joint: ['bg-primary','Joint Site Visit'], job_discussion: ['bg-success','Client Gave Job Details'], job_received: ['bg-secondary','Job Received'], sample_sent: ['bg-danger','Sample Sent'] }] as map}
+          {#each [{ incoming: ['bg-info text-white','They Came To Us'], outgoing: ['bg-warning text-dark','We Visited Client'], joint: ['bg-primary','Joint Site Visit'], job_discussion: ['bg-success','Client Gave Job Details'], job_received: ['bg-secondary','Job Received'], sample_sent: ['bg-danger','Sample Sent'] }] as map}
             <span class="badge {(map[visit.visitType] ?? ['bg-secondary', visit.visitType])[0]}">
               {(map[visit.visitType] ?? ['bg-secondary', visit.visitType])[1]}
             </span>
