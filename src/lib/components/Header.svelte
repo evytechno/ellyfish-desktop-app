@@ -610,10 +610,12 @@
       key: "title",
       label: "Title",
       render: (val, row) => {
-        const isMaster = currentUser?.role === "master";
-        const isOwnOrder = currentUser?.subRole === "telecaller" &&
-          row.assignedUsers?.some((u) => u.id === currentUser?.id);
-        if (isMaster || isOwnOrder) {
+        const isPrivileged =
+          currentUser?.role === "master" ||
+          currentUser?.role === "admin" ||
+          currentUser?.role === "manager";
+        const isOwnOrder = row.assignedUsers?.some((u) => u.id === currentUser?.id);
+        if (isPrivileged || isOwnOrder) {
           return `<a data-order-href="/admin/order/${row.id}" title="Open Order" style="color:#3b5998;cursor:pointer;" class="d-inline-flex align-items-center gap-1"><i class="ti ti-external-link fs-16"></i>${val ?? "-"}</a>`;
         }
         return val ?? "-";
@@ -737,8 +739,7 @@
 
       <!-- Search + quick links -->
       <div class="me-auto flex items-center header-search gap-2">
-        {#if currentUser?.subRole === "telecaller" || currentUser?.role === "master"}
-          <div class="header-search-group flex items-center d-lg-flex d-none">
+        <div class="header-search-group flex items-center d-lg-flex d-none">
             <div class="input-icon relative">
               <input
                 type="text"
@@ -768,7 +769,6 @@
               {timerText}
             </div>
           </div>
-        {/if}
 
         <div class="header-quick-links flex items-center gap-1">
           <a
@@ -816,9 +816,8 @@
     </div>
 
     <div class="flex items-center">
-      <!-- Search for Mobile — visible to telecaller and master only -->
-      {#if currentUser?.subRole === "telecaller" || currentUser?.role === "master"}
-        <div class="header-item flex d-lg-none me-2">
+      <!-- Search for Mobile — all roles -->
+      <div class="header-item flex d-lg-none me-2">
           <button
             class="topbar-link btn"
             data-bs-toggle="modal"
@@ -828,7 +827,6 @@
             <i class="ti ti-search fs-16"></i>
           </button>
         </div>
-      {/if}
 
       <!-- Minimize -->
       <div class="header-item">
