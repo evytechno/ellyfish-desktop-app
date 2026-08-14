@@ -429,13 +429,20 @@
       if (saved.searchTerm      !== undefined) searchTerm      = saved.searchTerm;
       if (saved.filterStatus    !== undefined) filterStatus    = saved.filterStatus;
       if (saved.filterDateRange !== undefined) filterDateRange = saved.filterDateRange;
-      if (saved.customStartDate !== undefined) customStartDate = saved.customStartDate;
-      if (saved.customEndDate   !== undefined) customEndDate   = saved.customEndDate;
+      if (saved.customStartDate !== undefined) customStartDate = saved.customStartDate || "";
+      if (saved.customEndDate   !== undefined) customEndDate   = saved.customEndDate || "";
       if (saved.filterUserId    !== undefined) filterUserId    = saved.filterUserId;
       if (saved.filterCompanyId !== undefined) filterCompanyId = saved.filterCompanyId;
       if (saved.filterCategory  !== undefined) filterCategory  = saved.filterCategory;
       if (saved.orderBy         !== undefined) orderBy         = saved.orderBy;
       if (saved.pageSize        !== undefined) pageSize        = saved.pageSize;
+    }
+    // Incomplete custom range (no dates) used to skip fetch while leaving the loader on.
+    if (filterDateRange === "custom" && (!customStartDate || !customEndDate)) {
+      filterDateRange = "7d";
+      customStartDate = "";
+      customEndDate = "";
+      saveFilterStore();
     }
     if (isMaster || currentUser?.role === "admin") {
       try {
@@ -602,7 +609,10 @@
 
   // ── API ──────────────────────────────────────────────────
   async function fetchOrders(page = 1) {
-    if (filterDateRange === "custom" && (!customStartDate || !customEndDate)) return;
+    if (filterDateRange === "custom" && (!customStartDate || !customEndDate)) {
+      loadingData = false;
+      return;
+    }
     loadingData = true;
     currentPage = page;
     expandedRow = null;
