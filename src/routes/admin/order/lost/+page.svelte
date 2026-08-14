@@ -59,6 +59,11 @@
     selectedFilter = filterState.selectedFilter || "last7days";
     customStartDate = filterState.customStartDate || null;
     customEndDate = filterState.customEndDate || null;
+    if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) {
+      selectedFilter = "last7days";
+      customStartDate = null;
+      customEndDate = null;
+    }
     orderBy = filterState.orderBy || "createdAt";
 
     fetchOrders();
@@ -265,6 +270,7 @@
   function checkFetchRecord() {
     if (firstLoad) {
       if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) {
+        loadingData = false;
         return;
       }
       listCurrentPage = 1;

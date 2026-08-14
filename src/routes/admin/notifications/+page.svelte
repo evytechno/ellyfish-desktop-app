@@ -224,6 +224,7 @@
   function checkFetchRecord() {
     if (firstLoad) {
       if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) {
+        loadingData = false;
         return;
       }
       fetchNotifications();

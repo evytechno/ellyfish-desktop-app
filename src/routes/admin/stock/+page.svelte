@@ -60,6 +60,11 @@
     selectedFilter = filterState.selectedFilter || "last7days";
     customStartDate = filterState.customStartDate || null;
     customEndDate = filterState.customEndDate || null;
+    if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) {
+      selectedFilter = "last7days";
+      customStartDate = null;
+      customEndDate = null;
+    }
     orderBy = filterState.orderBy || "createdAt";
 
     fetchComponents();

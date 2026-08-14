@@ -110,6 +110,11 @@
     selectedFilter = filterState.selectedFilter || "last7days";
     customStartDate = filterState.customStartDate || null;
     customEndDate   = filterState.customEndDate   || null;
+    if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) {
+      selectedFilter = "last7days";
+      customStartDate = null;
+      customEndDate = null;
+    }
 
     // ── 2. Users dropdown — use store cache if available ───────────────────
     const cachedUsers = get(usersAllStore);
@@ -355,6 +360,7 @@
       ((currentUser?.subRole !== "tech" && currentUser?.subRole !== "tech_helper") || currentUser?.orderAccess)
     ) {
       if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) {
+        loadingData = false;
         return;
       }
       loadingData = true;

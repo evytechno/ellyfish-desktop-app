@@ -270,7 +270,10 @@
 
   async function loadList() {
     if (!user) return;
-    if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) return;
+    if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) {
+      listLoading = false;
+      return;
+    }
     listLoading = true;
     try {
       const q = buildUserParams({ page: currentPage, limit: rowsPerPage });

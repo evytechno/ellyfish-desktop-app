@@ -300,7 +300,10 @@
   // ── Filter change handler ─────────────────────────────────────────────────
   function onFilterChange() {
     if (!firstLoad) return;
-    if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) return;
+    if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) {
+      loadingData = false;
+      return;
+    }
     if (viewType === "list") {
       listCurrentPage = 1;
       fetchListOrders();
@@ -425,6 +428,11 @@
     customStartDate = fs.customStartDate || null;
     customEndDate = fs.customEndDate || null;
     orderBy = fs.orderBy || "createdAt";
+    if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) {
+      selectedFilter = "last7days";
+      customStartDate = null;
+      customEndDate = null;
+    }
 
     document.addEventListener("openChatModal", handleOpenChatModal);
     filterReady = true;

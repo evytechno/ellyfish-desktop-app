@@ -122,7 +122,10 @@
   }
 
   async function loadList() {
-    if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) return;
+    if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) {
+      listLoading = false;
+      return;
+    }
     listLoading = true;
     try {
       const dp = buildDateParams();

@@ -700,14 +700,20 @@ export function createHistoryPage() {
 
   function checkFetchRecord() {
     if (!get(firstLoad)) return;
-    if (get(selectedFilter) === "custom" && (!get(customStartDate) || !get(customEndDate))) return;
+    if (get(selectedFilter) === "custom" && (!get(customStartDate) || !get(customEndDate))) {
+      loadingData.set(false);
+      return;
+    }
     // Batch multiple store writes in the same tick (mirrors Svelte $: reactivity).
     if (orderFetchScheduled) return;
     orderFetchScheduled = true;
     queueMicrotask(() => {
       orderFetchScheduled = false;
       if (!get(firstLoad)) return;
-      if (get(selectedFilter) === "custom" && (!get(customStartDate) || !get(customEndDate))) return;
+      if (get(selectedFilter) === "custom" && (!get(customStartDate) || !get(customEndDate))) {
+        loadingData.set(false);
+        return;
+      }
       fetchActivities();
     });
   }
@@ -717,8 +723,10 @@ export function createHistoryPage() {
     if (
       get(authSelectedFilter) === "custom" &&
       (!get(authCustomStartDate) || !get(authCustomEndDate))
-    )
+    ) {
+      loadingData.set(false);
       return;
+    }
     if (authFetchScheduled) return;
     authFetchScheduled = true;
     queueMicrotask(() => {
@@ -727,8 +735,10 @@ export function createHistoryPage() {
       if (
         get(authSelectedFilter) === "custom" &&
         (!get(authCustomStartDate) || !get(authCustomEndDate))
-      )
+      ) {
+        loadingData.set(false);
         return;
+      }
       fetchAuthActivities();
     });
   }
@@ -791,6 +801,11 @@ export function createHistoryPage() {
     selectedFilter.set(filterState.selectedFilter || "last7days");
     customStartDate.set(filterState.customStartDate || null);
     customEndDate.set(filterState.customEndDate || null);
+    if (get(selectedFilter) === "custom" && (!get(customStartDate) || !get(customEndDate))) {
+      selectedFilter.set("last7days");
+      customStartDate.set(null);
+      customEndDate.set(null);
+    }
     sortOrder.set(filterState.sortOrder === "ASC" ? "ASC" : "DESC");
 
     const authState = get(authActivityFilterStore);
@@ -799,6 +814,11 @@ export function createHistoryPage() {
     authSelectedFilter.set(authState.selectedFilter || "last7days");
     authCustomStartDate.set(authState.customStartDate || null);
     authCustomEndDate.set(authState.customEndDate || null);
+    if (get(authSelectedFilter) === "custom" && (!get(authCustomStartDate) || !get(authCustomEndDate))) {
+      authSelectedFilter.set("last7days");
+      authCustomStartDate.set(null);
+      authCustomEndDate.set(null);
+    }
     authEventFilter.set(authState.eventFilter || "");
     authUserEmail.set(authState.userEmail || "");
     authIpFilter.set(authState.ipFilter || "");

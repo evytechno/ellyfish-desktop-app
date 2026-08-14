@@ -100,7 +100,10 @@
   }
 
   async function fetchFeedbacks() {
-    if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) return;
+    if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) {
+      loading = false;
+      return;
+    }
     loading = true;
     try {
       const { startDate, endDate } = buildDateRange();

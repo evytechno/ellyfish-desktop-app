@@ -108,12 +108,21 @@
       if (saved.rowsPerPage     !== undefined) rowsPerPage     = saved.rowsPerPage;
       if (saved.currentPage     !== undefined) currentPage     = saved.currentPage;
     }
+    if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) {
+      selectedFilter = "last7days";
+      customStartDate = "";
+      customEndDate = "";
+      saveFilterStore();
+    }
 
     await Promise.all([loadData(), loadStats()]);
   });
 
   async function loadData() {
-    if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) return;
+    if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) {
+      loading = false;
+      return;
+    }
     loading = true;
     try {
       const dateParams = buildDateParams();

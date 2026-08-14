@@ -71,6 +71,11 @@
     selectedFilter = filterState.selectedFilter || "last7days";
     customStartDate = filterState.customStartDate || null;
     customEndDate = filterState.customEndDate || null;
+    if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) {
+      selectedFilter = "last7days";
+      customStartDate = null;
+      customEndDate = null;
+    }
 
     fetchUserPayments();
     getAllUsers();
@@ -463,6 +468,7 @@
   function checkFetchRecord() {
     if (firstLoad) {
       if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) {
+        loadingData = false;
         return;
       }
       fetchUserPayments();

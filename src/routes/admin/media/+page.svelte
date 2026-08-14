@@ -63,6 +63,11 @@
     selectedFilter = filterState.selectedFilter || "all";
     customStartDate = filterState.customStartDate || null;
     customEndDate = filterState.customEndDate || null;
+    if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) {
+      selectedFilter = "all";
+      customStartDate = null;
+      customEndDate = null;
+    }
     typeFilter = filterState.typeFilter || "all";
     sizeRange = filterState.sizeRange || "all";
     sourceFilter = filterState.sourceFilter || "";
@@ -205,6 +210,7 @@
   function checkFetchRecord() {
     if (firstLoad) {
       if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) {
+        loadingData = false;
         return;
       }
       fetchMedia();

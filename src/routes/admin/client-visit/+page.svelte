@@ -159,7 +159,10 @@
   $: [searchTerm, selectedFilter, customStartDate, customEndDate, currentPage, rowsPerPage, visitTypeFilter, statusFilter, outcomeFilter, cityFilter, stateFilter, followUpFilter, overdueOnly, hasOrderFilter, byUserId, byCompanyId], checkFetch();
   function checkFetch() {
     if (firstLoad) {
-      if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) return;
+      if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) {
+        loadingData = false;
+        return;
+      }
       fetchVisits();
     }
   }
