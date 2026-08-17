@@ -234,6 +234,23 @@
       .replace(/"/g, "&quot;");
   }
 
+  function attendeeDisplayName(att) {
+    const name = (att?.user?.name || att?.guestName || "").trim();
+    if (!name) return "";
+    if (att?.user && currentUser?.role === "user" && att.user.name !== currentUser?.name) return "Team Member";
+    return name;
+  }
+
+  function formatAttendeeNames(attendees) {
+    return (attendees ?? [])
+      .map((a) => {
+        const name = attendeeDisplayName(a);
+        if (!name) return "";
+        return a.isLead ? `${name} · Lead` : name;
+      })
+      .filter(Boolean);
+  }
+
   /** Indian date: DD-MM-YYYY with weekday, e.g. Sat, 01-08-2026 */
   function formatDate(d) {
     if (!d) return "—";
@@ -403,7 +420,14 @@
     {
       key: "attendees",
       label: "Attendees",
-      render: (val, row) => String(row.attendees?.length ?? 0),
+      render: (val, row) => {
+        const names = formatAttendeeNames(row.attendees);
+        if (!names.length) return "—";
+        const shown = names.slice(0, 3);
+        const extra = names.length - shown.length;
+        const text = extra > 0 ? `${shown.join(", ")} +${extra}` : shown.join(", ");
+        return `<span class="cv-attendees" title="${escapeHtml(names.join(", "))}">${escapeHtml(text)}</span>`;
+      },
     },
     {
       key: "nextFollowUpDate",
@@ -858,6 +882,13 @@
   .cv-list-title {
     font-size: var(--app-font-size-xl, 1rem) !important;
     font-weight: 600;
+    line-height: 1.35;
+  }
+
+  .cv-list-page :global(.cv-attendees) {
+    display: inline-block;
+    max-width: 200px;
+    white-space: normal;
     line-height: 1.35;
   }
 

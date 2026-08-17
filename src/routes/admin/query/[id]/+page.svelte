@@ -7,7 +7,7 @@
   import { authApiFetch } from "$lib/api/client";
   import { API_ROUTES } from "$lib/constants/apiRoutes";
   import { API_BASE_URL, ATTACHMENT_BASE_URL } from "$lib/constants/constants";
-  import { checkAuth } from "$lib/utils/auth";
+  import { checkAuth, canUseMediaLibrary } from "$lib/utils/auth";
   import { errorHandle } from "$lib/utils/errorHandle";
   import { queryUnreadCounts, clearUnread, incrementUnread, loadUnreadCounts } from "$lib/stores/queryUnreadCounts";
   import { pushQueryToast } from "$lib/stores/queryToastStore";
@@ -19,11 +19,14 @@
     return authApiFetch(`${API_ROUTES.QUERY}/${id}/chat/mark-read`, { method: "PATCH" });
   }
   import { queryPrivacy } from "$lib/stores/queryPrivacy";
+  import { maskAssignedName, queryNamePrivacy } from "$lib/utils/maskUser";
   import { statusNamesStore } from "$lib/stores/statusNames";
   import { jsPDF } from "jspdf";
   import Swal from "sweetalert2";
   import LightBox from "$lib/components/LightBox.svelte";
   import MediaPickerModal from "$lib/components/MediaPickerModal.svelte";
+  import QueryTrainingAssignModal from "$lib/components/QueryTrainingAssignModal.svelte";
+  import { showToast } from "$lib/stores/uiToast";
   import DOMPurify from "dompurify";
   import { open as openExternal } from '@tauri-apps/api/shell';
 
@@ -98,6 +101,7 @@
   let savingRequirement = false;
 
   function startEditRequirement() {
+    if (blockTraining()) return;
     requirementDraft = query?.description ?? "";
     editingRequirement = true;
   }
@@ -108,6 +112,7 @@
   }
 
   async function saveRequirement() {
+    if (blockTraining()) return;
     if (savingRequirement) return;
     savingRequirement = true;
     try {
@@ -148,6 +153,7 @@
   $: rightPanelTop = rightPanelStack[rightPanelStack.length - 1] ?? null;
 
   async function openOrderDrawer(orderId) {
+    if (query?.isTrainingView) return;
     orderDrawerOpen = true;
     orderNoLinkedOrder = false;
     pushRightPanel('order');
@@ -1112,6 +1118,14 @@
   });
 
   async function loadInProgress(reset = true, filtering = false) {
+    if (query?.isTrainingView) {
+      inProgressList = [];
+      inProgressTotal = 0;
+      inProgressLoading = false;
+      inProgressLoadingMore = false;
+      inProgressFiltering = false;
+      return;
+    }
     if (reset) {
       inProgressPage = 1;
       inProgressTotal = 0;
@@ -1246,6 +1260,7 @@
   }
 
   function openAllQueriesPanel() {
+    if (query?.isTrainingView) return;
     pushRightPanel('allQueries');
     aqSearch = "";
     aqDateFilter = "all";
@@ -1357,19 +1372,25 @@
         goto(`/admin/query/${query.parentQueryId}?sq=${id}`, { replaceState: true });
         return;
       }
-      loadSubQueries(id);
-      // reload order drawer with new query's order, or show "no order" message
-      if (_wasOrderDrawerOpen) {
-        if (query?.order?.id) {
-          openOrderDrawer(query.order.id);
-        } else {
-          openOrderDrawerEmpty();
+      if (!query?.isTrainingView) loadSubQueries(id);
+      if (query?.isTrainingView) {
+        inProgressList = [];
+        inProgressTotal = 0;
+        rightPanelStack = [];
+        orderDrawerOpen = false;
+      } else {
+        loadInProgress();
+        if (_wasOrderDrawerOpen) {
+          if (query?.order?.id) {
+            openOrderDrawer(query.order.id);
+          } else {
+            openOrderDrawerEmpty();
+          }
         }
       }
     });
     loadChats(id);
     connectSocket();
-    loadInProgress();
     markChatsRead(id).then(() => loadUnreadCounts()).catch(() => {});
     authApiFetch(`${API_ROUTES.QUERY}/${id}/read-notifications`, { method: "PATCH" }).catch(() => {});
   }
@@ -1378,8 +1399,33 @@
   const isTech = (u) => u?.subRole === "tech";
   const isTechHelper = (u) => u?.subRole === "tech_helper";
   const isMasterView = (u) => u?.role !== "user";
-  const canUseMediaLibrary = (u) =>
-    u?.role === "master" || u?.role === "admin" || u?.subRole === "telecaller";
+  const canAssignTraining = (u) => u?.role === "master" || u?.role === "admin";
+  const isClosedOrResolved = (status) => status === "closed" || status === "resolved";
+
+  $: isTrainingView = !!query?.isTrainingView;
+  let trainOpen = false;
+
+  function blockTraining() {
+    if (!query?.isTrainingView) return false;
+    showToast({
+      type: "info",
+      title: "Training view",
+      message: "Buttons are shown for learning. Actions are disabled.",
+    });
+    return true;
+  }
+
+  function trainingRemaining() {
+    const exp = query?.trainingExpiresAt;
+    if (!exp) return "";
+    const ms = new Date(exp).getTime() - Date.now();
+    if (ms <= 0) return "expired";
+    const h = Math.floor(ms / 3600000);
+    const m = Math.floor((ms % 3600000) / 60000);
+    if (h >= 24) return `${Math.floor(h / 24)}d ${h % 24}h left`;
+    if (h > 0) return `${h}h ${m}m left`;
+    return `${Math.max(1, m)}m left`;
+  }
 
   // For tech users, "sub-query" is presented simply as "query"
   $: sqWord        = isTech(currentUser) ? "Query"   : "Sub-Query";
@@ -1415,16 +1461,19 @@
   }
 
   function canSetFinalFlag() {
+    if (query?.isTrainingView) return false;
     return currentUser?.subRole === 'telecaller' || currentUser?.subRole === 'tech' || currentUser?.subRole === 'tech_helper';
   }
 
   function canEditChat(chat) {
+    if (query?.isTrainingView) return false;
     if (!chat.isOwn) return false;
     const ageMs = Date.now() - new Date(chat.createdAt).getTime();
     return ageMs <= 30 * 60 * 1000;
   }
 
   function startEditChat(chat) {
+    if (blockTraining()) return;
     editingChatId = chat.id;
     editingChatText = chat.message ?? "";
   }
@@ -1435,6 +1484,7 @@
   }
 
   async function saveEditChat(chatId) {
+    if (blockTraining()) return;
     if (!editingChatText.trim()) return;
     savingEdit = true;
     try {
@@ -1462,6 +1512,7 @@
   }
 
   async function toggleFinalFlag(chat) {
+    if (blockTraining()) return;
     if (settingFinalFlag === chat.id) return;
     settingFinalFlag = chat.id;
     try {
@@ -1634,6 +1685,7 @@
   }
 
   async function deleteChat(chat) {
+    if (blockTraining()) return;
     const confirmed = await Swal.fire({
       icon: 'warning',
       title: 'Delete message?',
@@ -1846,6 +1898,7 @@
   }
 
   async function submitSubQuery() {
+    if (blockTraining()) return;
     if (!sqSubject.trim()) return;
     sqSending = true;
     try {
@@ -1865,7 +1918,7 @@
   }
 
   function canRaiseSubQuery() {
-    if (!query || isSubQuery) return false;
+    if (!query || isSubQuery || query.isTrainingView) return false;
     return isTech(currentUser) && query.status === "in_progress" && query.assignedToId === currentUser?.id;
   }
 
@@ -1937,15 +1990,15 @@
       goto(`/admin/query/${query.parentQueryId}?sq=${queryId}`, { replaceState: true });
       return;
     }
-    await Promise.all([loadChats(), loadSubQueries()]);
+    await Promise.all([loadChats(), query?.isTrainingView ? Promise.resolve() : loadSubQueries()]);
     markChatsRead(queryId).then(() => loadUnreadCounts()).catch(() => {});
     connectSocket();
-    loadInProgress();
+    if (!query?.isTrainingView) loadInProgress();
     // mark any existing notifications for this query as read
     authApiFetch(`${API_ROUTES.QUERY}/${queryId}/read-notifications`, { method: "PATCH" }).catch(() => {});
     // auto-open sub-query panel if ?sq= is present in URL
     const sqParam = $page.url.searchParams.get("sq");
-    if (sqParam) {
+    if (sqParam && !query?.isTrainingView) {
       const sqId = Number(sqParam);
       const sq = subQueries.find(s => s.id === sqId) ?? { id: sqId };
       openSubQueryInline(sq);
@@ -2452,7 +2505,17 @@
     try {
       query = await authApiFetch(`${API_ROUTES.QUERY}/${id}`);
     } catch (e) {
-      // network errors: ServerOffline modal already covers the UI
+      const msg = e?.data?.message ?? e?.message ?? "";
+      if (e?.status === 403 && /training|no longer available/i.test(String(msg))) {
+        Swal.fire({
+          icon: "info",
+          title: "Training access ended",
+          text: "This query is no longer available for training.",
+          confirmButtonColor: "#3b5bdb",
+        });
+        goto("/admin/query/training");
+        return;
+      }
       if (!e?.isNetworkError && e?.status !== 0) errorHandle(e);
     } finally {
       loading = false;
@@ -2547,16 +2610,34 @@
 
   function isImage(mime) { return mime?.startsWith("image/") ?? false; }
 
+  function startOfDay(d) {
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  }
+
   function timeAgo(dateStr) {
     if (!dateStr) return "";
-    const diff = Date.now() - new Date(dateStr).getTime();
-    const m = Math.floor(diff / 60000);
-    if (m < 1) return "just now";
-    if (m < 60) return `${m}m ago`;
-    const h = Math.floor(m / 60);
-    if (h < 24) return `${h}h ago`;
-    const d = Math.floor(h / 24);
-    return `${d}d ago`;
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return "";
+    const now = new Date();
+    const dayDiff = Math.round((startOfDay(now) - startOfDay(d)) / 86400000);
+    if (dayDiff === 0) {
+      const m = Math.floor((Date.now() - d.getTime()) / 60000);
+      if (m < 1) return "just now";
+      if (m < 60) return `${m}m ago`;
+      return `${Math.floor(m / 60)}h ago`;
+    }
+    const time = d.toLocaleString("en-IN", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+    if (dayDiff === 1) return `Yesterday, ${time}`;
+    const date = d.toLocaleString("en-IN", {
+      day: "numeric",
+      month: "short",
+      ...(d.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}),
+    });
+    return `${date}, ${time}`;
   }
 
   function formatDateTime(dateStr) {
@@ -2569,6 +2650,7 @@
 
   // ── Drag-and-drop: order attachment reference → query chat ──────────────
   async function sendChatWithReference(att) {
+    if (blockTraining()) return;
     if (!canSendChat()) return;
     sendingChat = true;
     try {
@@ -2639,6 +2721,7 @@
   }
 
   async function sendChat() {
+    if (blockTraining()) return;
     if (!chatMessage.trim() && !attachedFiles.length && !attachedRefs.length) return;
     sendingChat = true;
 
@@ -2757,6 +2840,7 @@
   }
 
   async function pickUp() {
+    if (blockTraining()) return;
     actionLoading = true;
     try {
       await authApiFetch(`${API_ROUTES.QUERY}/${queryId}/assign`, { method: "PATCH" });
@@ -2789,6 +2873,7 @@
   }
 
   async function markResolved() {
+    if (blockTraining()) return;
     const confirm = await Swal.fire({
       icon: "question", title: "Mark as Resolved?",
       text: "The requester will be notified and can reopen if needed.",
@@ -2807,6 +2892,7 @@
   }
 
   async function acceptSolution() {
+    if (blockTraining()) return;
     const confirm = await Swal.fire({
       icon: "question", title: "Accept Solution?",
       text: "This will close the query. You won't be able to reopen it after accepting.",
@@ -2831,6 +2917,7 @@
   let reopenError = "";
 
   function openReopenModal() {
+    if (blockTraining()) return;
     reopenType = "same";
     reopenNote = "";
     reopenError = "";
@@ -2864,6 +2951,7 @@
   let escalateLoading = false;
 
   async function submitEscalate() {
+    if (blockTraining()) return;
     escalateLoading = true;
     try {
       await authApiFetch(`${API_ROUTES.QUERY}/${queryId}/escalate`, {
@@ -2881,6 +2969,7 @@
 
   // ── Force Release (admin/master on stuck in_progress) ───────────────────
   async function forceRelease() {
+    if (blockTraining()) return;
     const confirm = await Swal.fire({
       icon: "warning",
       title: "Force Release Query?",
@@ -2902,6 +2991,7 @@
   }
 
   async function closeQuery() {
+    if (blockTraining()) return;
     const confirm = await Swal.fire({
       icon: "warning", title: "Close this query?", text: "This action is permanent.",
       showCancelButton: true, confirmButtonText: "Yes, close it",
@@ -2922,10 +3012,11 @@
   }
 
   function canSendChat() {
-    if (!query) return false;
+    if (!query || query.isTrainingView) return false;
     if (isTelecaller(currentUser)) return query.status !== "closed" && query.status !== "resolved" && query.status !== "reopened";
     if (isTech(currentUser)) {
       if (isSubQuery) return query.status !== "closed" && query.status !== "resolved" && query.status !== "reopened";
+      if (query.isRaisedByMe) return query.status !== "closed" && query.status !== "resolved" && query.status !== "reopened";
       return query.status === "in_progress" && query.assignedToId === currentUser?.id;
     }
     if (isTechHelper(currentUser)) return query.status === "in_progress" && query.assignedToId === currentUser?.id;
@@ -2935,7 +3026,11 @@
 
   function typingLabel() {
     if (isTelecaller(currentUser)) return "Support Team is typing…";
-    if (isTech(currentUser)) return isSubQuery ? "Senior Tech is typing…" : "Requester is typing…";
+    if (isTech(currentUser)) {
+      if (isSubQuery) return "Senior Tech is typing…";
+      if (query?.isRaisedByMe) return "Support Team is typing…";
+      return "Requester is typing…";
+    }
     if (isTechHelper(currentUser)) return "Tech is typing…";
     return "Someone is typing…";
   }
@@ -2944,21 +3039,20 @@
 
   // ── Privacy masking ───────────────────────────────────────────────────────
   $: isRoleUser       = currentUser?.role === "user";
-  $: isTechSubRole    = currentUser?.subRole === "tech" || currentUser?.subRole === "tech_helper";
-  $: isTCSubRole      = currentUser?.subRole === "telecaller";
+  $: qp = queryNamePrivacy(currentUser, $queryPrivacy);
   $: maskTC     = (name) => {
     if (isRoleUser && name && name !== currentUser?.name) return "Telecaller";
-    if (!isRoleUser && (isTechSubRole || (currentUser?.role === "master" && $queryPrivacy.telecaller)) && name) return "Telecaller";
+    if (!isRoleUser && qp.telecaller && name) return "Telecaller";
     return name ?? "-";
   };
   $: maskTech   = (name) => {
     if (isRoleUser && name && name !== currentUser?.name) return "Tech";
-    if (!isRoleUser && (isTCSubRole || (currentUser?.role === "master" && $queryPrivacy.tech)) && name) return "Tech";
+    if (!isRoleUser && qp.tech && name) return "Tech";
     return name ?? "-";
   };
   $: maskHelper = (name) => {
     if (isRoleUser && name && name !== currentUser?.name) return "Senior Tech";
-    if (!isRoleUser && (isTCSubRole || (currentUser?.role === "master" && $queryPrivacy.techHelper)) && name) return "Senior Tech";
+    if (!isRoleUser && qp.techHelper && name) return "Senior Tech";
     return name ?? "-";
   };
   $: maskChatSender = (chat) => {
@@ -2978,6 +3072,7 @@
     if (isTelecaller(currentUser) && senderType === 'tech_helper') return 'Senior Tech';
     // tech/tech_helper viewing telecaller message → "Requester"
     if ((isTech(currentUser) || isTechHelper(currentUser)) && senderType === 'telecaller') return 'Requester';
+    if (isTech(currentUser) && query?.isRaisedByMe && senderType === 'tech') return 'Support Team';
     // master: apply privacy toggle
     if (isMasterView(currentUser)) {
       if ($queryPrivacy.telecaller && senderType === 'telecaller') return 'Telecaller';
@@ -3283,6 +3378,7 @@
 
   // ── Inline sub-query panel helpers ───────────────────────────────────────
   function canSendSqChat() {
+    if (query?.isTrainingView) return false;
     if (!sqViewQuery) return false;
     if (isTelecaller(currentUser)) return false;
     if (query?.status === 'closed') return false;
@@ -3343,6 +3439,7 @@
   }
 
   async function sendSqChat() {
+    if (blockTraining()) return;
     if (!sqChatMessage.trim() && !sqAttachedFiles.length && !sqAttachedRefs.length) return;
     sqSendingChat = true;
     if (sqIsTyping) {
@@ -3470,6 +3567,7 @@
   }
 
   function sqCanEditChat(chat) {
+    if (query?.isTrainingView) return false;
     if (!chat.isOwn) return false;
     const ageMs = Date.now() - new Date(chat.createdAt).getTime();
     return ageMs <= 30 * 60 * 1000;
@@ -3632,6 +3730,15 @@
     {:else if !query}
       <div class="text-center py-5 text-muted">Query not found.</div>
     {:else}
+      {#if isTrainingView}
+        <div class="alert alert-warning py-2 px-3 d-flex align-items-center gap-2 mb-3" style="font-size:13px;">
+          <i class="ti ti-school"></i>
+          <span>
+            Training view — this sample is read-only. Other queries and actions are hidden.
+            <strong class="ms-1">{trainingRemaining()}</strong>
+          </span>
+        </div>
+      {/if}
       <LightBox data={lightboxData} startIndex={lightboxStartIndex} />
       {#if canUseMediaLibrary(currentUser)}
         <MediaPickerModal
@@ -3639,6 +3746,13 @@
           maxSelect={mediaPickerTarget === "sq" ? sqAttachSlotsLeft : attachSlotsLeft}
           on:confirm={onMediaPickerConfirm}
           on:close={() => showMediaPicker = false}
+        />
+      {/if}
+      {#if canAssignTraining(currentUser)}
+        <QueryTrainingAssignModal
+          bind:open={trainOpen}
+          queryId={query.id}
+          querySubject={query.subject}
         />
       {/if}
 
@@ -3834,7 +3948,7 @@
       <div class="row g-4">
         <!-- Left: query info + actions -->
         <div class="col-lg-3 query-left-col">
-          {#if query.order}
+          {#if query.order && !isTrainingView}
             {@const canSeeFullOrder = (currentUser?.role === 'admin' || currentUser?.role === 'master') || (currentUser?.orderAccess && !isTech(currentUser) && !isTechHelper(currentUser))}
             {#if canSeeFullOrder}
               <div class="card border-0 shadow-sm mb-3">
@@ -3856,7 +3970,7 @@
               <div class="card border-0 shadow-sm mb-3">
                 <div class="card-body py-2 px-3 small d-flex align-items-center justify-content-between">
                   <span class="text-muted">Order Status</span>
-                  <span class="badge bg-success">🏆 Deal Won</span>
+                  <span class="badge bg-success query-deal-badge">🏆 Deal Won</span>
                 </div>
               </div>
             {/if}
@@ -3867,10 +3981,20 @@
 
             <!-- ── Card label ── -->
             <div class="qd-card-label d-flex align-items-center gap-2">
-              <button class="btn btn-sm btn-warning py-0 px-1" on:click={() => history.back()} title="Back">
+              <button class="btn btn-sm btn-warning py-0 px-1" on:click={() => isTrainingView ? goto("/admin/query/training") : history.back()} title="Back">
                 <i class="ti ti-arrow-left"></i>
               </button>
               <span><i class="ti ti-message-circle"></i>Query Detail</span>
+              {#if canAssignTraining(currentUser) && isClosedOrResolved(query.status) && !query.parentQueryId}
+                <button
+                  class="btn btn-sm btn-outline-warning py-0 px-2 ms-auto"
+                  style="font-size:11px;"
+                  type="button"
+                  on:click={() => (trainOpen = true)}
+                >
+                  <i class="ti ti-school me-1"></i>Training
+                </button>
+              {/if}
             </div>
 
             <!-- ── Header: subject + status ── -->
@@ -3896,7 +4020,7 @@
             <div class="qd-description">
               <div class="d-flex align-items-center justify-content-between mb-1">
                 <div class="qd-meta-label"><i class="ti ti-notes"></i> Requirement</div>
-                {#if !editingRequirement}
+                {#if !editingRequirement && !isTrainingView}
                   <button class="btn btn-xs btn-outline-dark py-0 px-1" style="font-size:11px;" on:click={startEditRequirement}>
                     <i class="ti ti-edit"></i> Edit
                   </button>
@@ -3960,18 +4084,53 @@
                   <span class="qd-meta-label"><i class="ti ti-user-check"></i> Assigned</span>
                   <span class="qd-meta-value">{query.assignedTo ? maskTech(query.assignedTo.name) : "Unassigned"}</span>
                 </div>
+              {:else if isTrainingView}
+                <div class="qd-meta-row">
+                  <span class="qd-meta-label"><i class="ti ti-user"></i> Raised by</span>
+                  <span class="qd-meta-value">{query.raisedBy?.name ?? "Requester"}</span>
+                </div>
+                <div class="qd-meta-row">
+                  <span class="qd-meta-label"><i class="ti ti-user-check"></i> Assigned</span>
+                  <span class="qd-meta-value">{query.assignedTo?.name ?? "Support Team"}</span>
+                </div>
               {/if}
             </div>
 
             <!-- ── Actions ── -->
             {#if
-              (isTech(currentUser) && (query.status === "open" || query.status === "reopened" || (query.status === "in_progress" && query.assignedToId === currentUser?.id))) ||
+              !isTrainingView && (
+              (isTech(currentUser) && (
+                (query.isRaisedByMe && ["open", "in_progress", "reopened", "resolved"].includes(query.status)) ||
+                (!query.isRaisedByMe && (query.status === "open" || query.status === "reopened" || (query.status === "in_progress" && query.assignedToId === currentUser?.id)))
+              )) ||
               (isTechHelper(currentUser) && (query.status === "open" || (query.status === "in_progress" && query.assignedToId === currentUser?.id))) ||
               (isTelecaller(currentUser) && (["open", "in_progress", "reopened", "resolved"].includes(query.status) && Number(query.raisedById) === Number(currentUser?.id))) ||
               (isMasterView(currentUser) && query.status !== "closed")
+              )
             }
               <div class="qd-actions">
-                {#if isTech(currentUser)}
+                {#if isTech(currentUser) && query.isRaisedByMe}
+                  {#if ["open", "in_progress", "reopened"].includes(query.status)}
+                    <button class="qd-btn qd-btn--danger-outline" on:click={closeQuery} disabled={actionLoading}>
+                      <i class="ti ti-lock"></i> Close Query
+                    </button>
+                  {/if}
+                  {#if query.status === "in_progress"}
+                    <button class="qd-btn qd-btn--warning" on:click={() => { escalateNote = ""; showEscalateModal = true; }} disabled={actionLoading}>
+                      <i class="ti ti-alert-triangle"></i> Escalate
+                    </button>
+                  {/if}
+                  {#if query.status === "resolved"}
+                    {#if query.hasAssignee}
+                      <button class="qd-btn qd-btn--success" on:click={acceptSolution} disabled={actionLoading}>
+                        <i class="ti ti-thumb-up"></i> Accept Solution
+                      </button>
+                    {/if}
+                    <button class="qd-btn qd-btn--danger-outline" on:click={openReopenModal} disabled={actionLoading}>
+                      <i class="ti ti-refresh"></i> Reopen Query
+                    </button>
+                  {/if}
+                {:else if isTech(currentUser)}
                   {#if query.status === "open" || query.status === "reopened"}
                     <button class="qd-btn qd-btn--warning" on:click={pickUp} disabled={actionLoading}>
                       <i class="ti ti-hand-stop"></i> Pick Up Query
@@ -4182,6 +4341,7 @@
           {/if}
 
           <!-- In-progress list — inside left column, below detail card -->
+          {#if !isTrainingView}
           {#if inProgressLoading}
             <div class="card border-0 shadow-sm p-3 text-center">
               <span class="spinner-border spinner-border-sm text-primary"></span>
@@ -4266,12 +4426,20 @@
                       <span class="ip-priority-dot ip-priority-dot--{q.priority ?? 'medium'}"></span>
                     </div>
 
-                    <!-- subject + sub-line -->
+                    <!-- ticket + last activity, then subject + sub-line -->
                     <div class="ip-body">
+                      {#if q.ticketCode}
+                        <div class="ip-ticket">
+                          <span class="ip-ticket-code">{q.ticketCode}</span>
+                          {#if q.lastActivityAt}
+                            <span class="ip-activity-badge" title="Last activity">{timeAgo(q.lastActivityAt)}</span>
+                          {/if}
+                        </div>
+                      {/if}
                       <div class="ip-subject-row">
                         <span class="ip-subject">{q.subject}</span>
-                        {#if q.lastActivityAt}
-                          <span class="ip-time" title="Last activity">{timeAgo(q.lastActivityAt)}</span>
+                        {#if q.lastActivityAt && !q.ticketCode}
+                            <span class="ip-activity-badge" title="Last activity">{timeAgo(q.lastActivityAt)}</span>
                         {/if}
                       </div>
                       <span class="ip-sub {isTypingHere ? 'ip-sub--typing' : ''}">
@@ -4322,6 +4490,7 @@
               </div>
             </div>
           {/if}
+          {/if}
         </div>
 
         <!-- Right: chat (shrinks when right panel stack is open) -->
@@ -4349,7 +4518,7 @@
                   <div class="small text-muted">{chats.length} message{chats.length !== 1 ? "s" : ""}</div>
                 {/if}
               </div>
-              {#if !isSubQuery && (isTech(currentUser) || isMasterView(currentUser))}
+              {#if !isTrainingView && !isSubQuery && (isTech(currentUser) || isMasterView(currentUser))}
                 <button
                   type="button"
                   class="btn btn-sm btn-outline-secondary chat-hdr-ctrl sq-list-btn"
@@ -4878,14 +5047,18 @@
               </div>
             {:else}
               <div class="chat-blocked">
-                {#if query.status === "closed"}
+                {#if isTrainingView}
+                  <i class="ti ti-school me-1"></i> Training sample — read-only.
+                {:else if query.status === "closed"}
                   <i class="ti ti-lock me-1"></i> This query is closed. No further messages can be sent.
                 {:else if query.status === "resolved" && isTelecaller(currentUser)}
                   <i class="ti ti-check-circle me-1 text-success"></i> Query resolved — reopen to continue the discussion.
+                {:else if isTech(currentUser) && query.isRaisedByMe && (query.status === "open" || query.status === "reopened")}
+                  <i class="ti ti-clock me-1"></i> Waiting for another team member to pick this up.
                 {:else if isTech(currentUser) && (query.status === "open" || query.status === "reopened")}
                   <i class="ti ti-hand-stop me-1"></i> Pick up this query to send messages.
                 {:else if isTech(currentUser) && query.assignedToId !== currentUser?.id}
-                  <i class="ti ti-hand-stop me-1"></i> Pick up this query to send messages.
+                  <i class="ti ti-hand-stop me-1"></i> This query is handled by another team member.
                 {:else if isTechHelper(currentUser) && query.status === "open"}
                   <i class="ti ti-hand-stop me-1"></i> Pick up this query to start helping.
                 {:else if isTechHelper(currentUser) && query.assignedToId !== currentUser?.id}
@@ -5409,7 +5582,7 @@
           {/if}
 
           <!-- Order panel: visible when on top of stack -->
-          {#if rightPanelTop === 'allQueries'}
+          {#if !isTrainingView && rightPanelTop === 'allQueries'}
             <div class="card border-0 shadow-sm aq-panel">
               <!-- Header -->
               <div class="card-header py-2 px-3 d-flex align-items-center gap-2">
@@ -5494,10 +5667,18 @@
                         <span class="ip-priority-dot ip-priority-dot--{q.priority ?? 'medium'}"></span>
                       </div>
                       <div class="ip-body">
+                        {#if q.ticketCode}
+                          <div class="ip-ticket">
+                            <span class="ip-ticket-code">{q.ticketCode}</span>
+                            {#if q.lastActivityAt}
+                              <span class="ip-activity-badge" title="Last activity">{timeAgo(q.lastActivityAt)}</span>
+                            {/if}
+                          </div>
+                        {/if}
                         <div class="ip-subject-row">
                           <span class="ip-subject">{q.subject}</span>
-                          {#if q.lastActivityAt}
-                            <span class="ip-time">{timeAgo(q.lastActivityAt)}</span>
+                          {#if q.lastActivityAt && !q.ticketCode}
+                            <span class="ip-activity-badge" title="Last activity">{timeAgo(q.lastActivityAt)}</span>
                           {/if}
                         </div>
                         <span class="ip-sub">
@@ -5630,13 +5811,7 @@
                     <div class="op-row"><span class="op-label"><i class="ti ti-hash"></i>Order #</span><span class="op-value op-copyable" on:click={() => copyField('orderId', String(o.pId ?? ''))}>{o.pId ?? "-"}<i class="ti {copiedFieldKey === 'orderId' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'orderId'}></i></span></div>
                     {#if o.category}<div class="op-row"><span class="op-label"><i class="ti ti-tag"></i>Category</span><span class="op-value">{o.category}</span></div>{/if}
                     {#if o.workOrderNumber}<div class="op-row"><span class="op-label"><i class="ti ti-file-invoice"></i>Work Order</span><span class="op-value op-copyable" on:click={() => copyField('workOrder', o.workOrderNumber)}>{o.workOrderNumber}<i class="ti {copiedFieldKey === 'workOrder' ? 'ti-check text-success' : 'ti-copy'} op-copy-icon" class:op-copy-icon--copied={copiedFieldKey === 'workOrder'}></i></span></div>{/if}
-                    {#if o.assignedUsers?.length}<div class="op-row"><span class="op-label"><i class="ti ti-user"></i>Assigned To</span><span class="op-value">{o.assignedUsers.map(u => {
-                        if (!currentUser) return u.name;
-                        if (['master','admin','manager'].includes(currentUser.role)) return u.name;
-                        if (currentUser.subRole === 'tech' || currentUser.subRole === 'tech_helper') return u.subRole === 'telecaller' ? 'User' : u.name;
-                        if (currentUser.subRole === 'telecaller') return (u.subRole === 'tech' || u.subRole === 'tech_helper') ? 'User' : u.name;
-                        return u.name;
-                      }).join(", ")}</span></div>{/if}
+                    {#if o.assignedUsers?.length}<div class="op-row"><span class="op-label"><i class="ti ti-user"></i>Assigned To</span><span class="op-value">{o.assignedUsers.map(u => maskAssignedName(u, currentUser)).join(", ")}</span></div>{/if}
                   </div>
 
                   <!-- Company / GST -->
@@ -7272,6 +7447,28 @@
   .ip-body {
     flex: 1; display: flex; flex-direction: column;
     overflow: hidden; gap: 1px;
+  }
+  .ip-ticket {
+    display: flex; align-items: center; gap: 6px;
+    overflow: hidden; min-width: 0;
+  }
+  .ip-ticket-code {
+    font-size: 9.5px; font-weight: 600; color: #868e96;
+    letter-spacing: 0.2px; flex-shrink: 0;
+  }
+  .ip-ticket .ip-activity-badge,
+  .ip-subject-row .ip-activity-badge {
+    margin-left: auto;
+    font-size: 8px !important;
+    font-weight: 600 !important;
+    padding: 0 6px !important;
+    line-height: 1.4 !important;
+    flex-shrink: 0;
+    border-radius: 999px;
+    border: 1px solid #e67700;
+    background: transparent;
+    color: #e67700;
+    white-space: nowrap;
   }
   .ip-subject-row {
     display: flex; align-items: baseline; gap: 4px;

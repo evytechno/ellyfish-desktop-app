@@ -66,7 +66,13 @@
                       <td class="small">{v.visitDate ? new Date(v.visitDate).toLocaleDateString("en-IN") : "—"}</td>
                       <td class="small">{v.purpose || "—"}</td>
                       <td class="small">{v.outcome || "—"}</td>
-                      <td class="small">{v.attendees?.length ?? 0}</td>
+                      <td class="small">
+                        {#if v.attendees?.length}
+                          {v.attendees.map((a) => a.user?.name || a.guestName).filter(Boolean).join(", ") || "—"}
+                        {:else}
+                          —
+                        {/if}
+                      </td>
                       <td class="text-end px-3">
                         <div class="d-inline-flex gap-2">
                           <a href="/admin/client-visit/{v.id}" class="btn btn-sm btn-outline-primary" title="View"><i class="ti ti-eye"></i></a>

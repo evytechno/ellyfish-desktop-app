@@ -362,4 +362,32 @@
     border-radius: 8px;
     font-size: 11.5px; font-weight: 600; color: #7a4800;
   }
+
+  :global(.query-count-badge.badge) {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-sizing: border-box;
+    min-width: 15px;
+    height: 15px;
+    padding: 0 4px !important;
+    font-size: 9px !important;
+    font-weight: 700 !important;
+    line-height: 1 !important;
+    border-radius: 999px !important;
+    flex-shrink: 0;
+    vertical-align: middle;
+  }
+
+  :global(.query-deal-badge.badge) {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 2px;
+    font-size: 9px !important;
+    font-weight: 600 !important;
+    padding: 1px 5px !important;
+    line-height: 1.2 !important;
+    flex-shrink: 0;
+    vertical-align: middle;
+  }
 </style>

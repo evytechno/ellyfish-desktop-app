@@ -13,7 +13,7 @@
   import { page } from "$app/stores";
   import { checkAuth, logoutUser } from "$lib/utils/auth";
   import { invoke } from "@tauri-apps/api/tauri";
-  import { openQueryCount } from "$lib/stores/queryStore";
+  import { openQueryCount, loadTrainingQueryCount } from "$lib/stores/queryStore";
   import { incrementUnread } from "$lib/stores/queryUnreadCounts";
   import { uiToasts, dismissToast } from "$lib/stores/uiToast";
   import {
@@ -81,6 +81,9 @@
         // #4 — increment live open count for query_open events
         if (data.data.type === "query_open") {
           openQueryCount.update((n) => n + 1);
+        }
+        if (data.data.type === "query_training") {
+          loadTrainingQueryCount();
         }
         // increment unread count for chat message notifications
         if (data.data.type === "query" && data.data.queryId) {

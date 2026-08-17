@@ -5,7 +5,7 @@
   import { errorHandle } from "$lib/utils/errorHandle";
   import { API_ROUTES } from "$lib/constants/apiRoutes";
   import { ATTACHMENT_BASE_URL } from "$lib/constants/constants";
-  import { checkAuth } from "$lib/utils/auth";
+  import { checkAuth, canUseMediaLibrary } from "$lib/utils/auth";
   import Loader from "$lib/components/Loader.svelte";
   import LightBox from "$lib/components/LightBox.svelte";
   import { mediaFilterStore } from "$lib/stores/filterStore";
@@ -53,6 +53,12 @@
     currentUser = checkAuth();
     if (!currentUser) {
       loadingData = false;
+      goto("/login");
+      return;
+    }
+    if (!canUseMediaLibrary(currentUser)) {
+      loadingData = false;
+      goto("/admin/dashboard");
       return;
     }
 
@@ -282,14 +288,24 @@
         limit: "12",
         search: term || "",
       });
-      // Prefer active queries; API accepts a single status — fetch open + in_progress in parallel
-      const [openRes, ipRes, reRes] = await Promise.all([
-        authApiFetch(`${API_ROUTES.QUERY}?${q}&status=open`).catch(() => ({ data: [] })),
-        authApiFetch(`${API_ROUTES.QUERY}?${q}&status=in_progress`).catch(() => ({ data: [] })),
-        authApiFetch(`${API_ROUTES.QUERY}?${q}&status=reopened`).catch(() => ({ data: [] })),
-      ]);
+      const sub = currentUser?.subRole;
+      let lists = [];
+      if (sub === "telecaller") {
+        const res = await authApiFetch(`${API_ROUTES.QUERY}/my?${q}`).catch(() => ({ data: [] }));
+        lists = [res?.data];
+      } else if (sub === "tech" || sub === "tech_helper") {
+        const res = await authApiFetch(`${API_ROUTES.QUERY}/assigned?${q}`).catch(() => ({ data: [] }));
+        lists = [res?.data];
+      } else {
+        const [openRes, ipRes, reRes] = await Promise.all([
+          authApiFetch(`${API_ROUTES.QUERY}?${q}&status=open`).catch(() => ({ data: [] })),
+          authApiFetch(`${API_ROUTES.QUERY}?${q}&status=in_progress`).catch(() => ({ data: [] })),
+          authApiFetch(`${API_ROUTES.QUERY}?${q}&status=reopened`).catch(() => ({ data: [] })),
+        ]);
+        lists = [openRes?.data, ipRes?.data, reRes?.data];
+      }
       const map = new Map();
-      for (const list of [openRes?.data, ipRes?.data, reRes?.data]) {
+      for (const list of lists) {
         for (const row of list ?? []) {
           if (row?.id != null) map.set(row.id, row);
         }

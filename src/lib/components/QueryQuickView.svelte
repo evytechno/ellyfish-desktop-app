@@ -248,6 +248,11 @@
     dispatch("edit", q);
   }
 
+  function handleOpenOrder() {
+    if (!query?.order?.id) return;
+    dispatch("openOrder", query.order.id);
+  }
+
   $: if (open && queryId != null) {
     load(queryId);
   }
@@ -327,9 +332,14 @@
               <dt>Order</dt>
               <dd>
                 {#if query.order}
-                  <a href="/admin/order/{query.order.id}" class="text-primary">
+                  <button
+                    type="button"
+                    class="qp-qv-order-btn"
+                    title="Order quick view"
+                    on:click={handleOpenOrder}
+                  >
                     #{query.order.pId}{query.order.title ? ` — ${query.order.title}` : ""}
-                  </a>
+                  </button>
                 {:else}
                   —
                 {/if}
@@ -564,14 +574,14 @@
   .qp-qv-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 1040;
-    background: rgba(15, 23, 42, 0.28);
+    z-index: 1100;
+    background: rgba(15, 23, 42, 0.45);
   }
   .qp-qv-drawer {
     position: fixed;
     top: 0;
     right: 0;
-    z-index: 1050;
+    z-index: 1110;
     width: min(420px, 100vw);
     height: 100vh;
     display: flex;
@@ -676,6 +686,22 @@
     margin: 0;
     font-weight: 500;
     color: #343a40;
+  }
+  .qp-qv-order-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    text-align: left;
+    cursor: pointer;
+    color: #c92a2a;
+    font-weight: 500;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .qp-qv-order-btn:hover {
+    text-decoration: underline;
   }
   .qp-qv-desc {
     font-weight: 400 !important;
@@ -897,12 +923,12 @@
   .qp-fp-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 1060;
+    z-index: 1120;
     background: rgba(10, 14, 28, 0.72);
   }
   .qp-fp-modal {
     position: fixed;
-    z-index: 1070;
+    z-index: 1130;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);

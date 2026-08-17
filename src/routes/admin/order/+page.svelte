@@ -12,6 +12,7 @@
   import OrderDragula from "$lib/components/OrderDragula.svelte";
   import PIWOTIModal from "$lib/components/PIWOTIModal.svelte";
   import ChatQuickModal from "$lib/components/ChatQuickModal.svelte";
+  import OrderQueriesModal from "$lib/components/OrderQueriesModal.svelte";
   import ChangeListVisiableStatus from "$lib/components/ChangeListVisiableStatus.svelte";
 
   import {
@@ -108,6 +109,10 @@
   let chatModalOpen = false;
   let chatModalOrder = null;
   let chatModalPreselected = [];
+
+  // Queries modal
+  let queriesModalOpen = false;
+  let queriesModalOrder = null;
 
   // PI/WO/TI modal
   let piwotiModalOpen = false;
@@ -391,6 +396,16 @@
     chatModalOpen = true;
   }
 
+  function openQueriesModal(order) {
+    if (!order) return;
+    queriesModalOrder = order;
+    queriesModalOpen = true;
+  }
+
+  function handleOpenQueriesModal(e) {
+    openQueriesModal(e.detail?.order);
+  }
+
   async function updateOrderStatus(order, newStatus) {
     try {
       await authApiFetch(API_ROUTES.ORDER + "/" + order.id, {
@@ -435,6 +450,7 @@
     }
 
     document.addEventListener("openChatModal", handleOpenChatModal);
+    document.addEventListener("openOrderQueries", handleOpenQueriesModal);
     filterReady = true;
     loadingData = false;
 
@@ -448,6 +464,7 @@
 
   onDestroy(() => {
     document.removeEventListener("openChatModal", handleOpenChatModal);
+    document.removeEventListener("openOrderQueries", handleOpenQueriesModal);
   });
 </script>
 
@@ -542,6 +559,10 @@
         on:pageChange={(e) => { listCurrentPage = e.detail; fetchListOrders(); }}
         on:rowsPerPageChange={(e) => { listRowsPerPage = e.detail; listCurrentPage = 1; fetchListOrders(); }}
         on:viewRecord={(e) => goto("/admin/order/" + e.detail)}
+        on:openQueries={(e) => {
+          const order = listOrders.find((o) => o.id === e.detail);
+          if (order) openQueriesModal(order);
+        }}
         on:addFeedback={(e) => {
           const order = listOrders.find(o => o.id === e.detail);
           if (order) openFeedbackModal(order, null);
@@ -602,6 +623,13 @@
       };
     }
   }}
+/>
+
+<OrderQueriesModal
+  bind:open={queriesModalOpen}
+  order={queriesModalOrder}
+  {currentUser}
+  on:close={() => (queriesModalOpen = false)}
 />
 
 <style>

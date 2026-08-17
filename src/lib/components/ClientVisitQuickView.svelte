@@ -329,7 +329,7 @@
                 <div class="cvqv-chips">
                   {#each visit.attendees as att}
                     <span class="cvqv-chip cvqv-chip--team">
-                      {maskName(att.user?.name)}{#if att.isLead} · Lead{/if}
+                      {att.user ? maskName(att.user.name) : (att.guestName || "—")}{#if att.isLead} · Lead{/if}
                     </span>
                   {/each}
                 </div>

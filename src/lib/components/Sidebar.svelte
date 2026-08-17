@@ -6,7 +6,7 @@
   import { checkAuth, canAccess } from "$lib/utils/auth";
   import { ATTACHMENT_BASE_URL } from "$lib/constants/constants";
   import UpdateNotification from "$lib/components/UpdateNotification.svelte";
-  import { openQueryCount } from "$lib/stores/queryStore";
+  import { openQueryCount, trainingQueryCount, loadTrainingQueryCount } from "$lib/stores/queryStore";
   import { queryUnreadCounts } from "$lib/stores/queryUnreadCounts";
   import { totalGroupUnread } from "$lib/stores/groupChatStore";
 
@@ -47,6 +47,10 @@
   onMount(() => {
     // set user first so conditional menu blocks render before jQuery scans them
     currentUser = checkAuth();
+    const sub = currentUser?.subRole;
+    if (sub === "tech" || sub === "telecaller" || sub === "tech_helper") {
+      loadTrainingQueryCount();
+    }
 
     // Always expand COMMON when viewing a common page
     if (isCommonPath(window.location.pathname)) {
@@ -150,6 +154,10 @@
   afterNavigate(() => {
     if (isCommonPath($page.url.pathname)) {
       commonOpen = true;
+    }
+    const sub = currentUser?.subRole;
+    if (sub === "tech" || sub === "telecaller" || sub === "tech_helper") {
+      loadTrainingQueryCount();
     }
     // Wait one tick so Svelte's class:active bindings are in the DOM
     setTimeout(() => {
@@ -361,6 +369,17 @@
                                 {/if}
                               </a>
                             </li>
+                            {#if $trainingQueryCount > 0}
+                            <li>
+                              <a
+                                href="/admin/query/training"
+                                class:active={currentPath ===
+                                  "/admin/query/training"}
+                              >
+                                Training
+                              </a>
+                            </li>
+                            {/if}
                           </ul>
                         </li>
                       {:else if canAccess('queries', 'view', currentUser) && currentUser?.subRole === "tech"}
@@ -422,6 +441,17 @@
                                 {/if}
                               </a>
                             </li>
+                            {#if $trainingQueryCount > 0}
+                            <li>
+                              <a
+                                href="/admin/query/training"
+                                class:active={currentPath ===
+                                  "/admin/query/training"}
+                              >
+                                Training
+                              </a>
+                            </li>
+                            {/if}
                           </ul>
                         </li>
                       {:else if canAccess('queries', 'view', currentUser) && currentUser?.role !== "user"}
@@ -462,18 +492,34 @@
                           </ul>
                         </li>
                       {:else if canAccess('queries', 'view', currentUser) && currentUser?.subRole === "telecaller"}
-                        <li
-                          class:active={currentPath.startsWith("/admin/query")}
-                        >
+                        <li class="submenu">
                           <a
-                            href="/admin/query"
-                            class:active={currentPath.startsWith(
-                              "/admin/query",
-                            )}
+                            href="#queries"
+                            class:active={currentPath.startsWith("/admin/query")}
                           >
-                            <i class="ti ti-help-circle"></i><span>Queries</span
-                            >
+                            <i class="ti ti-help-circle"></i><span>Queries</span>
+                            <span class="menu-arrow"></span>
                           </a>
+                          <ul>
+                            <li>
+                              <a
+                                href="/admin/query"
+                                class:active={currentPath === "/admin/query"}
+                              >
+                                My Queries
+                              </a>
+                            </li>
+                            {#if $trainingQueryCount > 0}
+                            <li>
+                              <a
+                                href="/admin/query/training"
+                                class:active={currentPath === "/admin/query/training"}
+                              >
+                                Training
+                              </a>
+                            </li>
+                            {/if}
+                          </ul>
                         </li>
                       {/if}
 
@@ -647,6 +693,14 @@
                             <i class="ti ti-chart-bar"></i><span>User Activity</span>
                           </a>
                         </li>
+                        <li class:active={currentPath.startsWith("/admin/reports/pi-sales")}>
+                          <a
+                            href="/admin/reports/pi-sales"
+                            class:active={currentPath.startsWith("/admin/reports/pi-sales")}
+                          >
+                            <i class="ti ti-file-invoice"></i><span>PI Sales</span>
+                          </a>
+                        </li>
                         {/if}
                       </ul>
                     </li>
@@ -815,21 +869,51 @@
   }
 
   /* #4 — Open Queue live count badge */
-  :global(.open-queue-badge) {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+  :global(.sidebar .sidebar-menu .open-queue-badge) {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-sizing: border-box;
     min-width: 18px;
     height: 18px;
-    padding: 0 5px;
-    border-radius: 20px;
+    padding: 0 5px !important;
+    margin: 0 0 0 6px !important;
+    border-radius: 999px;
     background: #dc3545;
-    color: #fff;
-    font-size: 0.8125rem;
-    font-weight: 700;
-    line-height: 1;
+    color: #fff !important;
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    line-height: 1 !important;
     letter-spacing: 0;
+    white-space: nowrap;
+    flex: none;
+    text-align: center;
+    vertical-align: middle;
+    font-variant-numeric: tabular-nums;
     animation: badge-pulse 2s ease-in-out infinite;
+  }
+
+  /* Mini sidebar: pin count to the icon corner so the icon stays visible */
+  :global(.mini-sidebar:not(.expand-menu) .sidebar .sidebar-menu ul li a) {
+    position: relative;
+  }
+  :global(.mini-sidebar:not(.expand-menu) .sidebar .sidebar-menu .open-queue-badge) {
+    position: absolute !important;
+    top: 1px !important;
+    right: 1px !important;
+    margin: 0 !important;
+    min-width: 14px !important;
+    height: 14px !important;
+    padding: 0 3px !important;
+    font-size: 8px !important;
+    line-height: 1 !important;
+    z-index: 2;
+    pointer-events: none;
+  }
+  :global(.mini-sidebar:not(.expand-menu) .sidebar .sidebar-menu a > .open-queue-badge ~ .open-queue-badge) {
+    top: auto !important;
+    bottom: 1px !important;
+    right: 1px !important;
   }
 
   @keyframes badge-pulse {

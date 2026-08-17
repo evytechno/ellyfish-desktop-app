@@ -139,7 +139,10 @@
             <i class="ti ti-help-circle me-1"></i>Queries
             {#if currentUser?.subRole === "tech"}
               {@const myCount = orderQueries.filter(
-                (q) => q.assignedTo?.id === currentUser?.id,
+                (q) =>
+                  q.isRaisedByMe ||
+                  q.assignedToId === currentUser?.id ||
+                  q.assignedTo?.id === currentUser?.id,
               ).length}
               {#if myCount > 0}
                 <span class="badge bg-success ms-1" style="font-size:10px;">{myCount}</span>

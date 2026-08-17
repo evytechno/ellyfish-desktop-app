@@ -7,6 +7,7 @@
   import { checkAuth } from "$lib/utils/auth";
   import { queryPrivacy } from "$lib/stores/queryPrivacy";
   import QueryUserDetail from "$lib/components/QueryUserDetail.svelte";
+  import { maskQueryPersonName } from "$lib/utils/maskUser";
 
   let currentUser;
   let loading = true;
@@ -72,14 +73,12 @@
     return name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
   }
 
-  $: maskTC = (name) => (currentUser?.role === "master" && $queryPrivacy.telecaller && name) ? "Telecaller" : (name ?? "?");
-  $: maskTech = (name) => (currentUser?.role === "master" && $queryPrivacy.tech && name) ? "Tech" : (name ?? "?");
-  $: maskHelper = (name) => (currentUser?.role === "master" && $queryPrivacy.techHelper && name) ? "Senior Tech" : (name ?? "?");
-
   function displayName(u) {
-    if (u.role === "telecaller") return maskTC(u.name);
-    if (u.role === "tech") return maskTech(u.name);
-    return maskHelper(u.name);
+    return maskQueryPersonName(
+      { id: u.userId ?? u.id, name: u.name, subRole: u.subRole ?? u.role },
+      currentUser,
+      $queryPrivacy,
+    );
   }
 
   function roleLabel(role) {

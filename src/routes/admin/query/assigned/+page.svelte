@@ -182,6 +182,36 @@
       day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
     });
   }
+
+  function startOfDay(d) {
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  }
+
+  function formatLastActivity(dateStr) {
+    if (!dateStr) return "";
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return "";
+    const now = new Date();
+    const dayDiff = Math.round((startOfDay(now) - startOfDay(d)) / 86400000);
+    if (dayDiff === 0) {
+      const mins = Math.floor((Date.now() - d.getTime()) / 60000);
+      if (mins < 1) return "just now";
+      if (mins < 60) return `${mins}m ago`;
+      return `${Math.floor(mins / 60)}h ago`;
+    }
+    const time = d.toLocaleString("en-IN", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+    if (dayDiff === 1) return `Yesterday, ${time}`;
+    const date = d.toLocaleString("en-IN", {
+      day: "numeric",
+      month: "short",
+      ...(d.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}),
+    });
+    return `${date}, ${time}`;
+  }
 </script>
 
 <div class="page-wrapper">
@@ -316,18 +346,31 @@
             <tbody>
               {#each sortedQueries as q, i}
                 {@const unread = $queryUnreadCounts[q.id] ?? 0}
+                {@const activityAt = q.lastActivityAt || q.updatedAt || q.createdAt}
                 <tr>
                   <td>{(currentPage - 1) * rowsPerPage + i + 1}</td>
                   <td style="max-width:260px;">
-                    {#if q.ticketCode}
-                      <div class="text-muted" style="font-size:10.5px;font-weight:600;letter-spacing:0.3px;margin-bottom:2px;">{q.ticketCode}</div>
+                    {#if q.ticketCode || activityAt}
+                      <div class="qa-ticket">
+                        {#if q.ticketCode}
+                          <span class="qa-ticket-code">{q.ticketCode}</span>
+                        {/if}
+                        {#if activityAt}
+                          <span
+                            class="qa-activity-badge"
+                            style="font-size:8px !important;"
+                            title="Last activity {formatDate(activityAt)}"
+                            >{formatLastActivity(activityAt)}</span
+                          >
+                        {/if}
+                      </div>
                     {/if}
                     <div class="d-flex align-items-center gap-1 flex-wrap" style="min-width:0;">
                       <a href="/admin/query/{q.id}" class="text-primary fw-semibold" title={q.subject} style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{q.subject}</a>
                       {#if unread > 0}
-                        <span class="badge bg-danger rounded-pill" style="font-size:10px;flex-shrink:0;">{unread > 99 ? "99+" : unread}</span>
+                        <span class="badge bg-danger rounded-pill query-count-badge">{unread > 99 ? "99+" : unread}</span>
                       {/if}
-                      {#if ['Deal Won', 'Dispatched', 'Completed'].includes(q.order?.status)}<span class="badge bg-success" style="font-size:10px;flex-shrink:0;">🏆 Deal Won</span>{/if}
+                      {#if ['Deal Won', 'Dispatched', 'Completed'].includes(q.order?.status)}<span class="badge bg-success query-deal-badge">🏆 Deal Won</span>{/if}
                     </div>
                   </td>
                   <td>
@@ -375,4 +418,35 @@
     {/if}
   </div>
 </div>
+
+<style>
+  .qa-ticket {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 3px;
+    min-width: 0;
+  }
+  .qa-ticket-code {
+    font-size: 11px;
+    font-weight: 600;
+    color: #868e96;
+    letter-spacing: 0.2px;
+    flex-shrink: 0;
+  }
+  .qa-activity-badge {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    font-size: 8px !important;
+    font-weight: 600;
+    padding: 0 5px;
+    line-height: 1.3;
+    border-radius: 999px;
+    border: 1px solid #e67700;
+    background: transparent;
+    color: #e67700;
+    white-space: nowrap;
+  }
+</style>
 

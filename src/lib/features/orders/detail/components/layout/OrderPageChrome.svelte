@@ -39,7 +39,7 @@
     >
       <i class="ti ti-square-rounded-plus-filled me-1"></i>Edit Order
     </a>
-    {#if currentUser?.subRole === "telecaller" || (currentUser?.role === "user" && !currentUser?.subRole)}
+    {#if currentUser?.subRole === "telecaller" || currentUser?.subRole === "tech" || (currentUser?.role === "user" && !currentUser?.subRole)}
       <button class="btn btn-sm btn-info text-white" on:click={openQueryModal}>
         <i class="ti ti-help-circle me-1"></i>Raise Query
       </button>

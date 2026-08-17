@@ -134,8 +134,30 @@
   // attendees
   let existingAttendees = [];
   let newAttUserId = "";
+  let newAttName = "";
   let newAttIsLead = false;
   let addingAttendee = false;
+
+  function visitPickerUsers(list, me) {
+    if (!Array.isArray(list) || !me) return [];
+    if (me.role === "user") {
+      return list.filter((u) => Number(u.id) === Number(me.id));
+    }
+    if (me.role === "admin") {
+      const allowed = Array.isArray(me.allowedSalesUserIds)
+        ? me.allowedSalesUserIds.map(Number).filter(Number.isFinite)
+        : [];
+      if (allowed.length) {
+        const ids = new Set([...allowed, Number(me.id)]);
+        return list.filter((u) => ids.has(Number(u.id)));
+      }
+    }
+    return list;
+  }
+  $: pickerUsers = visitPickerUsers(users, currentUser);
+  function attendeeLabel(att) {
+    return att?.user?.name || att?.guestName || "—";
+  }
 
   // jobs
   let jobs = [];
@@ -319,15 +341,19 @@
   }
 
   async function handleAddAttendee() {
-    if (!newAttUserId) return;
+    if (!newAttUserId && !newAttName.trim()) return;
     addingAttendee = true;
     try {
       const res = await authApiFetch(`${API_ROUTES.CLIENT_VISIT}/${visitId}/attendees`, {
         method: "POST",
-        data: { userId: Number(newAttUserId), isLead: newAttIsLead },
+        data: newAttUserId
+          ? { userId: Number(newAttUserId), isLead: newAttIsLead }
+          : { name: newAttName.trim(), isLead: newAttIsLead },
       });
       existingAttendees = res.data?.attendees ?? existingAttendees;
-      newAttUserId = ""; newAttIsLead = false;
+      newAttUserId = "";
+      newAttName = "";
+      newAttIsLead = false;
     } catch (_) { Swal.fire("Error", "Failed to add attendee.", "error"); }
     finally { addingAttendee = false; }
   }
@@ -908,7 +934,7 @@
               {#each existingAttendees as att}
                 <div class="d-flex align-items-center gap-2 border rounded px-3 py-2" style="font-size:14px;background:#f8f9fa;">
                   <i class="ti ti-user-circle text-muted"></i>
-                  <span class="fw-semibold">{att.user?.name ?? "—"}</span>
+                  <span class="fw-semibold">{attendeeLabel(att)}</span>
                   <span class="text-muted" style="font-size:12px;">{att.user?.role ?? ""}</span>
                   {#if att.isLead}<span class="badge bg-primary ms-1">Lead</span>{/if}
                   <button type="button" class="btn-close" style="font-size:10px;" on:click={() => handleRemoveAttendee(att.id)}></button>
@@ -919,17 +945,32 @@
             <p class="text-muted mb-3" style="font-size:13px;">No attendees added yet.</p>
           {/if}
           <div class="d-flex align-items-center gap-2 flex-wrap">
-            <select class="form-select" style="max-width:240px;" bind:value={newAttUserId}>
-              <option value="">Select employee...</option>
-              {#each users as u}
-                <option value={u.id}>{u.name} ({u.role})</option>
-              {/each}
-            </select>
+            {#if pickerUsers.length}
+              <select
+                class="form-select"
+                style="max-width:220px;"
+                bind:value={newAttUserId}
+                on:change={() => { if (newAttUserId) newAttName = ""; }}
+              >
+                <option value="">Select employee...</option>
+                {#each pickerUsers as u}
+                  <option value={u.id}>{u.name}{currentUser?.role === "user" ? "" : ` (${u.role})`}</option>
+                {/each}
+              </select>
+              <span class="text-muted small">or</span>
+            {/if}
+            <input
+              class="form-control"
+              style="max-width:200px;"
+              placeholder="Type a name"
+              bind:value={newAttName}
+              on:input={() => { if (newAttName) newAttUserId = ""; }}
+            />
             <label class="d-flex align-items-center gap-1 mb-0" style="cursor:pointer;">
               <input type="checkbox" bind:checked={newAttIsLead} style="accent-color:var(--bs-primary);" />
               Mark as Lead
             </label>
-            <button type="button" class="btn btn-outline-primary" disabled={!newAttUserId || addingAttendee} on:click={handleAddAttendee}>
+            <button type="button" class="btn btn-outline-primary" disabled={(!newAttUserId && !newAttName.trim()) || addingAttendee} on:click={handleAddAttendee}>
               <i class="ti ti-plus me-1"></i>{addingAttendee ? "Adding..." : "Add Attendee"}
             </button>
           </div>

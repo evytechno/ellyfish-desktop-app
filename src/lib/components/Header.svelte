@@ -3,7 +3,7 @@
   import jQuery from "jquery";
   import { goto } from "$app/navigation";
   import { clearUser, setUser } from "../../stores/userStore";
-  import { checkAuth, logoutUser, getAvailableRoles, getRolePermissions, saveSession, canAccess } from "$lib/utils/auth";
+  import { checkAuth, logoutUser, getAvailableRoles, getRolePermissions, saveSession, canAccess, canUseMediaLibrary } from "$lib/utils/auth";
   import { apiFetch } from "$lib/api/client";
   import Swal from "sweetalert2";
   import Notification from "./Notification.svelte";
@@ -771,7 +771,7 @@
           </div>
 
         <div class="header-quick-links flex items-center gap-1">
-          {#if currentUser?.role === "master" || currentUser?.role === "admin" || currentUser?.subRole === "telecaller"}
+          {#if canUseMediaLibrary(currentUser)}
             <a
               href="/admin/media"
               class="header-quick-link"

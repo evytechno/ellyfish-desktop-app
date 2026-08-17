@@ -37,6 +37,13 @@
     }));
   }
 
+  function openQueries(e) {
+    e.stopPropagation();
+    document.dispatchEvent(new CustomEvent("openOrderQueries", {
+      detail: { order },
+    }));
+  }
+
   function openModal(type, e) {
     e?.stopPropagation();
     modalType = type;
@@ -144,6 +151,14 @@
           on:click={openChat}
         >
           <i class="ti ti-message-circle-2"></i>
+        </button>
+        <button
+          class="flex items-center justify-center"
+          style="background:none;border:none;padding:0;cursor:pointer;color:#e67700;font-size:1.2rem;line-height:1;"
+          title="Queries"
+          on:click={openQueries}
+        >
+          <i class="ti ti-help-circle"></i>
         </button>
       </div>
     </div>

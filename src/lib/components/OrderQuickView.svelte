@@ -4,7 +4,13 @@
   import { API_ROUTES } from "$lib/constants/apiRoutes";
   import { errorHandle } from "$lib/utils/errorHandle";
   import { statusNamesStore } from "$lib/stores/statusNames";
-  import { maskAssignedName } from "$lib/utils/maskUser";
+  import { queryPrivacy } from "$lib/stores/queryPrivacy";
+  import {
+    maskMobile,
+    maskEmail,
+    maskQueryPersonName,
+    isMaskedRoleLabel,
+  } from "$lib/utils/maskUser";
 
   /** @type {boolean} */
   export let open = false;
@@ -17,6 +23,19 @@
   let loading = false;
   let order = null;
   let loadToken = 0;
+  let revealed = {};
+
+  function isRevealed(key) {
+    return !!revealed[key];
+  }
+  function toggleReveal(key) {
+    revealed = { ...revealed, [key]: !revealed[key] };
+  }
+  function displaySensitive(key, value, kind) {
+    if (!value) return "—";
+    if (isRevealed(key)) return value;
+    return kind === "email" ? maskEmail(value) : maskMobile(value);
+  }
 
   const STATUS_COLORS = {
     "New Lead": "bg-primary text-white",
@@ -107,6 +126,7 @@
     const token = ++loadToken;
     loading = true;
     order = null;
+    revealed = {};
     try {
       const data = await authApiFetch(`${API_ROUTES.ORDER}/${id}/basic`);
       if (token !== loadToken) return;
@@ -123,6 +143,7 @@
   function close() {
     open = false;
     order = null;
+    revealed = {};
     dispatch("close");
   }
 
@@ -269,10 +290,34 @@
                     {/if}
                   </span>
                   {#if primaryContact.mobile}
-                    <span class="oq-chip">{primaryContact.mobile}</span>
+                    <span class="oq-chip oq-chip--sensitive">
+                      <span class:oq-masked={!isRevealed("mobile")}
+                        >{displaySensitive("mobile", primaryContact.mobile, "mobile")}</span
+                      >
+                      <button
+                        type="button"
+                        class="oq-reveal"
+                        title={isRevealed("mobile") ? "Hide" : "Show"}
+                        on:click={() => toggleReveal("mobile")}
+                      >
+                        <i class="ti {isRevealed('mobile') ? 'ti-eye-off' : 'ti-eye'}"></i>
+                      </button>
+                    </span>
                   {/if}
                   {#if primaryContact.email}
-                    <span class="oq-chip">{primaryContact.email}</span>
+                    <span class="oq-chip oq-chip--sensitive">
+                      <span class:oq-masked={!isRevealed("email")}
+                        >{displaySensitive("email", primaryContact.email, "email")}</span
+                      >
+                      <button
+                        type="button"
+                        class="oq-reveal"
+                        title={isRevealed("email") ? "Hide" : "Show"}
+                        on:click={() => toggleReveal("email")}
+                      >
+                        <i class="ti {isRevealed('email') ? 'ti-eye-off' : 'ti-eye'}"></i>
+                      </button>
+                    </span>
                   {/if}
                 </div>
               </dd>
@@ -286,9 +331,10 @@
         {#if order.assignedUsers?.length}
           <div class="oq-chips">
             {#each order.assignedUsers as u}
+              {@const name = maskQueryPersonName(u, currentUser, $queryPrivacy)}
               <span class="oq-chip oq-chip--team">
-                {maskAssignedName(u, currentUser)}
-                {#if u.subRole}
+                {name}
+                {#if u.subRole && !isMaskedRoleLabel(name)}
                   <span class="oq-meta">· {u.subRole}</span>
                 {/if}
               </span>
@@ -491,6 +537,27 @@
     background: #e6f1fb;
     border-color: #b5d4f4;
     color: #185fa5;
+  }
+  .oq-chip--sensitive {
+    gap: 6px;
+  }
+  .oq-masked {
+    letter-spacing: 0.04em;
+  }
+  .oq-reveal {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    margin: 0;
+    border: none;
+    background: none;
+    color: #868e96;
+    cursor: pointer;
+    line-height: 1;
+  }
+  .oq-reveal:hover {
+    color: #495057;
   }
   .oq-desc {
     margin: 0;

@@ -7,6 +7,7 @@
   import { errorHandle } from "$lib/utils/errorHandle";
   import Pagination from "$lib/components/Pagination.svelte";
   import { queryPrivacy } from "$lib/stores/queryPrivacy";
+  import { queryOrderColumn, maskQueryPersonName, queryNamePrivacy } from "$lib/utils/maskUser";
 
   let currentUser;
   let dashboard = null;
@@ -188,9 +189,9 @@
     });
   }
 
-  $: maskTC     = (name) => (currentUser?.role === "master" && $queryPrivacy.telecaller && name) ? "Telecaller" : (name ?? "-");
-  $: maskTech   = (name) => (currentUser?.role === "master" && $queryPrivacy.tech       && name) ? "Tech"        : (name ?? "-");
-  $: maskHelper = (name) => (currentUser?.role === "master" && $queryPrivacy.techHelper && name) ? "Senior Tech" : (name ?? "-");
+  $: maskTC     = (name) => queryNamePrivacy(currentUser, $queryPrivacy).telecaller && name ? "Telecaller" : (name ?? "-");
+  $: maskTech   = (name) => queryNamePrivacy(currentUser, $queryPrivacy).tech && name ? "Tech" : (name ?? "-");
+  $: maskHelper = (name) => queryNamePrivacy(currentUser, $queryPrivacy).techHelper && name ? "Senior Tech" : (name ?? "-");
 </script>
 
 <div class="page-wrapper">
@@ -270,13 +271,13 @@
       <div>
         <select class="form-select" bind:value={raisedById} on:change={onFilterChange}>
           <option value="">Raised By</option>
-          {#each allUsers.filter(u => u.subRole === "telecaller" || u.subRole === "tech") as u}<option value={u.id}>{u.subRole === "telecaller" ? maskTC(u.name) : maskTech(u.name)}</option>{/each}
+          {#each allUsers.filter(u => u.subRole === "telecaller" || u.subRole === "tech") as u}<option value={u.id}>{maskQueryPersonName(u, currentUser, $queryPrivacy)}</option>{/each}
         </select>
       </div>
       <div>
         <select class="form-select" bind:value={assignedToId} on:change={onFilterChange}>
           <option value="">Assigned To</option>
-          {#each allUsers.filter(u => u.subRole === "tech" || u.subRole === "tech_helper") as u}<option value={u.id}>{u.subRole === "tech_helper" ? maskHelper(u.name) : maskTech(u.name)}</option>{/each}
+          {#each allUsers.filter(u => u.subRole === "tech" || u.subRole === "tech_helper") as u}<option value={u.id}>{maskQueryPersonName(u, currentUser, $queryPrivacy)}</option>{/each}
         </select>
       </div>
       {#if hasFilters}
@@ -356,10 +357,18 @@
                         {q.status?.replace("_", " ")}
                       </span>
                     </td>
-                    <td style="max-width:180px;">
-                      {#if q.order}
-                        <a href="/admin/order/{q.order.id}" class="text-primary small col-truncate" title="#{q.order.pId}{q.order.title ? ` — ${q.order.title}` : ''}">
-                          #{q.order.pId}{q.order.title ? ` — ${q.order.title}` : ""}
+                    <td style="max-width:200px;">
+                      {#if q.order?.id}
+                        {@const oc = queryOrderColumn(q.order)}
+                        <a
+                          href="/admin/order/{q.order.id}"
+                          class="qp-order-link"
+                          title={oc?.title || `#${q.order.pId}`}
+                        >
+                          <span class="qp-order-company">{oc?.heading || `#${q.order.pId}`}</span>
+                          {#if oc?.client}
+                            <span class="qp-order-client">{oc.client}</span>
+                          {/if}
                         </a>
                       {:else}
                         <span class="text-muted">-</span>
@@ -579,6 +588,39 @@
     white-space: nowrap;
     text-overflow: ellipsis;
     max-width: 100%;
+  }
+  .qp-order-link {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    min-width: 0;
+    max-width: 200px;
+    text-decoration: none;
+  }
+  .qp-order-link:hover .qp-order-company {
+    text-decoration: underline;
+  }
+  .qp-order-company {
+    display: block;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #c92a2a;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .qp-order-client {
+    display: block;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #868e96;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
   }
 
   /* Status stat cards */

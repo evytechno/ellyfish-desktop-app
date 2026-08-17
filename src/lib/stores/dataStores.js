@@ -1,11 +1,16 @@
-import { localStore } from "./localStore";
+import { localStore, clearScopedLocalStore } from "./localStore";
 
 const MIN = 60 * 1000;
 
 // Dropdown data — changes when admin adds/edits. 10 min TTL.
 export const companiesAllStore  = localStore("companiesAll",  [], 10 * MIN);
 export const categoriesAllStore = localStore("categoriesAll", [], 10 * MIN);
-export const usersAllStore      = localStore("usersAll",      [], 10 * MIN);
+export const usersAllStore      = localStore("usersAll",      [], 10 * MIN, { scopeByUser: true });
+
+export function resetUsersAllStore() {
+  try { usersAllStore.set([]); } catch (_) {}
+  clearScopedLocalStore("usersAll");
+}
 
 // Order board state — refreshed on page load anyway. 5 min TTL.
 export const ordersAllStore     = localStore("ordersAll", [], 5 * MIN);

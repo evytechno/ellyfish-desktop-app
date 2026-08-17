@@ -7,6 +7,7 @@
   import { errorHandle } from "$lib/utils/errorHandle";
   import Pagination from "$lib/components/Pagination.svelte";
   import { queryPrivacy } from "$lib/stores/queryPrivacy";
+  import { maskQueryPersonName, queryNamePrivacy } from "$lib/utils/maskUser";
   import { tick } from "svelte";
   import Swal from "sweetalert2";
   import html2canvas from "html2canvas";
@@ -351,25 +352,16 @@
 
   function replyPct(count, total) { return total > 0 ? Math.round(count / total * 100) : 0; }
 
-  $: isRoleUser       = currentUser?.role === "user";
-  $: isTechSubRole    = currentUser?.subRole === "tech" || currentUser?.subRole === "tech_helper";
-  $: isTCSubRole      = currentUser?.subRole === "telecaller";
-  $: maskTC     = (name) => {
-    if (isRoleUser && name && name !== currentUser?.name) return "Telecaller";
-    if (!isRoleUser && (isTechSubRole || (currentUser?.role === "master" && $queryPrivacy.telecaller)) && name) return "Telecaller";
-    return name ?? "-";
-  };
-  $: maskTech   = (name) => {
-    if (isRoleUser && name && name !== currentUser?.name) return "Tech";
-    if (!isRoleUser && (isTCSubRole || (currentUser?.role === "master" && $queryPrivacy.tech)) && name) return "Tech";
-    return name ?? "-";
-  };
-  $: maskHelper = (name) => {
-    if (isRoleUser && name && name !== currentUser?.name) return "Senior Tech";
-    if (!isRoleUser && (isTCSubRole || (currentUser?.role === "master" && $queryPrivacy.techHelper)) && name) return "Senior Tech";
-    return name ?? "-";
-  };
-  $: maskedUserName     = user ? (user.subRole === "telecaller" ? maskTC(user.name) : user.subRole === "tech_helper" ? maskHelper(user.name) : maskTech(user.name)) : "";
+  $: qp = queryNamePrivacy(currentUser, $queryPrivacy);
+  $: maskTC     = (name) => qp.telecaller && name ? "Telecaller" : (name ?? "-");
+  $: maskTech   = (name) => qp.tech && name ? "Tech" : (name ?? "-");
+  $: maskHelper = (name) => qp.techHelper && name ? "Senior Tech" : (name ?? "-");
+  $: maskedUserName     = user ? maskQueryPersonName(user, currentUser, $queryPrivacy) : "";
+  $: hideUserContact = user && (
+    (user.subRole === "telecaller" && qp.telecaller) ||
+    (user.subRole === "tech" && qp.tech) ||
+    (user.subRole === "tech_helper" && qp.techHelper)
+  );
   $: maskedUserInitials = maskedUserName ? initials(maskedUserName) : "?";
   $: replyTotal = detail
     ? detail.replyDistribution.under1min + detail.replyDistribution._1to5min +
@@ -537,7 +529,7 @@
               <span class="badge {isTelecaller(user) ? 'bg-warning text-dark' : 'bg-teal text-white'}">{subRoleLabel(user.subRole)}</span>
               <span class="badge {user.status === 'active' ? 'bg-success' : 'bg-secondary'}">{user.status ?? "active"}</span>
             </div>
-            <div class="text-muted mt-1 qud-email">{user.email ?? ""}</div>
+            <div class="text-muted mt-1 qud-email">{hideUserContact ? "" : (user.email ?? "")}</div>
           </div>
 
           <div class="qud-profile-actions flex-shrink-0">
@@ -547,14 +539,14 @@
                 {#if allQueryUsers.filter(u => u.subRole === 'telecaller').length}
                   <optgroup label="Telecallers">
                     {#each allQueryUsers.filter(u => u.subRole === 'telecaller') as u}
-                      <option value={u.id}>{u.name}</option>
+                      <option value={u.id}>{maskQueryPersonName(u, currentUser, $queryPrivacy)}</option>
                     {/each}
                   </optgroup>
                 {/if}
                 {#if allQueryUsers.filter(u => u.subRole === 'tech').length}
                   <optgroup label="Tech">
                     {#each allQueryUsers.filter(u => u.subRole === 'tech') as u}
-                      <option value={u.id}>{u.name}</option>
+                      <option value={u.id}>{maskQueryPersonName(u, currentUser, $queryPrivacy)}</option>
                     {/each}
                   </optgroup>
                 {/if}
@@ -1013,7 +1005,7 @@
                       {/if}
                       <div class="d-flex align-items-center gap-1 flex-wrap" style="min-width:0;">
                         <a href="/admin/query/{q.id}" class="text-primary qud-qsubj" title={q.subject} style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{q.subject}</a>
-                        {#if ['Deal Won', 'Dispatched', 'Completed'].includes(q.order?.status)}<span class="badge bg-success">Deal Won</span>{/if}
+                        {#if ['Deal Won', 'Dispatched', 'Completed'].includes(q.order?.status)}<span class="badge bg-success query-deal-badge">Deal Won</span>{/if}
                       </div>
                     </td>
                     {#if isTelecaller(user)}

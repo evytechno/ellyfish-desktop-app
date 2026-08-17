@@ -1,6 +1,12 @@
 <script>
+  import { checkAuth } from "$lib/utils/auth";
+  import { queryPrivacy } from "$lib/stores/queryPrivacy";
+  import { maskQueryPersonName } from "$lib/utils/maskUser";
+
   export let highlights = { telecallers: [], techs: [], techHelpers: [], overdueQueries: [] };
   export let loading = false;
+
+  const currentUser = typeof window !== "undefined" ? checkAuth() : null;
 
   let activeTab = "telecallers";
   let selectedUserId = null;
@@ -159,6 +165,16 @@
     return `/admin/query?assignedToId=${user.userId}`;
   }
 
+  function highlightName(user, kind, privacy) {
+    const sub =
+      kind === "telecallers" ? "telecaller" : kind === "helpers" ? "tech_helper" : "tech";
+    return maskQueryPersonName(
+      { id: user.userId, name: user.name, subRole: sub },
+      currentUser,
+      privacy,
+    );
+  }
+
   function userMeta(user, kind) {
     if (kind === "telecallers") {
       return `${user.total} queries · ${user.reopenRate}% reopen · ${user.stuck} stuck${
@@ -277,7 +293,7 @@
                     class:qh-user--active={selected}
                     on:click={() => selectUser(user.userId)}
                   >
-                    <div class="qh-user-name">{user.name}</div>
+                    <div class="qh-user-name">{highlightName(user, kind, $queryPrivacy)}</div>
                     <div class="qh-user-tags">
                       {#each user.tags as tag}
                         {@const cfg = tagConfig[tag]}
@@ -297,7 +313,7 @@
               <div class="qh-pane-label qh-pane-label--queries">
                 <span class="qh-pane-label-text">
                   {#if selectedUser}
-                    <span class="qh-pane-chip">Queries · {selectedUser.name}</span>
+                    <span class="qh-pane-chip">Queries · {highlightName(selectedUser, kind, $queryPrivacy)}</span>
                   {:else}
                     <span class="qh-pane-chip qh-pane-chip--muted">Queries</span>
                   {/if}

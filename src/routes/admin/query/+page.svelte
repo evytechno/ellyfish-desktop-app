@@ -13,6 +13,10 @@
   import { queryFilterStore } from "$lib/stores/filterStore";
   import { showToast } from "$lib/stores/uiToast";
   import QueryQuickView from "$lib/components/QueryQuickView.svelte";
+  import OrderQuickView from "$lib/components/OrderQuickView.svelte";
+  import RaiseQueryModal from "$lib/components/RaiseQueryModal.svelte";
+  import QueryTrainingAssignModal from "$lib/components/QueryTrainingAssignModal.svelte";
+  import { queryOrderColumn, maskQueryPersonName, queryNamePrivacy } from "$lib/utils/maskUser";
 
   let currentUser;
   let queries = [];
@@ -45,12 +49,47 @@
   let bulkUpdating = false;
   $: selectedCount = selectedIds.size;
   $: allPageSelected = queries.length > 0 && queries.every((q) => selectedIds.has(q.id));
+  $: selectedTrainable = queries.filter(
+    (q) => selectedIds.has(q.id) && isClosedOrResolved(q.status) && !q.parentQueryId,
+  );
 
-  // Quick view drawer
+  // Quick view drawers
   let drawerOpen = false;
   let drawerQueryId = null;
+  let orderDrawerOpen = false;
+  let drawerOrderId = null;
+  let trainOpen = false;
+  let trainQueryId = null;
+  let trainQueryIds = [];
+  let trainSubject = "";
+
+  function openTrainingAssign(q) {
+    trainQueryId = q.id;
+    trainQueryIds = [q.id];
+    trainSubject = q.subject ?? "";
+    trainOpen = true;
+  }
+
+  function openBulkTraining() {
+    if (!selectedTrainable.length) {
+      showToast({
+        type: "warning",
+        message: "Select closed or resolved queries to assign for training.",
+      });
+      return;
+    }
+    trainQueryIds = selectedTrainable.map((q) => q.id);
+    trainQueryId = selectedTrainable.length === 1 ? selectedTrainable[0].id : null;
+    trainSubject =
+      selectedTrainable.length === 1
+        ? selectedTrainable[0].subject
+        : `${selectedTrainable.length} closed or resolved queries`;
+    trainOpen = true;
+  }
 
   function openQuickView(id) {
+    orderDrawerOpen = false;
+    drawerOrderId = null;
     drawerQueryId = id;
     drawerOpen = true;
   }
@@ -58,6 +97,18 @@
   function closeQuickView() {
     drawerOpen = false;
     drawerQueryId = null;
+  }
+
+  function openOrderQuickView(id) {
+    drawerOpen = false;
+    drawerQueryId = null;
+    drawerOrderId = id;
+    orderDrawerOpen = true;
+  }
+
+  function closeOrderQuickView() {
+    orderDrawerOpen = false;
+    drawerOrderId = null;
   }
 
   function canEditQuickView(q) {
@@ -68,6 +119,7 @@
   const isTelecaller = (u) => u?.role === "user" && u?.subRole === "telecaller";
   const isTech = (u) => u?.role === "user" && u?.subRole === "tech";
   const isMasterView = (u) => u?.role !== "user";
+  const canAssignTraining = (u) => u?.role === "master" || u?.role === "admin";
 
   const BULK_STATUSES = [
     { value: "open", label: "Open" },
@@ -193,6 +245,7 @@
     { value: "resolved", label: "Resolved" },
     { value: "reopened", label: "Reopened" },
     { value: "closed", label: "Closed" },
+    { value: "closed,resolved", label: "Closed & Resolved" },
   ];
 
   const QUICK_FILTERS = [
@@ -246,15 +299,6 @@
 
   // raise query form
   let showRaiseForm = false;
-  let raising = false;
-  let raiseSubject = "";
-  let raiseDescription = "";
-
-  let raiseType = "other";
-  let raisePriority = "medium";
-  let raiseOrderId = null;
-  let raiseOrderText = "";
-  let raiseError = "";
 
   // edit query form
   let showEditForm = false;
@@ -372,56 +416,6 @@
     } finally {
       editing = false;
     }
-  }
-
-  // order search dropdown
-  let orderSearch = "";
-  let orderResults = [];
-  let orderLoading = false;
-  let showOrderDropdown = false;
-  let orderSearchTimeout;
-
-  function onOrderInput() {
-    raiseOrderId = null;
-    raiseOrderText = orderSearch;
-    clearTimeout(orderSearchTimeout);
-    if (!orderSearch.trim()) {
-      orderResults = [];
-      showOrderDropdown = false;
-      return;
-    }
-    orderSearchTimeout = setTimeout(async () => {
-      orderLoading = true;
-      showOrderDropdown = true;
-      try {
-        const res = await authApiFetch(
-          `${API_ROUTES.ORDER}?search=${encodeURIComponent(orderSearch)}&limit=10`,
-        );
-        orderResults = res.data ?? [];
-      } catch (_) {
-        orderResults = [];
-      } finally {
-        orderLoading = false;
-      }
-    }, 300);
-  }
-
-  function selectOrder(order) {
-    raiseOrderId = order.id;
-    raiseOrderText = order.title ? `#${order.pId} — ${order.title}` : `#${order.pId}`;
-    orderSearch = raiseOrderText;
-    orderResults = [];
-    showOrderDropdown = false;
-    // Auto-fill subject/description with order title if the field is still empty
-    if (!raiseSubject.trim()) raiseSubject = order.title ?? "";
-  }
-
-  function clearOrder() {
-    raiseOrderId = null;
-    raiseOrderText = "";
-    orderSearch = "";
-    orderResults = [];
-    showOrderDropdown = false;
   }
 
   // ── date helpers ──────────────────────────────────────────────────────────
@@ -632,48 +626,6 @@
     raisedById ||
     assignedToId;
 
-  async function submitRaiseQuery() {
-    raiseError = "";
-    if (!raiseSubject.trim()) {
-      raiseError = "Subject is required.";
-      return;
-    }
-    raising = true;
-    try {
-      await authApiFetch(`${API_ROUTES.QUERY}`, {
-        method: "POST",
-        data: JSON.stringify({
-          subject: raiseSubject,
-          description: raiseDescription.trim() || null,
-          type: raiseType,
-          priority: raisePriority,
-          orderId: raiseOrderId ?? null,
-        }),
-      });
-      showRaiseForm = false;
-      raiseSubject = "";
-      raiseDescription = "";
-      raiseType = "other";
-      raisePriority = "medium";
-      clearOrder();
-      Swal.fire({
-        icon: "success",
-        title: "Query raised successfully",
-        timer: 1500,
-        showConfirmButton: false,
-      });
-      await loadData();
-    } catch (e) {
-      const msg = e?.data?.message;
-      if (typeof msg === "string") raiseError = msg;
-      else if (Array.isArray(msg))
-        raiseError = msg.flatMap((m) => Object.values(m.constraints ?? {})).join(" • ");
-      else raiseError = "Failed to raise query.";
-    } finally {
-      raising = false;
-    }
-  }
-
   function formatDate(dateStr) {
     if (!dateStr) return "-";
     return new Date(dateStr).toLocaleString("en-IN", {
@@ -683,6 +635,37 @@
       hour: "2-digit",
       minute: "2-digit",
     });
+  }
+
+  function startOfDay(d) {
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  }
+
+  /** Today → 2m ago / 2h ago; yesterday / older → compact date + time (no mixed year). */
+  function formatLastActivity(dateStr) {
+    if (!dateStr) return "";
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return "";
+    const now = new Date();
+    const dayDiff = Math.round((startOfDay(now) - startOfDay(d)) / 86400000);
+    if (dayDiff === 0) {
+      const mins = Math.floor((Date.now() - d.getTime()) / 60000);
+      if (mins < 1) return "just now";
+      if (mins < 60) return `${mins}m ago`;
+      return `${Math.floor(mins / 60)}h ago`;
+    }
+    const time = d.toLocaleString("en-IN", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+    if (dayDiff === 1) return `Yesterday, ${time}`;
+    const date = d.toLocaleString("en-IN", {
+      day: "numeric",
+      month: "short",
+      ...(d.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}),
+    });
+    return `${date}, ${time}`;
   }
 
   /** Compact duration — e.g. 45m, 3h, 2d. Defaults end to now when omitted. */
@@ -708,36 +691,20 @@
   }
 
   $: isRoleUser = currentUser?.role === "user";
-  $: isTechSubRole = currentUser?.subRole === "tech" || currentUser?.subRole === "tech_helper";
-  $: isTCSubRole = currentUser?.subRole === "telecaller";
+  $: qp = queryNamePrivacy(currentUser, $queryPrivacy);
   $: maskTC = (name, ownName) => {
     if (isRoleUser && name && name !== (ownName ?? currentUser?.name)) return "Telecaller";
-    if (
-      !isRoleUser &&
-      (isTechSubRole || (currentUser?.role === "master" && $queryPrivacy.telecaller)) &&
-      name
-    )
-      return "Telecaller";
+    if (!isRoleUser && qp.telecaller && name) return "Telecaller";
     return name ?? "-";
   };
   $: maskTech = (name, ownName) => {
     if (isRoleUser && name && name !== (ownName ?? currentUser?.name)) return "Tech";
-    if (
-      !isRoleUser &&
-      (isTCSubRole || (currentUser?.role === "master" && $queryPrivacy.tech)) &&
-      name
-    )
-      return "Tech";
+    if (!isRoleUser && qp.tech && name) return "Tech";
     return name ?? "-";
   };
   $: maskHelper = (name, ownName) => {
     if (isRoleUser && name && name !== (ownName ?? currentUser?.name)) return "Senior Tech";
-    if (
-      !isRoleUser &&
-      (isTCSubRole || (currentUser?.role === "master" && $queryPrivacy.techHelper)) &&
-      name
-    )
-      return "Senior Tech";
+    if (!isRoleUser && qp.techHelper && name) return "Senior Tech";
     return name ?? "-";
   };
 </script>
@@ -858,18 +825,14 @@
         <select class="form-select" bind:value={raisedById} on:change={onFilterChange}>
           <option value="">Raised By</option>
           {#each allUsers.filter((u) => u.subRole === "telecaller" || u.subRole === "tech") as u}
-            <option value={u.id}
-              >{u.subRole === "telecaller" ? maskTC(u.name) : maskTech(u.name)}</option
-            >
+            <option value={u.id}>{maskQueryPersonName(u, currentUser, $queryPrivacy)}</option>
           {/each}
         </select>
         <select class="form-select" bind:value={assignedToId} on:change={onFilterChange}>
           <option value="">Assigned To</option>
           <option value="0">Unassigned</option>
           {#each allUsers.filter((u) => u.subRole === "tech" || u.subRole === "tech_helper") as u}
-            <option value={u.id}
-              >{u.subRole === "tech_helper" ? maskHelper(u.name) : maskTech(u.name)}</option
-            >
+            <option value={u.id}>{maskQueryPersonName(u, currentUser, $queryPrivacy)}</option>
           {/each}
         </select>
       {/if}
@@ -915,136 +878,13 @@
     {/if}
 
     <!-- Raise Query Modal -->
-    {#if showRaiseForm}
-      <div class="modal-backdrop-custom">
-        <div
-          class="card shadow-lg p-4 position-relative"
-          style="max-width:540px;width:100%;margin:auto;margin-top:80px;"
-        >
-          <!-- close button -->
-          <button
-            class="modal-close-btn"
-            on:click={() => (showRaiseForm = false)}
-            aria-label="Close"><i class="ti ti-x"></i></button
-          >
-          <h5 class="mb-3">Raise New Query</h5>
-          {#if raiseError}
-            <div class="alert alert-danger py-2">{raiseError}</div>
-          {/if}
-          <div class="mb-3">
-            <label class="form-label">Subject <span class="text-danger">*</span></label>
-            <input
-              type="text"
-              class="form-control"
-              bind:value={raiseSubject}
-              placeholder="Brief subject..."
-              maxlength="150"
-            />
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Type</label>
-            <div class="d-flex flex-wrap gap-2">
-              {#each QUERY_TYPES.slice(1) as t}
-                <button
-                  type="button"
-                  class="badge-tab {raiseType === t.value ? 'badge-tab--type-active' : ''}"
-                  on:click={() => (raiseType = t.value)}>{t.label}</button
-                >
-              {/each}
-            </div>
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Priority</label>
-            <div class="d-flex flex-wrap gap-2">
-              {#each ["low", "medium", "high"] as p}
-                <button
-                  type="button"
-                  class="badge-tab badge-tab--priority-{p} {raisePriority === p
-                    ? 'badge-tab--active'
-                    : ''}"
-                  on:click={() => (raisePriority = p)}
-                  >{p.charAt(0).toUpperCase() + p.slice(1)}</button
-                >
-              {/each}
-            </div>
-          </div>
-          <div class="mb-3">
-            <label class="form-label"
-              >Link to Order <span class="text-muted">(optional)</span></label
-            >
-            <div class="order-search-wrap">
-              <div class="input-group">
-                <input
-                  type="text"
-                  class="form-control"
-                  placeholder="Search by order title or ID..."
-                  bind:value={orderSearch}
-                  on:input={onOrderInput}
-                  on:focus={() => {
-                    if (orderResults.length) showOrderDropdown = true;
-                  }}
-                  autocomplete="off"
-                />
-                {#if raiseOrderId}
-                  <button class="btn btn-outline-secondary" type="button" on:click={clearOrder}>
-                    <i class="ti ti-x"></i>
-                  </button>
-                {/if}
-              </div>
-              {#if raiseOrderId}
-                <div class="mt-1 small text-success">
-                  <i class="ti ti-circle-check me-1"></i>Linked: {raiseOrderText}
-                </div>
-              {/if}
-              {#if showOrderDropdown}
-                <div class="order-dropdown shadow-sm border rounded bg-white">
-                  {#if orderLoading}
-                    <div class="px-3 py-2 text-muted small">
-                      <span class="spinner-border spinner-border-sm me-1"></span>Searching...
-                    </div>
-                  {:else if orderResults.length === 0}
-                    <div class="px-3 py-2 text-muted small">No orders found.</div>
-                  {:else}
-                    {#each orderResults as o}
-                      <button
-                        type="button"
-                        class="order-dropdown-item"
-                        on:click={() => selectOrder(o)}
-                      >
-                        <span class="text-primary">#{o.pId}</span>
-                        {#if o.title}<span class="ms-1">{o.title}</span>{/if}
-                        {#if o.company}<span class="text-muted ms-1 small">· {o.company}</span>{/if}
-                        <span class="badge bg-secondary ms-auto qp-badge"
-                          >{$statusNamesStore[o.status]?.name ?? o.status}</span
-                        >
-                      </button>
-                    {/each}
-                  {/if}
-                </div>
-              {/if}
-            </div>
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Requirement <span class="text-muted">(optional)</span></label>
-            <textarea
-              style="resize:vertical;"
-              class="form-control qp-textarea"
-              rows="3"
-              bind:value={raiseDescription}
-              placeholder="Describe your requirement in detail..."
-            ></textarea>
-          </div>
-          <div class="d-flex gap-2 justify-content-end">
-            <button class="btn btn-secondary btn-sm" on:click={() => (showRaiseForm = false)}
-              >Cancel</button
-            >
-            <button class="btn btn-primary btn-sm" on:click={submitRaiseQuery} disabled={raising}>
-              {raising ? "Submitting..." : "Submit Query"}
-            </button>
-          </div>
-        </div>
-      </div>
-    {/if}
+    <RaiseQueryModal
+      bind:open={showRaiseForm}
+      on:created={() => {
+        loadData();
+        if (isMasterView(currentUser)) loadStats();
+      }}
+    />
 
     <!-- Edit Query Modal -->
     {#if showEditForm}
@@ -1202,6 +1042,15 @@
             <i class="ti ti-check me-1"></i>Apply
           {/if}
         </button>
+        {#if canAssignTraining(currentUser) && selectedTrainable.length}
+          <button
+            type="button"
+            class="btn btn-sm btn-outline-warning"
+            on:click={openBulkTraining}
+          >
+            <i class="ti ti-school me-1"></i>Assign for training ({selectedTrainable.length})
+          </button>
+        {/if}
         <button class="btn btn-sm btn-outline-secondary ms-auto" on:click={clearSelection}>
           <i class="ti ti-x me-1"></i>Clear
         </button>
@@ -1271,16 +1120,25 @@
                     <td>{(currentPage - 1) * rowsPerPage + i + 1}</td>
                     <td style="max-width:260px;">
                       {#if q.ticketCode}
-                        <div class="qp-ticket">{q.ticketCode}</div>
+                        {@const activityAt = q.lastActivityAt || q.updatedAt || q.createdAt}
+                        <div class="qp-ticket">
+                          <span class="qp-ticket-code">{q.ticketCode}</span>
+                          {#if activityAt}
+                            <span
+                              class="qp-activity-badge"
+                              title="Last activity {formatDate(activityAt)}"
+                              >{formatLastActivity(activityAt)}</span
+                            >
+                          {/if}
+                        </div>
                       {/if}
                       <div class="d-flex align-items-center gap-1 flex-wrap" style="min-width:0;">
-                        <button
-                          type="button"
-                          class="qp-subject qp-qv-open"
-                          title={q.subject}
-                          on:click={() => openQuickView(q.id)}>{q.subject}</button
+                        <a
+                          href="/admin/query/{q.id}"
+                          class="qp-subject"
+                          title="Open full — {q.subject}">{q.subject}</a
                         >
-                        {#if unread > 0}<span class="badge bg-danger rounded-pill qp-badge"
+                        {#if unread > 0}<span class="badge bg-danger rounded-pill query-count-badge"
                             >{unread > 99 ? "99+" : unread}</span
                           >{/if}
                         {#if !q.assignedTo && ["open", "reopened"].includes(q.status)}
@@ -1295,7 +1153,7 @@
                           >
                         {/if}
                         {#if ["Deal Won", "Dispatched", "Completed"].includes(q.order?.status)}<span
-                            class="badge bg-success qp-badge">🏆 Deal Won</span
+                            class="badge bg-success query-deal-badge">🏆 Deal Won</span
                           >{/if}
                       </div>
                     </td>
@@ -1338,19 +1196,20 @@
                         {q.status?.replace("_", " ")}
                       </span>
                     </td>
-                    <td
-                      style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
-                    >
-                      {#if q.order}
-                        <a
-                          href="/admin/order/{q.order.id}"
-                          class="text-primary small"
-                          title={q.order.title
-                            ? `#${q.order.pId} — ${q.order.title}`
-                            : `#${q.order.pId}`}
+                    <td class="qp-order-cell">
+                      {#if q.order?.id}
+                        {@const oc = queryOrderColumn(q.order)}
+                        <button
+                          type="button"
+                          class="qp-order-qv"
+                          title={oc?.title || `Order quick view — #${q.order.pId}`}
+                          on:click={() => openOrderQuickView(q.order.id)}
                         >
-                          #{q.order.pId}{q.order.title ? ` — ${q.order.title}` : ""}
-                        </a>
+                          <span class="qp-order-company">{oc?.heading || `#${q.order.pId}`}</span>
+                          {#if oc?.client}
+                            <span class="qp-order-client">{oc.client}</span>
+                          {/if}
+                        </button>
                       {:else}
                         <span class="text-muted">-</span>
                       {/if}
@@ -1418,13 +1277,6 @@
                       >
                         <i class="ti ti-eye"></i>
                       </button>
-                      <a
-                        href="/admin/query/{q.id}"
-                        class="btn btn-sm btn-outline-secondary"
-                        title="Open full"
-                      >
-                        <i class="ti ti-external-link"></i>
-                      </a>
                       {#if isMasterView(currentUser) || isTelecaller(currentUser)}
                         <button
                           class="btn btn-sm btn-outline-secondary"
@@ -1432,6 +1284,16 @@
                           on:click={() => openEditForm(q)}
                         >
                           <i class="ti ti-edit"></i>
+                        </button>
+                      {/if}
+                      {#if canAssignTraining(currentUser) && isClosedOrResolved(q.status) && !q.parentQueryId}
+                        <button
+                          type="button"
+                          class="btn btn-sm btn-outline-warning"
+                          title="Assign for training"
+                          on:click={() => openTrainingAssign(q)}
+                        >
+                          <i class="ti ti-school"></i>
                         </button>
                       {/if}
                     </td>
@@ -1470,7 +1332,25 @@
   {currentUser}
   canEdit={canEditQuickView}
   on:edit={(e) => openEditForm(e.detail)}
+  on:openOrder={(e) => openOrderQuickView(e.detail)}
   on:close={closeQuickView}
+/>
+
+<OrderQuickView
+  bind:open={orderDrawerOpen}
+  orderId={drawerOrderId}
+  {currentUser}
+  on:close={closeOrderQuickView}
+/>
+
+<QueryTrainingAssignModal
+  bind:open={trainOpen}
+  queryId={trainQueryId}
+  queryIds={trainQueryIds}
+  querySubject={trainSubject}
+  on:assigned={() => {
+    if (trainQueryIds.length > 1) clearSelection();
+  }}
 />
 
 <style>
@@ -1797,11 +1677,18 @@
     vertical-align: middle;
   }
   .qp-ticket {
-    font-size: 10.5px;
-    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 3px;
+    min-width: 0;
+  }
+  .qp-ticket-code {
+    font-size: 11px !important;
+    font-weight: 600;
     color: #868e96;
     letter-spacing: 0.2px;
-    margin-bottom: 2px;
+    flex-shrink: 0;
   }
   .qp-subject {
     color: #364fc7;
@@ -1816,10 +1703,64 @@
   .qp-subject:hover {
     text-decoration: underline;
   }
+  .qp-order-cell {
+    max-width: 200px;
+    vertical-align: middle;
+  }
+  .qp-order-qv {
+    background: none;
+    border: none;
+    padding: 0;
+    text-align: left;
+    cursor: pointer;
+    color: #c92a2a;
+    font-size: 12px;
+    font-weight: 500;
+    max-width: 200px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    min-width: 0;
+  }
+  .qp-order-qv:hover {
+    text-decoration: none;
+  }
+  .qp-order-qv:hover .qp-order-company {
+    text-decoration: underline;
+  }
+  .qp-order-company,
+  .qp-order-client {
+    display: block;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .qp-order-client {
+    color: #868e96;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
   .qp-badge {
     font-size: 10.5px !important;
     font-weight: 500 !important;
     padding: 2px 6px !important;
+  }
+  .qp-activity-badge {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    font-size: 8px !important;
+    font-weight: 600 !important;
+    padding: 0 6px !important;
+    line-height: 1.4 !important;
+    border-radius: 999px;
+    border: 1px solid #e67700;
+    background: transparent;
+    color: #e67700;
+    white-space: nowrap;
   }
   .qp-pager {
     padding: 8px 12px;
@@ -2007,16 +1948,4 @@
     min-width: 96px;
   }
 
-  /* Subject as quick-view trigger */
-  .qp-qv-open {
-    background: none;
-    border: none;
-    padding: 0;
-    text-align: left;
-    cursor: pointer;
-    max-width: 100%;
-  }
-  .qp-qv-open:hover {
-    text-decoration: underline;
-  }
 </style>

@@ -1,5 +1,6 @@
 import { secureStorage } from './secureStorage';
 import { setAuthUser } from '$lib/stores/auth';
+import { resetUsersAllStore } from '$lib/stores/dataStores';
 
 const TOKEN_KEYS = ['access_token', 'refresh_token', 'user', 'statusNames', 'device_name', 'pending_user_id', 'available_roles', 'role_permissions'];
 
@@ -15,6 +16,7 @@ export const checkAuth = () => {
 const PRESERVE_KEYS = ["device_name", "last_email", "last_password"];
 
 export const logoutUser = async () => {
+  resetUsersAllStore();
   setAuthUser(null);
   // Clear from secure storage (OS keychain)
   await secureStorage.clear(TOKEN_KEYS);
@@ -46,6 +48,8 @@ export const saveSession = async (data) => {
 
   // Keep the reactive store in sync so components update immediately
   setAuthUser(data.user);
+
+  resetUsersAllStore();
 
   // Store available roles and permissions for Switch Role button / role picker
   const userRoles = data.user?.roles ?? [data.user?.role];
@@ -105,6 +109,18 @@ export const canAccess = (moduleKey, level = 'view', user = null) => {
   if (!access || access === 'none') return false;
   if (level === 'full') return access === 'full';
   return true; // 'view' or 'full' satisfies 'view'
+};
+
+/**
+ * Media library: master/admin/manager and query sub-roles (telecaller, tech, tech helper).
+ * Plain `user` with no subRole has no query/media access.
+ */
+export const canUseMediaLibrary = (user = null) => {
+  const u = user ?? checkAuth();
+  if (!u) return false;
+  if (u.role === "user" && !u.subRole) return false;
+  if (["master", "admin", "manager"].includes(u.role)) return true;
+  return ["telecaller", "tech", "tech_helper"].includes(u.subRole);
 };
 
 /**

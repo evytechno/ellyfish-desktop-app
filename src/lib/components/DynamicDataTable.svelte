@@ -245,6 +245,7 @@
                         <button
                           on:click={() => action.onClick(row.id)}
                           class={`btn btn-icon btn-sm rounded-pill ${action.color}`}
+                          title={action.label}
                           disabled={action.disabled ? action.disabled(row) : false}
                         >
                           <i class={`${action.icon}`}></i>

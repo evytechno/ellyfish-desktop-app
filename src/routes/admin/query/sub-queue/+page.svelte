@@ -225,7 +225,7 @@
                       {#if badge}
                         <span class="{badge.cls} ms-1" style="flex-shrink:0;">{badge.label}</span>
                       {/if}
-                      {#if ['Deal Won', 'Dispatched', 'Completed'].includes(q.order?.status)}<span class="badge bg-success" style="font-size:10px;flex-shrink:0;">🏆 Deal Won</span>{/if}
+                      {#if ['Deal Won', 'Dispatched', 'Completed'].includes(q.order?.status)}<span class="badge bg-success query-deal-badge">🏆 Deal Won</span>{/if}
                     </div>
                     {#if q.description}
                       <div class="small text-muted text-truncate" style="max-width:280px">{q.description}</div>

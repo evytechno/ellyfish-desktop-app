@@ -39,9 +39,9 @@
   <div class="oq-queries-head">
     <h5 class="oq-queries-title mb-0">
       <i class="ti ti-help-circle me-1 text-primary"></i>
-      {#if currentUser?.subRole === "tech"}My Assigned Queries{:else}Related Queries{/if}
+      {#if currentUser?.subRole === "tech"}My Queries{:else}Related Queries{/if}
     </h5>
-    {#if currentUser?.subRole === "telecaller" || (currentUser?.role === "user" && !currentUser?.subRole)}
+    {#if currentUser?.subRole === "telecaller" || currentUser?.subRole === "tech" || (currentUser?.role === "user" && !currentUser?.subRole)}
       <button class="btn btn-sm btn-outline-warning" on:click={openQueryModal}>
         <i class="ti ti-plus me-1"></i>Raise Query
       </button>
@@ -55,12 +55,17 @@
   {:else}
     {@const visibleQueries =
       currentUser?.subRole === "tech"
-        ? orderQueries.filter((q) => q.assignedTo?.id === currentUser?.id)
+        ? orderQueries.filter(
+            (q) =>
+              q.isRaisedByMe ||
+              q.assignedToId === currentUser?.id ||
+              q.assignedTo?.id === currentUser?.id,
+          )
         : orderQueries}
     {#if visibleQueries.length === 0}
       <div class="oq-queries-empty text-center py-4 text-muted small">
         {#if currentUser?.subRole === "tech"}
-          <i class="ti ti-help-off me-1"></i>No queries assigned to you for this order.
+          <i class="ti ti-help-off me-1"></i>No queries assigned to you or raised by you for this order.
         {:else if currentUser?.subRole === "telecaller"}
           <i class="ti ti-help-off me-1"></i>You haven't raised any queries for this order yet.
         {:else}
@@ -73,11 +78,9 @@
           <thead>
             <tr>
               <th>Subject</th>
-              {#if currentUser?.subRole === "tech"}
-                <th>Raised By</th>
-              {:else if currentUser?.subRole === "telecaller"}
+              {#if currentUser?.subRole === "telecaller"}
                 <th>Assigned To</th>
-              {:else}
+              {:else if currentUser?.subRole !== "tech" && currentUser?.subRole !== "tech_helper"}
                 <th>Raised By</th>
                 <th>Assigned To</th>
               {/if}
@@ -101,9 +104,7 @@
                     {q.subject}
                   </button>
                 </td>
-                {#if currentUser?.subRole === "tech"}
-                  <td>{maskAssignedName(q.raisedBy) ?? "-"}</td>
-                {:else if currentUser?.subRole === "telecaller"}
+                {#if currentUser?.subRole === "telecaller"}
                   <td>
                     {#if q.assignedTo}
                       <span class="badge bg-success-subtle text-success-emphasis"
@@ -113,7 +114,7 @@
                       <span class="text-muted">Unassigned</span>
                     {/if}
                   </td>
-                {:else}
+                {:else if currentUser?.subRole !== "tech" && currentUser?.subRole !== "tech_helper"}
                   <td>
                     {#if q.raisedBy}
                       {#if q.raisedBy.name === "Telecaller"}

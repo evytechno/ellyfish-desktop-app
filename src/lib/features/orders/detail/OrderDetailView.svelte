@@ -171,6 +171,7 @@
 
           <OrderSidebar
             order={$order}
+            currentUser={$currentUser}
             bind:orderInfoExpanded={$orderInfoExpanded}
             bind:showChangeClientModal={$showChangeClientModal}
             bind:showAddContactModal={$showAddContactModal}

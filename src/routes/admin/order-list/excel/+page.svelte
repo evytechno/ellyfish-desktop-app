@@ -13,6 +13,7 @@
   import { statusNamesStore } from "$lib/stores/statusNames";
   import { maskAssignedName } from '$lib/utils/maskUser';
   import PIWOTIModal from "$lib/components/PIWOTIModal.svelte";
+  import OrderQueriesModal from "$lib/components/OrderQueriesModal.svelte";
   import { OrderFeedbackModal } from "$lib/features/orders/detail";
   import { errorHandle } from "$lib/utils/errorHandle";
 
@@ -31,6 +32,19 @@
     feedbackModalOrder = order;
     feedbackTriggerStatus = triggerStatus;
     feedbackModalShow = true;
+  }
+
+  let queriesModalOpen = false;
+  let queriesModalOrder = null;
+  let queriesModalStartRaise = false;
+
+  async function openQueriesModal(order, startRaise = false) {
+    if (!order) return;
+    queriesModalOpen = false;
+    queriesModalOrder = order;
+    queriesModalStartRaise = startRaise;
+    await tick();
+    queriesModalOpen = true;
   }
 
   async function submitFeedback(e) {
@@ -523,7 +537,7 @@
     { key: "status",  label: "Status",       width: 140, minWidth: 100, visible: true },
     { key: "user",    label: "Sales User",   width: 110, minWidth: 80,  visible: true, masterOnly: true },
     { key: "date",    label: "Date",         width: 110, minWidth: 80,  visible: true },
-    { key: "actions", label: "PI / WO / TI", width: 150, minWidth: 120, visible: true },
+    { key: "actions", label: "PI / WO / TI", width: 170, minWidth: 140, visible: true },
   ];
   const DEFAULT_COLS = ALL_COLS.filter(c => !c.masterOnly || isMaster);
   let cols = DEFAULT_COLS.map(c => ({ ...c }));
@@ -1759,6 +1773,11 @@
                       title="Add Feedback"
                       on:click|stopPropagation={() => openFeedbackModal(order)}
                     ><i class="ti ti-message-star" style="font-size:11px;"></i></button>
+                    <button
+                      class="btn btn-xs btn-soft-warning mt-1"
+                      title="Queries"
+                      on:click|stopPropagation={() => openQueriesModal(order)}
+                    ><i class="ti ti-help-circle" style="font-size:11px;"></i></button>
                   </td>
 
                   {/if}
@@ -1974,6 +1993,17 @@
   loading={feedbackLoading}
   on:close={() => { feedbackModalShow = false; feedbackTriggerStatus = null; }}
   on:submit={submitFeedback}
+/>
+
+<OrderQueriesModal
+  bind:open={queriesModalOpen}
+  order={queriesModalOrder}
+  {currentUser}
+  startWithRaise={queriesModalStartRaise}
+  on:close={() => {
+    queriesModalOpen = false;
+    queriesModalStartRaise = false;
+  }}
 />
 
 <!-- PI/WO/TI Modal -->

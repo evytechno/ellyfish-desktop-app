@@ -185,7 +185,7 @@
       companies = compData || [];
       users = userData || [];
       if (currentUser?.id) {
-        attendees = [{ userId: Number(currentUser.id), isLead: true }];
+        attendees = [{ userId: Number(currentUser.id), name: "", isLead: true }];
       }
       if (currentUser?.companyId) {
         const match = companies.find((c) => c.id === Number(currentUser.companyId));
@@ -305,8 +305,35 @@
   }
 
   // ── Attendees ────────────────────────────────────────────────────────────────
-  function addAttendee() { attendees = [...attendees, { userId: "", isLead: false }]; }
+  $: pickerUsers = visitPickerUsers(users, currentUser);
+
+  function visitPickerUsers(list, me) {
+    if (!Array.isArray(list) || !me) return [];
+    if (me.role === "user") {
+      return list.filter((u) => Number(u.id) === Number(me.id));
+    }
+    if (me.role === "admin") {
+      const allowed = Array.isArray(me.allowedSalesUserIds)
+        ? me.allowedSalesUserIds.map(Number).filter(Number.isFinite)
+        : [];
+      if (allowed.length) {
+        const ids = new Set([...allowed, Number(me.id)]);
+        return list.filter((u) => ids.has(Number(u.id)));
+      }
+    }
+    return list;
+  }
+
+  function addAttendee() { attendees = [...attendees, { userId: "", name: "", isLead: false }]; }
   function removeAttendee(i) { attendees = attendees.filter((_, idx) => idx !== i); }
+  function onPickUser(att) {
+    if (att.userId) att.name = "";
+    attendees = attendees;
+  }
+  function onTypeName(att) {
+    if (att.name) att.userId = "";
+    attendees = attendees;
+  }
 
   // ── Jobs ─────────────────────────────────────────────────────────────────────
   function addJob() { jobs = [...jobs, { description: "", material: "", quantity: "", size: "", requirement: "", cost: "" }]; }
@@ -355,7 +382,13 @@
         pincode: pincode || undefined,
         startTime: startTime || undefined,
         endTime: endTime || undefined,
-        attendees: attendees.filter((a) => a.userId).map((a) => ({ userId: Number(a.userId), isLead: a.isLead })),
+        attendees: attendees
+          .filter((a) => a.userId || (a.name && a.name.trim()))
+          .map((a) => ({
+            userId: a.userId ? Number(a.userId) : undefined,
+            name: a.userId ? undefined : String(a.name).trim(),
+            isLead: a.isLead,
+          })),
       };
 
       const res = await authApiFetch(API_ROUTES.CLIENT_VISIT, { method: "POST", data: payload });
@@ -874,13 +907,25 @@
             {#if attendees.length === 0}
               <div class="text-muted cv-meta mb-2">No team members added yet.</div>
             {:else}
-              <div class="d-flex flex-wrap gap-2 mb-2">
+              <div class="d-flex flex-column gap-2 mb-2">
                 {#each attendees as att, i}
-                  <div class="cv-attendee border rounded px-2 py-1 d-flex align-items-center gap-2">
-                    <select class="cv-attendee-select border-0 bg-transparent" bind:value={att.userId}>
-                      <option value="">Select employee...</option>
-                      {#each users as u}<option value={u.id}>{u.name} ({u.role})</option>{/each}
-                    </select>
+                  <div class="cv-attendee border rounded px-2 py-1 d-flex align-items-center gap-2 flex-wrap">
+                    {#if pickerUsers.length}
+                      <select class="cv-attendee-select border-0 bg-transparent" bind:value={att.userId} on:change={() => onPickUser(att)}>
+                        <option value="">Select employee...</option>
+                        {#each pickerUsers as u}
+                          <option value={u.id}>{u.name}{currentUser?.role === "user" ? "" : ` (${u.role})`}</option>
+                        {/each}
+                      </select>
+                      <span class="text-muted cv-meta">or</span>
+                    {/if}
+                    <input
+                      class="form-control form-control-sm"
+                      style="max-width:180px;"
+                      placeholder="Type a name"
+                      bind:value={att.name}
+                      on:input={() => onTypeName(att)}
+                    />
                     <label class="d-flex align-items-center gap-1 mb-0 cv-meta" style="cursor:pointer;white-space:nowrap;">
                       <input type="checkbox" bind:checked={att.isLead} style="accent-color:var(--bs-primary);" /> Lead
                     </label>

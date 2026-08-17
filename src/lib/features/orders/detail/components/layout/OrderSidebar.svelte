@@ -7,6 +7,7 @@
   import DOMPurify from "dompurify";
 
   export let order;
+  export let currentUser = null;
   export let orderInfoExpanded = false;
 
   // Client modal visibility — bind: from parent
@@ -481,7 +482,7 @@
                   class="img-fluid rounded-circle w-auto h-auto"
                 />
               </span>
-              <span class="order-sidebar-user-name">{maskAssignedName(assignedUser)}</span>
+              <span class="order-sidebar-user-name">{maskAssignedName(assignedUser, currentUser)}</span>
               {#if assignedUser?.status === "banned"}
                 <span class="badge bg-danger order-sidebar-badge">Banned</span>
               {:else if assignedUser?.status === "inactive"}
@@ -512,7 +513,7 @@
           {#if order?.assignedUsers?.[0]?.name}
             <div class="order-sidebar-row">
               <span class="order-sidebar-label"><i class="ti ti-user-edit"></i>Modified By</span>
-              <span class="order-sidebar-value">{maskAssignedName(order.assignedUsers[0])}</span>
+              <span class="order-sidebar-value">{maskAssignedName(order.assignedUsers[0], currentUser)}</span>
             </div>
           {/if}
         </div>
