@@ -1378,6 +1378,8 @@
   const isTech = (u) => u?.subRole === "tech";
   const isTechHelper = (u) => u?.subRole === "tech_helper";
   const isMasterView = (u) => u?.role !== "user";
+  const canUseMediaLibrary = (u) =>
+    u?.role === "master" || u?.role === "admin" || u?.subRole === "telecaller";
 
   // For tech users, "sub-query" is presented simply as "query"
   $: sqWord        = isTech(currentUser) ? "Query"   : "Sub-Query";
@@ -3631,12 +3633,14 @@
       <div class="text-center py-5 text-muted">Query not found.</div>
     {:else}
       <LightBox data={lightboxData} startIndex={lightboxStartIndex} />
-      <MediaPickerModal
-        bind:open={showMediaPicker}
-        maxSelect={mediaPickerTarget === "sq" ? sqAttachSlotsLeft : attachSlotsLeft}
-        on:confirm={onMediaPickerConfirm}
-        on:close={() => showMediaPicker = false}
-      />
+      {#if canUseMediaLibrary(currentUser)}
+        <MediaPickerModal
+          bind:open={showMediaPicker}
+          maxSelect={mediaPickerTarget === "sq" ? sqAttachSlotsLeft : attachSlotsLeft}
+          on:confirm={onMediaPickerConfirm}
+          on:close={() => showMediaPicker = false}
+        />
+      {/if}
 
       <!-- ── Reopen modal ───────────────────────────────────────────────────── -->
       {#if showEscalateModal}
@@ -4835,15 +4839,17 @@
                   >
                     <i class="ti ti-paperclip"></i>
                   </button>
-                  <button
-                    type="button"
-                    class="chat-attach-btn"
-                    title="Attach from Media library"
-                    on:click={() => openMediaPicker("main")}
-                    disabled={attachSlotsLeft <= 0 || sendingChat}
-                  >
-                    <i class="ti ti-photo"></i>
-                  </button>
+                  {#if canUseMediaLibrary(currentUser)}
+                    <button
+                      type="button"
+                      class="chat-attach-btn"
+                      title="Attach from Media library"
+                      on:click={() => openMediaPicker("main")}
+                      disabled={attachSlotsLeft <= 0 || sendingChat}
+                    >
+                      <i class="ti ti-photo"></i>
+                    </button>
+                  {/if}
                   <div class="chat-input-grow-wrap">
                     <textarea
                       class="chat-input"
@@ -5344,9 +5350,11 @@
                   <button type="button" class="chat-attach-btn" title="Attach files" on:click={() => sqFileInputEl?.click()} disabled={sqAttachSlotsLeft <= 0}>
                     <i class="ti ti-paperclip"></i>
                   </button>
-                  <button type="button" class="chat-attach-btn" title="Attach from Media library" on:click={() => openMediaPicker("sq")} disabled={sqAttachSlotsLeft <= 0}>
-                    <i class="ti ti-photo"></i>
-                  </button>
+                  {#if canUseMediaLibrary(currentUser)}
+                    <button type="button" class="chat-attach-btn" title="Attach from Media library" on:click={() => openMediaPicker("sq")} disabled={sqAttachSlotsLeft <= 0}>
+                      <i class="ti ti-photo"></i>
+                    </button>
+                  {/if}
                   <div class="chat-input-grow-wrap">
                     <textarea class="chat-input" rows="1"
                       placeholder="Type a message… (Enter to send)"

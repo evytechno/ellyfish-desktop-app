@@ -771,15 +771,17 @@
           </div>
 
         <div class="header-quick-links flex items-center gap-1">
-          <a
-            href="/admin/media"
-            class="header-quick-link"
-            class:active={currentPath.startsWith("/admin/media")}
-            title="Media"
-          >
-            <i class="ti ti-photo"></i>
-            <span class="d-none d-md-inline">Media</span>
-          </a>
+          {#if currentUser?.role === "master" || currentUser?.role === "admin" || currentUser?.subRole === "telecaller"}
+            <a
+              href="/admin/media"
+              class="header-quick-link"
+              class:active={currentPath.startsWith("/admin/media")}
+              title="Media"
+            >
+              <i class="ti ti-photo"></i>
+              <span class="d-none d-md-inline">Media</span>
+            </a>
+          {/if}
           {#if ((currentUser?.subRole !== "tech" && currentUser?.subRole !== "tech_helper") || currentUser?.orderAccess) && canAccess("orders", "view", currentUser)}
             <a
               href="/admin/order"
