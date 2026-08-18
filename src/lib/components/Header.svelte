@@ -3,7 +3,7 @@
   import jQuery from "jquery";
   import { goto } from "$app/navigation";
   import { clearUser, setUser } from "../../stores/userStore";
-  import { checkAuth, logoutUser, getAvailableRoles, getRolePermissions, saveSession, canAccess, canUseMediaLibrary } from "$lib/utils/auth";
+  import { checkAuth, logoutUser, getAvailableRoles, getRolePermissions, saveSession, canAccess, canUseMediaLibrary, canSwitchUser, isImpersonating, getImpersonatorUser, beginImpersonation, endImpersonation } from "$lib/utils/auth";
   import { apiFetch } from "$lib/api/client";
   import Swal from "sweetalert2";
   import Notification from "./Notification.svelte";
@@ -23,6 +23,13 @@
   let currentUser;
   let availableRoles = [];
   let rolePermissions = null;
+  let impersonating = false;
+  let impersonatorUser = null;
+  let showSwitchModal = false;
+  let switchUsers = [];
+  let switchSearch = "";
+  let switchLoading = false;
+  let switchBusy = false;
 
   $: currentPath = $page.url.pathname;
 
@@ -37,6 +44,8 @@
     currentUser = checkAuth();
     availableRoles = getAvailableRoles();
     rolePermissions = getRolePermissions();
+    impersonating = isImpersonating();
+    impersonatorUser = getImpersonatorUser();
     fetchSetting();
 
     const $ = jQuery;
@@ -200,6 +209,135 @@
     });
   };
 
+  function targetRoles(u) {
+    if (Array.isArray(u?.roles) && u.roles.length) return u.roles;
+    return [u?.role].filter(Boolean);
+  }
+
+  function targetRoleLabel(u, role) {
+    const perms = u?.rolePermissions?.[role];
+    const sub = perms?.subRole ?? (role === u?.role ? u?.subRole : null);
+    return sub ? `${role} (${SUBROLE_LABELS[sub] ?? sub})` : role;
+  }
+
+  function userTypeLabel(u) {
+    const roles = targetRoles(u);
+    return roles.map((r) => targetRoleLabel(u, r)).join(" · ");
+  }
+
+  $: filteredSwitchUsers = (switchUsers || []).filter((u) => {
+    const q = switchSearch.trim().toLowerCase();
+    if (!q) return true;
+    return `${u?.name || ""} ${u?.role || ""} ${u?.subRole || ""} ${u?.company?.name || ""}`
+      .toLowerCase()
+      .includes(q);
+  });
+
+  function closeProfileDropdown() {
+    document.querySelector(".profile-dropdown .dropdown-menu")?.classList.remove("show");
+  }
+
+  async function openSwitchModal() {
+    closeProfileDropdown();
+    showSwitchModal = true;
+    switchSearch = "";
+    switchLoading = true;
+    switchUsers = [];
+    try {
+      const data = await authApiFetch(API_ROUTES.IMPERSONATE_TARGETS);
+      switchUsers = Array.isArray(data) ? data : data?.data ?? [];
+    } catch (error) {
+      errorHandle(error);
+      showSwitchModal = false;
+    } finally {
+      switchLoading = false;
+    }
+  }
+
+  function closeSwitchModal() {
+    if (switchBusy) return;
+    showSwitchModal = false;
+  }
+
+  async function confirmSwitchUser(target) {
+    if (!target?.id || switchBusy) return;
+    const roles = targetRoles(target);
+    showSwitchModal = false;
+
+    let selectedRole = roles.length === 1 ? roles[0] : null;
+    const result = await Swal.fire({
+      title: "Switch user?",
+      html:
+        `<p class="mb-2">You will see only <strong>${escapeHtml(target.name)}</strong>'s pages and data.</p>` +
+        (roles.length > 1
+          ? `<label class="form-label text-start w-100 mb-1">Role</label>
+             <select id="swu-role-pick" class="form-select">
+               ${roles
+                 .map(
+                   (r) =>
+                     `<option value="${escapeHtml(r)}" ${r === target.role ? "selected" : ""}>${escapeHtml(targetRoleLabel(target, r))}</option>`,
+                 )
+                 .join("")}
+             </select>`
+          : `<p class="text-muted mb-0 text-capitalize">${escapeHtml(userTypeLabel(target))}</p>`),
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: "Switch",
+      customClass: { container: "swu-swal-on-top" },
+      preConfirm: () => {
+        if (roles.length <= 1) return selectedRole;
+        const value = document.getElementById("swu-role-pick")?.value;
+        if (!value) {
+          Swal.showValidationMessage("Select a role");
+          return false;
+        }
+        return value;
+      },
+    });
+    if (!result.isConfirmed) {
+      showSwitchModal = true;
+      return;
+    }
+    selectedRole = result.value || selectedRole;
+
+    switchBusy = true;
+    try {
+      const data = await authApiFetch(API_ROUTES.IMPERSONATE, {
+        method: "POST",
+        data: { userId: Number(target.id), selectedRole },
+      });
+      await beginImpersonation(data);
+      setUser(data.user);
+      window.location.href = "/admin/dashboard";
+    } catch (error) {
+      switchBusy = false;
+      showSwitchModal = true;
+      errorHandle(error);
+    }
+  }
+
+  async function confirmBackToMaster() {
+    closeProfileDropdown();
+    const masterName = impersonatorUser?.name || "Master";
+    const result = await Swal.fire({
+      title: "Back to Master?",
+      text: `Return to ${masterName}'s account?`,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: "Switch back",
+      customClass: { container: "swu-swal-on-top" },
+    });
+    if (!result.isConfirmed) return;
+
+    try {
+      const user = await endImpersonation();
+      setUser(user);
+      window.location.href = "/admin/dashboard";
+    } catch (error) {
+      errorHandle(error);
+    }
+  }
+
   const switchRole = () => {
     const otherRoles = availableRoles.filter(r => r !== currentUser?.role);
     const targetRole = otherRoles.length === 1 ? otherRoles[0] : null;
@@ -207,16 +345,16 @@
     Swal.fire({
       title: "Switch Role",
       text: targetRole
-        ? `Switch to ${targetRole}?`
+        ? `Switch to ${roleBadgeLabel(targetRole)}?`
         : "You will be taken to the role selection screen.",
       icon: "question",
       showCancelButton: true,
       confirmButtonText: "Switch",
+      customClass: { container: "swu-swal-on-top" },
     }).then(async (result) => {
       if (!result.isConfirmed) return;
 
       if (targetRole) {
-        // Only 2 roles — switch directly without select-role page
         try {
           const data = await apiFetch(API_ROUTES.SELECT_ROLE, {
             method: "POST",
@@ -224,13 +362,12 @@
           });
           await saveSession(data);
           setUser(data.user);
-          await Swal.fire("Success!", `Switched to ${targetRole}.`, "success");
+          await Swal.fire("Success!", `Switched to ${roleBadgeLabel(targetRole)}.`, "success");
           window.location.href = "/admin/dashboard";
         } catch (error) {
           errorHandle(error);
         }
       } else {
-        // 3+ roles — go to select-role page
         localStorage.setItem("pending_user_id", String(currentUser?.id));
         goto("/select-role");
       }
@@ -475,6 +612,10 @@
   }
 
   function checkAndStartTimer() {
+    if (isImpersonating()) {
+      timerText = "";
+      return;
+    }
     const now = getISTDate();
 
     const year = now.getFullYear();
@@ -912,6 +1053,20 @@
         </div>
       {/if}
 
+      {#if impersonating}
+        <div class="header-item">
+          <button
+            type="button"
+            class="header-login-btn is-emergency me-2"
+            on:click={confirmBackToMaster}
+            title="Switch back to {impersonatorUser?.name || 'Master'}"
+          >
+            <i class="ti ti-user-switch"></i>
+            <span>Viewing as {currentUser?.name}</span>
+          </button>
+        </div>
+      {/if}
+
       <!-- User Dropdown -->
       <div class="dropdown profile-dropdown flex items-center justify-center">
         <a
@@ -952,7 +1107,11 @@
                 <span class="text-xs" style="font-size:10px;opacity:0.7;">Active:</span>
                 <span class="text-capitalize fw-semibold ms-1">{currentUser?.role}{currentUser?.subRole ? ` (${currentUser.subRole})` : ''}</span>
               </span>
-              {#if availableRoles.length > 1}
+              {#if impersonating}
+                <span class="d-block fs-13 text-warning mt-1">
+                  Switched from {impersonatorUser?.name || "Master"}
+                </span>
+              {:else if availableRoles.length > 1}
                 <span class="d-flex flex-wrap gap-1 mt-1">
                   {#each availableRoles as r}
                     <span class="badge text-capitalize" style="font-size:10px; background-color:{r === currentUser?.role ? '#405189' : '#6c757d'}; color:#fff;">{roleBadgeLabel(r)}</span>
@@ -968,8 +1127,22 @@
             <span class="align-middle">Profile</span>
           </a>
 
-          <!-- Switch Role — only for users with multiple roles -->
-          {#if availableRoles.length > 1}
+          {#if canSwitchUser(currentUser)}
+            <button type="button" on:click={openSwitchModal} class="dropdown-item">
+              <i class="ti ti-users me-1 fs-17 align-middle"></i>
+              <span class="align-middle">Switch</span>
+            </button>
+          {/if}
+
+          {#if impersonating}
+            <button type="button" on:click={confirmBackToMaster} class="dropdown-item text-warning">
+              <i class="ti ti-arrow-back-up me-1 fs-17 align-middle"></i>
+              <span class="align-middle">Back to Master</span>
+            </button>
+          {/if}
+
+          <!-- Switch Role — own account only, not while viewing as another user -->
+          {#if !impersonating && availableRoles.length > 1}
             <button on:click={() => switchRole()} class="dropdown-item text-primary d-flex flex-column align-items-start">
               <span>
                 <i class="ti ti-switch-horizontal me-1 fs-17 align-middle"></i>
@@ -995,6 +1168,50 @@
     </div>
   </div>
 </header>
+
+<svelte:window on:keydown={(e) => showSwitchModal && e.key === "Escape" && closeSwitchModal()} />
+
+{#if showSwitchModal}
+  <div class="swu-overlay" on:click={closeSwitchModal} role="presentation">
+    <div class="swu-modal" on:click|stopPropagation role="dialog" aria-modal="true" aria-labelledby="swu-title">
+      <div class="swu-head">
+        <h5 id="swu-title" class="mb-0">Switch user</h5>
+        <button type="button" class="btn-close" on:click={closeSwitchModal} aria-label="Close"></button>
+      </div>
+      <div class="swu-search">
+        <i class="ti ti-search"></i>
+        <input
+          type="text"
+          class="form-control form-control-sm"
+          bind:value={switchSearch}
+          placeholder="Search name, role…"
+        />
+      </div>
+      <div class="swu-list">
+        {#if switchLoading}
+          <p class="swu-empty">Loading users…</p>
+        {:else if filteredSwitchUsers.length === 0}
+          <p class="swu-empty">No users found.</p>
+        {:else}
+          {#each filteredSwitchUsers as u (u.id)}
+            <button
+              type="button"
+              class="swu-row"
+              class:is-current={Number(u.id) === Number(currentUser?.id)}
+              disabled={switchBusy || Number(u.id) === Number(currentUser?.id)}
+              on:click={() => confirmSwitchUser(u)}
+            >
+              <span class="swu-name">{u.name}</span>
+              <span class="swu-meta">
+                {userTypeLabel(u)}{u.company?.name ? ` · ${u.company.name}` : ""}
+              </span>
+            </button>
+          {/each}
+        {/if}
+      </div>
+    </div>
+  </div>
+{/if}
 
 <!-- Orders Lists -->
 <div class="modal fade" id="order_lists" role="dialog">
@@ -1390,5 +1607,95 @@
       opacity: 1;
       transform: scale(1) translateY(0);
     }
+  }
+
+  .swu-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1090;
+    background: rgba(15, 23, 42, 0.45);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 12vh 16px 24px;
+  }
+  .swu-modal {
+    width: 100%;
+    max-width: 420px;
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18);
+    overflow: hidden;
+  }
+  .swu-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid #eee;
+  }
+  .swu-head h5 {
+    font-size: 16px;
+    font-weight: 650;
+  }
+  .swu-search {
+    position: relative;
+    padding: 10px 16px;
+  }
+  .swu-search i {
+    position: absolute;
+    left: 26px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #94a3b8;
+    font-size: 14px;
+  }
+  .swu-search input {
+    padding-left: 28px;
+  }
+  .swu-list {
+    max-height: 360px;
+    overflow: auto;
+    padding: 0 8px 8px;
+  }
+  .swu-row {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    padding: 9px 10px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+  }
+  .swu-row:hover:not(:disabled) {
+    background: #f8fafc;
+  }
+  .swu-row.is-current,
+  .swu-row:disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+  .swu-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: #1e293b;
+  }
+  .swu-meta {
+    font-size: 11px;
+    color: #64748b;
+    text-transform: capitalize;
+  }
+  .swu-empty {
+    margin: 18px 0;
+    text-align: center;
+    font-size: 13px;
+    color: #94a3b8;
+  }
+  :global(.swu-swal-on-top) {
+    z-index: 20000 !important;
   }
 </style>

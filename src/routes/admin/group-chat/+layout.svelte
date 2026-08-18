@@ -451,6 +451,41 @@
     left: var(--crms-sidenav-width-sm, 70px);
   }
 
+  /* Browser full-view (header maximize): fill the monitor like other pages */
+  :global(html:fullscreen),
+  :global(html:-webkit-full-screen) {
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: none !important;
+    overflow: hidden !important;
+    background: #fff;
+  }
+  :global(html:fullscreen body),
+  :global(html:-webkit-full-screen body),
+  :global(html:fullscreen .main-wrapper),
+  :global(html:-webkit-full-screen .main-wrapper) {
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 100% !important;
+    overflow: hidden !important;
+  }
+  :global(html:fullscreen .footer),
+  :global(html:-webkit-full-screen .footer) {
+    display: none !important;
+  }
+  :global(html:fullscreen) .gc-two-panel,
+  :global(html:-webkit-full-screen) .gc-two-panel {
+    top: 60px;
+    left: var(--sidenav-width, 250px);
+    right: 0;
+    bottom: 0;
+    z-index: 20;
+  }
+  :global(html:fullscreen body.mini-sidebar) .gc-two-panel,
+  :global(html:-webkit-full-screen body.mini-sidebar) .gc-two-panel {
+    left: var(--crms-sidenav-width-sm, 70px);
+  }
+
   /* ── Sidebar ──────────────────────────────────────────────────────────────── */
   .gc-sidebar {
     width: 300px;
@@ -543,9 +578,12 @@
   /* ── Main panel ───────────────────────────────────────────────────────────── */
   .gc-main {
     flex: 1;
+    min-width: 0;
+    min-height: 0;
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    height: 100%;
   }
 
   /* ── Modal backdrop ───────────────────────────────────────────────────────── */

@@ -40,6 +40,7 @@ export function eventIcon(event) {
     user_created: "ti-user-plus",
     user_deleted: "ti-user-minus",
     role_switched: "ti-switch-horizontal",
+    user_impersonated: "ti-user-switch",
   };
   return map[event] || "ti-activity";
 }

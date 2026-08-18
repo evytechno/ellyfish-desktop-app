@@ -14,6 +14,7 @@
   let currentUser = null;
   let loading = false;
   let users = [];
+  let extraAssignedUsers = [];
   let rows = [];
   let personTotals = [];
   let totals = { count: 0, withoutGst: 0, withGst: 0 };
@@ -48,7 +49,21 @@
     return years;
   })();
 
-  $: salesUsers = users.filter((u) => u.role !== "master" && !["telecaller", "tech", "tech_helper"].includes(u.subRole));
+  $: salesUsers = (() => {
+    const map = new Map();
+    for (const u of users) {
+      if (!u?.id || u.role === "master") continue;
+      map.set(Number(u.id), { id: u.id, name: u.name });
+    }
+    for (const u of extraAssignedUsers) {
+      const id = Number(u?.id);
+      if (!id || map.has(id)) continue;
+      map.set(id, { id, name: u.name });
+    }
+    return [...map.values()].sort((a, b) =>
+      (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" }),
+    );
+  })();
   $: telecallers = users.filter((u) => u.subRole === "telecaller");
   $: techs = users.filter((u) => u.subRole === "tech");
 
@@ -104,6 +119,17 @@
       rows = res?.data ?? [];
       personTotals = res?.personTotals ?? [];
       totals = res?.totals ?? { count: 0, withoutGst: 0, withGst: 0 };
+      if (!selectedUserId) {
+        const extras = [];
+        const seen = new Set();
+        for (const p of personTotals) {
+          const id = Number(p?.userId);
+          if (!id || seen.has(id)) continue;
+          seen.add(id);
+          extras.push({ id, name: p.name });
+        }
+        extraAssignedUsers = extras;
+      }
     } catch (e) {
       errorHandle(e);
       rows = [];
@@ -115,17 +141,12 @@
   }
 
   async function loadUsers() {
-    const cached = get(usersAllStore);
-    if (cached?.length) {
-      users = cached;
-      return;
-    }
     try {
       const data = await authApiFetch(`${API_ROUTES.USER}/all`);
       users = data ?? [];
-      usersAllStore.set(users);
+      if (users.length) usersAllStore.set(users);
     } catch {
-      users = [];
+      users = get(usersAllStore) ?? [];
     }
   }
 

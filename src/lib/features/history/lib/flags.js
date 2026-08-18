@@ -84,6 +84,16 @@ export function getAuthFlags(row, pageRows = []) {
       hint: meta?.selectedRole ? `Switched to ${meta.selectedRole}` : "Role context changed",
     });
   }
+  if (ev === "user_impersonated") {
+    flags.push({
+      id: "user_switch",
+      label: "User switch",
+      level: "info",
+      hint: meta?.targetUserName
+        ? `Master viewed as ${meta.targetUserName}`
+        : "Master switched into another user",
+    });
+  }
   if (ev === "login" && !row?.deviceName) {
     flags.push({
       id: "unknown_device",

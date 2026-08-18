@@ -1,6 +1,8 @@
 export const API_ROUTES = {
   LOGIN: `auth/login`,
   SELECT_ROLE: `auth/select-role`,
+  IMPERSONATE: `auth/impersonate`,
+  IMPERSONATE_TARGETS: `auth/impersonate-targets`,
   USER: `users`,
   COMPANY: `companies`,
   CATEGORY: `categories`,

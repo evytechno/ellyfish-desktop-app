@@ -14,6 +14,7 @@
   import InactivityWarning from "$lib/components/InactivityWarning.svelte";
   import { startInactivityTimer, stopInactivityTimer } from "$lib/utils/inactivityTimer";
   import { logoutUser, checkAuth, consumeLoginWelcome } from "$lib/utils/auth";
+  import { resolveGroupChatSenderLabel } from "$lib/utils/groupChatNames";
   import { onDestroy } from "svelte";
   import { io } from "socket.io-client";
   import {
@@ -234,35 +235,21 @@
 
       gcSocket.on("new-message", (msg) => {
         const me = checkAuth();
-        if (!me || msg.senderId === me.id) return;
+        if (!me) return;
+
+        const isOwn = Number(msg.senderId) === Number(me.id);
 
         // Are we currently viewing the exact group this message belongs to?
         const viewingThisGroup = get(page).url.pathname === `/admin/group-chat/${msg.groupId}`;
 
-        if (!viewingThisGroup) {
+        if (!isOwn && !viewingThisGroup) {
           incrementGroupUnread(msg.groupId);
         }
 
-        // Keep sidebar last-message preview up to date
-        function gcRoleLabel(subRole, role) {
-          if (subRole === "telecaller")  return "Telecaller";
-          if (subRole === "tech")        return "Tech";
-          if (subRole === "tech_helper") return "Sr. Tech";
-          if (role === "admin")          return "Admin";
-          if (role === "master")         return "Master";
-          return "Member";
-        }
-        const isPrivileged = me.role === "master" || me.role === "admin";
-        let senderLabel;
-        if (isPrivileged) {
-          senderLabel = msg.senderRole === "master"
-            ? "Master"
-            : `${msg.senderNameReal} (${gcRoleLabel(msg.senderSubRole, msg.senderRole)})`;
-        } else {
-          senderLabel = msg.senderRole === "master"
-            ? "Admin"
-            : gcRoleLabel(msg.senderSubRole, msg.senderRole);
-        }
+        // Sidebar preview: own last message shows "You", others stay masked
+        const senderLabel = isOwn
+          ? "You"
+          : (msg.senderName || resolveGroupChatSenderLabel(me, msg));
 
         groupListStore.update((groups) =>
           sortedByActivity(
@@ -274,8 +261,8 @@
           )
         );
 
-        // Show toast only when NOT already looking at that group
-        if (!viewingThisGroup) {
+        // Toast only for others, and only when NOT already looking at that group
+        if (!isOwn && !viewingThisGroup) {
           const groups = get(groupListStore);
           const grp = groups.find((g) => g.id === msg.groupId);
           const preview = msg.message
@@ -389,7 +376,7 @@
   <slot />
 
   <!-- Start Footer -->
-  {#if !$page.url.pathname.startsWith('/admin/query/')}
+  {#if !$page.url.pathname.startsWith('/admin/query/') && !$page.url.pathname.startsWith('/admin/group-chat')}
   <footer
     class="footer flex justify-between text-md-start text-center no-print"
   >

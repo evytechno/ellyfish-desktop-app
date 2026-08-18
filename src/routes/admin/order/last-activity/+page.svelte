@@ -1,10 +1,13 @@
 <script>
   import { onMount } from "svelte";
+  import { page } from "$app/stores";
+  import { goto } from "$app/navigation";
   import { authApiFetch } from "$lib/api/client";
   import { errorHandle } from "$lib/utils/errorHandle";
   import { API_ROUTES } from "$lib/constants/apiRoutes";
   import Loader from "$lib/components/Loader.svelte";
   import DynamicDataTable from "$lib/components/DynamicDataTable.svelte";
+  import OrderQuickView from "$lib/components/OrderQuickView.svelte";
   import { checkAuth } from "$lib/utils/auth";
   import { maskAssignedName } from '$lib/utils/maskUser';
   import {
@@ -15,6 +18,27 @@
   } from "$lib/stores/dataStores";
   import { statusNamesStore } from "$lib/stores/statusNames";
   let currentUser = null;
+  let orderDrawerOpen = false;
+  let drawerOrderId = null;
+
+  function openOrderQuickView(id) {
+    if (!id) return;
+    drawerOrderId = id;
+    orderDrawerOpen = true;
+  }
+
+  function closeOrderQuickView() {
+    orderDrawerOpen = false;
+    drawerOrderId = null;
+  }
+
+  function escapeHtml(s) {
+    return String(s ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
 
   let loadingData = true;
 
@@ -34,7 +58,10 @@
   let selectedFilter = "last7days";
   let customStartDate = null;
   let customEndDate = null;
-  let orderBy = "createdAt";
+  let orderBy = "lastActivity:desc";
+  let sortField = "lastActivity";
+  let sortDir = "desc";
+  let activityMode = "noFollowUp"; // noFollowUp | followUp
   let searchString = "";
 
   let viewType = "grid";
@@ -53,18 +80,24 @@
 
     const filterState = $orderActivityFilterStore;
 
+    const urlMode = $page.url.searchParams.get("mode");
+    activityMode = urlMode === "followUp" ? "followUp" : "noFollowUp";
     userId = filterState.userId || null;
     companyId = filterState.companyId || null;
     searchTerm = filterState.searchTerm || "";
-    selectedFilter = filterState.selectedFilter || "last7days";
+    selectedFilter =
+      filterState.selectedFilter || (activityMode === "followUp" ? "today" : "last7days");
     customStartDate = filterState.customStartDate || null;
     customEndDate = filterState.customEndDate || null;
     if (selectedFilter === "custom" && (!customStartDate || !customEndDate)) {
-      selectedFilter = "last7days";
+      selectedFilter = activityMode === "followUp" ? "today" : "last7days";
       customStartDate = null;
       customEndDate = null;
     }
-    orderBy = filterState.orderBy || "createdAt";
+    const savedOrder = parseOrderBy(filterState.orderBy, "lastActivity:desc");
+    sortField = savedOrder.field;
+    sortDir = savedOrder.dir;
+    orderBy = `${sortField}:${sortDir}`;
 
     fetchOrders();
     getAllCompanies();
@@ -74,6 +107,18 @@
       firstLoad = true;
     }, 500);
   });
+
+  function parseOrderBy(value, fallback) {
+    const raw = value || fallback || "lastActivity:asc";
+    const [field, dirRaw] = String(raw).split(":");
+    const allowed = ["lastActivity", "createdAt", "orderDate"];
+    const sortCol = allowed.includes(field) ? field : "lastActivity";
+    let dir = dirRaw === "asc" || dirRaw === "desc" ? dirRaw : null;
+    if (!dir) {
+      dir = "desc";
+    }
+    return { field: sortCol, dir };
+  }
 
   const updateFilterStore = (newValues) => {
     orderActivityFilterStore.update((currentState) => {
@@ -101,7 +146,7 @@
     try {
       const query = new URLSearchParams({
         search: searchTerm || "",
-        orderBy: orderBy,
+        orderBy: `${sortField}:${sortDir}`,
       });
 
       let startDateFilter;
@@ -115,36 +160,55 @@
         });
       searchString = "All";
 
+      const done = activityMode === "followUp";
+
       if (selectedFilter === "last7days") {
         const sevenDaysAgo = new Date();
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
         startDateFilter = sevenDaysAgo;
-        searchString = `${formatDisplayDate(sevenDaysAgo)} to ${formatDisplayDate(new Date())}`;
+        searchString = done
+          ? `Activity since ${formatDisplayDate(sevenDaysAgo)}`
+          : `No activity since ${formatDisplayDate(sevenDaysAgo)}`;
       } else if (selectedFilter === "last30days") {
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
         startDateFilter = thirtyDaysAgo;
-        searchString = `${formatDisplayDate(thirtyDaysAgo)} to ${formatDisplayDate(new Date())}`;
+        searchString = done
+          ? `Activity since ${formatDisplayDate(thirtyDaysAgo)}`
+          : `No activity since ${formatDisplayDate(thirtyDaysAgo)}`;
       } else if (selectedFilter === "last45days") {
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 45);
         startDateFilter = thirtyDaysAgo;
-        searchString = `${formatDisplayDate(thirtyDaysAgo)} to ${formatDisplayDate(new Date())}`;
+        searchString = done
+          ? `Activity since ${formatDisplayDate(thirtyDaysAgo)}`
+          : `No activity since ${formatDisplayDate(thirtyDaysAgo)}`;
       } else if (selectedFilter === "last60days") {
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 60);
         startDateFilter = thirtyDaysAgo;
-        searchString = `${formatDisplayDate(thirtyDaysAgo)} to ${formatDisplayDate(new Date())}`;
+        searchString = done
+          ? `Activity since ${formatDisplayDate(thirtyDaysAgo)}`
+          : `No activity since ${formatDisplayDate(thirtyDaysAgo)}`;
       } else if (selectedFilter === "last90days") {
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 90);
         startDateFilter = thirtyDaysAgo;
-        searchString = `${formatDisplayDate(thirtyDaysAgo)} to ${formatDisplayDate(new Date())}`;
+        searchString = done
+          ? `Activity since ${formatDisplayDate(thirtyDaysAgo)}`
+          : `No activity since ${formatDisplayDate(thirtyDaysAgo)}`;
       } else if (selectedFilter === "today") {
         startDateFilter = new Date();
         startDateFilter.setHours(0, 0, 0, 0);
         endDateFilter.setHours(23, 59, 59, 999);
-        searchString = "Today";
+        searchString = done ? "Activity today" : "No activity today";
+      } else if (selectedFilter === "yesterday") {
+        startDateFilter = new Date();
+        startDateFilter.setDate(startDateFilter.getDate() - 1);
+        startDateFilter.setHours(0, 0, 0, 0);
+        endDateFilter = new Date(startDateFilter);
+        endDateFilter.setHours(23, 59, 59, 999);
+        searchString = done ? "Activity yesterday" : "No activity since yesterday";
       } else if (
         selectedFilter === "custom" &&
         customStartDate &&
@@ -152,13 +216,21 @@
       ) {
         query.append("startDate", customStartDate);
         query.append("endDate", customEndDate);
-        searchString = `${formatDisplayDate(new Date(customStartDate))} to ${formatDisplayDate(new Date(customEndDate))}`;
+        searchString = done
+          ? `Activity ${formatDisplayDate(new Date(customStartDate))} to ${formatDisplayDate(new Date(customEndDate))}`
+          : `No activity since ${formatDisplayDate(new Date(customStartDate))}`;
       }
 
       if (startDateFilter && selectedFilter !== "custom") {
         const formatLocalDate = (date) => date.toLocaleDateString("en-CA"); // Local YYYY-MM-DD
         query.append("startDate", formatLocalDate(startDateFilter));
         query.append("endDate", formatLocalDate(endDateFilter));
+      }
+
+      if (activityMode === "followUp") {
+        query.append("hadFollowUp", "true");
+      } else {
+        query.append("noFollowUp", "true");
       }
 
       if (userId) {
@@ -180,7 +252,8 @@
         selectedFilter,
         customStartDate,
         customEndDate,
-        orderBy,
+        orderBy: `${sortField}:${sortDir}`,
+        activityMode,
       });
 
       if (!refresh) {
@@ -275,9 +348,12 @@
     customStartDate,
     customEndDate,
     orderBy,
+    sortField,
+    sortDir,
     userId,
     companyId,
     trashBin,
+    activityMode,
   ],
     checkFetchRecord();
 
@@ -311,7 +387,7 @@
       label: "Title",
       render: (val, row) => {
         const label = row?.pId ? `#${row.pId} - ${row?.title || ""}` : (row?.title || "");
-        return `<a href="/admin/order/${row.id}" class="flex items-center gap-1"><div class="max-w-[300px] truncate">${label}</div></a>`;
+        return `<button type="button" class="order-qv-open btn btn-link p-0 text-decoration-none text-start fw-semibold" data-id="${row.id}" title="Order quick view"><div class="max-w-[300px] truncate">${escapeHtml(label)}</div></button>`;
       },
     },
     {
@@ -423,6 +499,18 @@
       : []),
   ];
 
+  function setActivityMode(mode) {
+    if (activityMode === mode) return;
+    activityMode = mode;
+    goto(
+      mode === "followUp" ? "/admin/order/last-activity?mode=followUp" : "/admin/order/last-activity",
+      { replaceState: true, keepFocus: true, noScroll: true },
+    );
+  }
+
+  $: pageTitle = activityMode === "followUp" ? "Follow Up" : "No Follow Up";
+  $: isFollowUp = activityMode === "followUp";
+
   let actions = [];
 </script>
 
@@ -436,7 +524,7 @@
     <div class="flex items-center justify-between gap-2 mb-4 flex-wrap">
       <div>
         <h4 class="mb-1">
-          Orders Activity
+          {pageTitle}
           <span class="text-xs font-normal">
             {searchString ? `(${searchString})` : ""}
           </span>
@@ -445,7 +533,7 @@
           <ol class="breadcrumb mb-0 p-0">
             <li class="breadcrumb-item"><a href="/admin/dashboard">Home</a></li>
             <li class="breadcrumb-item active" aria-current="page">
-              Orders Activity
+              {pageTitle}
             </li>
           </ol>
         </nav>
@@ -476,6 +564,18 @@
     <!-- table header -->
     <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
       <div class="flex items-center gap-2 flex-wrap">
+        <div class="btn-group" role="group" aria-label="Follow-up mode">
+          <button
+            type="button"
+            class="btn btn-sm {activityMode === 'noFollowUp' ? 'btn-primary' : 'btn-outline-primary'}"
+            on:click={() => setActivityMode("noFollowUp")}
+          >No Follow Up</button>
+          <button
+            type="button"
+            class="btn btn-sm {activityMode === 'followUp' ? 'btn-primary' : 'btn-outline-primary'}"
+            on:click={() => setActivityMode("followUp")}
+          >Follow Up</button>
+        </div>
         <div class="flex items-center gap-2 flex-wrap">
           <div>
             <div class="input-icon input-icon-start position-relative">
@@ -494,12 +594,25 @@
         </div>
         <div class="flex items-center gap-2 flex-wrap">
           <select bind:value={selectedFilter} class="form-select">
-            <option value="last7days">Last 7 Days</option>
-            <option value="last30days">Last 30 Days</option>
-            <option value="last45days">Last 45 Days</option>
-            <option value="last60days">Last 60 Days</option>
-            <option value="last90days">Last 90 Days</option>
-            <option value="custom">Custom Range</option>
+            {#if isFollowUp}
+              <option value="today">Activity today</option>
+              <option value="yesterday">Activity yesterday</option>
+              <option value="last7days">Activity in last 7 days</option>
+              <option value="last30days">Activity in last 30 days</option>
+              <option value="last45days">Activity in last 45 days</option>
+              <option value="last60days">Activity in last 60 days</option>
+              <option value="last90days">Activity in last 90 days</option>
+              <option value="custom">Custom range</option>
+            {:else}
+              <option value="today">No activity today</option>
+              <option value="yesterday">No activity since yesterday</option>
+              <option value="last7days">No activity 7+ days</option>
+              <option value="last30days">No activity 30+ days</option>
+              <option value="last45days">No activity 45+ days</option>
+              <option value="last60days">No activity 60+ days</option>
+              <option value="last90days">No activity 90+ days</option>
+              <option value="custom">Custom (no activity since)</option>
+            {/if}
           </select>
         </div>
 
@@ -542,13 +655,34 @@
             </select>
           </div>
         {/if}
+        <div class="flex items-center gap-2 flex-wrap">
+          <select bind:value={sortField} class="form-select">
+            <option value="lastActivity">Last activity</option>
+            <option value="createdAt">Date created</option>
+            <option value="orderDate">Order date</option>
+          </select>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <select bind:value={sortDir} class="form-select">
+            <option value="desc">Newest</option>
+            <option value="asc">Oldest</option>
+          </select>
+        </div>
       </div>
     </div>
     <!-- table header -->
 
     <!-- card start -->
-    <div class="card border-0 rounded-0">
-      <div class="card-body">
+    <div class="card border-0 rounded-0 last-activity-card">
+      <div
+        class="card-body"
+        on:click={(e) => {
+          const btn = e.target.closest(".order-qv-open");
+          if (!btn) return;
+          e.preventDefault();
+          openOrderQuickView(Number(btn.dataset.id));
+        }}
+      >
         <DynamicDataTable
           loading={loadingData}
           {columns}
@@ -568,3 +702,22 @@
   </div>
   <!-- End Content -->
 </div>
+
+<OrderQuickView
+  bind:open={orderDrawerOpen}
+  orderId={drawerOrderId}
+  {currentUser}
+  on:close={closeOrderQuickView}
+/>
+
+<style>
+  .last-activity-card :global(.order-qv-open) {
+    color: #c92a2a !important;
+    font-size: inherit !important;
+    line-height: inherit !important;
+    max-width: 100%;
+  }
+  .last-activity-card :global(.order-qv-open:hover) {
+    text-decoration: underline !important;
+  }
+</style>

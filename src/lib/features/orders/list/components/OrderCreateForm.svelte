@@ -8,6 +8,7 @@
   import TypeableSelect from "$lib/components/TypeableSelect.svelte";
 
   export let categories = [];
+  export let prefillClient = null;
 
   const dispatch = createEventDispatcher();
 
@@ -111,6 +112,11 @@
     newClientName = ""; newClientGst = ""; newClientAddress = "";
     newClientEmail = ""; newClientMobile = "";
     clearClientSelection();
+    if (prefillClient?.id) selectClient(prefillClient);
+  }
+
+  $: if (prefillClient?.id && selectedClient?.id !== prefillClient.id) {
+    selectClient(prefillClient);
   }
 
   function closeOffcanvas() {
@@ -184,7 +190,7 @@
   }
 </script>
 
-<div class="offcanvas offcanvas-end offcanvas-large" tabindex="-1" id="offcanvas_add">
+<div class="offcanvas offcanvas-end offcanvas-add-order" tabindex="-1" id="offcanvas_add">
   <div class="offcanvas-header border-bottom">
     <h5 class="mb-0">Add New Order</h5>
     <button
@@ -302,25 +308,27 @@
           {/if}
         </div>
 
-        <!-- Company -->
-        <div>
-          <label class="form-label" for="company">Company</label>
-          <input type="text" name="company" class="form-control" class:is-invalid={formErrors.company}
-            bind:value={company} id="company" placeholder="Company" />
-          {#if formErrors.company}
-            <ul class="text-danger mt-1 text-xs capitalize"><li>{formErrors.company[0]}</li></ul>
-          {/if}
-        </div>
+        {#if !selectedClient}
+          <!-- Company -->
+          <div>
+            <label class="form-label" for="company">Company</label>
+            <input type="text" name="company" class="form-control" class:is-invalid={formErrors.company}
+              bind:value={company} id="company" placeholder="Company" />
+            {#if formErrors.company}
+              <ul class="text-danger mt-1 text-xs capitalize"><li>{formErrors.company[0]}</li></ul>
+            {/if}
+          </div>
 
-        <!-- GST Number -->
-        <div>
-          <label class="form-label" for="gstNumber">GST Number</label>
-          <input type="text" name="gstNumber" class="form-control" class:is-invalid={formErrors.gstNumber}
-            bind:value={gstNumber} id="gstNumber" placeholder="GST Number" />
-          {#if formErrors.gstNumber}
-            <ul class="text-danger mt-1 text-xs capitalize"><li>{formErrors.gstNumber[0]}</li></ul>
-          {/if}
-        </div>
+          <!-- GST Number -->
+          <div>
+            <label class="form-label" for="gstNumber">GST Number</label>
+            <input type="text" name="gstNumber" class="form-control" class:is-invalid={formErrors.gstNumber}
+              bind:value={gstNumber} id="gstNumber" placeholder="GST Number" />
+            {#if formErrors.gstNumber}
+              <ul class="text-danger mt-1 text-xs capitalize"><li>{formErrors.gstNumber[0]}</li></ul>
+            {/if}
+          </div>
+        {/if}
       </div>
 
       <!-- Description -->
@@ -509,3 +517,9 @@
     </form>
   </div>
 </div>
+
+<style>
+  :global(.offcanvas-add-order.offcanvas-end) {
+    width: min(420px, 100vw) !important;
+  }
+</style>
