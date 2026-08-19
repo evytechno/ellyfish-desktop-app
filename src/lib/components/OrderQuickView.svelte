@@ -10,7 +10,9 @@
     maskEmail,
     maskQueryPersonName,
     isMaskedRoleLabel,
+    maskAuthorName,
   } from "$lib/utils/maskUser";
+  import { convertDate, normalizeTypes } from "$lib/features/orders/detail/utils/index.js";
 
   /** @type {boolean} */
   export let open = false;
@@ -24,6 +26,11 @@
   let order = null;
   let loadToken = 0;
   let revealed = {};
+  let tab = "details";
+  let chats = [];
+  let chatLoading = false;
+  let chatLoadedFor = null;
+  let chatToken = 0;
 
   function isRevealed(key) {
     return !!revealed[key];
@@ -122,11 +129,55 @@
     return (tmp.textContent || tmp.innerText || "").trim();
   }
 
+  function resetChatState() {
+    chats = [];
+    chatLoadedFor = null;
+    chatLoading = false;
+    chatToken += 1;
+  }
+
+  function chatTypeClass(nt) {
+    if (nt === "Call") return "bg-primary text-white";
+    if (nt === "WhatsApp") return "bg-success text-white";
+    if (nt === "Email") return "bg-warning text-dark";
+    return "bg-light text-dark border";
+  }
+
+  function selectTab(next) {
+    tab = next;
+    if (next === "chat" && order?.id) loadChats(order.id);
+  }
+
+  async function loadChats(id) {
+    const oid = Number(id);
+    if (!oid || chatLoadedFor === oid || chatLoading) return;
+    const token = ++chatToken;
+    chatLoading = true;
+    try {
+      const res = await authApiFetch(
+        `${API_ROUTES.ORDER_CHAT}?orderId=${oid}&limit=50&offset=0`,
+      );
+      if (token !== chatToken) return;
+      const list = Array.isArray(res) ? res : (res?.data ?? []);
+      chats = (list || [])
+        .filter((c) => !c?.deletedAt)
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      chatLoadedFor = oid;
+    } catch (err) {
+      if (token !== chatToken) return;
+      errorHandle(err);
+    } finally {
+      if (token === chatToken) chatLoading = false;
+    }
+  }
+
   async function load(id) {
     const token = ++loadToken;
     loading = true;
     order = null;
     revealed = {};
+    tab = "details";
+    resetChatState();
     try {
       const data = await authApiFetch(`${API_ROUTES.ORDER}/${id}/basic`);
       if (token !== loadToken) return;
@@ -144,6 +195,8 @@
     open = false;
     order = null;
     revealed = {};
+    tab = "details";
+    resetChatState();
     dispatch("close");
   }
 
@@ -192,6 +245,72 @@
         Loading order…
       </div>
     {:else if order}
+      <div class="oq-tabs" role="tablist">
+        <button
+          type="button"
+          class="oq-tab"
+          class:oq-tab--active={tab === "details"}
+          role="tab"
+          aria-selected={tab === "details"}
+          on:click={() => selectTab("details")}
+        >
+          Details
+        </button>
+        <button
+          type="button"
+          class="oq-tab"
+          class:oq-tab--active={tab === "chat"}
+          role="tab"
+          aria-selected={tab === "chat"}
+          on:click={() => selectTab("chat")}
+        >
+          Chat
+          {#if chatLoadedFor === order.id}
+            <span class="oq-tab-count">{chats.length}</span>
+          {/if}
+        </button>
+      </div>
+
+      {#if tab === "chat"}
+        {#if chatLoading}
+          <div class="oq-loading text-muted">
+            <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+            Loading chats…
+          </div>
+        {:else if chats.length}
+          <ul class="oq-chat">
+            {#each chats as chat}
+              <li class="oq-msg">
+                <div class="oq-msg-meta">
+                  <span class="oq-msg-sender">{maskAuthorName(chat?.user, currentUser) || "User"}</span>
+                  <span class="oq-msg-time">
+                    {chat?.createdAt &&
+                      convertDate(chat.createdAt, {
+                        timeZone: "Asia/Kolkata",
+                        day: "2-digit",
+                        month: "short",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        hour12: true,
+                      })}
+                  </span>
+                </div>
+                {#if normalizeTypes(chat?.type).length}
+                  <div class="oq-msg-types">
+                    {#each normalizeTypes(chat?.type) as nt}
+                      <span class="badge {chatTypeClass(nt)}">{nt}</span>
+                    {/each}
+                  </div>
+                {/if}
+                <div class="oq-msg-body">{chat?.message || "—"}</div>
+              </li>
+            {/each}
+          </ul>
+        {:else}
+          <p class="text-muted mb-0 oq-empty">No chats yet</p>
+        {/if}
+      {:else}
       <div class="oq-section">
         <div class="oq-badges">
           <span class="badge {statusCls}">{statusLabel}</span>
@@ -365,6 +484,7 @@
           </div>
         </div>
       </div>
+      {/if}
     {/if}
   </div>
 
@@ -453,6 +573,102 @@
     align-items: center;
     justify-content: center;
     padding: 24px 0;
+  }
+  .oq-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 3px;
+    margin-bottom: 14px;
+    background: #f1f3f5;
+    border-radius: 8px;
+  }
+  .oq-tab {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border: none;
+    background: transparent;
+    color: #868e96;
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 6px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .oq-tab:hover {
+    color: #495057;
+  }
+  .oq-tab--active {
+    background: #fff;
+    color: #212529;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+  }
+  .oq-tab-count {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: #e9ecef;
+    color: #495057;
+    font-size: 10px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .oq-tab--active .oq-tab-count {
+    background: #edf2ff;
+    color: #364fc7;
+  }
+  .oq-chat {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .oq-msg {
+    padding: 8px 10px;
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+  }
+  .oq-msg-meta {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .oq-msg-sender {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #212529;
+  }
+  .oq-msg-time {
+    font-size: 10px;
+    color: #868e96;
+    white-space: nowrap;
+  }
+  .oq-msg-types {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 4px;
+  }
+  .oq-msg-types :global(.badge) {
+    font-size: 10px;
+    font-weight: 500;
+  }
+  .oq-msg-body {
+    font-size: 12px;
+    color: #343a40;
+    white-space: pre-wrap;
+    word-break: break-word;
   }
   .oq-section {
     margin-bottom: 16px;

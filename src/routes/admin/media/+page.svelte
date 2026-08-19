@@ -601,13 +601,11 @@
             {/each}
           </div>
 
-          <div
-            class="flex items-center justify-between gap-2 flex-wrap mt-4 pt-3 border-top"
-          >
-            <div class="flex items-center gap-2">
-              <span class="text-muted">Rows per page</span>
+          <div class="media-pager">
+            <div class="media-pager-left">
+              <span class="media-pager-label">Rows per page</span>
               <select
-                class="form-select form-select-sm w-auto"
+                class="form-select form-select-sm"
                 bind:value={rowsPerPage}
                 on:change={() => (currentPage = 1)}
               >
@@ -617,7 +615,7 @@
                 <option value={96}>96</option>
               </select>
             </div>
-            <div class="flex items-center gap-2">
+            <div class="media-pager-right">
               <span class="text-muted">
                 Page {currentPage} of {totalPages}
               </span>
@@ -740,6 +738,35 @@
   }
   .media-share-btn:hover {
     background: #212529;
+  }
+
+  .media-pager {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--bs-border-color, #dee2e6);
+  }
+  .media-pager-left,
+  .media-pager-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .media-pager-label {
+    color: #6c757d;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .media-pager-left :global(.form-select) {
+    width: auto;
+    min-width: 72px;
+    flex-shrink: 0;
   }
 
   .share-backdrop {
