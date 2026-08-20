@@ -661,7 +661,7 @@
     { key: "email", label: "Email", width: 160, minWidth: 120, visible: true },
     { key: "name", label: "Client Name", width: 120, minWidth: 80, visible: true },
     { key: "address", label: "City", width: 100, minWidth: 80, visible: true },
-    { key: "chats", label: "Chats", width: 220, minWidth: 160, visible: true },
+    { key: "chats", label: "Chats", width: 260, minWidth: 220, visible: true },
     { key: "attach", label: "Attachments", width: 200, minWidth: 140, visible: true },
     { key: "remind", label: "Reminders", width: 200, minWidth: 140, visible: true },
     { key: "status", label: "Status", width: 140, minWidth: 100, visible: true },
@@ -695,7 +695,7 @@
       if (!saved) return;
       const base = DEFAULT_COLS.map((b) => {
         const s = saved.find((x) => x.key === b.key);
-        return s ? { ...b, visible: s.visible, width: s.width } : b;
+        return s ? { ...b, visible: s.visible, width: Math.max(s.width, b.minWidth) } : b;
       });
       // restore order from saved
       base.sort((a, b) => {
@@ -2155,9 +2155,10 @@
                       {:else if col.key === "chats"}
                         <!-- Chats -->
                         <td
-                          class="px-2 py-2 border border-gray-100 text-xs overflow-visible align-middle"
+                          class="px-2 py-2 border border-gray-100 text-xs overflow-hidden align-middle"
                           class:h-[54px]={!isExp}
                           class:h-auto={isExp}
+                          class:min-w-[220px]={isExp}
                           on:click|stopPropagation
                         >
                           {#if !isExp}
@@ -2213,28 +2214,24 @@
                                   {#if chats.length}
                                     {#each chats as c}
                                       <div class="py-1 border-b border-gray-100 last:border-b-0">
-                                        <div class="flex items-start justify-between gap-2">
-                                          <div class="min-w-0 flex-1">
-                                            {#if normalizeTypes(c.type).length}
-                                              <div class="flex flex-wrap gap-1 mb-0.5">
-                                                {#each normalizeTypes(c.type) as nt}
-                                                  <span
-                                                    class="rounded px-1 py-0 text-[9px] font-semibold flex-shrink-0"
-                                                    style={chatTypeBadgeStyle(nt)}>{nt}</span
-                                                  >
-                                                {/each}
-                                              </div>
-                                            {/if}
-                                            <div class="break-words">
-                                              <b class="text-[11px]"
-                                                >{maskAssignedName(c.user, currentUser) || ""}:</b
+                                        {#if normalizeTypes(c.type).length}
+                                          <div class="flex flex-wrap gap-1 mb-0.5">
+                                            {#each normalizeTypes(c.type) as nt}
+                                              <span
+                                                class="rounded px-1 py-0 text-[9px] font-semibold flex-shrink-0"
+                                                style={chatTypeBadgeStyle(nt)}>{nt}</span
                                               >
-                                              <span class="text-[11px]">{c.message || ""}</span>
-                                            </div>
+                                            {/each}
                                           </div>
-                                          <div class="text-[10px] text-gray-400 whitespace-nowrap">
-                                            {formatDateTime(c.createdAt)}
-                                          </div>
+                                        {/if}
+                                        <div class="break-words">
+                                          <b class="text-[11px]"
+                                            >{maskAssignedName(c.user, currentUser) || ""}:</b
+                                          >
+                                          <span class="text-[11px]">{c.message || ""}</span>
+                                        </div>
+                                        <div class="text-[10px] text-gray-400 mt-px">
+                                          {formatDateTime(c.createdAt)}
                                         </div>
                                       </div>
                                     {/each}
