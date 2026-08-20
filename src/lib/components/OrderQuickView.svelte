@@ -19,6 +19,8 @@
   /** @type {number|string|null} */
   export let orderId = null;
   export let currentUser = null;
+  /** @type {string} */
+  export let initialTab = "details";
 
   const dispatch = createEventDispatcher();
 
@@ -27,6 +29,7 @@
   let loadToken = 0;
   let revealed = {};
   let tab = "details";
+  let _prevOpen = false;
   let chats = [];
   let chatLoading = false;
   let chatLoadedFor = null;
@@ -205,8 +208,14 @@
   }
 
   $: if (open && orderId != null) {
+    if (open && !_prevOpen) {
+      _prevOpen = true;
+      tab = initialTab || "details";
+    }
     load(orderId);
   }
+
+  $: if (!open && _prevOpen) _prevOpen = false;
 </script>
 
 <svelte:window on:keydown={onKeydown} />
@@ -272,6 +281,9 @@
       </div>
 
       {#if tab === "chat"}
+        <div class="oq-chat-bar">
+          <div class="oq-section-title oq-chat-bar-title" style="margin-bottom:0;">Chats</div>
+        </div>
         {#if chatLoading}
           <div class="oq-loading text-muted">
             <div class="spinner-border spinner-border-sm me-2" role="status"></div>
@@ -631,6 +643,19 @@
     flex-direction: column;
     gap: 8px;
   }
+
+  .oq-chat-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .oq-chat-bar-title {
+    white-space: nowrap;
+  }
+
   .oq-msg {
     padding: 8px 10px;
     background: #f8f9fa;

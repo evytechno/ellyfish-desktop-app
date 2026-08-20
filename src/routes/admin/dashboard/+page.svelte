@@ -88,6 +88,19 @@
   let users = [];
   let dashboardData = null;
   let userId = null;
+
+  function normalizeUserId(value) {
+    // Persisted filter values can be the literal string "null"
+    // (e.g. from a persisted `<option value={null}>`), so coerce safely.
+    if (value === null || value === undefined) return null;
+    if (value === "" || value === "null") return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  let normalizedUserId = null;
+  $: normalizedUserId = normalizeUserId(userId);
+
   let searchTerm = "";
   let selectedFilter = "last7days";
   let customStartDate = null;
@@ -105,7 +118,7 @@
     if (currentUser) setUser(currentUser);
 
     const filterState = $dashboardFilterStore;
-    userId         = filterState.userId         || null;
+    userId         = filterState.userId ?? null;
     searchTerm     = filterState.searchTerm     || "";
     selectedFilter = filterState.selectedFilter || "last7days";
     customStartDate = filterState.customStartDate || null;
@@ -211,12 +224,12 @@
         query.append("endDate", formatLocalDate(endDateFilter));
       }
 
-      if (userId) {
-        query.append("byUserId", userId);
+      if (normalizedUserId != null) {
+        query.append("byUserId", normalizedUserId);
       }
 
       updateFilterStore({
-        userId,
+        userId: normalizedUserId,
         searchTerm,
         selectedFilter,
         customStartDate,
@@ -276,8 +289,8 @@
         query.append("endDate", formatLocalDate(endDateFilter));
       }
 
-      if (userId) {
-        query.append("byUserId", userId);
+      if (normalizedUserId != null) {
+        query.append("byUserId", normalizedUserId);
       }
 
       const data = await authApiFetch(
@@ -333,8 +346,8 @@
         query.append("endDate", formatLocalDate(endDateFilter));
       }
 
-      if (userId) {
-        query.append("byUserId", userId);
+      if (normalizedUserId != null) {
+        query.append("byUserId", normalizedUserId);
       }
 
       const data = await authApiFetch(
@@ -351,7 +364,7 @@
   }
 
 
-  $: [searchTerm, selectedFilter, customStartDate, customEndDate, userId],
+  $: [searchTerm, selectedFilter, customStartDate, customEndDate, normalizedUserId],
     checkFetchRecord();
 
   function checkFetchRecord() {
@@ -606,7 +619,7 @@
 
             {#if currentUser?.role != "user"}
               <select bind:value={userId} class="form-select dash-select">
-                <option value={null}>Select User</option>
+                <option value="">Select User</option>
                 {#each users as user}
                   <option value={user?.id}>{user?.name}</option>
                 {/each}

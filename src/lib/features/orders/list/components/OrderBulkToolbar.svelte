@@ -79,9 +79,11 @@
     <span class="text-sm font-semibold text-blue-700">
       <i class="ti ti-check me-1"></i>{selectedOrders.size} selected
     </span>
-    <button class="btn btn-sm btn-primary" on:click={openTransfer}>
-      <i class="ti ti-transfer me-1"></i>Transfer
-    </button>
+    {#if currentUser?.role === "master"}
+      <button class="btn btn-sm btn-primary" on:click={openTransfer}>
+        <i class="ti ti-transfer me-1"></i>Transfer
+      </button>
+    {/if}
     <button class="btn btn-sm btn-outline-danger" on:click={() => dispatch("exportPdf")}>
       <i class="ti ti-file-type-pdf me-1"></i>PDF ({selectedOrders.size})
     </button>
@@ -95,7 +97,7 @@
 {/if}
 
 <!-- Transfer Modal -->
-{#if transferModalOpen}
+{#if transferModalOpen && currentUser?.role === "master"}
   <div class="modal show d-block" tabindex="-1" style="background:rgba(0,0,0,0.45);">
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content">
