@@ -33,6 +33,8 @@
     users,
     categories,
     currentUser,
+    isOldAssignee,
+    canMutateOrder,
     title,
     category,
     orderDate,
@@ -94,6 +96,8 @@
     unlinkContact,
     setAssignedUsers,
     handleAddAssignedUser,
+    removeAssignedUser,
+    setActiveAssignedUser,
     deleteComponent,
     cerateChildOrder,
     editChildOrder,
@@ -132,6 +136,7 @@
     <OrderPageChrome
       order={$order}
       currentUser={$currentUser}
+      canMutateOrder={$canMutateOrder}
       {deleteOrder}
       {openQueryModal}
     />
@@ -160,6 +165,8 @@
               {statuses}
               {togglePin}
               {changeOrderStatus}
+              canMutateOrder={$canMutateOrder}
+              isOldAssignee={$isOldAssignee}
               bind:piwotiOpen={$piwotiOpen}
               bind:piwotiType={$piwotiType}
               orderVisits={$orderVisits}
@@ -172,6 +179,8 @@
           <OrderSidebar
             order={$order}
             currentUser={$currentUser}
+            canMutateOrder={$canMutateOrder}
+            isOldAssignee={$isOldAssignee}
             bind:orderInfoExpanded={$orderInfoExpanded}
             bind:showChangeClientModal={$showChangeClientModal}
             bind:showAddContactModal={$showAddContactModal}
@@ -181,12 +190,16 @@
             {setPrimaryContact}
             {unlinkContact}
             {setAssignedUsers}
+            {removeAssignedUser}
+            {setActiveAssignedUser}
           />
 
           <div class="col-xl-8">
             <OrderTabs
               order={$order}
               currentUser={$currentUser}
+              canMutateOrder={$canMutateOrder}
+              isOldAssignee={$isOldAssignee}
               bind:activeTab={$activeTab}
               activeDate={$activeDate}
               {toggleAccordion}
@@ -288,6 +301,7 @@
   order={$order}
   users={$users}
   orderVisits={$orderVisits}
+  canMutateOrder={$canMutateOrder}
   bind:showVisitModal={$showVisitModal}
   bind:showVisitListModal={$showVisitListModal}
   bind:visitCompanyId={$visitCompanyId}

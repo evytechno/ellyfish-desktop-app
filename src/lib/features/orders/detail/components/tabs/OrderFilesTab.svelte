@@ -8,6 +8,7 @@
   export let deleteAttachment;
   export let openAttachment;
   export let openImageLightbox;
+  export let canMutateOrder = true;
 
   let aTitle = "";
   let link = "";
@@ -51,9 +52,13 @@
     <div class="card-header d-flex align-items-center justify-content-between flex-wrap row-gap-3">
       <h5 class="fw-semibold mb-0">Files</h5>
       <div class="d-inline-flex align-items-center">
+        {#if canMutateOrder}
         <button href="#new_file" data-bs-toggle="modal" data-bs-target="#new_file" class="link-primary fw-medium">
           <i class="ti ti-circle-plus me-1"></i>Add New
         </button>
+        {:else}
+        <span class="text-muted" style="font-size:12px;">View only</span>
+        {/if}
       </div>
     </div>
     <div class="card-body">
@@ -65,7 +70,7 @@
                 <div class="ribbon ribbon-top-left"><span class="bg-red-500">Deleted</span></div>
               {/if}
               <div class="card-body">
-                {#if !attachment?.deletedAt}
+                {#if !attachment?.deletedAt && canMutateOrder}
                   <div class="absolute top-5 right-5">
                     <button on:click={deleteAttachment(attachment?.id)} class="bg-red-500 text-white text-md px-1.5 py-1 rounded">
                       <i class="ti ti-trash"></i>

@@ -1,6 +1,8 @@
 <script>
   export let order;
   export let deleteClient;
+  export let canMutateOrder = true;
+  export let isOldAssignee = false;
 </script>
 
 <div class="tab-pane active show" id="tab_6">
@@ -10,7 +12,13 @@
       <div class="d-inline-flex align-items-center"></div>
     </div>
     <div class="card-body">
-      {#if order?.orderClients?.length}
+      {#if isOldAssignee}
+        <div class="text-center py-5 text-muted">
+          <i class="ti ti-eye-off d-block mb-2" style="font-size:1.75rem;"></i>
+          <p class="mb-0 fw-medium">Client details are hidden</p>
+          <p class="mb-0 small">Only the Active assignee can view client information on this order.</p>
+        </div>
+      {:else if order?.orderClients?.length}
         {#each order.orderClients as orderClient}
           <div class="card mb-3 relative">
             {#if orderClient?.deletedAt}
@@ -19,9 +27,11 @@
             <div class="card-body">
               {#if !orderClient?.deletedAt}
                 <div class="absolute top-5 right-5">
+                  {#if canMutateOrder}
                   <button on:click={deleteClient(orderClient?.id)} class="bg-red-500 text-white text-md px-1.5 py-1 rounded">
                     <i class="ti ti-trash"></i>
                   </button>
+                  {/if}
                 </div>
               {/if}
               <div class="d-sm-flex align-items-center justify-content-between">
@@ -79,34 +89,3 @@
     </div>
   </div>
 </div>
-
-<style>
-  .ribbon {
-    position: absolute;
-    overflow: hidden;
-    width: 75px;
-    height: 75px;
-    z-index: 99;
-  }
-  .ribbon-top-left {
-    top: -3px;
-    left: -3px;
-  }
-  .ribbon span {
-    position: absolute;
-    display: block;
-    width: 100px;
-    padding: 4px 0;
-    color: #fff;
-    font-size: 8px;
-    font-weight: 600;
-    text-align: center;
-    text-transform: uppercase;
-    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
-  }
-  .ribbon-top-left span {
-    left: -25px;
-    top: 15px;
-    transform: rotate(-45deg);
-  }
-</style>

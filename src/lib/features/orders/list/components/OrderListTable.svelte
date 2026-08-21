@@ -3,6 +3,7 @@
   import { statusNamesStore } from "$lib/stores/statusNames";
   import DynamicDataTable from "$lib/components/DynamicDataTable.svelte";
   import { maskAssignedName } from "$lib/utils/maskUser";
+  import { canMutateOrder } from "$lib/utils/orderLiveAccess";
 
   export let listOrders = [];
   export let loadingData = false;
@@ -117,7 +118,13 @@
   const actions = [
     { label: "Invoice", icon: "ti ti-eye", onClick: (id) => dispatch("viewRecord", id), color: "btn-soft-success" },
     { label: "Queries", icon: "ti ti-help-circle", onClick: (id) => dispatch("openQueries", id), color: "btn-soft-warning" },
-    { label: "Feedback", icon: "ti ti-message-star", onClick: (id) => dispatch("addFeedback", id), color: "btn-soft-primary" },
+    {
+      label: "Feedback",
+      icon: "ti ti-message-star",
+      onClick: (id) => dispatch("addFeedback", id),
+      color: "btn-soft-primary",
+      hidden: (row) => !canMutateOrder(currentUser, row),
+    },
   ];
 </script>
 

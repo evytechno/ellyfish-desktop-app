@@ -8,6 +8,7 @@
 
   import { convertDate, normalizeTypes } from "$lib/features/orders/detail/utils/index.js";
   import { maskAuthorName } from "$lib/utils/maskUser";
+  import { canMutateOrder } from "$lib/utils/orderLiveAccess";
 
   export let open = false;
   export let order = null; // excel page passes an order object
@@ -21,6 +22,7 @@
 
   /** @type {number|null} */
   $: orderId = order?.id ? Number(order.id) : null;
+  $: canCompose = canMutateOrder(currentUser, order);
   $: if (!open) reset();
   $: if (open && !_openWas) {
     _openWas = true;
@@ -220,6 +222,14 @@
   async function submitChat(e) {
     e?.preventDefault?.();
     if (!orderId || saving) return;
+    if (!canCompose) {
+      Swal.fire(
+        "View only",
+        "You are an Old assignee on this order. Only the Active user can add chats.",
+        "info",
+      );
+      return;
+    }
 
     formErrors = {};
     if (!selectedTypes.length) {
@@ -365,6 +375,11 @@
       </div>
 
       <div class="oq-chat-compose">
+          {#if !canCompose}
+            <div class="alert alert-warning py-2 px-3 mb-2 text-xs mb-0">
+              View only — only the Active assignee can add chats.
+            </div>
+          {:else}
           <div class="oq-chat-compose-types">
             {#each CHAT_TYPES as opt}
               <button
@@ -414,12 +429,8 @@
               <li>{formErrors.message[0]}</li>
             </ul>
           {/if}
-          {#if formErrors.readOnly}
-            <div class="alert alert-danger mt-2" style="font-size:12px; padding:8px 10px;">
-              {formErrors.readOnly[0]}
-            </div>
           {/if}
-        </div>
+      </div>
     {:else}
       <div class="oq-chat-content">
         {#if remindersLoading}

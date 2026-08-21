@@ -5,6 +5,8 @@
   export let statuses = [];
   export let togglePin;
   export let changeOrderStatus;
+  export let canMutateOrder = true;
+  export let isOldAssignee = false;
   export let piwotiOpen;
   export let piwotiType;
   export let orderVisits = [];
@@ -12,20 +14,25 @@
   export let showVisitListModal;
   export let openFeedbackModal = () => {};
 
-  const statusesColors = {
-    "New Lead": "bg-blue",
-    Contacted: "bg-purple",
-    "Follow Up": "bg-yellow",
-    Qualified: "bg-[#2ecc71]",
-    Unqualified: "bg-[#e74c3c]",
-    "Needs Assessment": "bg-orange",
-    "Quotation Sent": "bg-teal",
-    "Negotiation In Progress": "bg-[#FFBF00]",
-    "Deal Won": "bg-green",
-    "Deal Lost": "bg-red",
-    Dispatched: "bg-indigo",
-    Completed: "bg-success",
+  const statusBtnColors = {
+    "New Lead": "#4c6ef5",
+    Contacted: "#7950f2",
+    "Follow Up": "#f59f00",
+    Qualified: "#2ecc71",
+    Unqualified: "#e74c3c",
+    "Needs Assessment": "#fd7e14",
+    "Quotation Sent": "#12b886",
+    "Negotiation In Progress": "#e67700",
+    "Deal Won": "#2f9e44",
+    "Deal Lost": "#fa5252",
+    Dispatched: "#4c6ef5",
+    Completed: "#2f9e44",
+    Reference: "#495057",
   };
+
+  function statusBtnColor(status) {
+    return statusBtnColors[status] || "#868e96";
+  }
 
   function getAvatarText(title) {
     if (!title) return "";
@@ -47,9 +54,22 @@
           </h6>
         </div>
         <div class="min-w-0">
-          <h5 class="order-header-title capitalize mb-2">
-            {order?.title}
-          </h5>
+          <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+            <h5 class="order-header-title capitalize mb-0">
+              {order?.title}
+            </h5>
+            {#if isOldAssignee}
+              <span class="order-header-old-badge">
+                <i class="ti ti-eye-off"></i>
+                View only · Frozen at transfer
+              </span>
+            {:else if order?._viewOldDataHidden}
+              <span class="order-header-old-badge" style="color:#1e40af;background:#eff6ff;border-color:#93c5fd;">
+                <i class="ti ti-clock"></i>
+                Old history hidden
+              </span>
+            {/if}
+          </div>
           <div class="order-header-meta">
             <span class="order-header-chip">
               <i class="ti ti-hash"></i>
@@ -83,6 +103,8 @@
         <button
           type="button"
           class="btn btn-xs order-header-pin-btn"
+          disabled={!canMutateOrder}
+          title={canMutateOrder ? "Toggle pin" : "Only the Active assignee can pin"}
           on:click={() => togglePin(order?.id)}
         >
           {#if order?.pinStatus === "true"}
@@ -92,19 +114,27 @@
           {/if}
         </button>
         <div class="dropdown">
-          <a
-            href="#status"
-            class={`btn btn-xs order-header-status-btn d-inline-flex align-items-center text-white text-nowrap ${statusesColors[order?.status] || "bg-gray"}`}
-            data-bs-toggle="dropdown"
+          <button
+            type="button"
+            class="btn btn-xs order-header-status-btn"
+            style="background:{statusBtnColor(order?.status)};border-color:{statusBtnColor(order?.status)};"
+            data-bs-toggle={canMutateOrder ? "dropdown" : undefined}
             aria-expanded="false"
+            disabled={!canMutateOrder}
+            title={canMutateOrder ? "Change status" : "Only the Active assignee can change status"}
           >
-            <i class="ti ti-thumb-up me-1"></i>
-            {$statusNamesStore[order?.status]?.name
-              ? $statusNamesStore[order?.status]?.name
-              : order?.status}
-            <i class="ti ti-chevron-down ms-1"></i>
-          </a>
-          <div class="dropdown-menu dropdown-menu-right">
+            <i class="ti ti-thumb-up"></i>
+            <span>
+              {$statusNamesStore[order?.status]?.name
+                ? $statusNamesStore[order?.status]?.name
+                : order?.status || "Status"}
+            </span>
+            {#if canMutateOrder}
+              <i class="ti ti-chevron-down"></i>
+            {/if}
+          </button>
+          {#if canMutateOrder}
+          <div class="dropdown-menu dropdown-menu-end">
             {#each statuses as status}
               <a
                 class="dropdown-item"
@@ -116,6 +146,7 @@
               </a>
             {/each}
           </div>
+          {/if}
         </div>
       </div>
     </div>
@@ -124,6 +155,11 @@
       <div class="order-header-docs-label">
         <i class="ti ti-files"></i>Linked Documents
       </div>
+      {#if isOldAssignee}
+        <p class="order-header-docs-hidden mb-0">
+          Showing this order as it was when you were Active. Later updates are hidden.
+        </p>
+      {:else}
       <div class="order-header-docs-row">
         <div class="order-header-doc-item">
           <span class="order-header-doc-type">PI</span>
@@ -234,34 +270,44 @@
         </div>
 
         <div class="order-header-doc-item ms-auto d-flex align-items-center gap-2">
-          <button class="btn btn-outline-primary btn-sm" on:click={openFeedbackModal}>
-            <i class="ti ti-message-star me-1"></i>Add Feedback
-          </button>
-          {#if orderVisits.length === 0}
-            <button class="btn btn-success btn-sm" on:click={openVisitModal}>
-              <i class="ti ti-map-pin me-1"></i>Create Visit
+          {#if canMutateOrder}
+            <button class="btn btn-outline-primary btn-sm" on:click={openFeedbackModal}>
+              <i class="ti ti-message-star me-1"></i>Add Feedback
             </button>
-          {:else}
-            {@const scheduledCount = orderVisits.filter(v => v.status === 'scheduled').length}
+            {#if orderVisits.length === 0}
+              <button class="btn btn-success btn-sm" on:click={openVisitModal}>
+                <i class="ti ti-map-pin me-1"></i>Create Visit
+              </button>
+            {:else}
+              {@const scheduledCount = orderVisits.filter(v => v.status === 'scheduled').length}
+              <button
+                class="btn btn-outline-success btn-sm"
+                on:click={() => (showVisitListModal = true)}
+              >
+                <i class="ti ti-map-pin me-1"></i>{orderVisits.length} Visit{orderVisits.length > 1 ? 's' : ''}
+                {#if scheduledCount > 0}
+                  <span class="badge bg-primary ms-1">{scheduledCount} upcoming</span>
+                {/if}
+              </button>
+              <button
+                class="btn btn-success btn-sm"
+                on:click={openVisitModal}
+                title="Add another visit"
+              >
+                <i class="ti ti-plus"></i>
+              </button>
+            {/if}
+          {:else if orderVisits.length > 0}
             <button
               class="btn btn-outline-success btn-sm"
               on:click={() => (showVisitListModal = true)}
             >
               <i class="ti ti-map-pin me-1"></i>{orderVisits.length} Visit{orderVisits.length > 1 ? 's' : ''}
-              {#if scheduledCount > 0}
-                <span class="badge bg-primary ms-1">{scheduledCount} upcoming</span>
-              {/if}
-            </button>
-            <button
-              class="btn btn-success btn-sm"
-              on:click={openVisitModal}
-              title="Add another visit"
-            >
-              <i class="ti ti-plus"></i>
             </button>
           {/if}
         </div>
       </div>
+      {/if}
     </div>
   </div>
 </div>
@@ -299,6 +345,24 @@
     color: #212529;
     line-height: 1.35;
   }
+  .order-header-old-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 11px;
+    font-weight: 600;
+    color: #92400e;
+    background: #fff7ed;
+    border: 1px solid #fdba74;
+    border-radius: 999px;
+    padding: 0.2rem 0.65rem;
+    white-space: nowrap;
+  }
+  .order-header-docs-hidden {
+    font-size: 12px;
+    color: #64748b;
+    margin-top: 0.35rem;
+  }
   .order-header-meta {
     display: flex;
     flex-wrap: wrap;
@@ -332,13 +396,20 @@
   .order-header-status-btn {
     display: inline-flex !important;
     align-items: center !important;
+    gap: 4px;
     height: 26px !important;
     min-height: 26px !important;
+    width: auto !important;
+    min-width: auto !important;
     padding: 0 10px !important;
     font-size: 12px !important;
-    font-weight: 400 !important;
+    font-weight: 500 !important;
     line-height: 1 !important;
     border-radius: 4px !important;
+    white-space: nowrap !important;
+    overflow: visible !important;
+    visibility: visible !important;
+    opacity: 1 !important;
   }
   .order-header-pin-btn {
     color: #c92a2a !important;
@@ -354,7 +425,16 @@
     box-shadow: 0 2px 6px rgba(250, 82, 82, 0.28);
   }
   .order-header-status-btn {
-    border: none !important;
+    color: #fff !important;
+    border: 1px solid transparent !important;
+    box-shadow: none !important;
+  }
+  .order-header-status-btn:hover,
+  .order-header-status-btn:focus,
+  .order-header-status-btn:active,
+  .order-header-status-btn.show {
+    color: #fff !important;
+    filter: brightness(0.92);
   }
   .order-header-docs {
     padding-top: 0.875rem;

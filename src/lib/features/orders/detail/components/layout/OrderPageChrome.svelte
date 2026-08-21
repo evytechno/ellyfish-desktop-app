@@ -3,6 +3,7 @@
 
   export let order = null;
   export let currentUser = null;
+  export let canMutateOrder = true;
   export let deleteOrder = async (_id) => {};
   export let openQueryModal = () => {};
 
@@ -28,18 +29,22 @@
     </div>
   </div>
   <div class="d-flex align-items-center gap-2 flex-wrap">
-    <button class="btn btn-sm btn-warning" on:click={() => deleteOrder(order?.id)}>
-      <i class="ti ti-archive me-1"></i>Archive Order
-    </button>
-    <a
-      href="#offcanvas_add"
-      class="btn btn-sm btn-primary"
-      data-bs-toggle="offcanvas"
-      data-bs-target="#offcanvas_add"
-    >
-      <i class="ti ti-square-rounded-plus-filled me-1"></i>Edit Order
-    </a>
-    {#if currentUser?.subRole === "telecaller" || currentUser?.subRole === "tech" || (currentUser?.role === "user" && !currentUser?.subRole)}
+    {#if canMutateOrder && ["master", "admin", "manager"].includes(currentUser?.role)}
+      <button class="btn btn-sm btn-warning" on:click={() => deleteOrder(order?.id)}>
+        <i class="ti ti-archive me-1"></i>Archive Order
+      </button>
+    {/if}
+    {#if canMutateOrder}
+      <a
+        href="#offcanvas_add"
+        class="btn btn-sm btn-primary"
+        data-bs-toggle="offcanvas"
+        data-bs-target="#offcanvas_add"
+      >
+        <i class="ti ti-square-rounded-plus-filled me-1"></i>Edit Order
+      </a>
+    {/if}
+    {#if canMutateOrder && (currentUser?.subRole === "telecaller" || currentUser?.subRole === "tech" || (currentUser?.role === "user" && !currentUser?.subRole))}
       <button class="btn btn-sm btn-info text-white" on:click={openQueryModal}>
         <i class="ti ti-help-circle me-1"></i>Raise Query
       </button>

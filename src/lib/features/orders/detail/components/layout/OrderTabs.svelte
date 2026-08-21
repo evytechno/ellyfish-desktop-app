@@ -39,6 +39,8 @@
   export let editChildOrder = () => {};
   export let deleteComponent = async () => {};
   export let handleEditComponentCompat = async () => {};
+  export let canMutateOrder = true;
+  export let isOldAssignee = false;
 </script>
 
 <div class="card mb-3">
@@ -223,6 +225,7 @@
     <OrderFilesTab
       {order}
       {maskAuthorName}
+      canMutateOrder={canMutateOrder}
       addAttachment={handleAddAttachment}
       deleteAttachment={handleDeleteAttachment}
       {openAttachment}
@@ -234,17 +237,19 @@
       {order}
       {currentUser}
       {maskAuthorName}
+      canMutateOrder={canMutateOrder}
       addChat={handleAddChat}
       deleteChat={handleDeleteChat}
     />
   {/if}
   {#if activeTab === "Client"}
-    <OrderLegacyClientsTab {order} {deleteClient} />
+    <OrderLegacyClientsTab {order} {deleteClient} canMutateOrder={canMutateOrder} isOldAssignee={isOldAssignee} />
   {/if}
   {#if activeTab === "Reminders"}
     <OrderRemindersTab
       {order}
       {maskAuthorName}
+      canMutateOrder={canMutateOrder}
       addReminder={handleAddReminder}
       deleteReminder={handleDeleteReminder}
     />
@@ -256,6 +261,7 @@
       {orderQueries}
       {orderQueriesLoading}
       {maskAssignedName}
+      canMutateOrder={canMutateOrder}
       {openQueryModal}
       {openEditQueryModal}
     />
@@ -266,6 +272,7 @@
       {feedbacks}
       {loadingFeedbacks}
       {currentUser}
+      canMutateOrder={canMutateOrder}
       on:openFeedbackModal={openFeedbackModal}
       on:deleteFeedback={(e) => deleteFeedback(e.detail)}
     />
@@ -278,6 +285,8 @@
         {editChildOrder}
         {deleteComponent}
         editComponent={handleEditComponentCompat}
+        canMutateOrder={canMutateOrder}
+        isOldAssignee={isOldAssignee}
       />
     {/if}
   {/if}

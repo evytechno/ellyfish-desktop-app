@@ -5,6 +5,7 @@
   export let maskAuthorName;
   export let addReminder;
   export let deleteReminder;
+  export let canMutateOrder = true;
 
   let reminderTime = null;
   let reminderMessage = "";
@@ -59,9 +60,13 @@
     <div class="card-header d-flex align-items-center justify-content-between flex-wrap row-gap-3">
       <h5 class="fw-semibold mb-0">Reminders</h5>
       <div class="d-inline-flex align-items-center">
+        {#if canMutateOrder}
         <a href="#create_reminder" data-bs-toggle="modal" data-bs-target="#create_reminder" class="link-primary fw-medium">
           <i class="ti ti-circle-plus me-1"></i>Add New
         </a>
+        {:else}
+        <span class="text-muted" style="font-size:12px;">View only</span>
+        {/if}
       </div>
     </div>
     <div class="card-body">
@@ -72,7 +77,7 @@
               <div class="ribbon ribbon-top-left"><span class="bg-red-500">Deleted</span></div>
             {/if}
             <div class="card-body">
-              {#if !reminder?.deletedAt}
+              {#if !reminder?.deletedAt && canMutateOrder}
                 <div class="absolute top-5 right-5">
                   <button on:click={deleteReminder(reminder?.id)} class="bg-red-500 text-white text-md px-1.5 py-1 rounded">
                     <i class="ti ti-trash"></i>

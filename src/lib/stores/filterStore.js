@@ -38,3 +38,4 @@ export const queryAssignedFilterStore = createFilterStore('queryAssignedFilter')
 export const querySubQueueFilterStore = createFilterStore('querySubQueueFilter');
 export const mediaFilterStore = createFilterStore('mediaFilter');
 export const clientVisitFilterStore = createFilterStore('clientVisitFilter');
+export const piSalesFilterStore = createFilterStore('piSalesFilter');

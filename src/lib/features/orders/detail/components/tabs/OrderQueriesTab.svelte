@@ -8,6 +8,7 @@
   export let maskAssignedName;
   export let openQueryModal;
   export let openEditQueryModal;
+  export let canMutateOrder = true;
 
   let qvOpen = false;
   let qvId = null;
@@ -18,6 +19,7 @@
   }
 
   function canEditQuery(q) {
+    if (!canMutateOrder) return false;
     if (!q || !currentUser) return false;
     if (
       currentUser.subRole === "telecaller" &&
@@ -41,7 +43,7 @@
       <i class="ti ti-help-circle me-1 text-primary"></i>
       {#if currentUser?.subRole === "tech"}My Queries{:else}Related Queries{/if}
     </h5>
-    {#if currentUser?.subRole === "telecaller" || currentUser?.subRole === "tech" || (currentUser?.role === "user" && !currentUser?.subRole)}
+    {#if canMutateOrder && (currentUser?.subRole === "telecaller" || currentUser?.subRole === "tech" || (currentUser?.role === "user" && !currentUser?.subRole))}
       <button class="btn btn-sm btn-outline-warning" on:click={openQueryModal}>
         <i class="ti ti-plus me-1"></i>Raise Query
       </button>

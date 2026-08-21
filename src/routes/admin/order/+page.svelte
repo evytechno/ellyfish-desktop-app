@@ -14,6 +14,8 @@
   import ChatQuickModal from "$lib/components/ChatQuickModal.svelte";
   import OrderQueriesModal from "$lib/components/OrderQueriesModal.svelte";
   import ChangeListVisiableStatus from "$lib/components/ChangeListVisiableStatus.svelte";
+  import { canMutateOrder } from "$lib/utils/orderLiveAccess";
+  import Swal from "sweetalert2";
 
   import {
     OrderFilters,
@@ -38,6 +40,15 @@
   let feedbackLoading = false;
 
   function openFeedbackModal(order, triggerStatus = null) {
+    if (!order) return;
+    if (!canMutateOrder(currentUser, order)) {
+      Swal.fire(
+        "Frozen view",
+        "You are an Old assignee. This order is frozen at transfer — only the Active user can add feedback.",
+        "info",
+      );
+      return;
+    }
     feedbackModalOrder = order;
     feedbackTriggerStatus = triggerStatus;
     feedbackModalShow = true;
@@ -45,6 +56,15 @@
 
   async function submitFeedback(e) {
     if (!feedbackModalOrder) return;
+    if (!canMutateOrder(currentUser, feedbackModalOrder)) {
+      Swal.fire(
+        "Frozen view",
+        "You are an Old assignee. Only the Active user can add feedback.",
+        "info",
+      );
+      feedbackModalShow = false;
+      return;
+    }
     feedbackLoading = true;
     try {
       await authApiFetch(API_ROUTES.ORDER_FEEDBACK, {
@@ -384,6 +404,14 @@
   // ── Chat modal ────────────────────────────────────────────────────────────
   function handleOpenChatModal(e) {
     const incoming = e.detail.order;
+    if (!canMutateOrder(currentUser, incoming)) {
+      Swal.fire(
+        "View only",
+        "You are an Old assignee on this order. Only the Active user can add chats.",
+        "info",
+      );
+      return;
+    }
     if (
       chatModalOrder?.id === incoming.id &&
       (chatModalOrder.orderChats?.length || 0) > (incoming.orderChats?.length || 0)
@@ -407,6 +435,9 @@
   }
 
   async function updateOrderStatus(order, newStatus) {
+    if (!canMutateOrder(currentUser, order)) {
+      return false;
+    }
     try {
       await authApiFetch(API_ROUTES.ORDER + "/" + order.id, {
         method: "PUT",

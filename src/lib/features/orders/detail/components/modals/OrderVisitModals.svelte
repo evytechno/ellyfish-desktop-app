@@ -11,8 +11,10 @@
   export let visitCompanies = [];
   export let visitCompanyId = "";
   export let users = [];
+  export let canMutateOrder = true;
 
   function navigateToAdd() {
+    if (!canMutateOrder) return;
     showVisitListModal = false;
     const params = new URLSearchParams();
     if (order?.id) params.set("orderId", String(order.id));
@@ -76,7 +78,9 @@
                       <td class="text-end px-3">
                         <div class="d-inline-flex gap-2">
                           <a href="/admin/client-visit/{v.id}" class="btn btn-sm btn-outline-primary" title="View"><i class="ti ti-eye"></i></a>
-                          <a href="/admin/client-visit/edit/{v.id}" class="btn btn-sm btn-outline-warning" title="Edit"><i class="ti ti-edit"></i></a>
+                          {#if canMutateOrder}
+                            <a href="/admin/client-visit/edit/{v.id}" class="btn btn-sm btn-outline-warning" title="Edit"><i class="ti ti-edit"></i></a>
+                          {/if}
                         </div>
                       </td>
                     </tr>
@@ -88,9 +92,11 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" on:click={() => (showVisitListModal = false)}>Close</button>
-          <button type="button" class="btn btn-success" on:click={navigateToAdd}>
-            <i class="ti ti-plus me-1"></i>Log Interaction
-          </button>
+          {#if canMutateOrder}
+            <button type="button" class="btn btn-success" on:click={navigateToAdd}>
+              <i class="ti ti-plus me-1"></i>Log Interaction
+            </button>
+          {/if}
         </div>
       </div>
     </div>

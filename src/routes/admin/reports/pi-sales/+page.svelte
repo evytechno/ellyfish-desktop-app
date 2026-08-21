@@ -6,6 +6,7 @@
   import { errorHandle } from "$lib/utils/errorHandle";
   import { checkAuth, canAccess } from "$lib/utils/auth";
   import { usersAllStore } from "$lib/stores/dataStores";
+  import { piSalesFilterStore } from "$lib/stores/filterStore";
   import { get } from "svelte/store";
   import * as XLSX from "xlsx";
   import Loader from "$lib/components/Loader.svelte";
@@ -23,14 +24,61 @@
   let datePreset = "fy";
   let customStartDate = "";
   let customEndDate = "";
-  let selectedUserId = "";
+  let selectedUserIds = [];
+  let salesUserMenuOpen = false;
   let selectedTelecallerId = "";
   let selectedTechId = "";
   let searchTerm = "";
   let searchTimeout;
   let filterReady = false;
+  let summaryOpen = false;
+  let hidePrices = true;
   let orderDrawerOpen = false;
   let drawerOrderId = null;
+
+  restoreFilters();
+
+  function restoreFilters() {
+    const saved = get(piSalesFilterStore);
+    if (!saved || typeof saved !== "object") return;
+    if (saved.datePreset) datePreset = saved.datePreset;
+    if (saved.selectedYear != null && saved.selectedYear !== "") {
+      selectedYear = Number(saved.selectedYear);
+    }
+    if (saved.customStartDate != null) customStartDate = saved.customStartDate;
+    if (saved.customEndDate != null) customEndDate = saved.customEndDate;
+    if (Array.isArray(saved.selectedUserIds)) {
+      selectedUserIds = saved.selectedUserIds.map(Number).filter((n) => n > 0);
+    }
+    if (saved.selectedTelecallerId != null) selectedTelecallerId = saved.selectedTelecallerId;
+    if (saved.selectedTechId != null) selectedTechId = saved.selectedTechId;
+    if (saved.searchTerm != null) searchTerm = saved.searchTerm;
+    if (typeof saved.hidePrices === "boolean") hidePrices = saved.hidePrices;
+    if (datePreset === "custom" && (!customStartDate || !customEndDate)) {
+      datePreset = "fy";
+      customStartDate = "";
+      customEndDate = "";
+    }
+  }
+
+  function saveFilters() {
+    piSalesFilterStore.set({
+      selectedYear,
+      datePreset,
+      customStartDate,
+      customEndDate,
+      selectedUserIds,
+      selectedTelecallerId,
+      selectedTechId,
+      searchTerm,
+      hidePrices,
+    });
+  }
+
+  function toggleHidePrices() {
+    hidePrices = !hidePrices;
+    saveFilters();
+  }
 
   function getCurrentFiscalYear() {
     const now = new Date();
@@ -66,6 +114,33 @@
   })();
   $: telecallers = users.filter((u) => u.subRole === "telecaller");
   $: techs = users.filter((u) => u.subRole === "tech");
+  $: selectedSalesUserLabel = (() => {
+    if (!selectedUserIds.length) return "All";
+    if (selectedUserIds.length === 1) {
+      const u = salesUsers.find((x) => Number(x.id) === Number(selectedUserIds[0]));
+      return u?.name || "1 selected";
+    }
+    return `${selectedUserIds.length} selected`;
+  })();
+
+  function toggleSalesUser(id) {
+    const n = Number(id);
+    if (selectedUserIds.includes(n)) {
+      selectedUserIds = selectedUserIds.filter((x) => x !== n);
+    } else {
+      selectedUserIds = [...selectedUserIds, n];
+    }
+  }
+
+  function clearSalesUsers() {
+    selectedUserIds = [];
+  }
+
+  function onDocClickSalesUser(e) {
+    if (!salesUserMenuOpen) return;
+    const root = e.target?.closest?.("[data-ps-sales-user]");
+    if (!root) salesUserMenuOpen = false;
+  }
 
   function pad(n) {
     return String(n).padStart(2, "0");
@@ -111,7 +186,9 @@
     try {
       const { startDate, endDate } = dateRange();
       const params = new URLSearchParams({ startDate, endDate });
-      if (selectedUserId) params.set("byUserId", String(selectedUserId));
+      if (selectedUserIds.length) {
+        params.set("byUserId", selectedUserIds.join(","));
+      }
       if (selectedTelecallerId) params.set("telecallerId", String(selectedTelecallerId));
       if (selectedTechId) params.set("techId", String(selectedTechId));
       if (searchTerm.trim()) params.set("search", searchTerm.trim());
@@ -119,7 +196,7 @@
       rows = res?.data ?? [];
       personTotals = res?.personTotals ?? [];
       totals = res?.totals ?? { count: 0, withoutGst: 0, withGst: 0 };
-      if (!selectedUserId) {
+      if (!selectedUserIds.length) {
         const extras = [];
         const seen = new Set();
         for (const p of personTotals) {
@@ -165,9 +242,11 @@
     }
     loadUsers();
     fetchReport();
+    document.addEventListener("click", onDocClickSalesUser);
     setTimeout(() => {
       filterReady = true;
     }, 400);
+    return () => document.removeEventListener("click", onDocClickSalesUser);
   });
 
   $: if (filterReady) {
@@ -175,9 +254,10 @@
     datePreset;
     customStartDate;
     customEndDate;
-    selectedUserId;
+    selectedUserIds;
     selectedTelecallerId;
     selectedTechId;
+    saveFilters();
     fetchReport();
   }
 
@@ -186,6 +266,7 @@
     const v = e.target.value;
     searchTimeout = setTimeout(() => {
       searchTerm = v;
+      saveFilters();
       fetchReport();
     }, 300);
   }
@@ -204,7 +285,6 @@
       })
     );
   }
-
   function fmtDate(d) {
     if (!d) return "—";
     return new Date(d).toLocaleDateString("en-IN", {
@@ -264,12 +344,14 @@
       (acc, r) => ({
         withoutGst: acc.withoutGst + Number(r.withoutGst || 0),
         withGst: acc.withGst + Number(r.withGst || 0),
+        advanceAmount: acc.advanceAmount + Number(r.advanceAmount || 0),
       }),
-      { withoutGst: 0, withGst: 0 },
+      { withoutGst: 0, withGst: 0, advanceAmount: 0 },
     );
   }
 
   function exportExcel() {
+    const price = (n) => (hidePrices ? "" : Number(n || 0));
     const header = [
       "Person",
       "Telecaller",
@@ -283,6 +365,7 @@
       "PI No.",
       "Without GST",
       "With GST",
+      "Advance / Override",
       "PI Create Date",
     ];
     const dataRows = rows.map((r) => [
@@ -296,8 +379,9 @@
       r.inqCode || "—",
       r.woNumber || "—",
       piNo(r.invoiceNo),
-      Number(r.withoutGst || 0),
-      Number(r.withGst || 0),
+      price(r.withoutGst),
+      price(r.withGst),
+      hidePrices ? "" : Number(r.advanceAmount || 0) || "",
       fmtDate(r.createdAt),
     ]);
     const totalRow = [
@@ -311,16 +395,17 @@
       "",
       "",
       `${totals.count} PI`,
-      Number(totals.withoutGst || 0),
-      Number(totals.withGst || 0),
+      price(totals.withoutGst),
+      price(totals.withGst),
+      "",
       "",
     ];
     const personHeader = ["Person", "PI Count", "Without GST", "With GST"];
     const personRows = personTotals.map((p) => [
       p.name,
       p.count,
-      Number(p.withoutGst || 0),
-      Number(p.withGst || 0),
+      price(p.withoutGst),
+      price(p.withGst),
     ]);
 
     const ws = XLSX.utils.aoa_to_sheet([
@@ -366,9 +451,20 @@
           </ol>
         </nav>
       </div>
-      <button type="button" class="btn btn-sm btn-outline-success" on:click={exportExcel} disabled={!rows.length}>
-        <i class="ti ti-file-type-xls me-1"></i>Export Excel
-      </button>
+      <div class="d-flex align-items-center gap-2">
+        <button
+          type="button"
+          class="btn btn-sm {hidePrices ? 'btn-outline-secondary' : 'btn-outline-primary'}"
+          on:click={toggleHidePrices}
+          title={hidePrices ? "Show prices" : "Hide prices"}
+        >
+          <i class="ti {hidePrices ? 'ti-eye-off' : 'ti-eye'} me-1"></i>
+          {hidePrices ? "Show prices" : "Hide prices"}
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-success" on:click={exportExcel} disabled={!rows.length}>
+          <i class="ti ti-file-type-xls me-1"></i>Export Excel
+        </button>
+      </div>
     </div>
 
     <div class="card border-0 shadow-sm mb-3">
@@ -405,14 +501,45 @@
               <input type="date" class="form-control form-control-sm" bind:value={customEndDate} />
             </div>
           {/if}
-          <div class="ps-filter">
+          <div class="ps-filter ps-filter--sales" data-ps-sales-user>
             <label class="form-label mb-1 text-muted">Sales User</label>
-            <select bind:value={selectedUserId} class="form-select form-select-sm">
-              <option value="">All</option>
-              {#each salesUsers as u}
-                <option value={u.id}>{u.name}</option>
-              {/each}
-            </select>
+            <div class="ps-ms">
+              <button
+                type="button"
+                class="form-select form-select-sm ps-ms-btn text-start"
+                on:click|stopPropagation={() => (salesUserMenuOpen = !salesUserMenuOpen)}
+              >
+                <span class="ps-ms-label">{selectedSalesUserLabel}</span>
+              </button>
+              {#if salesUserMenuOpen}
+                <div class="ps-ms-menu" on:click|stopPropagation>
+                  <div class="ps-ms-actions">
+                    <button type="button" class="btn btn-link btn-sm p-0" on:click={clearSalesUsers}
+                      >All</button
+                    >
+                    {#if selectedUserIds.length}
+                      <button
+                        type="button"
+                        class="btn btn-link btn-sm p-0 text-danger"
+                        on:click={clearSalesUsers}>Clear</button
+                      >
+                    {/if}
+                  </div>
+                  <div class="ps-ms-list">
+                    {#each salesUsers as u}
+                      <label class="ps-ms-item">
+                        <input
+                          type="checkbox"
+                          checked={selectedUserIds.includes(Number(u.id))}
+                          on:change={() => toggleSalesUser(u.id)}
+                        />
+                        <span>{u.name}</span>
+                      </label>
+                    {/each}
+                  </div>
+                </div>
+              {/if}
+            </div>
           </div>
           <div class="ps-filter">
             <label class="form-label mb-1 text-muted">Telecaller</label>
@@ -451,60 +578,72 @@
       </div>
     </div>
 
-    <div class="ps-summary mb-3">
-      <div class="ps-summary-card bg-blue-50 text-blue-700 border-blue-200">
-        <i class="ti ti-file-invoice text-blue-500 ps-summary-icon"></i>
-        <div>
-          <div class="ps-summary-label">PIs</div>
-          <div class="ps-summary-value">{totals.count}</div>
-        </div>
-      </div>
-      <div class="ps-summary-card bg-amber-50 text-amber-800 border-amber-200">
-        <i class="ti ti-receipt-tax text-amber-500 ps-summary-icon"></i>
-        <div>
-          <div class="ps-summary-label">Without GST</div>
-          <div class="ps-summary-value">{inr(totals.withoutGst)}</div>
-        </div>
-      </div>
-      <div class="ps-summary-card bg-green-50 text-green-700 border-green-200">
-        <i class="ti ti-currency-rupee text-green-500 ps-summary-icon"></i>
-        <div>
-          <div class="ps-summary-label">With GST</div>
-          <div class="ps-summary-value">{inr(totals.withGst)}</div>
-        </div>
-      </div>
-    </div>
-
-    {#if personTotals.length}
-      <div class="card border-0 shadow-sm mb-3">
-        <div class="card-body p-0">
-          <div class="ps-section-title">Person-wise totals</div>
-          <div class="table-responsive">
-            <table class="table table-sm mb-0 ps-table">
-              <thead>
-                <tr>
-                  <th>Person</th>
-                  <th class="text-center">PIs</th>
-                  <th class="text-end">Without GST</th>
-                  <th class="text-end">With GST</th>
-                </tr>
-              </thead>
-              <tbody>
-                {#each personTotals as p}
-                  <tr>
-                    <td>{p.name}</td>
-                    <td class="text-center">{p.count}</td>
-                    <td class="text-end">{inr(p.withoutGst)}</td>
-                    <td class="text-end">{inr(p.withGst)}</td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
+    <div class="card border-0 shadow-sm mb-3">
+      <button
+        type="button"
+        class="ps-collapse-toggle"
+        aria-expanded={summaryOpen}
+        on:click={() => (summaryOpen = !summaryOpen)}
+      >
+        <span class="ps-collapse-title">Summary totals</span>
+        <span class="ps-collapse-hint text-muted">{totals.count} PIs</span>
+        <i class="ti {summaryOpen ? 'ti-chevron-up' : 'ti-chevron-down'} ms-auto"></i>
+      </button>
+      {#if summaryOpen}
+        <div class="card-body pt-0">
+          <div class="ps-summary mb-3">
+            <div class="ps-summary-card bg-blue-50 text-blue-700 border-blue-200">
+              <i class="ti ti-file-invoice text-blue-500 ps-summary-icon"></i>
+              <div>
+                <div class="ps-summary-label">PIs</div>
+                <div class="ps-summary-value">{totals.count}</div>
+              </div>
+            </div>
+            <div class="ps-summary-card bg-amber-50 text-amber-800 border-amber-200">
+              <i class="ti ti-receipt-tax text-amber-500 ps-summary-icon"></i>
+              <div>
+                <div class="ps-summary-label">Without GST</div>
+                <div class="ps-summary-value">{hidePrices ? "—" : inr(totals.withoutGst)}</div>
+              </div>
+            </div>
+            <div class="ps-summary-card bg-green-50 text-green-700 border-green-200">
+              <i class="ti ti-currency-rupee text-green-500 ps-summary-icon"></i>
+              <div>
+                <div class="ps-summary-label">With GST</div>
+                <div class="ps-summary-value">{hidePrices ? "—" : inr(totals.withGst)}</div>
+              </div>
+            </div>
           </div>
-          <div class="ps-note">Shared orders are counted for each assigned user. Grand total below is unique PIs.</div>
+
+          {#if personTotals.length}
+            <div class="ps-section-title px-0">Person-wise totals</div>
+            <div class="table-responsive">
+              <table class="table table-sm mb-0 ps-table">
+                <thead>
+                  <tr>
+                    <th>Person</th>
+                    <th class="text-center">PIs</th>
+                    <th class="text-end">Without GST</th>
+                    <th class="text-end">With GST</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each personTotals as p}
+                    <tr>
+                      <td>{p.name}</td>
+                      <td class="text-center">{p.count}</td>
+                      <td class="text-end">{hidePrices ? "—" : inr(p.withoutGst)}</td>
+                      <td class="text-end">{hidePrices ? "—" : inr(p.withGst)}</td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+            <div class="ps-note px-0">Shared orders are counted for each assigned user. Grand total below is unique PIs.</div>
+          {/if}
         </div>
-      </div>
-    {/if}
+      {/if}
+    </div>
 
     <div class="card border-0 shadow-sm mb-3">
       <div class="card-body p-0">
@@ -520,13 +659,14 @@
                 <th>PI</th>
                 <th class="text-end">Without GST</th>
                 <th class="text-end">With GST</th>
+                <th class="text-end">Advance</th>
                 <th>PI Date</th>
               </tr>
             </thead>
             <tbody>
               {#if !rows.length && !loading}
                 <tr>
-                  <td colspan="9" class="text-center text-muted py-4">No PIs in this period</td>
+                  <td colspan="10" class="text-center text-muted py-4">No PIs in this period</td>
                 </tr>
               {/if}
               {#each groupedRows as group}
@@ -560,8 +700,15 @@
                     <td>
                       <a href="/admin/invoice/{row.id}">#{piNo(row.invoiceNo)}</a>
                     </td>
-                    <td class="text-end">{inr(row.withoutGst)}</td>
-                    <td class="text-end">{inr(row.withGst)}</td>
+                    <td class="text-end">{hidePrices ? "—" : inr(row.withoutGst)}</td>
+                    <td class="text-end">{hidePrices ? "—" : inr(row.withGst)}</td>
+                    <td class="text-end text-muted">
+                      {#if hidePrices || !(Number(row.advanceAmount || 0) > 0)}
+                        —
+                      {:else}
+                        {inr(row.advanceAmount)}
+                      {/if}
+                    </td>
                     <td>{fmtDate(row.createdAt)}</td>
                   </tr>
                 {/each}
@@ -569,8 +716,9 @@
                   {@const gt = groupTotals(group.rows)}
                   <tr class="ps-subtotal">
                     <td colspan="6">Subtotal · {group.key}</td>
-                    <td class="text-end">{inr(gt.withoutGst)}</td>
-                    <td class="text-end">{inr(gt.withGst)}</td>
+                    <td class="text-end">{hidePrices ? "—" : inr(gt.withoutGst)}</td>
+                    <td class="text-end">{hidePrices ? "—" : inr(gt.withGst)}</td>
+                    <td class="text-end">{hidePrices ? "—" : inr(gt.advanceAmount)}</td>
                     <td></td>
                   </tr>
                 {/if}
@@ -580,8 +728,13 @@
               <tfoot>
                 <tr class="ps-grand">
                   <td colspan="6">Grand total · {totals.count} PI</td>
-                  <td class="text-end">{inr(totals.withoutGst)}</td>
-                  <td class="text-end">{inr(totals.withGst)}</td>
+                  <td class="text-end">{hidePrices ? "—" : inr(totals.withoutGst)}</td>
+                  <td class="text-end">{hidePrices ? "—" : inr(totals.withGst)}</td>
+                  <td class="text-end">
+                    {hidePrices
+                      ? "—"
+                      : inr(rows.reduce((s, r) => s + Number(r.advanceAmount || 0), 0))}
+                  </td>
                   <td></td>
                 </tr>
               </tfoot>
@@ -627,6 +780,77 @@
     min-width: 140px;
   }
 
+  .ps-filter--sales {
+    min-width: 170px;
+    position: relative;
+    z-index: 20;
+  }
+
+  .ps-ms {
+    position: relative;
+  }
+
+  .ps-ms-btn {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    overflow: hidden;
+  }
+
+  .ps-ms-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ps-ms-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    min-width: 220px;
+    max-height: 280px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+    z-index: 30;
+  }
+
+  .ps-ms-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 10px 4px;
+    border-bottom: 1px solid #f1f3f5;
+  }
+
+  .ps-ms-list {
+    overflow-y: auto;
+    padding: 4px 0;
+  }
+
+  .ps-ms-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    margin: 0;
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  .ps-ms-item:hover {
+    background: #f8f9fa;
+  }
+
+  .ps-ms-item input {
+    margin: 0;
+  }
+
   .ps-filter--search {
     min-width: 180px;
     flex: 1;
@@ -638,6 +862,33 @@
 
   .ps-filter .form-label {
     font-size: 11px;
+  }
+
+  .ps-collapse-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 12px 14px;
+    border: 0;
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+    color: inherit;
+  }
+
+  .ps-collapse-toggle:hover {
+    background: #f8f9fa;
+  }
+
+  .ps-collapse-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #343a40;
+  }
+
+  .ps-collapse-hint {
+    font-size: 12px;
   }
 
   .ps-summary {

@@ -1,4 +1,4 @@
-import { writable, get } from "svelte/store";
+import { writable, get, derived } from "svelte/store";
 import { goto } from "$app/navigation";
 import Swal from "sweetalert2";
 import { authApiFetch } from "$lib/api/client";
@@ -61,6 +61,42 @@ export function createOrderDetail({ getOrderId }) {
   const users = writable([]);
   const categories = writable([]);
   const currentUser = writable(null);
+
+  function resolveActiveUserId(o) {
+    const list = o?.assignedUsers || [];
+    if (!list.length) return null;
+    if (o?.activeUserId != null && list.some((u) => Number(u.id) === Number(o.activeUserId))) {
+      return Number(o.activeUserId);
+    }
+    return Number(list[0]?.id) || null;
+  }
+
+  /** Logged-in role=user who is assigned but not Active */
+  const isOldAssignee = derived([order, currentUser], ([$o, $u]) => {
+    if (!$o || !$u || $u.role !== "user") return false;
+    const assigned = ($o.assignedUsers || []).some((x) => Number(x.id) === Number($u.id));
+    if (!assigned) return false;
+    if ($o._oldAssigneeView) return true;
+    const activeId = resolveActiveUserId($o);
+    return activeId != null && Number(activeId) !== Number($u.id);
+  });
+
+  /** Staff + Active assignee can mutate; Old assignee cannot */
+  const canMutateOrder = derived([currentUser, isOldAssignee], ([$u, $old]) => {
+    if (!$u) return false;
+    if (["master", "admin", "manager"].includes($u.role)) return true;
+    return !$old;
+  });
+
+  function assertCanMutate(actionLabel = "make changes") {
+    if (get(canMutateOrder)) return true;
+    Swal.fire(
+      "View only",
+      `You are an Old assignee on this order. Your view is frozen at transfer — only the Active user can ${actionLabel}.`,
+      "info",
+    );
+    return false;
+  }
 
   // ── Edit form ──────────────────────────────────────────────────────────
   const title = writable("");
@@ -267,6 +303,7 @@ export function createOrderDetail({ getOrderId }) {
       relationsLoading.set(false);
     }
     getAllCategories();
+    loadUsers();
     loadOrderQueries();
   }
 
@@ -322,6 +359,7 @@ export function createOrderDetail({ getOrderId }) {
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (!assertCanMutate("edit this order")) return;
     errorMessage.set("");
     loading.set(true);
     formErrors.set({});
@@ -403,6 +441,7 @@ export function createOrderDetail({ getOrderId }) {
   }
 
   async function deleteClient(id) {
+    if (!assertCanMutate("delete clients")) return;
     Swal.fire({
       title: "Delete Confirmation",
       text: "Are you sure you want to delete this record?",
@@ -456,11 +495,12 @@ export function createOrderDetail({ getOrderId }) {
   }
 
   function openQueryModal() {
-    if (!get(querySubject).trim()) querySubject.set(get(order)?.title ?? "");
+    if (!assertCanMutate("raise queries")) return;    if (!get(querySubject).trim()) querySubject.set(get(order)?.title ?? "");
     showQueryModal.set(true);
   }
 
   async function submitOrderQuery() {
+    if (!assertCanMutate("raise queries")) return;
     queryError.set("");
     const subj = get(querySubject);
     if (!subj.trim()) {
@@ -499,6 +539,7 @@ export function createOrderDetail({ getOrderId }) {
   }
 
   function openEditQueryModal(q) {
+    if (!assertCanMutate("edit queries")) return;
     editingQuery.set(q);
     editQuerySubject.set(q.subject ?? "");
     editQueryDescription.set(q.description ?? "");
@@ -547,7 +588,7 @@ export function createOrderDetail({ getOrderId }) {
   }
 
   function openVisitModal() {
-    const o = get(order);
+    if (!assertCanMutate("create visits")) return;    const o = get(order);
     const orderId = getOrderId();
     if (!o?.clientId) {
       Swal.fire({
@@ -649,7 +690,7 @@ export function createOrderDetail({ getOrderId }) {
   // ── Contacts ───────────────────────────────────────────────────────────
 
   async function linkContact(contact) {
-    try {
+    if (!assertCanMutate("change contacts")) return;    try {
       const o = get(order);
       const res = await linkOrderContactApi(o.id, contact.id);
       order.update((cur) => ({
@@ -668,7 +709,7 @@ export function createOrderDetail({ getOrderId }) {
   }
 
   async function setPrimaryContact(ocId) {
-    try {
+    if (!assertCanMutate("change contacts")) return;    try {
       await setPrimaryOrderContactApi(ocId);
       order.update((cur) => ({
         ...cur,
@@ -683,7 +724,7 @@ export function createOrderDetail({ getOrderId }) {
   }
 
   async function unlinkContact(orderContactId, contactName) {
-    Swal.fire({
+    if (!assertCanMutate("change contacts")) return;    Swal.fire({
       title: "Remove Contact?",
       text: `Remove ${contactName} from this order?`,
       icon: "warning",
@@ -720,6 +761,10 @@ export function createOrderDetail({ getOrderId }) {
       }
     });
     selectedUsers.set(su);
+    // Ensure assignable users are loaded when opening the modal
+    if (!(get(users)?.length > 0)) {
+      loadUsers();
+    }
   }
 
   async function handleAddAssignedUser(selectedUserIds) {
@@ -735,20 +780,269 @@ export function createOrderDetail({ getOrderId }) {
       loading.set(false);
       return;
     }
+    await saveAssignedUsers(assignedUsers);
+  }
+
+  async function removeAssignedUser(userId) {
+    const o = get(order);
+    const target = (o.assignedUsers || []).find((u) => u.id === userId);
+    if (!target) return;
+
+    const activeId =
+      o.activeUserId != null &&
+      (o.assignedUsers || []).some((u) => Number(u.id) === Number(o.activeUserId))
+        ? Number(o.activeUserId)
+        : Number(o.assignedUsers?.[0]?.id) || null;
+    if (activeId != null && Number(userId) === activeId) {
+      Swal.fire(
+        "Not allowed",
+        "Cannot remove the Active assignee. Set another user as Active first.",
+        "warning",
+      );
+      return;
+    }
+
+    const remaining = (o.assignedUsers || []).filter((u) => u.id !== userId);
+    if (!remaining.length) {
+      Swal.fire("Warning!", "At least one assigned user is required.", "warning");
+      return;
+    }
+
+    const name = target.name || "this user";
+    const confirm = await Swal.fire({
+      title: "Remove assigned user?",
+      html: `Remove <strong>${name}</strong> from this order?`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Yes, remove",
+      cancelButtonText: "Cancel",
+      confirmButtonColor: "#d33",
+    });
+    if (!confirm.isConfirmed) return;
+
+    loading.set(true);
+    formErrors.set({});
+    await saveAssignedUsers(remaining, {
+      title: "Assigned User Removed",
+      description: `${name} was removed from this order.`,
+    });
+  }
+
+  async function saveAssignedUsers(assignedUsers, activity = null) {
+    const o = get(order);
+    const oldIds = (o.assignedUsers || []).map((u) => u.id);
+    const newIds = assignedUsers.map((u) => u.id);
+    const removedIds = oldIds.filter((id) => !newIds.includes(id));
+    const ownershipChanged = removedIds.length > 0;
+
+    let linkedQueryAction;
+    if (ownershipChanged) {
+      try {
+        const summary = await authApiFetch(API_ROUTES.ORDER + "/linked-queries-summary", {
+          method: "POST",
+          data: JSON.stringify({ orderIds: [o.id] }),
+        });
+        const totalActive = Number(summary?.totalActive) || 0;
+        if (totalActive > 0) {
+          loading.set(false);
+          const choice = await Swal.fire({
+            title: "Linked queries",
+            html: `This order has <strong>${totalActive}</strong> active linked quer${totalActive === 1 ? "y" : "ies"}.
+              <div style="text-align:left;margin-top:14px;">
+                <div style="padding:10px;border:1px solid #dbeafe;border-radius:8px;background:#f8fafc;margin-bottom:8px;">
+                  <div style="font-weight:600;">Move with order</div>
+                  <div style="font-size:12px;color:#64748b;">Raised By → new owner · Tech Assigned To stays</div>
+                </div>
+                <div style="padding:10px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;">
+                  <div style="font-weight:600;">Resolve / close</div>
+                  <div style="font-size:12px;color:#64748b;">Close linked queries without moving</div>
+                </div>
+              </div>`,
+            icon: "question",
+            showDenyButton: true,
+            showCancelButton: true,
+            confirmButtonText: "Move with order",
+            denyButtonText: "Resolve / close",
+            cancelButtonText: "Cancel",
+            width: 460,
+          });
+          if (choice.isDismissed) {
+            loading.set(false);
+            return;
+          }
+          linkedQueryAction = choice.isConfirmed ? "move" : "close";
+          loading.set(true);
+        }
+      } catch (e) {
+        errorHandle(e);
+        loading.set(false);
+        return;
+      }
+    }
+
     try {
-      const data = await updateOrderApi(o.id, {
+      const payload = {
         assignedUsers,
-        orderActivity: {
+        orderActivity: activity || {
           title: "Assigned Users Updated",
           description: "Assigned users updated.",
         },
-      });
+      };
+      if (linkedQueryAction) payload.linkedQueryAction = linkedQueryAction;
+
+      const data = await updateOrderApi(o.id, payload);
       order.update((cur) => ({
         ...cur,
         assignedUsers: data.data?.assignedUsers ?? cur.assignedUsers,
+        activeUserId:
+          data.data?.activeUserId !== undefined
+            ? data.data.activeUserId
+            : cur.activeUserId,
       }));
       Swal.fire("Success!", data.message, "success");
       closeModalManual("#add_contact");
+      if (typeof loadOrderQueries === "function") {
+        try { await loadOrderQueries(); } catch (_) {}
+      }
+    } catch (err) {
+      errorHandle(err);
+    } finally {
+      loading.set(false);
+    }
+  }
+
+  async function setActiveAssignedUser(userId) {
+    const o = get(order);
+    const target = (o.assignedUsers || []).find((u) => u.id === userId);
+    if (!target) return;
+    if (Number(o.activeUserId) === Number(userId)) return;
+
+    const name = target.name || "this user";
+    let linkedQueryTotal = 0;
+    try {
+      const summary = await authApiFetch(API_ROUTES.ORDER + "/linked-queries-summary", {
+        method: "POST",
+        data: JSON.stringify({ orderIds: [o.id] }),
+      });
+      linkedQueryTotal = Number(summary?.totalActive) || 0;
+    } catch (e) {
+      errorHandle(e);
+      return;
+    }
+
+    const safeName = String(name)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+
+    const linkedBlock =
+      linkedQueryTotal > 0
+        ? `<div style="text-align:left;margin-top:14px;padding:12px;border:1px solid #e5e7eb;border-radius:10px;background:#f8fafc;">
+            <div style="font-weight:600;margin-bottom:8px;font-size:13px;">
+              <i class="ti ti-ticket"></i> Linked queries (${linkedQueryTotal})
+            </div>
+            <label style="display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid #dbeafe;border-radius:8px;background:#fff;margin-bottom:8px;cursor:pointer;">
+              <input type="radio" name="saLq" value="move" checked style="margin-top:3px;">
+              <span>
+                <div style="font-weight:600;">Move with order</div>
+                <div style="font-size:12px;color:#64748b;margin-top:2px;">Raised By → <strong>${safeName}</strong></div>
+                <div style="font-size:11px;color:#94a3b8;">Tech Assigned To stays unchanged</div>
+              </span>
+            </label>
+            <label style="display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;cursor:pointer;">
+              <input type="radio" name="saLq" value="close" style="margin-top:3px;">
+              <span>
+                <div style="font-weight:600;">Do not move</div>
+                <div style="font-size:12px;color:#64748b;margin-top:2px;">Resolve / close linked queries</div>
+              </span>
+            </label>
+          </div>`
+        : "";
+
+    const confirm = await Swal.fire({
+      title: "Set active assignee?",
+      html: `
+        <p style="margin-bottom:8px;">Make <strong>${safeName}</strong> the <strong>Active</strong> user.<br>
+        <small class="text-muted">Others will be marked Old.</small></p>
+        <div style="text-align:left;margin-top:10px;">
+          <label style="display:flex;align-items:center;gap:8px;font-weight:600;">
+            <input type="checkbox" id="saViewOldData" checked> Show old order data to new Active user
+          </label>
+          <p style="font-size:12px;color:#6c757d;margin:4px 0 0 24px;">Default on — uncheck to hide history before this change.</p>
+        </div>
+        <div style="text-align:left;margin-top:14px;padding:12px;border:1px solid #e5e7eb;border-radius:10px;background:#f8fafc;">
+          <div style="font-weight:600;margin-bottom:8px;font-size:13px;">
+            <i class="ti ti-flag"></i> Status for new Active user
+          </div>
+          <label style="display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid #dbeafe;border-radius:8px;background:#fff;margin-bottom:8px;cursor:pointer;">
+            <input type="radio" name="saStatusMode" value="same" checked style="margin-top:3px;">
+            <span>
+              <div style="font-weight:600;">Same as current</div>
+              <div style="font-size:12px;color:#64748b;margin-top:2px;">Keep live status for the new Active user.</div>
+            </span>
+          </label>
+          <label style="display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;cursor:pointer;">
+            <input type="radio" name="saStatusMode" value="new" style="margin-top:3px;">
+            <span>
+              <div style="font-weight:600;">New start</div>
+              <div style="font-size:12px;color:#64748b;margin-top:2px;">Reset live status to <strong>New Lead</strong>. Old users stay frozen at previous status.</div>
+            </span>
+          </label>
+        </div>
+        ${linkedBlock}
+      `,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: "Confirm",
+      cancelButtonText: "Cancel",
+      focusConfirm: false,
+      width: 480,
+      preConfirm: () => {
+        const viewOldData = !!document.getElementById("saViewOldData")?.checked;
+        const statusPicked = document.querySelector('input[name="saStatusMode"]:checked');
+        const statusMode = statusPicked?.value === "new" ? "new" : "same";
+        let linkedQueryAction = null;
+        if (linkedQueryTotal > 0) {
+          const picked = document.querySelector('input[name="saLq"]:checked');
+          linkedQueryAction = picked?.value || "move";
+          if (linkedQueryAction !== "move" && linkedQueryAction !== "close") {
+            Swal.showValidationMessage("Choose what to do with linked queries.");
+            return false;
+          }
+        }
+        return { viewOldData, linkedQueryAction, statusMode };
+      },
+    });
+    if (!confirm.isConfirmed || !confirm.value) return;
+
+    const { viewOldData, linkedQueryAction, statusMode } = confirm.value;
+    loading.set(true);
+    try {
+      const payload = {
+        activeUserId: Number(userId),
+        viewOldData: viewOldData === true,
+        statusMode: statusMode === "new" ? "new" : "same",
+      };
+      if (linkedQueryAction) payload.linkedQueryAction = linkedQueryAction;
+
+      const data = await authApiFetch(`${API_ROUTES.ORDER}/${o.id}/active-user`, {
+        method: "PUT",
+        data: JSON.stringify(payload),
+      });
+      order.update((cur) => ({
+        ...cur,
+        ...(data.data || {}),
+        activeUserId: data.data?.activeUserId ?? Number(userId),
+        viewOldData: data.data?.viewOldData ?? viewOldData,
+        dataVisibleFrom: data.data?.dataVisibleFrom ?? cur.dataVisibleFrom,
+        status: data.data?.status ?? cur.status,
+        assignedUsers: data.data?.assignedUsers ?? cur.assignedUsers,
+      }));
+      if (typeof loadOrderQueries === "function") {
+        try { await loadOrderQueries(); } catch (_) {}
+      }
+      Swal.fire("Success!", data.message, "success");
     } catch (err) {
       errorHandle(err);
     } finally {
@@ -759,6 +1053,7 @@ export function createOrderDetail({ getOrderId }) {
   // ── Child orders / components ────────────────────────────────────────
 
   async function deleteComponent(id) {
+    if (!assertCanMutate("delete components")) return;
     Swal.fire({
       title: "Delete Confirmation",
       text: "Are you sure you want to delete this record?",
@@ -796,6 +1091,7 @@ export function createOrderDetail({ getOrderId }) {
   }
 
   async function cerateChildOrder() {
+    if (!assertCanMutate("create components")) return;
     errorMessage.set("");
     loading.set(true);
     formErrors.set({});
@@ -843,6 +1139,7 @@ export function createOrderDetail({ getOrderId }) {
   }
 
   async function handleEditComponentCompat({ orderTitle: t, orderWorkOrderNumber: wo }) {
+    if (!assertCanMutate("edit components")) return;
     loading.set(true);
     formErrors.set({});
     try {
@@ -882,6 +1179,7 @@ export function createOrderDetail({ getOrderId }) {
   }
 
   async function submitFeedback({ satisfactionLevel, reason, remarks, triggerStatus }) {
+    if (!assertCanMutate("add feedback")) return;
     feedbackLoading.set(true);
     try {
       const o = get(order);
@@ -904,6 +1202,7 @@ export function createOrderDetail({ getOrderId }) {
   }
 
   async function deleteFeedback(id) {
+    if (!assertCanMutate("delete feedback")) return;
     const r = await Swal.fire({
       title: "Delete Feedback?",
       text: "This will remove the feedback record.",
@@ -922,7 +1221,7 @@ export function createOrderDetail({ getOrderId }) {
   }
 
   function openFeedbackModal(show = true) {
-    if (show === false) {
+    if (show && !assertCanMutate("add feedback")) return;    if (show === false) {
       feedbackTriggerStatus.set(null);
       showFeedbackModal.set(false);
       return;
@@ -938,6 +1237,7 @@ export function createOrderDetail({ getOrderId }) {
   }
 
   function togglePin(id) {
+    if (!assertCanMutate("update pin status")) return;
     const o = get(order);
     let pinstatus = o?.pinStatus === "true" ? "false" : "true";
     Swal.fire({
@@ -965,6 +1265,7 @@ export function createOrderDetail({ getOrderId }) {
   }
 
   async function changeOrderStatus(newStatus) {
+    if (!assertCanMutate("change status")) return;
     const o = get(order);
     if (o.status === newStatus) return;
     const prevStatus = o.status;
@@ -1007,6 +1308,7 @@ export function createOrderDetail({ getOrderId }) {
   }
 
   async function setOrderPinStatus(status) {
+    if (!assertCanMutate("update pin status")) return;
     errorMessage.set("");
     loading.set(true);
     formErrors.set({});
@@ -1031,6 +1333,7 @@ export function createOrderDetail({ getOrderId }) {
   // ── Chats / reminders / attachments ───────────────────────────────────
 
   async function handleAddChat({ type, message: msg }) {
+    if (!assertCanMutate("add chats")) return;
     loading.set(true);
     formErrors.set({});
     try {
@@ -1057,7 +1360,7 @@ export function createOrderDetail({ getOrderId }) {
   }
 
   async function handleDeleteChat(id) {
-    const r = await Swal.fire({
+    if (!assertCanMutate("delete chats")) return;    const r = await Swal.fire({
       title: "Delete Confirmation",
       text: "Delete this chat?",
       icon: "warning",
@@ -1080,7 +1383,7 @@ export function createOrderDetail({ getOrderId }) {
   }
 
   async function handleAddReminder({ reminderTime: rt, message: msg }) {
-    loading.set(true);
+    if (!assertCanMutate("add reminders")) return;    loading.set(true);
     formErrors.set({});
     try {
       const data = await createOrderReminderApi(getOrderId(), { reminderTime: rt, message: msg });
@@ -1106,7 +1409,7 @@ export function createOrderDetail({ getOrderId }) {
   }
 
   async function handleDeleteReminder(id) {
-    const r = await Swal.fire({
+    if (!assertCanMutate("delete reminders")) return;    const r = await Swal.fire({
       title: "Delete Confirmation",
       text: "Delete this reminder?",
       icon: "warning",
@@ -1129,7 +1432,7 @@ export function createOrderDetail({ getOrderId }) {
   }
 
   async function handleAddAttachment({ aTitle: t, link: l, files: fs }) {
-    loading.set(true);
+    if (!assertCanMutate("add attachments")) return;    loading.set(true);
     formErrors.set({});
     try {
       const data = await createOrderAttachmentApi(getOrderId(), { title: t, link: l, files: fs });
@@ -1156,7 +1459,7 @@ export function createOrderDetail({ getOrderId }) {
   }
 
   async function handleDeleteAttachment(id) {
-    const r = await Swal.fire({
+    if (!assertCanMutate("delete attachments")) return;    const r = await Swal.fire({
       title: "Delete Confirmation",
       text: "Delete this attachment?",
       icon: "warning",
@@ -1222,6 +1525,8 @@ export function createOrderDetail({ getOrderId }) {
     users,
     categories,
     currentUser,
+    isOldAssignee,
+    canMutateOrder,
     // edit form
     title,
     category,
@@ -1324,6 +1629,8 @@ export function createOrderDetail({ getOrderId }) {
     unlinkContact,
     setAssignedUsers,
     handleAddAssignedUser,
+    removeAssignedUser,
+    setActiveAssignedUser,
     deleteComponent,
     cerateChildOrder,
     editChildOrder,

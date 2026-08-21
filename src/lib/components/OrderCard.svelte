@@ -1,8 +1,12 @@
 <script>
   export let order;
+  export let currentUser = null;
 
   import { statusNamesStore } from "../stores/statusNames";
   import PIWOTIModal from "./PIWOTIModal.svelte";
+  import { checkAuth } from "$lib/utils/auth";
+  import { canMutateOrder, isOldOrderAssignee } from "$lib/utils/orderLiveAccess";
+  import Swal from "sweetalert2";
 
   function getAvatarText(title) {
     if (!title) return "";
@@ -29,9 +33,20 @@
   let modalOpen = false;
   let modalType = "PI";
 
+  $: viewer = currentUser || (typeof window !== "undefined" ? checkAuth() : null);
+  $: oldAssignee = isOldOrderAssignee(viewer, order);
+  $: canChat = canMutateOrder(viewer, order);
 
   function openChat(e) {
     e.stopPropagation();
+    if (!canChat) {
+      Swal.fire(
+        "View only",
+        "You are an Old assignee on this order. Only the Active user can add chats.",
+        "info",
+      );
+      return;
+    }
     document.dispatchEvent(new CustomEvent("openChatModal", {
       detail: { order, preselectedTypes: [] },
     }));
@@ -95,6 +110,9 @@
             {#if order?.source === 'old_import'}
               <span style="display:inline-block;font-size:9px;font-weight:600;background:#e8f4ff;color:#1971c2;border:1px solid #a5d8ff;border-radius:4px;padding:0 5px;letter-spacing:0.2px;">Old Import</span>
             {/if}
+            {#if oldAssignee}
+              <span style="display:inline-block;font-size:9px;font-weight:600;background:#fff4e6;color:#e67700;border:1px solid #ffd8a8;border-radius:4px;padding:0 5px;">Frozen view</span>
+            {/if}
           </div>
         </h6>
       </div>
@@ -146,16 +164,16 @@
         <!-- Chat icon -->
         <button
           class="flex items-center justify-center"
-          style="background:none;border:none;padding:0;cursor:pointer;color:#3b82f6;font-size:1.2rem;line-height:1;"
-          title="Add Chat"
+          style="background:none;border:none;padding:0;cursor:{canChat ? 'pointer' : 'not-allowed'};color:{canChat ? '#3b82f6' : '#94a3b8'};font-size:1.2rem;line-height:1;opacity:{canChat ? 1 : 0.55};"
+          title={canChat ? "Add Chat" : "Only the Active assignee can add chats"}
           on:click={openChat}
         >
           <i class="ti ti-message-circle-2"></i>
         </button>
         <button
           class="flex items-center justify-center"
-          style="background:none;border:none;padding:0;cursor:pointer;color:#e67700;font-size:1.2rem;line-height:1;"
-          title="Queries"
+          style="background:none;border:none;padding:0;cursor:pointer;color:{oldAssignee ? '#94a3b8' : '#e67700'};font-size:1.2rem;line-height:1;opacity:{oldAssignee ? 0.7 : 1};"
+          title={oldAssignee ? "Queries (frozen view — cannot raise)" : "Queries"}
           on:click={openQueries}
         >
           <i class="ti ti-help-circle"></i>

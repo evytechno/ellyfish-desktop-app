@@ -23,11 +23,29 @@
 
   // Assigned users modal trigger — function from parent
   export let setAssignedUsers;
+  export let removeAssignedUser;
+  export let setActiveAssignedUser;
+  export let canMutateOrder = true;
+  export let isOldAssignee = false;
 
   // Local state
   let visibilityMap = {};
   let descCollapsed = true;
   let orderDescEl;
+
+  $: resolvedActiveUserId = (() => {
+    const list = order?.assignedUsers || [];
+    if (!list.length) return null;
+    if (order?.activeUserId != null && list.some((u) => u.id === order.activeUserId)) {
+      return order.activeUserId;
+    }
+    // Fallback for older orders before activeUserId existed
+    return list.length === 1 ? list[0].id : list[0]?.id ?? null;
+  })();
+
+  function isActiveAssignee(user) {
+    return resolvedActiveUserId != null && Number(user?.id) === Number(resolvedActiveUserId);
+  }
 
   function toggleVisibility(index) {
     visibilityMap[index] = !visibilityMap[index];
@@ -190,6 +208,7 @@
         <div class="order-sidebar-section-head">
           <i class="ti ti-building-store"></i>
           <span>Client</span>
+          {#if canMutateOrder}
           <div class="order-sidebar-actions">
             {#if order.client}
               <button
@@ -223,14 +242,20 @@
               </button>
             {/if}
           </div>
+          {/if}
         </div>
-
-        {#if order.client}
+        {#if isOldAssignee}
+          <div class="order-sidebar-empty-state">
+            <i class="ti ti-eye-off"></i>
+            <span>Client details are hidden for Old assignees.</span>
+          </div>
+        {:else if order.client}
           <div class="order-sidebar-client-card">
             <div class="d-flex align-items-center justify-content-between gap-2">
               <a href="/admin/client/{order.client.id}" class="order-sidebar-client-name">
                 <i class="ti ti-building-store me-1"></i>{order.client.name}
               </a>
+              {#if canMutateOrder}
               <button
                 type="button"
                 class="btn btn-xs btn-outline-secondary flex-shrink-0"
@@ -239,6 +264,7 @@
               >
                 <i class="ti ti-pencil"></i>
               </button>
+              {/if}
             </div>
             {#if order.client.gstNumber}
               <div class="order-sidebar-client-gst">
@@ -297,6 +323,7 @@
                   </div>
                 </div>
                 <div class="order-sidebar-contact-actions">
+                  {#if canMutateOrder}
                   <button
                     type="button"
                     on:click={() => !oc.isPrimary && setPrimaryContact(oc.id)}
@@ -306,6 +333,8 @@
                   >
                     <i class="ti {oc.isPrimary ? 'ti-star-filled' : 'ti-star'}"></i>
                   </button>
+                  {/if}
+                  {#if !isOldAssignee}
                   <button
                     type="button"
                     on:click={() => toggleVisibility(index)}
@@ -314,6 +343,8 @@
                   >
                     <i class="ti {visibilityMap[index] ? 'ti-eye-off' : 'ti-eye'}"></i>
                   </button>
+                  {/if}
+                  {#if canMutateOrder}
                   <button
                     type="button"
                     on:click={() => unlinkContact(oc.id, oc.clientContact?.name)}
@@ -322,6 +353,7 @@
                   >
                     <i class="ti ti-x"></i>
                   </button>
+                  {/if}
                 </div>
               </div>
             {/each}
@@ -344,7 +376,7 @@
             <p class="order-sidebar-empty mb-0">No contacts linked yet.</p>
           {/if}
 
-          {#if order.client.contacts?.filter((c) => !order.orderContacts?.some((oc) => oc.clientContact?.id === c.id)).length > 0}
+          {#if canMutateOrder && order.client.contacts?.filter((c) => !order.orderContacts?.some((oc) => oc.clientContact?.id === c.id)).length > 0}
             <div class="order-sidebar-chip-section">
               <div class="order-sidebar-chip-label">
                 Quick add from {order.client.name}
@@ -444,15 +476,17 @@
         <div class="order-sidebar-section-head">
           <i class="ti ti-users"></i>
           <span>Assigned Users</span>
-          <a
-            on:click={() => setAssignedUsers()}
-            href="#tag"
-            class="btn btn-xs btn-outline-primary ms-auto"
-            data-bs-toggle="modal"
-            data-bs-target="#add_contact"
-          >
-            <i class="ti ti-plus me-1"></i>Add
-          </a>
+          {#if currentUser?.role === "master"}
+            <a
+              on:click={() => setAssignedUsers()}
+              href="#tag"
+              class="btn btn-xs btn-outline-primary ms-auto"
+              data-bs-toggle="modal"
+              data-bs-target="#add_contact"
+            >
+              <i class="ti ti-plus me-1"></i>Add
+            </a>
+          {/if}
         </div>
 
         {#if order.assignedUsers?.some((u) => u.status === "banned")}
@@ -473,8 +507,18 @@
         {/if}
 
         {#if order.assignedUsers?.length > 0}
-          {#each order.assignedUsers as assignedUser}
-            <div class="order-sidebar-user">
+          {#each [...order.assignedUsers].sort((a, b) => {
+            const aActive = isActiveAssignee(a) ? 0 : 1;
+            const bActive = isActiveAssignee(b) ? 0 : 1;
+            return aActive - bActive;
+          }) as assignedUser}
+            {@const active = isActiveAssignee(assignedUser)}
+            {@const isYou = Number(currentUser?.id) === Number(assignedUser?.id)}
+            <div
+              class="order-sidebar-user"
+              class:order-sidebar-user--active={active}
+              class:order-sidebar-user--old={!active}
+            >
               <span class="avatar avatar-xs rounded-circle flex-shrink-0">
                 <img
                   src="/assets/img/profiles/user.png"
@@ -482,12 +526,57 @@
                   class="img-fluid rounded-circle w-auto h-auto"
                 />
               </span>
-              <span class="order-sidebar-user-name">{maskAssignedName(assignedUser, currentUser)}</span>
-              {#if assignedUser?.status === "banned"}
-                <span class="badge bg-danger order-sidebar-badge">Banned</span>
-              {:else if assignedUser?.status === "inactive"}
-                <span class="badge bg-secondary order-sidebar-badge">Inactive</span>
-              {/if}
+              <div class="order-sidebar-user-main min-w-0">
+                <div class="order-sidebar-user-line">
+                  <span class="order-sidebar-user-name" class:order-sidebar-user-name--old={!active}>
+                    {maskAssignedName(assignedUser, currentUser)}
+                  </span>
+                  {#if isYou}
+                    <span class="order-sidebar-you-chip">You</span>
+                  {/if}
+                  {#if active}
+                    <span class="badge bg-success order-sidebar-badge">
+                      <i class="ti ti-star-filled me-1" style="font-size:9px;"></i>Active
+                    </span>
+                  {:else}
+                    <span class="badge order-sidebar-badge order-sidebar-badge--old">Old</span>
+                  {/if}
+                  {#if assignedUser?.status === "banned"}
+                    <span class="badge bg-danger order-sidebar-badge">Banned</span>
+                  {:else if assignedUser?.status === "inactive"}
+                    <span class="badge bg-secondary order-sidebar-badge">Inactive</span>
+                  {/if}
+                </div>
+                <div class="order-sidebar-user-sub">
+                  {#if active}
+                    Live owner · can update status &amp; work this order
+                  {:else}
+                    Previous assignee · frozen view (as of transfer)
+                  {/if}
+                </div>
+              </div>
+              <div class="order-sidebar-user-actions">
+                {#if typeof setActiveAssignedUser === "function" && currentUser?.role === "master" && !active}
+                  <button
+                    type="button"
+                    class="btn btn-xs btn-outline-success"
+                    title="Set as active"
+                    on:click={() => setActiveAssignedUser(assignedUser.id)}
+                  >
+                    Set Active
+                  </button>
+                {/if}
+                {#if typeof removeAssignedUser === "function" && currentUser?.role === "master" && order.assignedUsers.length > 1 && !active}
+                  <button
+                    type="button"
+                    class="btn btn-xs btn-outline-danger order-sidebar-user-remove"
+                    title="Remove from order"
+                    on:click={() => removeAssignedUser(assignedUser.id)}
+                  >
+                    <i class="ti ti-x"></i>
+                  </button>
+                {/if}
+              </div>
             </div>
           {/each}
         {:else}
@@ -731,19 +820,84 @@
   }
   .order-sidebar-user {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 0.5rem;
-    padding: 0.375rem 0;
+    padding: 0.5rem 0.5rem;
+    margin: 0 -0.5rem 0.25rem;
     font-size: 12px;
+    border-radius: 6px;
+  }
+  .order-sidebar-user--active {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+  }
+  .order-sidebar-user--old {
+    background: #f8fafc;
+    border: 1px solid transparent;
+  }
+  .order-sidebar-user-main {
+    flex: 1;
+    min-width: 0;
+  }
+  .order-sidebar-user-line {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.35rem;
   }
   .order-sidebar-user-name {
-    font-weight: 500;
+    font-weight: 600;
     color: #212529;
+  }
+  .order-sidebar-user-name--old {
+    font-weight: 500;
+    color: #64748b;
+  }
+  .order-sidebar-user-sub {
+    font-size: 10.5px;
+    color: #64748b;
+    margin-top: 0.15rem;
+    line-height: 1.3;
+  }
+  .order-sidebar-user--active .order-sidebar-user-sub {
+    color: #166534;
+  }
+  .order-sidebar-you-chip {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: #1d4ed8;
+    background: #dbeafe;
+    border-radius: 999px;
+    padding: 0.1rem 0.4rem;
+  }
+  .order-sidebar-user-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex-shrink: 0;
+    margin-left: auto;
+    padding-top: 0.1rem;
+  }
+  .order-sidebar-user-remove {
+    padding: 0.1rem 0.35rem;
+    line-height: 1;
+    border-radius: 4px;
+    opacity: 0.7;
+  }
+  .order-sidebar-user-remove:hover {
+    opacity: 1;
   }
   .order-sidebar-badge {
     font-size: 10px;
-    font-weight: 400;
-    padding: 0.15em 0.4em;
+    font-weight: 500;
+    padding: 0.15em 0.45em;
+  }
+  .order-sidebar-badge--old {
+    background: #fff7ed;
+    color: #c2410c;
+    border: 1px solid #fdba74;
   }
   .order-sidebar-alert {
     font-size: 11px;

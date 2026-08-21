@@ -114,7 +114,10 @@
       message = "";
       selectedTypes = [];
     } catch (e) {
-      error = "Failed to send. Please try again.";
+      error =
+        e?.data?.message ||
+        e?.message ||
+        "Failed to send. Please try again.";
     } finally {
       sending = false;
     }

@@ -6,6 +6,7 @@
   export let maskAuthorName;
   export let addChat;
   export let deleteChat;
+  export let canMutateOrder = true;
 
   const CHAT_TYPES = ["Call", "WhatsApp", "Email"];
   let message = "";
@@ -60,9 +61,13 @@
     <div class="card-header d-flex align-items-center justify-content-between flex-wrap row-gap-3">
       <h5 class="fw-semibold mb-0">Chats</h5>
       <div class="d-inline-flex align-items-center">
+        {#if canMutateOrder}
         <a href="#create_call" data-bs-toggle="modal" data-bs-target="#create_call" class="link-primary fw-medium">
           <i class="ti ti-circle-plus me-1"></i>Add New
         </a>
+        {:else}
+        <span class="text-muted" style="font-size:12px;">View only</span>
+        {/if}
       </div>
     </div>
     <div class="card-body">
@@ -89,9 +94,11 @@
             <div class="card-body">
               {#if !chat?.deletedAt}
                 <div class="absolute top-5 right-5">
+                  {#if canMutateOrder}
                   <button on:click={() => deleteChat(chat?.id)} class="bg-red-500 text-white text-md px-1.5 py-1 rounded">
                     <i class="ti ti-trash"></i>
                   </button>
+                  {/if}
                 </div>
               {/if}
               <div class="d-sm-flex align-items-center justify-content-between pb-2">

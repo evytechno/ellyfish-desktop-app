@@ -4,6 +4,7 @@
   export let feedbacks = [];
   export let loadingFeedbacks = false;
   export let currentUser = null;
+  export let canMutateOrder = true;
 
   const dispatch = createEventDispatcher();
 
@@ -34,9 +35,11 @@
 <div class="card">
   <div class="card-header d-flex align-items-center justify-content-between py-2">
     <h6 class="mb-0"><i class="ti ti-message-star me-2 text-primary"></i>Customer Feedback</h6>
+    {#if canMutateOrder}
     <button class="btn btn-primary btn-sm" on:click={() => dispatch("openFeedbackModal")}>
       <i class="ti ti-plus me-1"></i>Add Feedback
     </button>
+    {/if}
   </div>
   <div class="card-body p-0">
     {#if loadingFeedbacks}

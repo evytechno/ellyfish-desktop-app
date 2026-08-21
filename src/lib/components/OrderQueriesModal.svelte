@@ -4,6 +4,7 @@
   import QueryQuickView from "$lib/components/QueryQuickView.svelte";
   import RaiseQueryModal from "$lib/components/RaiseQueryModal.svelte";
   import { maskAssignedName } from "$lib/utils/maskUser";
+  import { canMutateOrder } from "$lib/utils/orderLiveAccess";
 
   export let open = false;
   export let order = null;
@@ -20,10 +21,13 @@
   let qvId = null;
 
   $: canRaise =
-    ["master", "admin", "manager"].includes(currentUser?.role) ||
-    currentUser?.subRole === "telecaller" ||
-    currentUser?.subRole === "tech" ||
-    (currentUser?.role === "user" && !currentUser?.subRole);
+    canMutateOrder(currentUser, order) &&
+    (["master", "admin", "manager"].includes(currentUser?.role) ||
+      currentUser?.subRole === "telecaller" ||
+      currentUser?.subRole === "tech" ||
+      (currentUser?.role === "user" && !currentUser?.subRole));
+
+  $: isFrozenOld = order?._oldAssigneeView === true;
 
   $: orderLabel = order?.pId
     ? `#${order.pId}${order?.title ? ` — ${order.title}` : ""}`
@@ -73,6 +77,7 @@
   }
 
   function canEditQuery(q) {
+    if (!canMutateOrder(currentUser, order)) return false;
     if (!q || !currentUser) return false;
     if (currentUser.subRole === "telecaller" && q.raisedBy?.id === currentUser.id) return true;
     if (!currentUser.subRole && ["master", "admin", "manager"].includes(currentUser.role)) return true;
@@ -120,6 +125,10 @@
             <button class="btn btn-sm btn-warning" on:click={() => (raiseOpen = true)}>
               <i class="ti ti-plus me-1"></i>Add Query
             </button>
+          {:else if isFrozenOld}
+            <span class="badge bg-soft-warning text-warning border border-warning" style="font-size:11px;">
+              Frozen · cannot raise
+            </span>
           {/if}
           <button type="button" class="btn-close" on:click={close} aria-label="Close"></button>
         </div>

@@ -4683,6 +4683,10 @@
                       <i class="ti ti-alert-triangle me-1"></i>Query escalated to admin
                     {:else if chat.systemEvent.type === 'force_released'}
                       <i class="ti ti-player-eject me-1"></i>Query force released by admin — returned to open queue
+                    {:else if chat.systemEvent.type === 'order_assignee_moved'}
+                      <i class="ti ti-transfer me-1"></i>Moved with order ownership change
+                    {:else if chat.systemEvent.type === 'order_assignee_closed'}
+                      <i class="ti ti-circle-check me-1"></i>Resolved — order ownership changed (not transferred)
                     {/if}
                     {#if chat.systemEvent.note}
                       <span class="chat-system-event__note"> · {chat.systemEvent.note}</span>
@@ -7767,12 +7771,16 @@
   .chat-system-event--reopened_other   .chat-system-event__line { background: #ffa94d; }
   .chat-system-event--escalated        .chat-system-event__line { background: #ffe066; }
   .chat-system-event--force_released   .chat-system-event__line { background: #ff8787; }
+  .chat-system-event--order_assignee_moved  .chat-system-event__line { background: #69db7c; }
+  .chat-system-event--order_assignee_closed .chat-system-event__line { background: #adb5bd; }
 
   /* text color matches line color */
   .chat-system-event--reopened_same  .chat-system-event__text { color: #1971c2; }
   .chat-system-event--reopened_other .chat-system-event__text { color: #e8590c; }
   .chat-system-event--escalated      .chat-system-event__text { color: #e67700; }
   .chat-system-event--force_released .chat-system-event__text { color: #c92a2a; }
+  .chat-system-event--order_assignee_moved  .chat-system-event__text { color: #2b8a3e; }
+  .chat-system-event--order_assignee_closed .chat-system-event__text { color: #495057; }
 
   .chat-system-event__text {
     font-size: 11.5px; color: #868e96; flex-shrink: 0;

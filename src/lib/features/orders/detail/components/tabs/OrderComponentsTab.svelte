@@ -6,6 +6,8 @@
   export let editChildOrder;
   export let deleteComponent;
   export let editComponent;
+  export let canMutateOrder = true;
+  export let isOldAssignee = false;
 
   let orderTitle = "";
   let orderWorkOrderNumber = "";
@@ -14,6 +16,7 @@
 
   async function handleEditComponent(e) {
     e.preventDefault();
+    if (!canMutateOrder) return;
     formErrors = {};
     if (!orderTitle) { formErrors.orderTitle = ["Title is required."]; return; }
     loading = true;
@@ -27,6 +30,7 @@
   }
 
   function handleEditChildOrder(component) {
+    if (!canMutateOrder) return;
     orderTitle = component?.title ?? "";
     orderWorkOrderNumber = component?.workOrderNumber ?? "";
     editChildOrder(component);
@@ -38,7 +42,7 @@
     <div class="card-header d-flex align-items-center justify-content-between flex-wrap row-gap-3">
       <h5 class="fw-semibold mb-0">Multiple Orders</h5>
       <div class="d-inline-flex align-items-center">
-        {#if order?.status === "Deal Won"}
+        {#if canMutateOrder && order?.status === "Deal Won"}
           <button on:click={() => cerateChildOrder()} class="link-primary fw-medium flex items-center">
             <i class="ti ti-circle-plus me-1"></i>Create New
           </button>
@@ -46,6 +50,11 @@
       </div>
     </div>
     <div class="card-body">
+      {#if isOldAssignee}
+        <p class="text-muted small mb-3">
+          <i class="ti ti-eye-off me-1"></i>View only — only the Active assignee can manage components.
+        </p>
+      {/if}
       {#if order?.childOrders?.length}
         {#each order.childOrders as component}
           <div class="card mb-3 relative">
@@ -53,19 +62,21 @@
               <div class="ribbon ribbon-top-left"><span class="bg-red-500">Deleted</span></div>
             {/if}
             <div class="card-body">
-              <div class="absolute top-5 right-14">
-                <a href="#edit_component" data-bs-toggle="modal" data-bs-target="#edit_component"
-                  on:click={() => handleEditChildOrder(component)}
-                  class="bg-secondary text-white text-md px-1.5 py-1.5 rounded">
-                  <i class="ti ti-pencil"></i>
-                </a>
-              </div>
-              {#if !component?.deletedAt}
-                <div class="absolute top-4 right-5">
-                  <button on:click={deleteComponent(component?.id)} class="bg-red-500 text-white text-md px-1.5 py-1 rounded">
-                    <i class="ti ti-trash"></i>
-                  </button>
+              {#if canMutateOrder}
+                <div class="absolute top-5 right-14">
+                  <a href="#edit_component" data-bs-toggle="modal" data-bs-target="#edit_component"
+                    on:click={() => handleEditChildOrder(component)}
+                    class="bg-secondary text-white text-md px-1.5 py-1.5 rounded">
+                    <i class="ti ti-pencil"></i>
+                  </a>
                 </div>
+                {#if !component?.deletedAt}
+                  <div class="absolute top-4 right-5">
+                    <button on:click={deleteComponent(component?.id)} class="bg-red-500 text-white text-md px-1.5 py-1 rounded">
+                      <i class="ti ti-trash"></i>
+                    </button>
+                  </div>
+                {/if}
               {/if}
               <div class="d-sm-flex align-items-center justify-content-between">
                 <div class="d-flex align-items-center">

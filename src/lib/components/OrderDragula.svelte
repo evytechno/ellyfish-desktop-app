@@ -261,8 +261,9 @@
       const drake = dragula(containers, {
         removeOnSpill: false,
         revertOnSpill: false,
-        moves: (_el, source, handle) => {
+        moves: (el, source, handle) => {
           if (READ_ONLY_STATUSES.has(source?.getAttribute("data-status"))) return false;
+          if (el?.getAttribute("data-old-assignee") === "1") return false;
           return !handle.closest('input, textarea, select, .fixed, [data-no-drag]');
         },
         accepts: (_el, target) => {
@@ -375,7 +376,11 @@
         data-status={status}
       >
         {#each col.orders as order (order.id)}
-          <div data-order-id={order.id} data-order-status={order.status}>
+          <div
+            data-order-id={order.id}
+            data-order-status={order.status}
+            data-old-assignee={order._oldAssigneeView ? "1" : "0"}
+          >
             <OrderCard {order} />
           </div>
         {/each}

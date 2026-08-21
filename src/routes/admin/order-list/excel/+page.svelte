@@ -12,15 +12,31 @@
   import { checkAuth } from "$lib/utils/auth";
   import { statusNamesStore } from "$lib/stores/statusNames";
   import { maskAssignedName } from "$lib/utils/maskUser";
+  import { canMutateOrder, isOldOrderAssignee } from "$lib/utils/orderLiveAccess";
   import PIWOTIModal from "$lib/components/PIWOTIModal.svelte";
   import OrderQueriesModal from "$lib/components/OrderQueriesModal.svelte";
   import OrderChatQuickModal from "$lib/components/OrderChatQuickModal.svelte";
   import { OrderFeedbackModal } from "$lib/features/orders/detail";
   import { errorHandle } from "$lib/utils/errorHandle";
+  import Swal from "sweetalert2";
 
   // ── auth ─────────────────────────────────────────────────
   const currentUser = checkAuth();
   const isMaster = currentUser?.role === "master";
+
+  function isFrozenOld(order) {
+    return isOldOrderAssignee(currentUser, order);
+  }
+
+  function assertExcelMutate(order, actionLabel = "do this") {
+    if (canMutateOrder(currentUser, order)) return true;
+    Swal.fire(
+      "Frozen view",
+      `You are an Old assignee. This order is frozen at transfer — only the Active user can ${actionLabel}.`,
+      "info",
+    );
+    return false;
+  }
 
   // ── feedback modal ───────────────────────────────────────
   const FEEDBACK_TRIGGER_STATUSES = [
@@ -36,6 +52,7 @@
   let feedbackLoading = false;
 
   function openFeedbackModal(order, triggerStatus = null) {
+    if (!assertExcelMutate(order, "add feedback")) return;
     feedbackModalOrder = order;
     feedbackTriggerStatus = triggerStatus;
     feedbackModalShow = true;
@@ -56,6 +73,10 @@
 
   async function submitFeedback(e) {
     if (!feedbackModalOrder) return;
+    if (!assertExcelMutate(feedbackModalOrder, "add feedback")) {
+      feedbackModalShow = false;
+      return;
+    }
     feedbackLoading = true;
     try {
       await authApiFetch(API_ROUTES.ORDER_FEEDBACK, {
@@ -209,6 +230,7 @@
 
   async function openChatQuickModal(order) {
     if (!order) return;
+    if (!assertExcelMutate(order, "add chats")) return;
     expandedRow = null;
     activeChatOrderId = order.id;
     chatQuickOrder = order;
@@ -256,6 +278,8 @@
 
   async function startEdit(e, orderId, field, currentValue) {
     e.stopPropagation();
+    const order = orders.find((o) => o.id === orderId);
+    if (order && !assertExcelMutate(order, "edit this field")) return;
     editingCell = { orderId, field };
     editingValue = currentValue || "";
     await tick();
@@ -841,6 +865,8 @@
   }
 
   async function sendChat(orderId) {
+    const order = orders.find((o) => o.id === orderId);
+    if (order && !assertExcelMutate(order, "add chats")) return;
     const msg = (chatMsg[orderId] || "").trim();
     if (!msg) return;
     try {
@@ -864,6 +890,8 @@
   }
 
   async function addReminder(orderId) {
+    const order = orders.find((o) => o.id === orderId);
+    if (order && !assertExcelMutate(order, "add reminders")) return;
     const msg = (reminderInput[orderId] || "").trim();
     const localTime = reminderTimeInput[orderId] || null;
     // datetime-local gives a timezone-less string; new Date() parses it as local time
@@ -885,6 +913,11 @@
   }
 
   async function handleFileUpload(orderId, e) {
+    const order = orders.find((o) => o.id === orderId);
+    if (order && !assertExcelMutate(order, "add attachments")) {
+      e.target.value = "";
+      return;
+    }
     const file = e.target.files[0];
     if (!file) return;
     const form = new FormData();
@@ -903,6 +936,8 @@
   }
 
   async function updateStatus(orderId, status) {
+    const order = orders.find((o) => o.id === orderId);
+    if (order && !assertExcelMutate(order, "change status")) return;
     try {
       await authApiFetch(`${API_ROUTES.ORDER}/${orderId}`, {
         method: "PUT",
@@ -913,8 +948,8 @@
       });
       orders = orders.map((o) => (o.id === orderId ? { ...o, status } : o));
       if (FEEDBACK_TRIGGER_STATUSES.includes(status)) {
-        const order = orders.find((o) => o.id === orderId);
-        if (order) openFeedbackModal(order, status);
+        const updated = orders.find((o) => o.id === orderId);
+        if (updated) openFeedbackModal(updated, status);
       }
     } catch (e) {}
   }
@@ -963,6 +998,7 @@
   let piwotiModalOrder = null;
 
   function openPIWOTIModal(type, order) {
+    if (!assertExcelMutate(order, "manage PI / WO / TI")) return;
     piwotiModalType = type;
     piwotiModalOrder = order;
     piwotiModalOpen = true;
@@ -1203,6 +1239,7 @@
 
   function openLinkClientModal(e, order) {
     e.stopPropagation();
+    if (!assertExcelMutate(order, "link a client")) return;
     linkClientOrderId = order.id;
     linkClientOrder = order;
     linkClientSearch = "";
@@ -1775,11 +1812,14 @@
                     savingCell?.orderId === order.id && savingCell?.field === "name"}
                   {@const isAddressSaving =
                     savingCell?.orderId === order.id && savingCell?.field === "address"}
+                  {@const frozenOld = isFrozenOld(order)}
+                  {@const canMutateRow = canMutateOrder(currentUser, order)}
 
                   <tr
                     class="excel-row cursor-pointer"
                     style="background:{rowBg};"
                     class:excel-row--chat-active={activeChatOrderId === order.id}
+                    class:excel-row--frozen={frozenOld}
                     on:click={() => toggleRow(order.id)}
                   >
                     {#each visibleCols as col}
@@ -1831,17 +1871,17 @@
                         <!-- Title -->
                         <td
                           class="px-2 py-2 border text-xs overflow-hidden h-[54px] align-middle group"
-                          class:cursor-text={isExp}
+                          class:cursor-text={isExp && canMutateRow}
                           class:border-blue-400={isTitleEdit}
                           class:border-gray-100={!isTitleEdit}
                           title={isTitleEdit ? "" : order.title || ""}
                           on:click={(e) => {
-                            if (!isExp) return;
+                            if (!isExp || !canMutateRow) return;
                             e.stopPropagation();
                             if (!isTitleEdit) startEdit(e, order.id, "title", order.title);
                           }}
                         >
-                          {#if isTitleEdit}
+                          {#if isTitleEdit && canMutateRow}
                             <input
                               id="cell-input-{order.id}-title"
                               class="w-full h-full text-xs bg-transparent outline-none border-none p-0 leading-normal"
@@ -1860,9 +1900,16 @@
                           {:else}
                             <div
                               class="line-clamp-2 break-words leading-normal"
-                              class:group-hover:text-blue-600={isExp}
+                              class:group-hover:text-blue-600={isExp && canMutateRow}
                             >
                               {order.title || "-"}
+                              {#if frozenOld}
+                                <span
+                                  style="display:inline-block;font-size:9px;font-weight:600;background:#fff4e6;color:#e67700;border:1px solid #ffd8a8;border-radius:4px;padding:0 5px;letter-spacing:0.2px;margin-left:4px;vertical-align:middle;"
+                                  title="Frozen at transfer — view only"
+                                  >Frozen view</span
+                                >
+                              {/if}
                               {#if order.source === "old_import"}
                                 <span
                                   style="display:inline-block;font-size:9px;font-weight:600;background:#e8f4ff;color:#1971c2;border:1px solid #a5d8ff;border-radius:4px;padding:0 5px;letter-spacing:0.2px;margin-left:4px;vertical-align:middle;"
@@ -2081,15 +2128,24 @@
                             </div>
                           {:else if !displayName && !hasLinkedClient}
                             <div class="flex items-center gap-1 flex-wrap" on:click|stopPropagation>
-                              <span
-                                class="text-[10px] font-semibold px-1.5 py-0.5 rounded"
-                                style="background:#fff3cd;color:#856404;">⚠ No Client</span
-                              >
-                              <button
-                                class="btn btn-xs text-[10px] py-0 px-1.5"
-                                style="background:#e8f4fd;color:#0d6efd;border:1px solid #b6d4fe;"
-                                on:click={(e) => openLinkClientModal(e, order)}>+ Link</button
-                              >
+                              {#if frozenOld}
+                                <span
+                                  class="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                                  style="background:#fff4e6;color:#e67700;border:1px solid #ffd8a8;"
+                                  title="Client details are hidden for Old assignees"
+                                  >Hidden (frozen)</span
+                                >
+                              {:else}
+                                <span
+                                  class="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                                  style="background:#fff3cd;color:#856404;">⚠ No Client</span
+                                >
+                                <button
+                                  class="btn btn-xs text-[10px] py-0 px-1.5"
+                                  style="background:#e8f4fd;color:#0d6efd;border:1px solid #b6d4fe;"
+                                  on:click={(e) => openLinkClientModal(e, order)}>+ Link</button
+                                >
+                              {/if}
                             </div>
                           {:else}
                             <div class="truncate">
@@ -2155,13 +2211,12 @@
                       {:else if col.key === "chats"}
                         <!-- Chats -->
                         <td
-                          class="px-2 py-2 border border-gray-100 text-xs overflow-hidden align-middle"
-                          class:h-[54px]={!isExp}
-                          class:h-auto={isExp}
-                          class:min-w-[220px]={isExp}
+                          class="px-2 py-2 border border-gray-100 text-xs overflow-hidden align-middle h-[54px]"
                           on:click|stopPropagation
                         >
-                          {#if !isExp}
+                          {#if frozenOld}
+                            <span class="text-gray-300" title="Hidden in frozen view">—</span>
+                          {:else if !isExp}
                             <div class="relative w-full h-full pr-7">
                               <div
                                 class="text-xs cursor-pointer text-gray-600 max-w-full"
@@ -2191,9 +2246,9 @@
                               <button
                                 type="button"
                                 class="btn btn-xs btn-light absolute right-0 top-1/2 -translate-y-1/2"
-                                title="Open Chat Sidebar"
+                                title={canMutateRow ? "Open Chat Sidebar" : "Frozen view — cannot add chats"}
                                 aria-label="Open Chat Sidebar"
-                                style="width:24px;height:24px;border:1px solid #dbeafe;color:#2563eb;display:flex;align-items:center;justify-content:center;"
+                                style="width:24px;height:24px;border:1px solid #dbeafe;color:{canMutateRow ? '#2563eb' : '#94a3b8'};display:flex;align-items:center;justify-content:center;opacity:{canMutateRow ? 1 : 0.6};"
                                 on:click|stopPropagation={() => openChatQuickModal(order)}
                               >
                                 <i class="ti ti-circle-plus" style="font-size:10px;"></i>
@@ -2240,6 +2295,7 @@
                                   {/if}
                                 </div>
 
+                                {#if canMutateRow}
                                 <div class="flex gap-2 items-start">
                                   <div class="flex-1">
                                     <!-- inline composer -->
@@ -2315,6 +2371,14 @@
                                       </div>
                                   </div>
                                 </div>
+                                {:else}
+                                  <div
+                                    class="text-[10px] font-semibold px-2 py-1.5 rounded"
+                                    style="background:#fff4e6;color:#e67700;border:1px solid #ffd8a8;"
+                                  >
+                                    Frozen view — chats are read-only
+                                  </div>
+                                {/if}
                               </div>
                             </div>
                           {/if}
@@ -2322,10 +2386,12 @@
                       {:else if col.key === "attach"}
                         <!-- Attachments -->
                         <td
-                          class="px-2 py-2 border border-gray-100 text-xs overflow-visible align-middle min-h-[54px] relative top-[2px]"
+                          class="px-2 py-2 border border-gray-100 text-xs overflow-hidden align-middle h-[54px]"
                           on:click|stopPropagation
                         >
-                          {#if !isExp}
+                          {#if frozenOld}
+                            <span class="text-gray-300" title="Hidden in frozen view">—</span>
+                          {:else if !isExp}
                             <div
                               class="text-xs cursor-pointer text-gray-600 max-w-full"
                               on:click={() => toggleRow(order.id)}
@@ -2420,6 +2486,7 @@
                                   No files yet
                                 </div>{/if}
                             </div>
+                            {#if canMutateRow}
                             <label
                               class="btn btn-sm btn-outline-secondary mt-1 cursor-pointer !text-[11px]"
                             >
@@ -2431,15 +2498,25 @@
                                 on:click|stopPropagation
                               />
                             </label>
+                            {:else}
+                              <div
+                                class="text-[10px] font-semibold px-2 py-1 mt-1 rounded"
+                                style="background:#fff4e6;color:#e67700;border:1px solid #ffd8a8;"
+                              >
+                                Frozen — upload disabled
+                              </div>
+                            {/if}
                           {/if}
                         </td>
                       {:else if col.key === "remind"}
                         <!-- Reminders -->
                         <td
-                          class="px-2 py-2 border border-gray-100 text-xs overflow-visible align-top h-[54px]"
+                          class="px-2 py-2 border border-gray-100 text-xs overflow-hidden align-middle h-[54px]"
                           on:click|stopPropagation
                         >
-                          {#if !isExp}
+                          {#if frozenOld}
+                            <span class="text-gray-300" title="Hidden in frozen view">—</span>
+                          {:else if !isExp}
                             <div
                               class="text-xs cursor-pointer text-gray-600 max-w-full"
                               on:click={() => toggleRow(order.id)}
@@ -2479,6 +2556,7 @@
                                   No reminders yet
                                 </div>{/if}
                             </div>
+                            {#if canMutateRow}
                             <div class="mt-1" on:click|stopPropagation>
                               <input
                                 type="datetime-local"
@@ -2500,6 +2578,14 @@
                                 >
                               </div>
                             </div>
+                            {:else}
+                              <div
+                                class="text-[10px] font-semibold px-2 py-1 mt-1 rounded"
+                                style="background:#fff4e6;color:#e67700;border:1px solid #ffd8a8;"
+                              >
+                                Frozen — reminders read-only
+                              </div>
+                            {/if}
                           {/if}
                         </td>
                       {:else if col.key === "status"}
@@ -2508,16 +2594,31 @@
                           class="px-2 py-2 border border-gray-100 align-middle text-xs h-[54px]"
                           on:click|stopPropagation
                         >
-                          <select
-                            class="status-select w-full rounded-full border-0 text-[11px] font-medium px-2 py-0.5 cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-300"
-                            style={statusStyle(order.status)}
-                            value={order.status}
-                            on:change={(e) => updateStatus(order.id, e.target.value)}
-                          >
-                            {#each STATUS_OPTIONS as s}
-                              <option value={s}>{$statusNamesStore[s]?.name ?? s}</option>
-                            {/each}
-                          </select>
+                          {#if canMutateRow}
+                            <select
+                              class="status-select w-full rounded-full border-0 text-[11px] font-medium px-2 py-0.5 cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-300"
+                              style={statusStyle(order.status)}
+                              value={order.status}
+                              on:change={(e) => updateStatus(order.id, e.target.value)}
+                            >
+                              {#each STATUS_OPTIONS as s}
+                                <option value={s}>{$statusNamesStore[s]?.name ?? s}</option>
+                              {/each}
+                            </select>
+                          {:else}
+                            <div class="flex flex-col gap-0.5">
+                              <span
+                                class="status-select inline-block w-full rounded-full border-0 text-[11px] font-medium px-2 py-0.5 text-center"
+                                style="{statusStyle(order.status)};opacity:0.85;cursor:default;"
+                                title="Frozen status — cannot change"
+                              >
+                                {$statusNamesStore[order.status]?.name ?? order.status}
+                              </span>
+                              {#if frozenOld}
+                                <span class="text-[9px] text-center font-semibold" style="color:#e67700;">Frozen</span>
+                              {/if}
+                            </div>
+                          {/if}
                         </td>
                       {:else if col.key === "user"}
                         <!-- Sales User -->
@@ -2594,12 +2695,14 @@
                           {:else}
                             <span class="text-gray-300">—</span>
                           {/if}
+                          {#if canMutateRow}
                           <button
                             class="btn btn-xs btn-soft-primary mt-1"
                             title="Add Feedback"
                             on:click|stopPropagation={() => openFeedbackModal(order)}
                             ><i class="ti ti-message-star" style="font-size:11px;"></i></button
                           >
+                          {/if}
                           <button
                             class="btn btn-xs btn-soft-warning mt-1"
                             title="Queries"
@@ -3482,6 +3585,11 @@
   .excel-row--chat-active td {
     background: #eff6ff !important;
     box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.55);
+  }
+
+  /* Old assignee frozen view — left accent on first cell only (not every column) */
+  .excel-row--frozen td:first-child {
+    box-shadow: inset 3px 0 0 #e67700;
   }
 
   /* sticky columns — needs !important to override table stacking context */
