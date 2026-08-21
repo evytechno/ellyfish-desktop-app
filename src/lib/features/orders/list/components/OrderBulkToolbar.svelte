@@ -20,7 +20,7 @@
   let linkedQueryAction = "move";
   let viewOldData = true;
   /** When Replace OFF: 'same' keeps live status, 'new' resets to New Lead */
-  let statusMode = "same";
+  let statusMode = "new";
   let linkedQueryTotal = 0;
   let checkingLinkedQueries = false;
   let linkedQueryFetched = false;
@@ -85,7 +85,7 @@
     overrideSameCompany = false;
     linkedQueryAction = "move";
     viewOldData = true;
-    statusMode = "same";
+    statusMode = "new";
     linkedQueryTotal = 0;
     linkedQueryFetched = false;
     lastSummaryKey = "";
@@ -100,7 +100,7 @@
     overrideSameCompany = false;
     linkedQueryAction = "move";
     viewOldData = true;
-    statusMode = "same";
+    statusMode = "new";
     linkedQueryTotal = 0;
     linkedQueryFetched = false;
     lastSummaryKey = "";

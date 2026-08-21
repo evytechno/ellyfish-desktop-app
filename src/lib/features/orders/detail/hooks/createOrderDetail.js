@@ -975,15 +975,15 @@ export function createOrderDetail({ getOrderId }) {
           <div style="font-weight:600;margin-bottom:8px;font-size:13px;">
             <i class="ti ti-flag"></i> Status for new Active user
           </div>
-          <label style="display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid #dbeafe;border-radius:8px;background:#fff;margin-bottom:8px;cursor:pointer;">
-            <input type="radio" name="saStatusMode" value="same" checked style="margin-top:3px;">
+          <label style="display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;margin-bottom:8px;cursor:pointer;">
+            <input type="radio" name="saStatusMode" value="same" style="margin-top:3px;">
             <span>
               <div style="font-weight:600;">Same as current</div>
               <div style="font-size:12px;color:#64748b;margin-top:2px;">Keep live status for the new Active user.</div>
             </span>
           </label>
-          <label style="display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;cursor:pointer;">
-            <input type="radio" name="saStatusMode" value="new" style="margin-top:3px;">
+          <label style="display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid #dbeafe;border-radius:8px;background:#fff;cursor:pointer;">
+            <input type="radio" name="saStatusMode" value="new" checked style="margin-top:3px;">
             <span>
               <div style="font-weight:600;">New start</div>
               <div style="font-size:12px;color:#64748b;margin-top:2px;">Reset live status to <strong>New Lead</strong>. Old users stay frozen at previous status.</div>
@@ -1001,7 +1001,7 @@ export function createOrderDetail({ getOrderId }) {
       preConfirm: () => {
         const viewOldData = !!document.getElementById("saViewOldData")?.checked;
         const statusPicked = document.querySelector('input[name="saStatusMode"]:checked');
-        const statusMode = statusPicked?.value === "new" ? "new" : "same";
+        const statusMode = statusPicked?.value === "same" ? "same" : "new";
         let linkedQueryAction = null;
         if (linkedQueryTotal > 0) {
           const picked = document.querySelector('input[name="saLq"]:checked');
