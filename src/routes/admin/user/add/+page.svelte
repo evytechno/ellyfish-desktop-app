@@ -10,6 +10,8 @@
   import { checkAuth } from "$lib/utils/auth";
   import { companiesAllStore } from "$lib/stores/dataStores";
   import { get } from "svelte/store";
+  import { normalizeModulePermissions } from "$lib/constants/modulePermissions";
+  import ModuleAccessEditor from "$lib/components/ModuleAccessEditor.svelte";
 
   // Form state
   let name = "";
@@ -25,6 +27,8 @@
   let errorMessage = "";
   let companies = [];
   let formErrors = {};
+
+  let modulePermissions = normalizeModulePermissions(null);
 
   // Per-role permissions state
   // rolePerms[role] = { subRole, orderAccess, queryAccessTelecaller, queryAccessTech, queryAccessTechHelper }
@@ -92,10 +96,13 @@
       company: companyId,
       loginStartTime: loginStartTime || null,
       loginEndTime: loginEndTime || null,
+      modulePermissions: currentUser?.role === "master" && selectedRoles.includes("admin")
+        ? modulePermissions
+        : undefined,
     };
 
     try {
-      const data = await authApiFetch(API_ROUTES.USER, { method: "POST", data: JSON.stringify(newUser) });
+      const data = await authApiFetch(API_ROUTES.USER, { method: "POST", data: newUser });
       Swal.fire("Success!", data.message, "success");
       goto("/admin/user");
     } catch (error) {
@@ -287,6 +294,15 @@
                   {/if}
                 </div>
               {/each}
+            </div>
+          {/if}
+
+          {#if currentUser?.role === "master" && selectedRoles.includes("admin")}
+            <div class="mt-4">
+              <ModuleAccessEditor
+                bind:modulePermissions
+                on:change={(e) => { modulePermissions = e.detail; }}
+              />
             </div>
           {/if}
 

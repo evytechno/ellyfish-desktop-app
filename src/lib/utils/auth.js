@@ -65,6 +65,11 @@ export const checkAuth = () => {
   const currentUser = JSON.parse(localStorage.getItem("user") || 'null');
   if (!currentUser) return false;
   currentUser.allowedSalesUserIds = getAllowedSalesUserIds(currentUser);
+  const payload = parseJwtPayload();
+  if (payload && Object.prototype.hasOwnProperty.call(payload, "modulePermissions")) {
+    currentUser.modulePermissions = payload.modulePermissions ?? null;
+  }
+  currentUser.canViewAdmins = payload?.role === "admin" && payload?.canViewAdmins === true;
   return currentUser;
 };
 
@@ -147,23 +152,26 @@ export const getRolePermissions = () => {
 
 /**
  * Check if the current user can access a module.
- * - master/manager/user roles: always true (they use role-based guards)
- * - admin with null modulePermissions: full access
- * - admin with modulePermissions: check the key for 'view' or 'full'
- * @param {string} moduleKey - e.g. 'orders', 'clients', 'queries'
- * @param {'view'|'full'} level - minimum required level (default 'view')
- * @param {object|null} user - pass explicitly or leave null to read from localStorage
+ * - master/manager/user: always true (role-based guards)
+ * - admin: default none; only keys set to view/full are allowed
+ * @param {string} moduleKey
+ * @param {'view'|'full'} level
+ * @param {object|null} user
  */
 export const canAccess = (moduleKey, level = 'view', user = null) => {
   const u = user ?? checkAuth();
   if (!u) return false;
   if (u.role !== 'admin') return true;
-  if (!u.modulePermissions) return true; // null = full access
+  if (moduleKey === 'group_chat') return true;
 
-  const access = u.modulePermissions[moduleKey];
+  const payload = parseJwtPayload();
+  const perms = payload?.modulePermissions ?? u.modulePermissions;
+  if (!perms || typeof perms !== 'object') return false;
+
+  const access = perms[moduleKey];
   if (!access || access === 'none') return false;
   if (level === 'full') return access === 'full';
-  return true; // 'view' or 'full' satisfies 'view'
+  return access === 'view' || access === 'full';
 };
 
 /**

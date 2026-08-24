@@ -235,7 +235,7 @@
     }
     if (
       (currentUser.role !== "master" && currentUser.role !== "admin") ||
-      !canAccess("reports", "view", currentUser)
+      !canAccess("pi_sales", "view", currentUser)
     ) {
       goto("/admin/dashboard");
       return;

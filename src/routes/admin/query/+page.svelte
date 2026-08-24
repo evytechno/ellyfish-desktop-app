@@ -28,8 +28,10 @@
   let rowsPerPage = 10;
 
   // ── filters ──────────────────────────────────────────────────────────────
+  const DEFAULT_STATUS = "open,in_progress";
+
   let search = "";
-  let filterStatus = "";
+  let filterStatus = DEFAULT_STATUS;
   let filterType = "";
   let filterPriority = "";
   let filterQuick = "";
@@ -239,7 +241,8 @@
   ];
 
   const STATUSES = [
-    { value: "", label: "All Statuses" },
+    { value: "all", label: "All Statuses" },
+    { value: "open,in_progress", label: "Open & In Progress" },
     { value: "open", label: "Open" },
     { value: "in_progress", label: "In Progress" },
     { value: "resolved", label: "Resolved" },
@@ -489,7 +492,8 @@
     const saved = $queryFilterStore;
     if (saved && Object.keys(saved).length > 0) {
       if (saved.search !== undefined) search = saved.search;
-      if (saved.filterStatus !== undefined) filterStatus = saved.filterStatus;
+      if (saved.filterStatus === "all") filterStatus = "all";
+      else if (saved.filterStatus) filterStatus = saved.filterStatus;
       if (saved.filterType !== undefined) filterType = saved.filterType;
       if (saved.filterPriority !== undefined) filterPriority = saved.filterPriority;
       if (saved.filterQuick !== undefined) filterQuick = saved.filterQuick;
@@ -533,7 +537,7 @@
       const dateParams = buildDateParams();
       const q = new URLSearchParams({ page: currentPage, limit: rowsPerPage });
       if (search) q.set("search", search);
-      if (filterStatus) q.set("status", filterStatus);
+      if (filterStatus && filterStatus !== "all") q.set("status", filterStatus);
       if (filterType) q.set("type", filterType);
       if (filterPriority) q.set("priority", filterPriority);
       if (filterQuick) q.set("quick", filterQuick);
@@ -601,7 +605,7 @@
 
   function clearFilters() {
     search = "";
-    filterStatus = "";
+    filterStatus = DEFAULT_STATUS;
     filterType = "";
     filterPriority = "";
     filterQuick = "";
@@ -612,12 +616,13 @@
     raisedById = "";
     assignedToId = "";
     currentPage = 1;
+    saveFilterStore();
     loadData();
   }
 
   $: hasFilters =
     search ||
-    filterStatus ||
+    (filterStatus && filterStatus !== DEFAULT_STATUS) ||
     filterType ||
     filterPriority ||
     filterQuick ||

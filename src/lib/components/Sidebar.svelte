@@ -523,8 +523,7 @@
                         </li>
                       {/if}
 
-                      <!-- Group Chat -->
-                      {#if canAccess('group_chat', 'view', currentUser)}
+                      <!-- Group Chat — available to all logged-in roles -->
                       <li
                         class:active={currentPath.startsWith("/admin/group-chat")}
                       >
@@ -540,7 +539,6 @@
                           {/if}
                         </a>
                       </li>
-                      {/if}
 
                       <!-- Orders submenu — list shortcuts (Orders / Excel moved to header) -->
                       {#if ((currentUser?.subRole !== "tech" && currentUser?.subRole !== "tech_helper") || currentUser?.orderAccess)}
@@ -681,6 +679,7 @@
                     </ul>
                   </li>
                   {#if currentUser?.role === "master" || currentUser?.role === "admin"}
+                    {#if currentUser?.role === "master" || canAccess('reports', 'view', currentUser) || canAccess('pi_sales', 'view', currentUser)}
                     <li class="menu-title"><span>REPORTS</span></li>
                     <li>
                       <ul>
@@ -693,6 +692,8 @@
                             <i class="ti ti-chart-bar"></i><span>User Activity</span>
                           </a>
                         </li>
+                        {/if}
+                        {#if canAccess('pi_sales', 'view', currentUser)}
                         <li class:active={currentPath.startsWith("/admin/reports/pi-sales")}>
                           <a
                             href="/admin/reports/pi-sales"
@@ -704,6 +705,7 @@
                         {/if}
                       </ul>
                     </li>
+                    {/if}
                   {/if}
 
                   {#if currentUser?.role === "master" || currentUser?.role != "user"}

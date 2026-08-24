@@ -3,6 +3,7 @@
   import { authApiFetch } from "$lib/api/client";
   import { errorHandle } from "$lib/utils/errorHandle";
   import { API_ROUTES } from "$lib/constants/apiRoutes";
+  import { canAccess } from "$lib/utils/auth";
   import Swal from "sweetalert2";
 
   export let selectedOrders = new Set();
@@ -32,6 +33,8 @@
     (o) => o.status === "Deal Won" || o.status === "Qualified",
   );
   $: transferableCount = selectedOrders.size - blockedTransferOrders.length;
+  $: canTransfer =
+    currentUser?.role === "master" || canAccess("transfer_orders", "full", currentUser);
 
   $: hasSameCompanyConflict = (() => {
     if (!transferUserId) return false;
@@ -174,7 +177,7 @@
     <span class="text-sm font-semibold text-blue-700">
       <i class="ti ti-check me-1"></i>{selectedOrders.size} selected
     </span>
-    {#if currentUser?.role === "master"}
+    {#if canTransfer}
       <button class="btn btn-sm btn-primary" on:click={openTransfer}>
         <i class="ti ti-transfer me-1"></i>Transfer
       </button>
@@ -192,7 +195,7 @@
 {/if}
 
 <!-- Transfer Modal -->
-{#if transferModalOpen && currentUser?.role === "master"}
+{#if transferModalOpen && canTransfer}
   <div class="modal show d-block" tabindex="-1" style="background:rgba(0,0,0,0.45);">
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content">

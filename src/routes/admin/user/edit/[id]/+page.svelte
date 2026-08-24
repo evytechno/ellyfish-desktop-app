@@ -11,6 +11,8 @@
   import { checkAuth } from "$lib/utils/auth";
   import { get } from "svelte/store";
   import { companiesAllStore } from "$lib/stores/dataStores";
+  import { normalizeModulePermissions } from "$lib/constants/modulePermissions";
+  import ModuleAccessEditor from "$lib/components/ModuleAccessEditor.svelte";
 
   let name = "";
   let email = "";
@@ -28,59 +30,10 @@
   // Allowed sales users (master setting for admin users)
   let salesUsersGroups = {}; // { telecaller: [{id,name}], tech: [...], manager: [...] }
   let allowedSalesUserIds = null; // null = no restriction
+  let canViewAdmins = false;
 
-  // Module permissions (master setting for admin users) — null = full access
-  let modulePermissions = null;
-  $: fullAccess = modulePermissions === null;
-
-  const MODULE_GROUPS = [
-    { label: 'Orders', modules: [
-      { key: 'orders', label: 'Orders' },
-      { key: 'invoices', label: 'Invoices (PI + TAX)' },
-      { key: 'work_order', label: 'Work Order (WO)' },
-      { key: 'order_payments', label: 'Order Payments' },
-    ]},
-    { label: 'Clients', modules: [
-      { key: 'clients', label: 'Clients' },
-      { key: 'client_visits', label: 'Client Visits' },
-    ]},
-    { label: 'Queries', modules: [
-      { key: 'queries', label: 'Queries' },
-    ]},
-    { label: 'Finance', modules: [
-      { key: 'user_payments', label: 'Employee Payments' },
-    ]},
-    { label: 'Inventory', modules: [
-      { key: 'stock', label: 'Stock' },
-      { key: 'category', label: 'Category' },
-    ]},
-    { label: 'System', modules: [
-      { key: 'users', label: 'Users' },
-      { key: 'group_chat', label: 'Group Chat' },
-      { key: 'reports', label: 'Reports' },
-      { key: 'history', label: 'History' },
-    ]},
-  ];
-
-  function setModulePerm(key, value) {
-    if (!modulePermissions) modulePermissions = {};
-    modulePermissions = { ...modulePermissions, [key]: value };
-  }
-
-  function getModulePerm(key) {
-    return modulePermissions?.[key] ?? 'view';
-  }
-
-  function toggleFullAccess() {
-    if (fullAccess) {
-      // switching to restricted — set all modules to 'view' as default
-      const perms = {};
-      MODULE_GROUPS.forEach(g => g.modules.forEach(m => { perms[m.key] = 'view'; }));
-      modulePermissions = perms;
-    } else {
-      modulePermissions = null;
-    }
-  }
+  // Module permissions (master setting for admin users) — default none
+  let modulePermissions = normalizeModulePermissions(null);
 
   const blankPerms = () => ({
     subRole: null,
@@ -163,7 +116,8 @@
         ? data.allowedSalesUserIds.map(Number).filter((id) => Number.isFinite(id))
         : null;
       if (allowedSalesUserIds && !allowedSalesUserIds.length) allowedSalesUserIds = null;
-      modulePermissions = data.modulePermissions ?? null;
+      canViewAdmins = data.canViewAdmins === true;
+      modulePermissions = normalizeModulePermissions(data.modulePermissions);
 
       selectedRoles = data.roles && data.roles.length > 0 ? data.roles : [data.role ?? "user"];
       loadRolePerms(data);
@@ -267,11 +221,12 @@
       loginStartTime: loginStartTime || null,
       loginEndTime: loginEndTime || null,
       allowedSalesUserIds: currentUser?.role === "master" && selectedRoles.includes("admin") ? (allowedSalesUserIds ?? null) : undefined,
-      modulePermissions: currentUser?.role === "master" && selectedRoles.includes("admin") ? (modulePermissions ?? null) : undefined,
+      canViewAdmins: currentUser?.role === "master" && selectedRoles.includes("admin") ? !!canViewAdmins : undefined,
+      modulePermissions: currentUser?.role === "master" && selectedRoles.includes("admin") ? modulePermissions : undefined,
     };
 
     try {
-      const data = await authApiFetch(`${API_ROUTES.USER}/${userId}`, { method: "PUT", data: JSON.stringify(updatedUser) });
+      const data = await authApiFetch(`${API_ROUTES.USER}/${userId}`, { method: "PUT", data: updatedUser });
       Swal.fire("Success!", data.message, "success");
       goto("/admin/user");
     } catch (error) {
@@ -463,28 +418,45 @@
               <label class="form-label fw-bold">Allowed Sales Users</label>
               <div class="text-muted small mb-2">
                 {#if !allowedSalesUserIds}
-                  No restriction — admin sees all users' data.
+                  No restriction — this admin sees all managers and sales users.
+                  Other admins' own records are included only if the switch below is on.
+                  That does not include users those admins are allowed to see.
                 {:else}
                   Restricted to {allowedSalesUserIds.length} selected user(s).
                 {/if}
               </div>
+              <div class="allowed-users-box mb-3">
+                <div class="d-flex align-items-center justify-content-between gap-3">
+                  <div>
+                    <div class="fw-semibold" style="font-size:13px;">See other admins' own records</div>
+                    <div class="text-muted" style="font-size:11px;">
+                      Only that admin's own orders and tickets (assigned / raised by them). Not their team's users.
+                    </div>
+                  </div>
+                  <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" id="canViewAdmins" bind:checked={canViewAdmins} />
+                    <label class="form-check-label" for="canViewAdmins">{canViewAdmins ? "Allowed" : "Blocked"}</label>
+                  </div>
+                </div>
+              </div>
               <div class="allowed-users-box">
                 {#each Object.entries(salesUsersGroups) as [group, users]}
-                  {#if users.length > 0}
+                  {@const visibleUsers = users.filter((u) => Number(u.id) !== Number(userId))}
+                  {#if visibleUsers.length > 0}
                     <div class="mb-3">
                       <div class="d-flex align-items-center gap-2 mb-1">
                         <input
                           type="checkbox"
                           id="group_{group}"
-                          checked={users.every(u => allowedSalesUserIds?.includes(Number(u.id)))}
-                          indeterminate={users.some(u => allowedSalesUserIds?.includes(Number(u.id))) && !users.every(u => allowedSalesUserIds?.includes(Number(u.id)))}
-                          on:change={() => toggleGroup(users)}
+                          checked={visibleUsers.every(u => allowedSalesUserIds?.includes(Number(u.id)))}
+                          indeterminate={visibleUsers.some(u => allowedSalesUserIds?.includes(Number(u.id))) && !visibleUsers.every(u => allowedSalesUserIds?.includes(Number(u.id)))}
+                          on:change={() => toggleGroup(visibleUsers)}
                           class="form-check-input mt-0"
                         />
                         <label for="group_{group}" class="group-label text-capitalize">{group}</label>
                       </div>
                       <div class="ps-4 d-flex flex-wrap gap-2">
-                        {#each users as user}
+                        {#each visibleUsers as user}
                           <label class="user-chip" class:selected={allowedSalesUserIds?.includes(Number(user.id))}>
                             <input type="checkbox" class="d-none" checked={allowedSalesUserIds?.includes(Number(user.id))} on:change={() => toggleSalesUser(user.id)} />
                             {user.name}
@@ -503,38 +475,10 @@
 
           {#if currentUser?.role === "master" && selectedRoles.includes("admin")}
             <div class="mt-4">
-              <label class="form-label fw-bold">Module Access Permissions</label>
-              <div class="text-muted small mb-2">Control which modules this admin can access.</div>
-              <div class="module-perms-box">
-                <!-- Full Access toggle -->
-                <div class="d-flex align-items-center gap-3 mb-3 pb-3" style="border-bottom: 1px solid #e0e7ff;">
-                  <div class="form-check form-switch mb-0">
-                    <input class="form-check-input" type="checkbox" id="fullAccessToggle" checked={fullAccess} on:change={toggleFullAccess} />
-                    <label class="form-check-label fw-semibold" for="fullAccessToggle">Full Access</label>
-                  </div>
-                  <span class="text-muted small">{fullAccess ? "Admin has unrestricted access to all modules" : "Custom per-module access configured below — click Submit to save changes"}</span>
-                </div>
-
-                {#if !fullAccess}
-                  {#each MODULE_GROUPS as group}
-                    <div class="mb-3">
-                      <div class="module-group-label">{group.label}</div>
-                      <div class="d-flex flex-column gap-1">
-                        {#each group.modules as mod}
-                          <div class="module-perm-row">
-                            <span class="module-perm-name">{mod.label}</span>
-                            <div class="perm-btn-group">
-                              <button type="button" class="perm-btn" class:active={(modulePermissions?.[mod.key] ?? 'view') === 'none'} on:click={() => setModulePerm(mod.key, 'none')}>None</button>
-                              <button type="button" class="perm-btn" class:active={(modulePermissions?.[mod.key] ?? 'view') === 'view'} on:click={() => setModulePerm(mod.key, 'view')}>View</button>
-                              <button type="button" class="perm-btn" class:active={(modulePermissions?.[mod.key] ?? 'view') === 'full'} on:click={() => setModulePerm(mod.key, 'full')}>Full</button>
-                            </div>
-                          </div>
-                        {/each}
-                      </div>
-                    </div>
-                  {/each}
-                {/if}
-              </div>
+              <ModuleAccessEditor
+                bind:modulePermissions
+                on:change={(e) => { modulePermissions = e.detail; }}
+              />
             </div>
           {/if}
 
@@ -612,63 +556,5 @@
     background: #3b5bdb;
     border-color: #3b5bdb;
     color: #fff;
-  }
-  .module-perms-box {
-    background: #f8f9ff;
-    border: 1px solid #d0d7f5;
-    border-radius: 10px;
-    padding: 16px;
-    position: relative;
-    z-index: 2;
-  }
-  .module-group-label {
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: #3b5bdb;
-    margin-bottom: 6px;
-  }
-  .module-perm-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    background: #fff;
-    border: 1px solid #e9ecef;
-    border-radius: 7px;
-    padding: 7px 12px;
-  }
-  .module-perm-name {
-    font-size: 13px;
-    font-weight: 500;
-    color: #333;
-  }
-  .perm-btn-group {
-    display: flex;
-    gap: 4px;
-  }
-  .perm-btn {
-    border: 1px solid #ced4da;
-    background: #fff;
-    border-radius: 5px;
-    padding: 3px 10px;
-    font-size: 12px;
-    cursor: pointer;
-    color: #555;
-    transition: all 0.15s;
-    pointer-events: auto;
-    position: relative;
-    z-index: 1;
-    user-select: none;
-  }
-  .perm-btn.active {
-    background: #3b5bdb;
-    border-color: #3b5bdb;
-    color: #fff;
-    font-weight: 600;
-  }
-  .perm-btn:hover:not(.active) {
-    background: #e9ecef;
-    border-color: #adb5bd;
   }
 </style>
