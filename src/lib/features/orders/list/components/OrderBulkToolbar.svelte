@@ -30,7 +30,7 @@
 
   $: selectedList = listOrders.filter((o) => selectedOrders.has(o.id));
   $: blockedTransferOrders = selectedList.filter(
-    (o) => o.status === "Deal Won" || o.status === "Qualified",
+    (o) => o.status === "Deal Won",
   );
   $: transferableCount = selectedOrders.size - blockedTransferOrders.length;
   $: canTransfer =
@@ -115,7 +115,7 @@
     if (transferableCount <= 0) {
       Swal.fire(
         "Cannot transfer",
-        "Deal Won and Qualified orders cannot be transferred. Deselect them and try again.",
+        "Deal Won orders cannot be transferred. Deselect them and try again.",
         "warning",
       );
       return;
@@ -128,7 +128,7 @@
     try {
       const transferableIds = [...selectedOrders].filter((id) => {
         const o = listOrders.find((row) => row.id === id);
-        return o && o.status !== "Deal Won" && o.status !== "Qualified";
+        return o && o.status !== "Deal Won";
       });
       const payload = {
         orderIds: transferableIds,
@@ -213,7 +213,7 @@
             <div class="alert alert-warning py-2 px-3 mb-3" style="font-size:12px;">
               <i class="ti ti-ban me-1"></i>
               <strong>{blockedTransferOrders.length}</strong> selected order{blockedTransferOrders.length > 1 ? "s" : ""}
-              with status <strong>Deal Won</strong> or <strong>Qualified</strong> cannot be transferred
+              with status <strong>Deal Won</strong> cannot be transferred
               and will be skipped.
             </div>
           {/if}
