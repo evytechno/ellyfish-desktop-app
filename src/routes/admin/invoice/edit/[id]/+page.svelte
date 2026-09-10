@@ -482,6 +482,7 @@
                   <label class="form-label">Status</label>
                   <select class="form-select" bind:value={status}>
                     <option value="Unpaid">Unpaid</option>
+                    <option value="To Pay">To Pay</option>
                     <option value="Paid">Paid</option>
                     <option value="Partially Paid">Partially Paid</option>
                   </select>

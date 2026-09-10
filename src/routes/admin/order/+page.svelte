@@ -279,12 +279,26 @@
     }
   }
 
+  function clearInvalidUserFilter() {
+    if (userId == null || userId === "") return;
+    const allowed = (users || []).some((u) => Number(u.id) === Number(userId));
+    if (!allowed) {
+      userId = null;
+      syncFilterStore();
+    }
+  }
+
   async function getAllUsers() {
     const cached = get(usersAllStore);
-    if (cached?.length > 0) { users = cached; return; }
+    if (cached?.length > 0) {
+      users = cached;
+      clearInvalidUserFilter();
+      return;
+    }
     try {
       const data = await authApiFetch(API_ROUTES.USER + "/all");
       users = data; usersAllStore.set(data);
+      clearInvalidUserFilter();
     } catch {}
   }
 

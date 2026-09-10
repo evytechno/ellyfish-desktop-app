@@ -423,6 +423,7 @@
                   That does not include users those admins are allowed to see.
                 {:else}
                   Restricted to {allowedSalesUserIds.length} selected user(s).
+                  All selected users (including Admin) show in Select User. Saving logs the admin out so the list refreshes.
                 {/if}
               </div>
               <div class="allowed-users-box mb-3">

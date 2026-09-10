@@ -599,7 +599,7 @@
             <div class="row g-3 mb-3">
               <div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">PI Number</div><div class="fw-semibold font-mono">{fmtRef(pi.financialYear, pi.invoiceNo)}</div></div>
               <div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Date</div><div>{fmtDate(pi.invoiceDate)}</div></div>
-              <div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Status</div><span class="badge {pi.status === 'Paid' ? 'bg-success' : pi.status === 'Partially Paid' ? 'bg-warning text-dark' : 'bg-secondary'}">{pi.status}</span></div>
+              <div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Status</div><span class="badge {pi.status === 'Paid' ? 'bg-success' : pi.status === 'Partially Paid' ? 'bg-warning text-dark' : pi.status === 'To Pay' ? 'bg-info' : 'bg-secondary'}">{pi.status}</span></div>
               <div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Total</div><div class="fw-bold text-success">{fmtCur(resolvedTotal(pi), pi.currency)}</div></div>
               {#if pi.poNumber}<div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">PO Number</div><div class="font-mono">{pi.poNumber}</div></div>{/if}
               {#if pi.currency}<div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Currency</div><div>{pi.currency}</div></div>{/if}
@@ -772,6 +772,7 @@
                   <label class="form-label fw-semibold" style="font-size:12px;">Status</label>
                   <select class="form-select form-select-sm" bind:value={piStatus}>
                     <option value="Unpaid">Unpaid</option>
+                    <option value="To Pay">To Pay</option>
                     <option value="Paid">Paid</option>
                     <option value="Partially Paid">Partially Paid</option>
                   </select>

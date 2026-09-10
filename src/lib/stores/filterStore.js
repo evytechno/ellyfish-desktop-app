@@ -1,10 +1,35 @@
 import { writable } from 'svelte/store';
 
-function createFilterStore(storeKey, defaultState = {}) {
+function currentUserId() {
+  if (typeof localStorage === 'undefined') return null;
+  try {
+    const u = JSON.parse(localStorage.getItem('user') || 'null');
+    return u?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function createFilterStore(storeKey, defaultState = {}, { scopeByUser = false } = {}) {
+    const resolveKey = () => {
+      if (!scopeByUser) return storeKey;
+      const id = currentUserId();
+      return id != null ? `${storeKey}:${id}` : storeKey;
+    };
+
     let savedState = null;
 
-    if (typeof localStorage !== "undefined") {
-        savedState = JSON.parse(localStorage.getItem(storeKey));
+    if (typeof localStorage !== 'undefined') {
+      // Drop legacy unscoped key so master filters cannot leak into Viewing-as sessions.
+      if (scopeByUser) {
+        try { localStorage.removeItem(storeKey); } catch (_) {}
+      }
+      try {
+        const raw = localStorage.getItem(resolveKey());
+        savedState = raw ? JSON.parse(raw) : null;
+      } catch {
+        savedState = null;
+      }
     }
 
     const initialState = savedState ? savedState : defaultState;
@@ -12,15 +37,16 @@ function createFilterStore(storeKey, defaultState = {}) {
     const store = writable(initialState);
 
     store.subscribe(($store) => {
-        if (typeof localStorage !== "undefined") {
-            localStorage.setItem(storeKey, JSON.stringify($store));
+        if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(resolveKey(), JSON.stringify($store));
         }
     });
 
     return store;
 }
 
-export const orderFilterStore = createFilterStore('orderFilter');
+/** Order list filters — scoped so Viewing as admin keeps that admin's user selection. */
+export const orderFilterStore = createFilterStore('orderFilter', {}, { scopeByUser: true });
 export const orderActivityFilterStore = createFilterStore('orderActivityFilter');
 export const invoiceFilterStore = createFilterStore('invoiceFilter');
 export const workOrderFilterStore = createFilterStore('workOrderFilter');

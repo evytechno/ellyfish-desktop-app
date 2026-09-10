@@ -121,7 +121,8 @@
 
   $: statusColor =
     invoice?.status === "Paid" ? "success" :
-    invoice?.status === "Partially Paid" ? "warning" : "danger";
+    invoice?.status === "Partially Paid" ? "warning" :
+    invoice?.status === "To Pay" ? "info" : "danger";
 
   // ── Inline item edit ──────────────────────────────────────────────────────
   const unitOptions = ["Pcs", "Kg", "g", "L", "mL", "m", "cm", "Set", "Box", "Nos"];
@@ -280,12 +281,20 @@
                         {/if}
                       </div>
                     {/if}
+                    <div>
                     {#if invoice?.priceTerms}
-                      <div class="flex items-start justify-between pb-1 px-0 gap-2">
+                      <div class="flex items-center justify-between pb-1 px-0 gap-2">
                         <div class="flex-shrink-0">Payment</div>
                         <div class="text-right">{invoice.priceTerms}</div>
                       </div>
                     {/if}
+                    {#if invoice?.status}
+                      <div class="flex items-center justify-between pb-1 px-0">
+                        <div>Payment Status</div>
+                        <div>{invoice.status}</div>
+                      </div>
+                    {/if}
+                    </div>
                     {#if invoice?.inCoterms}
                       <div class="flex items-center justify-between pb-1 px-0">
                         <div>Incoterms</div>
