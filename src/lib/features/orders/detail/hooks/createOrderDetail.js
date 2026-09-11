@@ -1390,11 +1390,18 @@ export function createOrderDetail({ getOrderId }) {
     try {
       const res = await createOrderSampleEventApi(sampleId, { note, type, status }, files);
       if (res?.data) {
+        const { sampleImages, ...eventData } = res.data;
         samples.update((list) =>
           list.map((s) => {
             if (s.id !== sampleId) return s;
-            const events = Array.isArray(s.events) ? [...s.events, res.data] : [res.data];
-            return { ...s, events };
+            const events = Array.isArray(s.events)
+              ? [...s.events, eventData]
+              : [eventData];
+            return {
+              ...s,
+              events,
+              ...(sampleImages !== undefined ? { images: sampleImages } : {}),
+            };
           }),
         );
       }

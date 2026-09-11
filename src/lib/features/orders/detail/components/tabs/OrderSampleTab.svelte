@@ -472,6 +472,34 @@
                 <tr class="sample-events-row">
                   <td colspan="8" class="bg-light">
                     <div class="sample-events-list">
+                      {#if Array.isArray(s.images) && s.images.length}
+                        <div class="mb-2">
+                          <div class="text-muted mb-1" style="font-size:11px; font-weight:600;">
+                            Current photos
+                            <span class="badge bg-primary ms-1" style="font-size:9px;">{s.images.length}</span>
+                          </div>
+                          <div class="d-flex flex-wrap gap-2">
+                            {#each s.images as img, imgIdx}
+                              <button
+                                type="button"
+                                class="sample-event-thumb-btn"
+                                title="View full image"
+                                on:click={() =>
+                                  openImageLightbox(
+                                    s.images.map((x) => mediaUrl(x.url)),
+                                    imgIdx,
+                                  )}
+                              >
+                                <img
+                                  src={mediaUrl(img.url)}
+                                  alt={img.fileName || "sample"}
+                                  class="sample-event-thumb"
+                                />
+                              </button>
+                            {/each}
+                          </div>
+                        </div>
+                      {/if}
                       <div class="d-flex align-items-center justify-content-between mb-1">
                         <div class="text-muted" style="font-size:11px; font-weight:600;">
                           Events
@@ -855,7 +883,7 @@
 
         <div class="modal-body">
           <p class="text-muted mb-3" style="font-size:13px;">
-            Add a note and/or images to this sample track (does not create a new sample).
+            Add a note and/or images. New photos are saved on the sample and as an event in the timeline.
           </p>
           <label class="sample-label" for="sampleEventNote">Note</label>
           <textarea
