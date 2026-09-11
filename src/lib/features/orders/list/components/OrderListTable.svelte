@@ -46,7 +46,17 @@
         const importBadge = row?.source === 'old_import'
           ? `<span class="order-import-chip">Old Import</span>`
           : "";
-        return `<a href="/admin/order/${row.id}" class="order-title-link"><div class="order-title-main">${label}${reminderBadge}${importBadge}</div>${sub ? `<div class="order-title-sub">${sub}</div>` : ""}</a>`;
+        const sampleDecision = row?.sampleDecision || "";
+        const sampleCls =
+          sampleDecision === "Approved"
+            ? "is-approved"
+            : sampleDecision === "Rejected"
+              ? "is-rejected"
+              : "";
+        const sampleBadge = row?.isSample
+          ? `<span class="order-sample-chip ${sampleCls}" title="Sample${sampleDecision ? ` · ${sampleDecision}` : ""}">Sample${sampleDecision && sampleDecision !== "Pending" ? ` · ${sampleDecision}` : ""}</span>`
+          : "";
+        return `<a href="/admin/order/${row.id}" class="order-title-link"><div class="order-title-main">${label}${reminderBadge}${importBadge}${sampleBadge}</div>${sub ? `<div class="order-title-sub">${sub}</div>` : ""}</a>`;
       },
     },
     { key: "workOrderNumber", label: "Work Order No." },
@@ -193,7 +203,8 @@
 
   /* Labels / badges — smaller, normal weight */
   .order-list-table :global(.order-reminder-chip),
-  .order-list-table :global(.order-import-chip) {
+  .order-list-table :global(.order-import-chip),
+  .order-list-table :global(.order-sample-chip) {
     display: inline-flex !important;
     align-items: center;
     font-size: 10px !important;
@@ -203,6 +214,23 @@
     padding: 1px 6px !important;
     border-radius: 4px;
     vertical-align: middle;
+    margin-left: 4px;
+  }
+
+  .order-list-table :global(.order-sample-chip) {
+    background: #e7f5ff;
+    color: #1864ab;
+    border: 1px solid #a5d8ff;
+  }
+  .order-list-table :global(.order-sample-chip.is-approved) {
+    background: #ebfbee;
+    color: #2b8a3e;
+    border-color: #b2f2bb;
+  }
+  .order-list-table :global(.order-sample-chip.is-rejected) {
+    background: #fff5f5;
+    color: #c92a2a;
+    border-color: #ffc9c9;
   }
 
   .order-list-table :global(.order-status-badge.badge) {

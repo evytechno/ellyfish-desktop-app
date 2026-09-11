@@ -105,6 +105,7 @@
   let filterStatus = null;
   let filterCategory = "";
   let filterSource = "";
+  let filterSample = "";
   let filterQuick = "";
   let searchTerm = "";
   let selectedFilter = "last7days";
@@ -184,6 +185,7 @@
       filterStatus,
       filterCategory,
       filterSource,
+      filterSample,
       filterQuick,
       _refreshKey: gridRefreshKey,
     };
@@ -249,6 +251,7 @@
     if (filterStatus) q.set("status", filterStatus);
     if (filterCategory) q.set("category", filterCategory);
     if (filterSource) q.set("source", filterSource);
+    if (filterSample) q.set("sample", filterSample);
     if (filterQuick) q.set("quick", filterQuick);
     q.set("page", String(listCurrentPage));
     q.set("limit", String(listRowsPerPage));
@@ -258,8 +261,8 @@
   function syncFilterStore() {
     orderFilterStore.update((s) => ({
       ...s,
-      userId, companyId, filterStatus, filterCategory,
-      searchTerm, selectedFilter, customStartDate, customEndDate, orderBy,
+      userId, companyId, filterStatus, filterCategory, filterSource, filterSample,
+      filterQuick, searchTerm, selectedFilter, customStartDate, customEndDate, orderBy,
     }));
   }
 
@@ -313,14 +316,20 @@
 
   async function getAllCategories() {
     const cached = get(categoriesAllStore);
+    // Show cache immediately if shape looks valid
     if (cached?.length > 0 && typeof cached[0] === "object" && cached[0].label) {
-      categories = cached; return;
+      categories = cached;
     }
+    // Always refresh from API so dropdown is not stuck on stale localStorage
     try {
       const data = await authApiFetch(API_ROUTES.CATEGORY + "/all");
-      categories = data.map((parent) => ({
+      const list = Array.isArray(data) ? data : data?.data || [];
+      categories = list.map((parent) => ({
         label: parent.name,
-        options: parent.children?.length > 0 ? parent.children.map((c) => c.name) : [parent.name],
+        options:
+          parent.children?.length > 0
+            ? parent.children.map((c) => c.name)
+            : [parent.name],
       }));
       categoriesAllStore.set(categories);
     } catch {}
@@ -349,7 +358,7 @@
     }
   }
 
-  $: [searchTerm, filterStatus, filterCategory, filterQuick, selectedFilter, customStartDate, customEndDate, orderBy, userId, companyId, trashBin],
+  $: [searchTerm, filterStatus, filterCategory, filterSource, filterSample, filterQuick, selectedFilter, customStartDate, customEndDate, orderBy, userId, companyId, trashBin],
     onFilterChange();
 
   // ── View type ─────────────────────────────────────────────────────────────
@@ -483,6 +492,9 @@
     companyId = fs.companyId || null;
     filterStatus = fs.filterStatus || null;
     filterCategory = fs.filterCategory || "";
+    filterSource = fs.filterSource || "";
+    filterSample = fs.filterSample || "";
+    filterQuick = fs.filterQuick || "";
     searchTerm = fs.searchTerm || "";
     selectedFilter = fs.selectedFilter || "last7days";
     customStartDate = fs.customStartDate || null;
@@ -572,7 +584,7 @@
       attentionGroups={ATTENTION_GROUPS}
       bind:userId bind:companyId bind:filterStatus bind:filterCategory
       bind:searchTerm bind:selectedFilter bind:customStartDate bind:customEndDate bind:orderBy bind:filterSource
-      bind:filterQuick
+      bind:filterSample bind:filterQuick
       on:filterChange={onFilterChange}
       on:viewTypeChange={(e) => changeViewType(e.detail)}
       on:trashToggle={() => { trashBin = !trashBin; }}

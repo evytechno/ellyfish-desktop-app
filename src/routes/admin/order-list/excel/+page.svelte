@@ -114,6 +114,7 @@
   let filterCompanyId = "";
   let filterCategory = "";
   let filterSource = "";
+  let filterSample = "";
   let allUsers = [];
   let allCompanies = [];
 
@@ -571,6 +572,8 @@
       if (saved.filterUserId !== undefined) filterUserId = saved.filterUserId;
       if (saved.filterCompanyId !== undefined) filterCompanyId = saved.filterCompanyId;
       if (saved.filterCategory !== undefined) filterCategory = saved.filterCategory;
+      if (saved.filterSource !== undefined) filterSource = saved.filterSource;
+      if (saved.filterSample !== undefined) filterSample = saved.filterSample;
       if (saved.orderBy !== undefined) orderBy = saved.orderBy;
       if (saved.pageSize !== undefined) pageSize = saved.pageSize;
     }
@@ -791,6 +794,8 @@
       filterUserId,
       filterCompanyId,
       filterCategory,
+      filterSource,
+      filterSample,
       orderBy,
       pageSize,
     });
@@ -818,6 +823,7 @@
         ...(filterCompanyId && { byCompanyId: filterCompanyId }),
         ...(filterCategory && { category: filterCategory }),
         ...(filterSource && { source: filterSource }),
+        ...(filterSample && { sample: filterSample }),
         ...dateParams,
       });
       const res = await authApiFetch(`${API_ROUTES.ORDER}?${q}`, { method: "GET" });
@@ -1645,6 +1651,23 @@
         <option value="">All Sources</option>
         <option value="old_import">Old Import</option>
       </select>
+      <!-- Sample filter -->
+      <select
+        class="form-select"
+        style="width:155px;"
+        bind:value={filterSample}
+        on:change={() => {
+          saveFilterStore();
+          fetchOrders(1);
+        }}
+      >
+        <option value="">All Types</option>
+        <option value="yes">Sample only</option>
+        <option value="no">Not sample</option>
+        <option value="pending">Sample · Pending</option>
+        <option value="approved">Sample · Approved</option>
+        <option value="rejected">Sample · Rejected</option>
+      </select>
       <!-- Sort -->
       <select
         class="form-select"
@@ -1914,6 +1937,19 @@
                                 <span
                                   style="display:inline-block;font-size:9px;font-weight:600;background:#e8f4ff;color:#1971c2;border:1px solid #a5d8ff;border-radius:4px;padding:0 5px;letter-spacing:0.2px;margin-left:4px;vertical-align:middle;"
                                   >Old Import</span
+                                >
+                              {/if}
+                              {#if order.isSample}
+                                <span
+                                  style="display:inline-block;font-size:9px;font-weight:600;border-radius:4px;padding:0 5px;letter-spacing:0.2px;margin-left:4px;vertical-align:middle;{order.sampleDecision === 'Approved'
+                                    ? 'background:#ebfbee;color:#2b8a3e;border:1px solid #b2f2bb;'
+                                    : order.sampleDecision === 'Rejected'
+                                      ? 'background:#fff5f5;color:#c92a2a;border:1px solid #ffc9c9;'
+                                      : 'background:#e7f5ff;color:#1864ab;border:1px solid #a5d8ff;'}"
+                                  title="Sample{order.sampleDecision ? ` · ${order.sampleDecision}` : ''}"
+                                  >Sample{order.sampleDecision && order.sampleDecision !== "Pending"
+                                    ? ` · ${order.sampleDecision}`
+                                    : ""}</span
                                 >
                               {/if}
                             </div>

@@ -52,6 +52,7 @@
     if (filterParams.withDeleted) query.set("withDeleted", "true");
     if (filterParams.filterCategory) query.set("category", filterParams.filterCategory);
     if (filterParams.filterSource) query.set("source", filterParams.filterSource);
+    if (filterParams.filterSample) query.set("sample", filterParams.filterSample);
     if (filterParams.filterQuick) query.set("quick", filterParams.filterQuick);
     query.set("status", status);
     query.set("page", String(page));

@@ -110,6 +110,18 @@
             {#if order?.source === 'old_import'}
               <span style="display:inline-block;font-size:9px;font-weight:600;background:#e8f4ff;color:#1971c2;border:1px solid #a5d8ff;border-radius:4px;padding:0 5px;letter-spacing:0.2px;">Old Import</span>
             {/if}
+            {#if order?.isSample}
+              <span
+                style="display:inline-block;font-size:9px;font-weight:600;border-radius:4px;padding:0 5px;letter-spacing:0.2px;{order.sampleDecision === 'Approved'
+                  ? 'background:#ebfbee;color:#2b8a3e;border:1px solid #b2f2bb;'
+                  : order.sampleDecision === 'Rejected'
+                    ? 'background:#fff5f5;color:#c92a2a;border:1px solid #ffc9c9;'
+                    : 'background:#e7f5ff;color:#1864ab;border:1px solid #a5d8ff;'}"
+                title="Sample{order.sampleDecision ? ` · ${order.sampleDecision}` : ''}"
+              >
+                Sample{order.sampleDecision && order.sampleDecision !== 'Pending' ? ` · ${order.sampleDecision}` : ''}
+              </span>
+            {/if}
             {#if oldAssignee}
               <span style="display:inline-block;font-size:9px;font-weight:600;background:#fff4e6;color:#e67700;border:1px solid #ffd8a8;border-radius:4px;padding:0 5px;">Frozen view</span>
             {/if}

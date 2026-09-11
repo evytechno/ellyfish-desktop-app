@@ -146,6 +146,72 @@ export async function deleteOrderFeedback(id) {
   return authApiFetch(`${API_ROUTES.ORDER_FEEDBACK}/${id}`, { method: "DELETE" });
 }
 
+// ── Samples ────────────────────────────────────────────────────────────────
+
+export async function loadOrderSamples(orderId) {
+  return authApiFetch(`${API_ROUTES.ORDER_SAMPLE}/order/${orderId}`);
+}
+
+export async function setOrderSampleFlag(orderId, isSample) {
+  return authApiFetch(`${API_ROUTES.ORDER_SAMPLE}/order/${orderId}/flag`, {
+    method: "PUT",
+    data: JSON.stringify({ isSample }),
+  });
+}
+
+export async function createOrderSample(payload) {
+  return authApiFetch(API_ROUTES.ORDER_SAMPLE, {
+    method: "POST",
+    data: JSON.stringify(payload),
+  });
+}
+
+export async function markOrderSampleReceived(id, receivedDate) {
+  return authApiFetch(`${API_ROUTES.ORDER_SAMPLE}/${id}/received`, {
+    method: "PATCH",
+    data: JSON.stringify(receivedDate ? { receivedDate } : {}),
+  });
+}
+
+export async function deleteOrderSample(id) {
+  return authApiFetch(`${API_ROUTES.ORDER_SAMPLE}/${id}`, { method: "DELETE" });
+}
+
+export async function updateOrderSample(id, payload) {
+  return authApiFetch(`${API_ROUTES.ORDER_SAMPLE}/${id}`, {
+    method: "PUT",
+    data: JSON.stringify(payload),
+  });
+}
+
+export async function approveOrderSample(orderId, note) {
+  return authApiFetch(`${API_ROUTES.ORDER_SAMPLE}/order/${orderId}/approve`, {
+    method: "POST",
+    data: JSON.stringify({ note: note || undefined }),
+  });
+}
+
+export async function rejectOrderSample(orderId, note) {
+  return authApiFetch(`${API_ROUTES.ORDER_SAMPLE}/order/${orderId}/reject`, {
+    method: "POST",
+    data: JSON.stringify({ note: note || undefined }),
+  });
+}
+
+export async function createOrderSampleEvent(sampleId, { note, type, status } = {}, files = []) {
+  const form = new FormData();
+  if (note) form.append("note", note);
+  if (type) form.append("type", type);
+  if (status) form.append("status", status);
+  for (const file of files || []) {
+    if (file) form.append("images", file);
+  }
+  return authApiFetch(`${API_ROUTES.ORDER_SAMPLE}/events/${sampleId}`, {
+    method: "POST",
+    data: form,
+  });
+}
+
 // ── Visits ─────────────────────────────────────────────────────────────────
 
 export async function loadOrderVisits(orderId) {

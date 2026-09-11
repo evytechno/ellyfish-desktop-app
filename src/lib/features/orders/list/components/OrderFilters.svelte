@@ -20,6 +20,7 @@
   export let customEndDate = null;
   export let orderBy = "createdAt";
   export let filterSource = "";
+  export let filterSample = "";
   export let filterQuick = "";
   export let attentionFilters = [];
   export let attentionGroups = [];
@@ -149,6 +150,16 @@
     <select bind:value={filterSource} on:change={onSelectChange} class="form-select" style="width:140px;height:32px;font-size:0.75rem;">
       <option value="">All Sources</option>
       <option value="old_import">Old Import</option>
+    </select>
+
+    <!-- Sample filter -->
+    <select bind:value={filterSample} on:change={onSelectChange} class="form-select" style="width:150px;height:32px;font-size:0.75rem;">
+      <option value="">All Types</option>
+      <option value="yes">Sample only</option>
+      <option value="no">Not sample</option>
+      <option value="pending">Sample · Pending</option>
+      <option value="approved">Sample · Approved</option>
+      <option value="rejected">Sample · Rejected</option>
     </select>
 
     <!-- Order By -->

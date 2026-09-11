@@ -79,6 +79,9 @@
     feedbackLoading,
     feedbacks,
     loadingFeedbacks,
+    samples,
+    loadingSamples,
+    sampleSaving,
     statuses,
     loadOrder,
     handleSubmit,
@@ -106,6 +109,15 @@
     submitFeedback,
     deleteFeedback,
     openFeedbackModal,
+    loadSamples,
+    setSampleFlag,
+    addSampleMovement,
+    updateSampleMovement,
+    markSampleReceived,
+    deleteSampleMovement,
+    addSampleEvent,
+    approveSample,
+    rejectSample,
     toggleAccordion,
     togglePin,
     changeOrderStatus,
@@ -224,6 +236,18 @@
               {loadFeedbacks}
               {openFeedbackModal}
               {deleteFeedback}
+              samples={$samples}
+              loadingSamples={$loadingSamples}
+              sampleSaving={$sampleSaving}
+              {loadSamples}
+              {setSampleFlag}
+              {addSampleMovement}
+              {updateSampleMovement}
+              {markSampleReceived}
+              {deleteSampleMovement}
+              {addSampleEvent}
+              {approveSample}
+              {rejectSample}
               {cerateChildOrder}
               {editChildOrder}
               {deleteComponent}

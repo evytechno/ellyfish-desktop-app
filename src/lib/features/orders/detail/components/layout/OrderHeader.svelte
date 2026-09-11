@@ -58,6 +58,20 @@
             <h5 class="order-header-title capitalize mb-0">
               {order?.title}
             </h5>
+            {#if order?.isSample}
+              <span
+                class="badge {order.sampleDecision === 'Approved'
+                  ? 'bg-success'
+                  : order.sampleDecision === 'Rejected'
+                    ? 'bg-danger'
+                    : 'bg-info'}"
+                style="font-size:11px;"
+              >
+                Sample{order.sampleDecision && order.sampleDecision !== 'Pending'
+                  ? ` · ${order.sampleDecision}`
+                  : ""}
+              </span>
+            {/if}
             {#if isOldAssignee}
               <span class="order-header-old-badge">
                 <i class="ti ti-eye-off"></i>

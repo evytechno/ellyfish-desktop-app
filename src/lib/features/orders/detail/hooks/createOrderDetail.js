@@ -32,6 +32,15 @@ import {
   loadOrderFeedbacks as loadOrderFeedbacksApi,
   createOrderFeedback as createOrderFeedbackApi,
   deleteOrderFeedback as deleteOrderFeedbackApi,
+  loadOrderSamples as loadOrderSamplesApi,
+  setOrderSampleFlag as setOrderSampleFlagApi,
+  createOrderSample as createOrderSampleApi,
+  markOrderSampleReceived as markOrderSampleReceivedApi,
+  deleteOrderSample as deleteOrderSampleApi,
+  updateOrderSample as updateOrderSampleApi,
+  approveOrderSample as approveOrderSampleApi,
+  rejectOrderSample as rejectOrderSampleApi,
+  createOrderSampleEvent as createOrderSampleEventApi,
   loadOrderVisits as loadOrderVisitsApi,
   createOrderVisit as createOrderVisitApi,
   linkOrderContact as linkOrderContactApi,
@@ -177,6 +186,10 @@ export function createOrderDetail({ getOrderId }) {
   const feedbackLoading = writable(false);
   const feedbacks = writable([]);
   const loadingFeedbacks = writable(false);
+
+  const samples = writable([]);
+  const loadingSamples = writable(false);
+  const sampleSaving = writable(false);
   const pendingStatusAfterFeedback = writable(null);
 
   // ── Helpers ────────────────────────────────────────────────────────────
@@ -311,13 +324,11 @@ export function createOrderDetail({ getOrderId }) {
     const cached = get(categoriesAllStore);
     if (cached && cached.length > 0 && typeof cached[0] === "object" && cached[0].label) {
       categories.set(cached);
-      loadingData.set(false);
-      return;
     }
-    loadingData.set(true);
     try {
       const data = await authApiFetch(API_ROUTES.CATEGORY + "/all");
-      const mapped = data.map((parent) => ({
+      const list = Array.isArray(data) ? data : data?.data || [];
+      const mapped = list.map((parent) => ({
         label: parent.name,
         options:
           parent.children && parent.children.length > 0
@@ -328,10 +339,6 @@ export function createOrderDetail({ getOrderId }) {
       categoriesAllStore.set(mapped);
     } catch (err) {
       errorMessage.set("Failed to load category data.");
-    } finally {
-      setTimeout(() => {
-        loadingData.set(false);
-      }, 500);
     }
   }
 
@@ -1230,6 +1237,233 @@ export function createOrderDetail({ getOrderId }) {
     showFeedbackModal.set(true);
   }
 
+  // ── Samples ────────────────────────────────────────────────────────────
+
+  async function loadSamples() {
+    const o = get(order);
+    if (!o?.id) return;
+    loadingSamples.set(true);
+    try {
+      const res = await loadOrderSamplesApi(o.id);
+      samples.set(res?.data ?? []);
+    } catch (_) {
+    } finally {
+      loadingSamples.set(false);
+    }
+  }
+
+  async function setSampleFlag(isSample) {
+    if (!assertCanMutate("update sample flag")) return false;
+    const enabling = !!isSample;
+    const r = await Swal.fire({
+      title: enabling ? "Enable sample case?" : "Disable sample case?",
+      text: enabling
+        ? "This order will be marked as a sample. You can track send/receive and approve or reject."
+        : "Sample case will be turned off. Existing sample movements are kept but the sample workflow will be disabled.",
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: enabling ? "Yes, enable" : "Yes, disable",
+      cancelButtonText: "Cancel",
+    });
+    if (!r.isConfirmed) return false;
+
+    sampleSaving.set(true);
+    try {
+      const o = get(order);
+      const res = await setOrderSampleFlagApi(o.id, enabling);
+      if (res?.data) {
+        order.update((cur) =>
+          cur
+            ? {
+                ...cur,
+                isSample: res.data.isSample,
+                sampleDecision: res.data.sampleDecision,
+                sampleDecisionAt: res.data.sampleDecisionAt,
+                sampleDecisionNote: res.data.sampleDecisionNote,
+                sampleDecisionById: res.data.sampleDecisionById,
+                sampleCode: res.data.sampleCode ?? cur.sampleCode,
+              }
+            : cur,
+        );
+      }
+      if (enabling) await loadSamples();
+      else samples.set([]);
+      Swal.fire(
+        "Updated",
+        enabling ? "Sample case enabled." : "Sample case disabled.",
+        "success",
+      );
+      return true;
+    } catch (err) {
+      errorHandle(err);
+      return false;
+    } finally {
+      sampleSaving.set(false);
+    }
+  }
+
+  async function addSampleMovement(payload) {
+    if (!assertCanMutate("add sample movement")) return false;
+    sampleSaving.set(true);
+    try {
+      const o = get(order);
+      const res = await createOrderSampleApi({ orderId: o.id, ...payload });
+      if (res?.data) samples.update((list) => [res.data, ...list]);
+      order.update((cur) =>
+        cur && !cur.isSample
+          ? { ...cur, isSample: true, sampleDecision: cur.sampleDecision || "Pending" }
+          : cur,
+      );
+      Swal.fire("Saved", "Sample movement added.", "success");
+      return true;
+    } catch (err) {
+      errorHandle(err);
+      return false;
+    } finally {
+      sampleSaving.set(false);
+    }
+  }
+
+  async function markSampleReceived(id) {
+    if (!assertCanMutate("mark sample received")) return;
+    sampleSaving.set(true);
+    try {
+      const res = await markOrderSampleReceivedApi(id);
+      if (res?.data) {
+        samples.update((list) =>
+          list.map((s) => (s.id === id ? { ...s, ...res.data } : s)),
+        );
+      }
+      Swal.fire("Updated", "Sample marked as received.", "success");
+    } catch (err) {
+      errorHandle(err);
+    } finally {
+      sampleSaving.set(false);
+    }
+  }
+
+  async function updateSampleMovement(id, payload) {
+    if (!assertCanMutate("update sample movement")) return false;
+    sampleSaving.set(true);
+    try {
+      const res = await updateOrderSampleApi(id, payload);
+      if (res?.data) {
+        samples.update((list) =>
+          list.map((s) => (s.id === id ? { ...s, ...res.data, events: s.events } : s)),
+        );
+      }
+      Swal.fire("Updated", "Sample details saved.", "success");
+      return true;
+    } catch (err) {
+      errorHandle(err);
+      return false;
+    } finally {
+      sampleSaving.set(false);
+    }
+  }
+
+  async function deleteSampleMovement(id) {
+    if (!assertCanMutate("delete sample movement")) return;
+    const r = await Swal.fire({
+      title: "Delete sample movement?",
+      text: "This will remove the sample send/receive record.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Yes, delete!",
+    });
+    if (!r.isConfirmed) return;
+    sampleSaving.set(true);
+    try {
+      await deleteOrderSampleApi(id);
+      samples.update((list) => list.filter((s) => s.id !== id));
+      Swal.fire("Deleted", "Sample movement removed.", "success");
+    } catch (err) {
+      errorHandle(err);
+    } finally {
+      sampleSaving.set(false);
+    }
+  }
+
+  async function addSampleEvent(sampleId, { note, type, status } = {}, files = []) {
+    if (!assertCanMutate("add sample event")) return false;
+    sampleSaving.set(true);
+    try {
+      const res = await createOrderSampleEventApi(sampleId, { note, type, status }, files);
+      if (res?.data) {
+        samples.update((list) =>
+          list.map((s) => {
+            if (s.id !== sampleId) return s;
+            const events = Array.isArray(s.events) ? [...s.events, res.data] : [res.data];
+            return { ...s, events };
+          }),
+        );
+      }
+      Swal.fire("Saved", "Sample event added.", "success");
+      return true;
+    } catch (err) {
+      errorHandle(err);
+      return false;
+    } finally {
+      sampleSaving.set(false);
+    }
+  }
+
+  async function approveSample(note) {
+    if (!assertCanMutate("approve sample")) return false;
+    sampleSaving.set(true);
+    try {
+      const o = get(order);
+      const res = await approveOrderSampleApi(o.id, note);
+      if (res?.data) {
+        order.update((cur) =>
+          cur
+            ? {
+                ...cur,
+                ...res.data,
+                status: res.data.status || "Qualified",
+                sampleDecision: "Approved",
+              }
+            : cur,
+        );
+      }
+      Swal.fire("Approved", "Sample approved. Status → Qualified.", "success");
+      return true;
+    } catch (err) {
+      errorHandle(err);
+      return false;
+    } finally {
+      sampleSaving.set(false);
+    }
+  }
+
+  async function rejectSample(note) {
+    if (!assertCanMutate("reject sample")) return false;
+    sampleSaving.set(true);
+    try {
+      const o = get(order);
+      const res = await rejectOrderSampleApi(o.id, note);
+      if (res?.data) {
+        order.update((cur) =>
+          cur
+            ? {
+                ...cur,
+                ...res.data,
+                status: res.data.status || "Unqualified",
+                sampleDecision: "Rejected",
+              }
+            : cur,
+        );
+      }
+      Swal.fire("Rejected", "Sample rejected. Status → Unqualified.", "success");
+      return true;
+    } catch (err) {
+      errorHandle(err);
+      return false;
+    } finally {
+      sampleSaving.set(false);
+    }
+  }
+
   // ── Accordion / status / pin ──────────────────────────────────────────
 
   function toggleAccordion(date) {
@@ -1603,6 +1837,10 @@ export function createOrderDetail({ getOrderId }) {
     feedbacks,
     loadingFeedbacks,
     pendingStatusAfterFeedback,
+    // samples
+    samples,
+    loadingSamples,
+    sampleSaving,
     // constants
     statuses: STATUSES,
     // actions
@@ -1639,6 +1877,15 @@ export function createOrderDetail({ getOrderId }) {
     submitFeedback,
     deleteFeedback,
     openFeedbackModal,
+    loadSamples,
+    setSampleFlag,
+    addSampleMovement,
+    updateSampleMovement,
+    markSampleReceived,
+    deleteSampleMovement,
+    addSampleEvent,
+    approveSample,
+    rejectSample,
     toggleAccordion,
     togglePin,
     changeOrderStatus,

@@ -8,6 +8,7 @@
   import OrderQueriesTab from "../tabs/OrderQueriesTab.svelte";
   import OrderComponentsTab from "../tabs/OrderComponentsTab.svelte";
   import OrderFeedbackTab from "../tabs/OrderFeedbackTab.svelte";
+  import OrderSampleTab from "../tabs/OrderSampleTab.svelte";
 
   export let order;
   export let currentUser;
@@ -35,6 +36,18 @@
   export let loadFeedbacks = async () => {};
   export let openFeedbackModal = () => {};
   export let deleteFeedback = async () => {};
+  export let samples = [];
+  export let loadingSamples = false;
+  export let sampleSaving = false;
+  export let loadSamples = async () => {};
+  export let setSampleFlag = async () => {};
+  export let addSampleMovement = async () => {};
+  export let updateSampleMovement = async () => {};
+  export let markSampleReceived = async () => {};
+  export let deleteSampleMovement = async () => {};
+  export let addSampleEvent = async () => {};
+  export let approveSample = async () => {};
+  export let rejectSample = async () => {};
   export let cerateChildOrder = async () => {};
   export let editChildOrder = () => {};
   export let deleteComponent = async () => {};
@@ -177,6 +190,39 @@
           </span>
         </a>
       </li>
+      <li class="nav-item" role="presentation">
+        <a
+          href="#tab_sample"
+          data-bs-toggle="tab"
+          class="nav-link border-3"
+          class:active={activeTab === "Samples"}
+          on:click|preventDefault={() => {
+            activeTab = "Samples";
+            loadSamples();
+          }}
+          aria-selected={activeTab === "Samples"}
+          role="tab"
+          tabindex="-1"
+        >
+          <span class="d-md-inline-block">
+            <i class="ti ti-package-export me-1"></i>Samples
+            {#if order?.isSample}
+              <span
+                class="badge ms-1 {order.sampleDecision === 'Approved'
+                  ? 'bg-success'
+                  : order.sampleDecision === 'Rejected'
+                    ? 'bg-danger'
+                    : 'bg-warning text-dark'}"
+                style="font-size:10px;"
+              >
+                {order.sampleDecision || "Pending"}
+              </span>
+            {:else if samples.length > 0}
+              <span class="badge bg-primary ms-1" style="font-size:10px;">{samples.length}</span>
+            {/if}
+          </span>
+        </a>
+      </li>
       {#if ["Deal Won", "Dispatched", "Completed"].includes(order?.status)}
         <li class="nav-item" role="presentation">
           <a
@@ -275,6 +321,24 @@
       canMutateOrder={canMutateOrder}
       on:openFeedbackModal={openFeedbackModal}
       on:deleteFeedback={(e) => deleteFeedback(e.detail)}
+    />
+  {/if}
+  {#if activeTab === "Samples"}
+    <OrderSampleTab
+      {order}
+      {samples}
+      {loadingSamples}
+      {sampleSaving}
+      canMutateOrder={canMutateOrder}
+      {setSampleFlag}
+      {addSampleMovement}
+      {updateSampleMovement}
+      {markSampleReceived}
+      {deleteSampleMovement}
+      {addSampleEvent}
+      {approveSample}
+      {rejectSample}
+      {openImageLightbox}
     />
   {/if}
   {#if ["Deal Won", "Dispatched", "Completed"].includes(order?.status)}
