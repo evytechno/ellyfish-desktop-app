@@ -4,6 +4,7 @@
   import DynamicDataTable from "$lib/components/DynamicDataTable.svelte";
   import { maskAssignedName } from "$lib/utils/maskUser";
   import { canMutateOrder } from "$lib/utils/orderLiveAccess";
+  import { ATTACHMENT_BASE_URL } from "$lib/constants/constants";
 
   export let listOrders = [];
   export let loadingData = false;
@@ -15,6 +16,43 @@
   export let selectedOrders = new Set();
 
   const dispatch = createEventDispatcher();
+
+  function escapeAttr(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  function resolveAttachmentHref(attachment) {
+    if (!attachment) return "";
+    const link = attachment.link && String(attachment.link).trim();
+    if (link) return link;
+
+    const fileEntry = Array.isArray(attachment.files) ? attachment.files[0] : null;
+    const raw =
+      (fileEntry?.url && String(fileEntry.url).trim()) ||
+      (attachment.file && String(attachment.file).trim()) ||
+      "";
+    if (!raw) return "";
+    if (/^https?:\/\//i.test(raw) || raw.startsWith("blob:")) return raw;
+    const base = (ATTACHMENT_BASE_URL || "").replace(/\/$/, "");
+    if (raw.startsWith("/")) return `${base}${raw}`;
+    return `${base}/${raw}`;
+  }
+
+  function resolveAttachmentLabel(attachment, href) {
+    if (!attachment) return href;
+    const fileEntry = Array.isArray(attachment.files) ? attachment.files[0] : null;
+    const name =
+      fileEntry?.originalName ||
+      attachment.fileName ||
+      attachment.title ||
+      "";
+    if (name && String(name).trim()) return String(name).trim();
+    return href;
+  }
 
   const statusesColors = {
     "New Lead": "bg-blue",
@@ -103,6 +141,24 @@
           label: "User",
           render: (val, row) =>
             `<span class="order-cell-text">${(row?.assignedUsers || []).map((user) => maskAssignedName(user, currentUser)).join(", ")}</span>`,
+        }]
+      : []),
+    ...(currentUser?.role === "master"
+      ? [{
+          key: "attachment",
+          label: "Attachment",
+          render: (val, row) => {
+            const attachments = Array.isArray(row?.orderAttachments) ? [...row.orderAttachments] : [];
+            attachments.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+            const last = attachments.find((a) => resolveAttachmentHref(a)) || null;
+            const href = resolveAttachmentHref(last);
+            if (!href) return `<span class="text-muted">—</span>`;
+            const label = resolveAttachmentLabel(last, href);
+            const short = label.length > 36 ? `${label.slice(0, 33)}…` : label;
+            const isFile = !(last?.link && String(last.link).trim());
+            const icon = isFile ? "ti-paperclip" : "ti-link";
+            return `<a href="${escapeAttr(href)}" target="_blank" rel="noopener noreferrer" class="order-attach-link" title="${escapeAttr(label)}"><i class="ti ${icon}"></i> ${escapeAttr(short)}</a>`;
+          },
         }]
       : []),
     {
@@ -199,6 +255,28 @@
   }
   .order-list-table :global(.order-title-sub) {
     color: #868e96;
+  }
+
+  .order-list-table :global(.order-attach-link) {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #364fc7;
+    text-decoration: none;
+    font-size: 12px !important;
+    font-weight: 400 !important;
+  }
+  .order-list-table :global(.order-attach-link:hover) {
+    text-decoration: underline;
+    color: #3b5bdb;
+  }
+  .order-list-table :global(.order-attach-link .ti) {
+    flex-shrink: 0;
+    font-size: 12px;
   }
 
   /* Labels / badges — smaller, normal weight */
