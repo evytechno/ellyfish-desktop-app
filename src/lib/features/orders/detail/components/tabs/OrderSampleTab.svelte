@@ -17,15 +17,32 @@
   export let openImageLightbox = () => {};
 
   const UNIT_OPTIONS = ["Pcs", "Set", "Kg", "Nos", "Box"];
+  const MOVEMENT_STATUS_OPTIONS = [
+    "Prepared",
+    "Sent",
+    "In Transit",
+    "Received",
+    "Returned",
+    "Lost",
+    "Damaged",
+    "Cancelled",
+  ];
+  const MARK_RECEIVABLE_STATUSES = ["Prepared", "Sent", "In Transit"];
 
   let showModal = false;
   let showEditModal = false;
   let editSampleId = null;
   let editDirection = "Outbound";
+  let editStatus = "Sent";
   let editTracking = "";
   let editNotes = "";
   let editSentDate = "";
   let editReceivedDate = "";
+  let editRequestedDate = "";
+  let editExpectedDeliveryDate = "";
+  let editExpectedReturnDate = "";
+  let editReturnedDate = "";
+  let editFollowUpDate = "";
   let showDecisionModal = false;
   let showEventModal = false;
   let eventSampleId = null;
@@ -34,9 +51,14 @@
   let eventError = "";
   let decisionAction = "approve"; // approve | reject
   let direction = "Outbound";
+  let status = "Sent";
   let tracking = "";
   let notes = "";
   let sentDate = new Date().toISOString().slice(0, 10);
+  let requestedDate = "";
+  let expectedDeliveryDate = "";
+  let expectedReturnDate = "";
+  let followUpDate = "";
   let decisionNote = "";
   let decisionError = "";
   let items = [{ name: "", quantity: "1", unit: "Pcs", note: "" }];
@@ -67,9 +89,14 @@
 
   function openModal() {
     direction = "Outbound";
+    status = "Sent";
     tracking = "";
     notes = "";
     sentDate = new Date().toISOString().slice(0, 10);
+    requestedDate = "";
+    expectedDeliveryDate = "";
+    expectedReturnDate = "";
+    followUpDate = "";
     items = [blankItem()];
     formError = "";
     showModal = true;
@@ -83,10 +110,16 @@
   function openEditModal(s) {
     editSampleId = s.id;
     editDirection = s.direction || "Outbound";
+    editStatus = s.status || "Sent";
     editTracking = s.tracking || "";
     editNotes = s.notes || "";
     editSentDate = toDateInput(s.sentDate);
     editReceivedDate = toDateInput(s.receivedDate);
+    editRequestedDate = toDateInput(s.requestedDate);
+    editExpectedDeliveryDate = toDateInput(s.expectedDeliveryDate);
+    editExpectedReturnDate = toDateInput(s.expectedReturnDate);
+    editReturnedDate = toDateInput(s.returnedDate);
+    editFollowUpDate = toDateInput(s.followUpDate);
     showEditModal = true;
   }
 
@@ -98,14 +131,40 @@
   async function submitEdit() {
     const ok = await updateSampleMovement(editSampleId, {
       direction: editDirection,
+      status: editStatus,
       tracking: editTracking.trim() || null,
       notes: editNotes.trim() || null,
       sentDate: editSentDate ? new Date(editSentDate).toISOString() : undefined,
       receivedDate: editReceivedDate
         ? new Date(editReceivedDate).toISOString()
         : undefined,
+      requestedDate: editRequestedDate
+        ? new Date(editRequestedDate).toISOString()
+        : null,
+      expectedDeliveryDate: editExpectedDeliveryDate
+        ? new Date(editExpectedDeliveryDate).toISOString()
+        : null,
+      expectedReturnDate: editExpectedReturnDate
+        ? new Date(editExpectedReturnDate).toISOString()
+        : null,
+      returnedDate: editReturnedDate
+        ? new Date(editReturnedDate).toISOString()
+        : null,
+      followUpDate: editFollowUpDate
+        ? new Date(editFollowUpDate).toISOString()
+        : null,
     });
     if (ok !== false) closeEditModal();
+  }
+
+  function movementBadgeClass(st) {
+    if (st === "Received") return "bg-success";
+    if (st === "Cancelled") return "bg-dark";
+    if (st === "Returned") return "bg-info text-dark";
+    if (st === "Lost" || st === "Damaged") return "bg-danger";
+    if (st === "In Transit") return "bg-primary";
+    if (st === "Prepared") return "bg-secondary";
+    return "bg-warning text-dark";
   }
 
   function openDecisionModal(action) {
@@ -245,7 +304,19 @@
       tracking: tracking.trim() || null,
       notes: notes.trim() || null,
       sentDate: sentDate ? new Date(sentDate).toISOString() : undefined,
-      status: "Sent",
+      requestedDate: requestedDate
+        ? new Date(requestedDate).toISOString()
+        : undefined,
+      expectedDeliveryDate: expectedDeliveryDate
+        ? new Date(expectedDeliveryDate).toISOString()
+        : undefined,
+      expectedReturnDate: expectedReturnDate
+        ? new Date(expectedReturnDate).toISOString()
+        : undefined,
+      followUpDate: followUpDate
+        ? new Date(followUpDate).toISOString()
+        : undefined,
+      status,
     });
     if (ok !== false) closeModal();
   }
@@ -394,11 +465,7 @@
                   </td>
                   <td>
                     <span
-                      class="badge {s.status === 'Received'
-                        ? 'bg-success'
-                        : s.status === 'Cancelled'
-                          ? 'bg-dark'
-                          : 'bg-warning text-dark'}"
+                      class="badge {movementBadgeClass(s.status)}"
                       style="font-size:10px;"
                     >
                       {s.status}
@@ -447,7 +514,7 @@
                         <i class="ti ti-photo-plus" style="font-size:13px;"></i>
                       </button>
                     {/if}
-                    {#if canMutateOrder && s.status === "Sent" && !decided}
+                    {#if canMutateOrder && MARK_RECEIVABLE_STATUSES.includes(s.status) && !decided}
                       <button
                         class="btn btn-sm btn-outline-success p-0 px-1 me-1"
                         title="Mark received"
@@ -592,18 +659,26 @@
 
         <div class="modal-body">
           <div class="row g-3 mb-3">
-            <div class="col-md-4">
+            <div class="col-md-3">
               <label class="sample-label" for="sampleDirection">Direction</label>
               <select id="sampleDirection" class="form-select" bind:value={direction}>
                 <option value="Outbound">Outbound (to client)</option>
                 <option value="Inbound">Inbound (from client)</option>
               </select>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
+              <label class="sample-label" for="sampleStatus">Status</label>
+              <select id="sampleStatus" class="form-select" bind:value={status}>
+                {#each MOVEMENT_STATUS_OPTIONS as st}
+                  <option value={st}>{st}</option>
+                {/each}
+              </select>
+            </div>
+            <div class="col-md-3">
               <label class="sample-label" for="sampleSentDate">Sent date</label>
               <input id="sampleSentDate" type="date" class="form-control" bind:value={sentDate} />
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
               <label class="sample-label" for="sampleTracking">Tracking</label>
               <input
                 id="sampleTracking"
@@ -612,6 +687,22 @@
                 bind:value={tracking}
                 placeholder="Courier / AWB"
               />
+            </div>
+            <div class="col-md-3">
+              <label class="sample-label" for="sampleRequestedDate">Requested</label>
+              <input id="sampleRequestedDate" type="date" class="form-control" bind:value={requestedDate} />
+            </div>
+            <div class="col-md-3">
+              <label class="sample-label" for="sampleEtaDate">Expected delivery</label>
+              <input id="sampleEtaDate" type="date" class="form-control" bind:value={expectedDeliveryDate} />
+            </div>
+            <div class="col-md-3">
+              <label class="sample-label" for="sampleExpectedReturnDate">Expected return</label>
+              <input id="sampleExpectedReturnDate" type="date" class="form-control" bind:value={expectedReturnDate} />
+            </div>
+            <div class="col-md-3">
+              <label class="sample-label" for="sampleFollowUpDate">Follow-up</label>
+              <input id="sampleFollowUpDate" type="date" class="form-control" bind:value={followUpDate} />
             </div>
           </div>
 
@@ -813,12 +904,40 @@
               </select>
             </div>
             <div class="col-md-6">
+              <label class="sample-label" for="editStatus">Status</label>
+              <select id="editStatus" class="form-select" bind:value={editStatus}>
+                {#each MOVEMENT_STATUS_OPTIONS as st}
+                  <option value={st}>{st}</option>
+                {/each}
+              </select>
+            </div>
+            <div class="col-md-6">
               <label class="sample-label" for="editSentDate">Sent date</label>
               <input id="editSentDate" type="date" class="form-control" bind:value={editSentDate} />
             </div>
             <div class="col-md-6">
               <label class="sample-label" for="editReceivedDate">Received date</label>
               <input id="editReceivedDate" type="date" class="form-control" bind:value={editReceivedDate} />
+            </div>
+            <div class="col-md-6">
+              <label class="sample-label" for="editRequestedDate">Requested date</label>
+              <input id="editRequestedDate" type="date" class="form-control" bind:value={editRequestedDate} />
+            </div>
+            <div class="col-md-6">
+              <label class="sample-label" for="editExpectedDeliveryDate">Expected delivery</label>
+              <input id="editExpectedDeliveryDate" type="date" class="form-control" bind:value={editExpectedDeliveryDate} />
+            </div>
+            <div class="col-md-6">
+              <label class="sample-label" for="editExpectedReturnDate">Expected return</label>
+              <input id="editExpectedReturnDate" type="date" class="form-control" bind:value={editExpectedReturnDate} />
+            </div>
+            <div class="col-md-6">
+              <label class="sample-label" for="editReturnedDate">Returned date</label>
+              <input id="editReturnedDate" type="date" class="form-control" bind:value={editReturnedDate} />
+            </div>
+            <div class="col-md-6">
+              <label class="sample-label" for="editFollowUpDate">Follow-up date</label>
+              <input id="editFollowUpDate" type="date" class="form-control" bind:value={editFollowUpDate} />
             </div>
             <div class="col-md-6">
               <label class="sample-label" for="editTracking">Tracking</label>
