@@ -26,6 +26,7 @@
 
   const UNIT_OPTIONS = ["Pcs", "Set", "Kg", "Nos", "Box"];
   const MOVEMENT_STATUS_OPTIONS = [
+    "Pending",
     "Prepared",
     "Sent",
     "In Transit",
@@ -35,7 +36,12 @@
     "Damaged",
     "Cancelled",
   ];
-  const MARK_RECEIVABLE_STATUSES = ["Prepared", "Sent", "In Transit"];
+  const MARK_RECEIVABLE_STATUSES = [
+    "Pending",
+    "Prepared",
+    "Sent",
+    "In Transit",
+  ];
 
   const currentUser = checkAuth();
   const defaultSampleCompanyId =
@@ -67,6 +73,8 @@
     companies.find((c) => Number(c.id) === Number(order?.sampleCompanyId))
       ?.name ||
     null;
+  $: hasSampleCompany =
+    order?.sampleCompanyId != null || !!sampleCompany;
 
   function openCompanyModal() {
     editCompanyId =
@@ -97,7 +105,7 @@
   let showEditModal = false;
   let editSampleId = null;
   let editDirection = "Outbound";
-  let editStatus = "Sent";
+  let editStatus = "Pending";
   let editTracking = "";
   let editNotes = "";
   let editSentDate = "";
@@ -115,7 +123,7 @@
   let eventError = "";
   let decisionAction = "approve"; // approve | reject
   let direction = "Outbound";
-  let status = "Sent";
+  let status = "Pending";
   let tracking = "";
   let notes = "";
   let sentDate = new Date().toISOString().slice(0, 10);
@@ -153,7 +161,7 @@
 
   function openModal() {
     direction = "Outbound";
-    status = "Sent";
+    status = "Pending";
     tracking = "";
     notes = "";
     sentDate = new Date().toISOString().slice(0, 10);
@@ -174,7 +182,7 @@
   function openEditModal(s) {
     editSampleId = s.id;
     editDirection = s.direction || "Outbound";
-    editStatus = s.status || "Sent";
+    editStatus = s.status || "Pending";
     editTracking = s.tracking || "";
     editNotes = s.notes || "";
     editSentDate = toDateInput(s.sentDate);
@@ -228,10 +236,15 @@
     if (st === "Lost" || st === "Damaged") return "bg-danger";
     if (st === "In Transit") return "bg-primary";
     if (st === "Prepared") return "bg-secondary";
+    if (st === "Pending") return "bg-light text-dark border";
     return "bg-warning text-dark";
   }
 
   function openDecisionModal(action) {
+    if (!hasSampleCompany) {
+      openCompanyModal();
+      return;
+    }
     if (!samples?.length) {
       decisionError = "";
       formError = "Add at least one sample before approve or reject.";
@@ -420,8 +433,22 @@
           >
             <i class="ti ti-building me-1"></i>{sampleCompany}
           </span>
+        {:else if canMutateOrder && !decided}
+          <button
+            type="button"
+            class="btn btn-sm btn-outline-warning py-0 px-2"
+            style="font-size:11px;"
+            disabled={sampleSaving}
+            on:click={openCompanyModal}
+          >
+            <i class="ti ti-building me-1"></i>Select company
+          </button>
+        {:else}
+          <span class="badge bg-warning-subtle text-warning border" style="font-size:10px;">
+            Select company
+          </span>
         {/if}
-        {#if canMutateOrder && !decided}
+        {#if canMutateOrder && !decided && hasSampleCompany}
           <button
             type="button"
             class="btn btn-link btn-sm p-0 text-decoration-none"
@@ -488,23 +515,34 @@
       {:else if canMutateOrder}
         <div class="d-flex flex-wrap gap-2 align-items-center justify-content-between mb-3 p-2 border rounded bg-light">
           <div class="text-muted" style="font-size:12px;">
-            {#if !samples?.length}
+            {#if !hasSampleCompany}
+              Select company before you can add a sample or approve / reject.
+            {:else if !samples?.length}
               Add at least one sample before you can approve or reject.
             {:else}
               Final sample decision — opens a form for a required review note.
             {/if}
           </div>
           <div class="d-flex flex-wrap gap-2">
+            {#if !hasSampleCompany}
+              <button
+                class="btn btn-warning btn-sm"
+                disabled={sampleSaving}
+                on:click={openCompanyModal}
+              >
+                <i class="ti ti-building me-1"></i>Select company
+              </button>
+            {/if}
             <button
               class="btn btn-success btn-sm"
-              disabled={sampleSaving || !samples?.length}
+              disabled={sampleSaving || !hasSampleCompany || !samples?.length}
               on:click={() => openDecisionModal("approve")}
             >
               <i class="ti ti-check me-1"></i>Approve → Qualified
             </button>
             <button
               class="btn btn-outline-danger btn-sm"
-              disabled={sampleSaving || !samples?.length}
+              disabled={sampleSaving || !hasSampleCompany || !samples?.length}
               on:click={() => openDecisionModal("reject")}
             >
               <i class="ti ti-x me-1"></i>Reject → Unqualified
@@ -518,13 +556,30 @@
           {#if sampleCompany}
             Company: <strong class="text-dark">{sampleCompany}</strong>
             <span class="mx-1">·</span>
+          {:else}
+            Company:
+            <button
+              type="button"
+              class="btn btn-link btn-sm p-0 align-baseline text-warning text-decoration-none"
+              disabled={!canMutateOrder || decided || sampleSaving}
+              on:click={openCompanyModal}
+            >
+              <strong>Select company</strong>
+            </button>
+            <span class="mx-1">·</span>
           {/if}
           Outbound = company → client · Inbound = client → company
         </div>
         {#if canMutateOrder && !decided}
           <button
             class="btn btn-primary btn-sm"
-            on:click={openModal}
+            on:click={() => {
+              if (!hasSampleCompany) {
+                openCompanyModal();
+                return;
+              }
+              openModal();
+            }}
             disabled={sampleSaving}
           >
             <i class="ti ti-plus me-1"></i>Add sample
@@ -539,15 +594,28 @@
       {:else if samples.length === 0}
         <div class="text-center py-4 text-muted">
           <i class="ti ti-package" style="font-size:2rem;"></i>
-          <p class="mt-2 mb-2">Add at least one sample <span class="text-danger">*</span> (required).</p>
-          {#if canMutateOrder && !decided}
-            <button
-              class="btn btn-primary btn-sm"
-              on:click={openModal}
-              disabled={sampleSaving}
-            >
-              <i class="ti ti-plus me-1"></i>Add sample
-            </button>
+          {#if !hasSampleCompany}
+            <p class="mt-2 mb-2">Select company <span class="text-danger">*</span> first.</p>
+            {#if canMutateOrder && !decided}
+              <button
+                class="btn btn-warning btn-sm"
+                on:click={openCompanyModal}
+                disabled={sampleSaving}
+              >
+                <i class="ti ti-building me-1"></i>Select company
+              </button>
+            {/if}
+          {:else}
+            <p class="mt-2 mb-2">Add at least one sample <span class="text-danger">*</span> (required).</p>
+            {#if canMutateOrder && !decided}
+              <button
+                class="btn btn-primary btn-sm"
+                on:click={openModal}
+                disabled={sampleSaving}
+              >
+                <i class="ti ti-plus me-1"></i>Add sample
+              </button>
+            {/if}
           {/if}
         </div>
       {:else}

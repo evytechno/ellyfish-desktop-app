@@ -401,7 +401,7 @@
             data: JSON.stringify({
               orderId: createdOrderId,
               direction: sampleDirection,
-              status: "Sent",
+              status: "Pending",
               sentDate: sampleSentDate
                 ? new Date(sampleSentDate).toISOString()
                 : undefined,
