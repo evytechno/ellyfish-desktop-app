@@ -34,6 +34,7 @@ import {
   deleteOrderFeedback as deleteOrderFeedbackApi,
   loadOrderSamples as loadOrderSamplesApi,
   setOrderSampleFlag as setOrderSampleFlagApi,
+  setOrderSampleCompany as setOrderSampleCompanyApi,
   createOrderSample as createOrderSampleApi,
   markOrderSampleReceived as markOrderSampleReceivedApi,
   deleteOrderSample as deleteOrderSampleApi,
@@ -1252,7 +1253,7 @@ export function createOrderDetail({ getOrderId }) {
     }
   }
 
-  async function setSampleFlag(isSample) {
+  async function setSampleFlag(isSample, sampleCompanyId) {
     if (!assertCanMutate("update sample flag")) return false;
     const enabling = !!isSample;
     const r = await Swal.fire({
@@ -1270,7 +1271,11 @@ export function createOrderDetail({ getOrderId }) {
     sampleSaving.set(true);
     try {
       const o = get(order);
-      const res = await setOrderSampleFlagApi(o.id, enabling);
+      const res = await setOrderSampleFlagApi(
+        o.id,
+        enabling,
+        enabling ? sampleCompanyId : undefined,
+      );
       if (res?.data) {
         order.update((cur) =>
           cur
@@ -1282,6 +1287,8 @@ export function createOrderDetail({ getOrderId }) {
                 sampleDecisionNote: res.data.sampleDecisionNote,
                 sampleDecisionById: res.data.sampleDecisionById,
                 sampleCode: res.data.sampleCode ?? cur.sampleCode,
+                sampleCompanyId: res.data.sampleCompanyId ?? null,
+                sampleCompany: res.data.sampleCompany ?? null,
               }
             : cur,
         );
@@ -1291,6 +1298,45 @@ export function createOrderDetail({ getOrderId }) {
       Swal.fire(
         "Updated",
         enabling ? "Sample case enabled." : "Sample case disabled.",
+        "success",
+      );
+      return true;
+    } catch (err) {
+      errorHandle(err);
+      return false;
+    } finally {
+      sampleSaving.set(false);
+    }
+  }
+
+  async function setSampleCompany(sampleCompanyId) {
+    if (!assertCanMutate("update sample company")) return false;
+    if (sampleCompanyId == null) {
+      Swal.fire("Required", "Select a sample company.", "warning");
+      return false;
+    }
+    sampleSaving.set(true);
+    try {
+      const o = get(order);
+      const res = await setOrderSampleCompanyApi(o.id, sampleCompanyId);
+      if (res?.data) {
+        order.update((cur) =>
+          cur
+            ? {
+                ...cur,
+                sampleCompanyId: res.data.sampleCompanyId ?? null,
+                sampleCompany: res.data.sampleCompany ?? null,
+                sampleCode: res.data.sampleCode ?? cur.sampleCode,
+              }
+            : cur,
+        );
+      }
+      const newCode = res?.data?.sampleCode;
+      Swal.fire(
+        "Updated",
+        newCode
+          ? `Sample company updated. Code is now ${newCode}.`
+          : "Sample company updated.",
         "success",
       );
       return true;
@@ -1886,6 +1932,7 @@ export function createOrderDetail({ getOrderId }) {
     openFeedbackModal,
     loadSamples,
     setSampleFlag,
+    setSampleCompany,
     addSampleMovement,
     updateSampleMovement,
     markSampleReceived,

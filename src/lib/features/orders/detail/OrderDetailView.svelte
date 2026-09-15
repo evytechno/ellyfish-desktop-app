@@ -111,6 +111,7 @@
     openFeedbackModal,
     loadSamples,
     setSampleFlag,
+    setSampleCompany,
     addSampleMovement,
     updateSampleMovement,
     markSampleReceived,
@@ -241,6 +242,7 @@
               sampleSaving={$sampleSaving}
               {loadSamples}
               {setSampleFlag}
+              {setSampleCompany}
               {addSampleMovement}
               {updateSampleMovement}
               {markSampleReceived}

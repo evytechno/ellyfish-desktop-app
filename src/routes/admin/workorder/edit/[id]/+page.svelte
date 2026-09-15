@@ -34,6 +34,7 @@
   let poNumber = "";
   let items = [];
   let remarks = "";
+  let status = "Pending";
   let dispatchAddress = "";
   let installationDate = null;
   let orderByName = "";
@@ -128,7 +129,7 @@
     const newWorkOrder = {
       title, items, remarks, poNumber, dispatchAddress, orderByName,
       installationEngineer, dispatchPincode, packingType, packingCharges,
-      inCoterms, inCotermsBy, transporterName, paymentMethod,
+      inCoterms, inCotermsBy, transporterName, paymentMethod, status,
     };
     if (isMaster && workOrderNo) newWorkOrder.workOrderNo = workOrderNo;
     if (workOrderDate) newWorkOrder.workOrderDate = workOrderDate;
@@ -218,6 +219,7 @@
       }
       if (data?.workOrderDate) workOrderDate = formatDateForInput(data.workOrderDate);
       if (data?.installationDate) installationDate = formatDateForInput(data.installationDate);
+      status = data?.status === "Completed" ? "Completed" : "Pending";
       dispatchAddress = data?.dispatchAddress;
       orderByName = data?.orderByName ?? "";
       installationEngineer = data?.installationEngineer;
@@ -462,6 +464,13 @@
               <div>
                 <label class="form-label">Work Order Date <span class="text-muted small">(Date of this Work Order)</span></label>
                 <input type="date" class="form-control" bind:value={workOrderDate} />
+              </div>
+              <div>
+                <label class="form-label fw-semibold">Status <span class="text-muted small">(Pending / Completed for guest sync)</span></label>
+                <select class="form-select" bind:value={status}>
+                  <option value="Pending">Pending</option>
+                  <option value="Completed">Completed</option>
+                </select>
               </div>
               <div>
                 <label class="form-label">Purchase Order Number (PO No.) <span class="text-muted small">(Customer's PO Reference)</span></label>

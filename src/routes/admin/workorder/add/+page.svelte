@@ -37,6 +37,7 @@
   let poNumber = "";
   let items = [];
   let remarks = "";
+  let status = "Pending";
   let dispatchAddress = "";
   let installationDate = null;
   let orderByName = "";
@@ -116,7 +117,7 @@
     const newWorkOrder = {
       title, items, remarks, poNumber, dispatchAddress, orderByName,
       installationEngineer, dispatchPincode, packingType, packingCharges,
-      inCoterms, inCotermsBy, transporterName, paymentMethod,
+      inCoterms, inCotermsBy, transporterName, paymentMethod, status,
     };
     if (workOrderDate) newWorkOrder.workOrderDate = workOrderDate;
     if (installationDate) newWorkOrder.installationDate = installationDate;
@@ -380,6 +381,13 @@
               <div>
                 <label class="form-label">Work Order Date <span class="text-muted small">(Date of this Work Order)</span></label>
                 <input type="date" class="form-control" bind:value={workOrderDate} />
+              </div>
+              <div>
+                <label class="form-label fw-semibold">Status <span class="text-muted small">(Pending / Completed for guest sync)</span></label>
+                <select class="form-select" bind:value={status}>
+                  <option value="Pending">Pending</option>
+                  <option value="Completed">Completed</option>
+                </select>
               </div>
               <div>
                 <label class="form-label">Purchase Order Number (PO No.) <span class="text-muted small">(Customer's PO Ref)</span></label>

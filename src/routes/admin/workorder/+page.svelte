@@ -356,6 +356,15 @@
       },
     },
     {
+      key: "status",
+      label: "Status",
+      render: (val, row) => {
+        const st = row?.status === "Completed" ? "Completed" : "Pending";
+        const cls = st === "Completed" ? "bg-success" : "bg-warning text-dark";
+        return `<span class="badge ${cls}" style="font-size:10px;">${st}</span>`;
+      },
+    },
+    {
       key: "createdAt",
       label: "Created At",
       render: (val, row) => {

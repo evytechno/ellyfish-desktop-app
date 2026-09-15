@@ -1,5 +1,12 @@
 <script>
+  import { onMount } from "svelte";
+  import { get } from "svelte/store";
   import { API_BASE_URL } from "$lib/constants/constants";
+  import { API_ROUTES } from "$lib/constants/apiRoutes";
+  import { authApiFetch } from "$lib/api/client";
+  import { companiesAllStore } from "$lib/stores/dataStores";
+  import { checkAuth } from "$lib/utils/auth";
+  import TypeableSelect from "$lib/components/TypeableSelect.svelte";
 
   export let order;
   export let samples = [];
@@ -7,6 +14,7 @@
   export let canMutateOrder = true;
   export let sampleSaving = false;
   export let setSampleFlag = async () => {};
+  export let setSampleCompany = async () => {};
   export let addSampleMovement = async () => {};
   export let updateSampleMovement = async () => {};
   export let markSampleReceived = async () => {};
@@ -28,6 +36,62 @@
     "Cancelled",
   ];
   const MARK_RECEIVABLE_STATUSES = ["Prepared", "Sent", "In Transit"];
+
+  const currentUser = checkAuth();
+  const defaultSampleCompanyId =
+    currentUser?.companyId != null ? Number(currentUser.companyId) : null;
+
+  let companies = [];
+  let showCompanyModal = false;
+  let editCompanyId = null;
+  let companyModalError = "";
+
+  onMount(async () => {
+    const cached = get(companiesAllStore);
+    if (cached?.length) {
+      companies = cached;
+      return;
+    }
+    try {
+      const data = await authApiFetch(API_ROUTES.COMPANY + "/all");
+      companies = Array.isArray(data) ? data : data?.data || [];
+      companiesAllStore.set(companies);
+    } catch (_) {
+      companies = [];
+    }
+  });
+
+  /** Sample company name (from order when sample is on). */
+  $: sampleCompany =
+    order?.sampleCompany?.name ||
+    companies.find((c) => Number(c.id) === Number(order?.sampleCompanyId))
+      ?.name ||
+    null;
+
+  function openCompanyModal() {
+    editCompanyId =
+      order?.sampleCompanyId != null
+        ? Number(order.sampleCompanyId)
+        : defaultSampleCompanyId;
+    companyModalError = "";
+    showCompanyModal = true;
+  }
+
+  function closeCompanyModal() {
+    showCompanyModal = false;
+    editCompanyId = null;
+    companyModalError = "";
+  }
+
+  async function saveSampleCompany() {
+    if (editCompanyId == null) {
+      companyModalError = "Select a company.";
+      return;
+    }
+    companyModalError = "";
+    const ok = await setSampleCompany(editCompanyId);
+    if (ok !== false) closeCompanyModal();
+  }
 
   let showModal = false;
   let showEditModal = false;
@@ -168,6 +232,12 @@
   }
 
   function openDecisionModal(action) {
+    if (!samples?.length) {
+      decisionError = "";
+      formError = "Add at least one sample before approve or reject.";
+      openModal();
+      return;
+    }
     decisionAction = action;
     decisionNote = "";
     decisionError = "";
@@ -342,6 +412,26 @@
             {order.sampleCode}
           </span>
         {/if}
+        {#if sampleCompany}
+          <span
+            class="badge bg-primary-subtle text-primary border border-primary-subtle"
+            style="font-size:10px;"
+            title="Sample company"
+          >
+            <i class="ti ti-building me-1"></i>{sampleCompany}
+          </span>
+        {/if}
+        {#if canMutateOrder && !decided}
+          <button
+            type="button"
+            class="btn btn-link btn-sm p-0 text-decoration-none"
+            title="Change sample company"
+            disabled={sampleSaving}
+            on:click={openCompanyModal}
+          >
+            <i class="ti ti-pencil" style="font-size:14px;"></i>
+          </button>
+        {/if}
       {/if}
     </div>
     {#if canMutateOrder}
@@ -354,8 +444,15 @@
           disabled={sampleSaving || order?.sampleDecision === "Approved"}
           on:change={async (e) => {
             const next = e.currentTarget.checked;
-            const ok = await setSampleFlag(next);
-            if (ok === false) e.currentTarget.checked = !!order?.isSample;
+            const ok = await setSampleFlag(
+              next,
+              next ? defaultSampleCompanyId : undefined,
+            );
+            if (ok === false) {
+              e.currentTarget.checked = !!order?.isSample;
+              return;
+            }
+            if (next) openModal();
           }}
         />
         <label class="form-check-label" for="isSampleToggle" style="font-size:13px;">
@@ -391,19 +488,23 @@
       {:else if canMutateOrder}
         <div class="d-flex flex-wrap gap-2 align-items-center justify-content-between mb-3 p-2 border rounded bg-light">
           <div class="text-muted" style="font-size:12px;">
-            Final sample decision — opens a form for a required review note.
+            {#if !samples?.length}
+              Add at least one sample before you can approve or reject.
+            {:else}
+              Final sample decision — opens a form for a required review note.
+            {/if}
           </div>
           <div class="d-flex flex-wrap gap-2">
             <button
               class="btn btn-success btn-sm"
-              disabled={sampleSaving}
+              disabled={sampleSaving || !samples?.length}
               on:click={() => openDecisionModal("approve")}
             >
               <i class="ti ti-check me-1"></i>Approve → Qualified
             </button>
             <button
               class="btn btn-outline-danger btn-sm"
-              disabled={sampleSaving}
+              disabled={sampleSaving || !samples?.length}
               on:click={() => openDecisionModal("reject")}
             >
               <i class="ti ti-x me-1"></i>Reject → Unqualified
@@ -412,8 +513,12 @@
         </div>
       {/if}
 
-      <div class="d-flex align-items-center justify-content-between mb-2">
+      <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
         <div class="text-muted" style="font-size:12px;">
+          {#if sampleCompany}
+            Company: <strong class="text-dark">{sampleCompany}</strong>
+            <span class="mx-1">·</span>
+          {/if}
           Outbound = company → client · Inbound = client → company
         </div>
         {#if canMutateOrder && !decided}
@@ -434,7 +539,16 @@
       {:else if samples.length === 0}
         <div class="text-center py-4 text-muted">
           <i class="ti ti-package" style="font-size:2rem;"></i>
-          <p class="mt-2 mb-0">No sample movements yet.</p>
+          <p class="mt-2 mb-2">Add at least one sample <span class="text-danger">*</span> (required).</p>
+          {#if canMutateOrder && !decided}
+            <button
+              class="btn btn-primary btn-sm"
+              on:click={openModal}
+              disabled={sampleSaving}
+            >
+              <i class="ti ti-plus me-1"></i>Add sample
+            </button>
+          {/if}
         </div>
       {:else}
         <div class="table-responsive">
@@ -640,6 +754,78 @@
   </div>
 </div>
 
+{#if showCompanyModal}
+  <div
+    id="sampleCompanyModal"
+    class="modal fade show d-block sample-company-modal"
+    tabindex="-1"
+    role="dialog"
+    style="background:rgba(0,0,0,0.45);z-index:1055;"
+  >
+    <div class="modal-dialog modal-dialog-centered" role="document">
+      <div class="modal-content sample-company-modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title d-flex align-items-center gap-2 mb-0">
+            <i class="ti ti-building text-primary"></i>
+            <span>Change sample company</span>
+          </h5>
+          <button
+            type="button"
+            class="btn-close"
+            on:click={closeCompanyModal}
+            aria-label="Close"
+          ></button>
+        </div>
+        <div class="modal-body">
+          {#if order?.sampleCode}
+            <div class="text-muted mb-2" style="font-size:12px;">
+              Current code: <strong class="text-dark">{order.sampleCode}</strong>
+              <span class="text-muted"> — will update to match the new company</span>
+            </div>
+          {/if}
+          <label class="form-label" for="editSampleCompany">Company</label>
+          <TypeableSelect
+            id="editSampleCompany"
+            objectMode={true}
+            options={companies.map((c) => ({ value: c.id, label: c.name }))}
+            value={editCompanyId}
+            placeholder="Select company..."
+            dropdownParent="#sampleCompanyModal"
+            on:change={(e) => {
+              editCompanyId = e.detail;
+              companyModalError = "";
+            }}
+          />
+          {#if companyModalError}
+            <div class="text-danger mt-2" style="font-size:12px;">{companyModalError}</div>
+          {/if}
+        </div>
+        <div class="modal-footer">
+          <button
+            type="button"
+            class="btn btn-outline-secondary"
+            disabled={sampleSaving}
+            on:click={closeCompanyModal}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary"
+            disabled={sampleSaving || editCompanyId == null}
+            on:click={saveSampleCompany}
+          >
+            {#if sampleSaving}
+              <span class="spinner-border spinner-border-sm me-1"></span>
+            {/if}
+            Save company
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
 {#if showModal}
   <div
     class="modal fade show d-block sample-add-modal"
@@ -652,7 +838,7 @@
         <div class="modal-header">
           <h5 class="modal-title d-flex align-items-center gap-2 mb-0">
             <i class="ti ti-package text-danger"></i>
-            <span>Add sample</span>
+            <span>Add sample{#if !samples?.length} <span class="text-danger">*</span>{/if}</span>
           </h5>
           <button type="button" class="btn-close" on:click={closeModal} aria-label="Close"></button>
         </div>
@@ -1058,6 +1244,20 @@
 {/if}
 
 <style>
+  .sample-company-modal :global(.modal-dialog),
+  .sample-company-modal-content,
+  .sample-company-modal :global(.modal-body) {
+    overflow: visible;
+  }
+
+  .sample-company-modal :global(.select2-container) {
+    z-index: 1060;
+  }
+
+  .sample-company-modal :global(.select2-dropdown) {
+    z-index: 1065;
+  }
+
   .sample-add-content {
     border: 0;
     border-radius: 12px;

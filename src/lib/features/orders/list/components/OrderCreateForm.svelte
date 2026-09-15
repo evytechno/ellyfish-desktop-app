@@ -6,6 +6,9 @@
   import { API_ROUTES } from "$lib/constants/apiRoutes";
   import Swal from "sweetalert2";
   import TypeableSelect from "$lib/components/TypeableSelect.svelte";
+  import { checkAuth } from "$lib/utils/auth";
+  import { get } from "svelte/store";
+  import { companiesAllStore } from "$lib/stores/dataStores";
 
   export let categories = [];
   export let prefillClient = null;
@@ -26,9 +29,30 @@
   let company = "";
   let gstNumber = "";
   let isSample = false;
-  let addFirstSampleNow = false;
   let showMoreOrderFields = false;
   let showMoreContactFields = false;
+
+  /** Sample company (for sample code) — selectable; defaults to creator's company. */
+  const currentUser = checkAuth();
+  let companies = [];
+  let sampleCompanyId =
+    currentUser?.companyId != null ? Number(currentUser.companyId) : null;
+
+  async function loadCompanies() {
+    const cached = get(companiesAllStore);
+    if (cached?.length) {
+      companies = cached;
+      return;
+    }
+    try {
+      const data = await authApiFetch(API_ROUTES.COMPANY + "/all");
+      companies = Array.isArray(data) ? data : data?.data || [];
+      companiesAllStore.set(companies);
+    } catch (_) {
+      companies = [];
+    }
+  }
+  loadCompanies();
 
   // Optional first sample movement
   const SAMPLE_UNITS = ["Pcs", "Set", "Kg", "Nos", "Box"];
@@ -191,7 +215,6 @@
   }
 
   function resetSampleFields() {
-    addFirstSampleNow = false;
     sampleDirection = "Outbound";
     sampleSentDate = new Date().toISOString().slice(0, 10);
     sampleTracking = "";
@@ -212,7 +235,7 @@
   }
 
   function getValidSampleItems() {
-    if (!isSample || !addFirstSampleNow) return [];
+    if (!isSample) return [];
     return sampleItems
       .map((it) => ({
         name: (it.name || "").trim(),
@@ -239,6 +262,8 @@
     isSample = false;
     showMoreOrderFields = false;
     showMoreContactFields = false;
+    sampleCompanyId =
+      currentUser?.companyId != null ? Number(currentUser.companyId) : null;
     resetSampleFields();
     name = "";
     email = "";
@@ -277,7 +302,14 @@
       company,
       gstNumber,
       isSample: !!isSample,
-      ...(isSample ? { sampleDecision: "Pending" } : {}),
+      ...(isSample
+        ? {
+            sampleDecision: "Pending",
+            ...(sampleCompanyId != null
+              ? { sampleCompanyId: Number(sampleCompanyId) }
+              : {}),
+          }
+        : {}),
     };
     newOrder.category = category || "";
     if (orderDate) newOrder.orderDate = orderDate;
@@ -337,6 +369,18 @@
       formErrors.name = ["Contact name is required."];
       loading = false;
       return;
+    }
+    if (isSample) {
+      if (sampleCompanyId == null) {
+        formErrors.sampleCompanyId = ["Sample company is required."];
+        loading = false;
+        return;
+      }
+      if (!getValidSampleItems().length) {
+        formErrors.sampleItems = ["Add at least one sample item with a name."];
+        loading = false;
+        return;
+      }
     }
 
     try {
@@ -494,24 +538,34 @@
                 priceTerms = null;
                 deadlineDate = null;
                 resetSampleFields();
-                addFirstSampleNow = true;
               }}
             />
             <span class="order-type-title">Sample case</span>
           </label>
         </div>
         {#if isSample}
-          <div class="form-check mt-2 mb-0">
-            <input
-              class="form-check-input"
-              type="checkbox"
-              id="addFirstSampleNow"
-              bind:checked={addFirstSampleNow}
-            />
-            <label class="form-check-label" for="addFirstSampleNow" style="font-size:12px;">
-              Add first sample now
-              <span class="text-muted">(optional — or later on Samples tab)</span>
+          <div class="mt-2">
+            <label class="form-label mb-1" style="font-size:12px;" for="sampleCompanyId">
+              Sample company <span class="text-danger">*</span>
             </label>
+            <TypeableSelect
+              id="sampleCompanyId"
+              objectMode={true}
+              options={companies.map((c) => ({ value: c.id, label: c.name }))}
+              value={sampleCompanyId}
+              placeholder="Select company..."
+              on:change={(e) => {
+                sampleCompanyId = e.detail;
+                formErrors.sampleCompanyId = null;
+              }}
+            />
+            {#if formErrors.sampleCompanyId}
+              <ul class="text-danger mt-1 text-xs"><li>{formErrors.sampleCompanyId[0]}</li></ul>
+            {:else}
+              <div class="form-text text-muted" style="font-size:11px;">
+                Defaults to your company. Sample code uses this (e.g. SAMP-XXXX-00001).
+              </div>
+            {/if}
           </div>
         {/if}
       </div>
@@ -586,11 +640,13 @@
         </div>
       {/if}
 
-      <!-- Optional first sample -->
-      {#if isSample && addFirstSampleNow}
+      <!-- Required first sample when sample case -->
+      {#if isSample}
         <div class="create-sample-block mt-3">
           <div class="d-flex align-items-center justify-content-between mb-2">
-            <div class="fw-semibold" style="font-size:13px;">First sample</div>
+            <div class="fw-semibold" style="font-size:13px;">
+              First sample <span class="text-danger">*</span>
+            </div>
             <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2" on:click={addSampleItemRow}>
               <i class="ti ti-plus"></i> Item
             </button>
@@ -613,7 +669,13 @@
           </div>
           {#each sampleItems as item, idx}
             <div class="create-sample-item-row mb-2">
-              <input class="form-control form-control-sm" bind:value={item.name} placeholder="Item name" />
+              <input
+                class="form-control form-control-sm"
+                class:is-invalid={!!formErrors.sampleItems && !item.name?.trim()}
+                bind:value={item.name}
+                placeholder="Item name *"
+                on:input={() => (formErrors.sampleItems = null)}
+              />
               <input class="form-control form-control-sm" bind:value={item.quantity} placeholder="Qty" />
               <select class="form-select form-select-sm" bind:value={item.unit}>
                 {#each SAMPLE_UNITS as u}<option value={u}>{u}</option>{/each}
@@ -623,6 +685,9 @@
               </button>
             </div>
           {/each}
+          {#if formErrors.sampleItems}
+            <ul class="text-danger mt-1 mb-2 text-xs"><li>{formErrors.sampleItems[0]}</li></ul>
+          {/if}
           <input class="form-control form-control-sm" bind:value={sampleNotes} placeholder="Shipment notes (optional)" />
         </div>
       {/if}

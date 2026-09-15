@@ -17,6 +17,7 @@
   let taxCheckDone = false;
   let piNumber = null;
   let piId = null;
+  let statusUpdating = false;
 
   // Modal state
   let piwotiOpen = false;
@@ -24,6 +25,28 @@
 
   let workOrderId;
   $: workOrderId = $page.params.id;
+
+  async function updateStatus(nextStatus) {
+    if (!workOrder?.id || statusUpdating) return;
+    statusUpdating = true;
+    try {
+      const data = await authApiFetch(`${API_ROUTES.WORK_ORDER}/${workOrderId}`, {
+        method: "PUT",
+        data: JSON.stringify({
+          status: nextStatus,
+          companyId: workOrder.company?.id ?? workOrder.companyId,
+        }),
+      });
+      workOrder = {
+        ...workOrder,
+        status: data?.data?.status ?? nextStatus,
+      };
+    } catch (err) {
+      errorMessage = "Failed to update work order status.";
+    } finally {
+      statusUpdating = false;
+    }
+  }
 
   async function loadOrderForModal(orderId) {
     try {
@@ -147,6 +170,14 @@
             {#if workOrder?.workOrderNo}
               <span class="text-muted fw-normal fs-5">{workOrder.workOrderNo}</span>
             {/if}
+            {#if workOrder}
+              <span
+                class="badge {workOrder.status === 'Completed' ? 'bg-success' : 'bg-warning text-dark'}"
+                style="font-size:11px;"
+              >
+                {workOrder.status === "Completed" ? "Completed" : "Pending"}
+              </span>
+            {/if}
           </div>
           <nav aria-label="breadcrumb">
             <ol class="breadcrumb mb-0 p-0">
@@ -157,9 +188,32 @@
           </nav>
         </div>
       </div>
-      <a href="/admin/workorder/edit/{workOrderId}" class="btn btn-primary btn-sm">
-        <i class="ti ti-edit me-1"></i>Edit Work Order
-      </a>
+      <div class="d-flex align-items-center gap-2 no-print">
+        {#if workOrder}
+          {#if workOrder.status === "Completed"}
+            <button
+              type="button"
+              class="btn btn-outline-warning btn-sm"
+              disabled={statusUpdating}
+              on:click={() => updateStatus("Pending")}
+            >
+              Mark Pending
+            </button>
+          {:else}
+            <button
+              type="button"
+              class="btn btn-outline-success btn-sm"
+              disabled={statusUpdating}
+              on:click={() => updateStatus("Completed")}
+            >
+              Mark Completed
+            </button>
+          {/if}
+        {/if}
+        <a href="/admin/workorder/edit/{workOrderId}" class="btn btn-primary btn-sm">
+          <i class="ti ti-edit me-1"></i>Edit Work Order
+        </a>
+      </div>
     </div>
     <!-- End Page Header -->
     {#if workOrder}

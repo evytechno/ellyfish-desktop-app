@@ -152,10 +152,21 @@ export async function loadOrderSamples(orderId) {
   return authApiFetch(`${API_ROUTES.ORDER_SAMPLE}/order/${orderId}`);
 }
 
-export async function setOrderSampleFlag(orderId, isSample) {
+export async function setOrderSampleFlag(orderId, isSample, sampleCompanyId) {
+  const body = { isSample };
+  if (isSample && sampleCompanyId != null) {
+    body.sampleCompanyId = Number(sampleCompanyId);
+  }
   return authApiFetch(`${API_ROUTES.ORDER_SAMPLE}/order/${orderId}/flag`, {
     method: "PUT",
-    data: JSON.stringify({ isSample }),
+    data: JSON.stringify(body),
+  });
+}
+
+export async function setOrderSampleCompany(orderId, sampleCompanyId) {
+  return authApiFetch(`${API_ROUTES.ORDER_SAMPLE}/order/${orderId}/company`, {
+    method: "PUT",
+    data: JSON.stringify({ sampleCompanyId: Number(sampleCompanyId) }),
   });
 }
 

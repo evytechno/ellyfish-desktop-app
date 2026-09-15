@@ -41,6 +41,7 @@
   export let sampleSaving = false;
   export let loadSamples = async () => {};
   export let setSampleFlag = async () => {};
+  export let setSampleCompany = async () => {};
   export let addSampleMovement = async () => {};
   export let updateSampleMovement = async () => {};
   export let markSampleReceived = async () => {};
@@ -331,6 +332,7 @@
       {sampleSaving}
       canMutateOrder={canMutateOrder}
       {setSampleFlag}
+      {setSampleCompany}
       {addSampleMovement}
       {updateSampleMovement}
       {markSampleReceived}
