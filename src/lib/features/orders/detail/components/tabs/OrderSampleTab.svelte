@@ -29,7 +29,9 @@
     "Pending",
     "Prepared",
     "Sent",
+    "Dispatched",
     "In Transit",
+    "Hold",
     "Received",
     "Returned",
     "Lost",
@@ -40,7 +42,9 @@
     "Pending",
     "Prepared",
     "Sent",
+    "Dispatched",
     "In Transit",
+    "Hold",
   ];
 
   const currentUser = checkAuth();
@@ -192,15 +196,22 @@
     editExpectedReturnDate = toDateInput(s.expectedReturnDate);
     editReturnedDate = toDateInput(s.returnedDate);
     editFollowUpDate = toDateInput(s.followUpDate);
+    formError = "";
     showEditModal = true;
   }
 
   function closeEditModal() {
     showEditModal = false;
     editSampleId = null;
+    formError = "";
   }
 
   async function submitEdit() {
+    formError = "";
+    if (editStatus === "Hold" && !editNotes.trim()) {
+      formError = 'Status "Hold" requires a remark in Notes.';
+      return;
+    }
     const ok = await updateSampleMovement(editSampleId, {
       direction: editDirection,
       status: editStatus,
@@ -234,7 +245,8 @@
     if (st === "Cancelled") return "bg-dark";
     if (st === "Returned") return "bg-info text-dark";
     if (st === "Lost" || st === "Damaged") return "bg-danger";
-    if (st === "In Transit") return "bg-primary";
+    if (st === "In Transit" || st === "Dispatched") return "bg-primary";
+    if (st === "Hold") return "bg-warning text-dark";
     if (st === "Prepared") return "bg-secondary";
     if (st === "Pending") return "bg-light text-dark border";
     return "bg-warning text-dark";
@@ -373,6 +385,10 @@
     const validItems = getValidItems();
     if (!validItems.length) {
       formError = "Add at least one item with a name.";
+      return;
+    }
+    if (status === "Hold" && !notes.trim()) {
+      formError = 'Status "Hold" requires a remark in Notes.';
       return;
     }
 
@@ -652,6 +668,15 @@
                     >
                       {s.status}
                     </span>
+                    {#if s.sentDelay?.delayed && s.sentDelay?.label}
+                      <span
+                        class="badge bg-danger-subtle text-danger border border-danger-subtle ms-1"
+                        style="font-size:10px;"
+                        title="Still Pending more than 2 days after creation"
+                      >
+                        {s.sentDelay.label}
+                      </span>
+                    {/if}
                   </td>
                   <td style="font-size:12px; white-space:nowrap;">{formatDate(s.sentDate)}</td>
                   <td style="font-size:12px; white-space:nowrap;">{formatDate(s.receivedDate)}</td>
@@ -1016,13 +1041,13 @@
           </div>
 
           <div class="mb-1">
-            <label class="sample-label" for="sampleNotes">Notes</label>
+            <label class="sample-label" for="sampleNotes">Notes / Hold remark</label>
             <input
               id="sampleNotes"
               type="text"
               class="form-control"
               bind:value={notes}
-              placeholder="Shipment notes (optional)"
+              placeholder="Shipment notes (required for Hold)"
             />
           </div>
 
@@ -1204,16 +1229,19 @@
               />
             </div>
             <div class="col-12">
-              <label class="sample-label" for="editNotes">Notes</label>
+              <label class="sample-label" for="editNotes">Notes / Hold remark</label>
               <textarea
                 id="editNotes"
                 class="form-control"
                 rows="3"
                 bind:value={editNotes}
-                placeholder="Shipment notes"
+                placeholder="Shipment notes (required for Hold)"
               ></textarea>
             </div>
           </div>
+          {#if formError && showEditModal}
+            <div class="text-danger mt-2" style="font-size:12px;">{formError}</div>
+          {/if}
           <p class="text-muted mt-3 mb-0" style="font-size:12px;">
             Status changes via <strong>Mark received</strong>. Photos/review notes via <strong>Add note / images</strong>.
           </p>

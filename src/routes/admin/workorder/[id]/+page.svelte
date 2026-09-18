@@ -6,6 +6,7 @@
   import Loader from "$lib/components/Loader.svelte";
   import { ATTACHMENT_BASE_URL } from "$lib/constants/constants";
   import PIWOTIModal from "$lib/components/PIWOTIModal.svelte";
+  import { checkAuth } from "$lib/utils/auth";
 
   let loadingData = true;
 
@@ -18,6 +19,19 @@
   let piNumber = null;
   let piId = null;
   let statusUpdating = false;
+  let holdRemark = "";
+  let statusError = "";
+
+  const currentUser = checkAuth();
+  const isMaster = currentUser?.role === "master";
+
+  // Machine panel
+  let machineCompletionDate = "";
+  let machineColor = "";
+  let machineSize = "";
+  let machineSaving = false;
+  let machineMsg = "";
+  let machineErr = "";
 
   // Modal state
   let piwotiOpen = false;
@@ -26,27 +40,160 @@
   let workOrderId;
   $: workOrderId = $page.params.id;
 
+  function categoryText(wo) {
+    return String(wo?.category || wo?.order?.category || "").toLowerCase();
+  }
+  function isDispatchCat(wo) {
+    if (wo?.isDispatchCategory != null) return !!wo.isDispatchCategory;
+    const c = categoryText(wo);
+    return c.includes("abrasive") || c.includes("spare part");
+  }
+  function isMachineCat(wo) {
+    if (wo?.isMachineCategory != null) return !!wo.isMachineCategory;
+    return categoryText(wo).includes("machine");
+  }
+  function toDateInput(d) {
+    if (!d) return "";
+    try {
+      return new Date(d).toISOString().slice(0, 10);
+    } catch {
+      return "";
+    }
+  }
+  function syncMachineForm(wo) {
+    const m = wo?.machine;
+    machineCompletionDate = toDateInput(m?.completionDate);
+    machineColor = m?.color || "";
+    machineSize = m?.size || "";
+  }
+  function statusBadgeClass(st) {
+    if (st === "Completed") return "bg-success";
+    if (st === "Dispatched") return "bg-primary";
+    if (st === "Hold") return "bg-warning text-dark";
+    return "bg-secondary";
+  }
+
   async function updateStatus(nextStatus) {
     if (!workOrder?.id || statusUpdating) return;
+    statusError = "";
+    if (nextStatus === "Hold") {
+      const remark = holdRemark.trim() || String(workOrder.remarks || "").trim();
+      if (!remark) {
+        statusError = 'Status "Hold" requires a remark.';
+        return;
+      }
+    }
     statusUpdating = true;
     try {
+      const payload = {
+        status: nextStatus,
+        companyId: workOrder.company?.id ?? workOrder.companyId,
+      };
+      if (nextStatus === "Hold" || holdRemark.trim()) {
+        payload.remarks = holdRemark.trim() || workOrder.remarks || null;
+      }
       const data = await authApiFetch(`${API_ROUTES.WORK_ORDER}/${workOrderId}`, {
         method: "PUT",
-        data: JSON.stringify({
-          status: nextStatus,
-          companyId: workOrder.company?.id ?? workOrder.companyId,
-        }),
+        data: JSON.stringify(payload),
       });
       workOrder = {
         ...workOrder,
         status: data?.data?.status ?? nextStatus,
+        remarks: payload.remarks !== undefined ? payload.remarks : workOrder.remarks,
       };
+      // refresh sentDelay from client rule if pending
+      if (isDispatchCat(workOrder)) {
+        workOrder = {
+          ...workOrder,
+          sentDelay: computeClientSentDelay(workOrder),
+        };
+      }
+      holdRemark = "";
     } catch (err) {
-      errorMessage = "Failed to update work order status.";
+      statusError = err?.message || "Failed to update work order status.";
+      errorMessage = statusError;
     } finally {
       statusUpdating = false;
     }
   }
+
+  function computeClientSentDelay(wo) {
+    if (!isDispatchCat(wo) || wo?.status !== "Pending" || !wo?.createdAt) {
+      return { delayed: false, ms: null, days: null, label: null };
+    }
+    const createdMs = new Date(wo.createdAt).getTime();
+    if (Number.isNaN(createdMs)) {
+      return { delayed: false, ms: null, days: null, label: null };
+    }
+    const grace = 2 * 24 * 60 * 60 * 1000;
+    const ageMs = Date.now() - createdMs;
+    if (ageMs <= grace) {
+      return { delayed: false, ms: null, days: null, label: null };
+    }
+    const overdueMs = ageMs - grace;
+    const totalHours = Math.floor(overdueMs / (60 * 60 * 1000));
+    const days = Math.floor(totalHours / 24);
+    const hours = totalHours % 24;
+    let label;
+    if (days > 0 && hours > 0) label = `${days}d ${hours}h overdue`;
+    else if (days > 0) label = `${days}d overdue`;
+    else if (hours > 0) label = `${hours}h overdue`;
+    else label = "<1h overdue";
+    return { delayed: true, ms: overdueMs, days, label };
+  }
+
+  async function saveMachinePanel() {
+    if (!workOrder?.id || machineSaving) return;
+    machineMsg = "";
+    machineErr = "";
+    machineSaving = true;
+    try {
+      if (machineCompletionDate) {
+        const res = await authApiFetch(
+          `${API_ROUTES.WORK_ORDER}/${workOrderId}/completion-date`,
+          {
+            method: "PUT",
+            data: JSON.stringify({ completionDate: machineCompletionDate }),
+          },
+        );
+        if (res?.data?.machine) {
+          workOrder = { ...workOrder, machine: { ...workOrder.machine, ...res.data.machine } };
+        }
+      }
+      const attrs = await authApiFetch(
+        `${API_ROUTES.WORK_ORDER}/${workOrderId}/machine-attrs`,
+        {
+          method: "PUT",
+          data: JSON.stringify({
+            color: machineColor.trim() || null,
+            size: machineSize.trim() || null,
+          }),
+        },
+      );
+      if (attrs?.data) {
+        workOrder = {
+          ...workOrder,
+          machine: {
+            ...(workOrder.machine || {}),
+            color: attrs.data.color,
+            size: attrs.data.size,
+            completionDate:
+              attrs.data.completionDate ?? workOrder.machine?.completionDate ?? null,
+          },
+        };
+      }
+      syncMachineForm(workOrder);
+      machineMsg = "Machine details saved.";
+    } catch (err) {
+      machineErr = err?.message || "Failed to save machine details.";
+    } finally {
+      machineSaving = false;
+    }
+  }
+
+  $: discussionEvents = (workOrder?.events || []).filter(
+    (e) => e?.type === "discussion",
+  );
 
   async function loadOrderForModal(orderId) {
     try {
@@ -72,6 +219,11 @@
     try {
       const data = await authApiFetch(`${API_ROUTES.WORK_ORDER}/${workOrderId}`);
       workOrder = data;
+      if (!workOrder.sentDelay && isDispatchCat(workOrder)) {
+        workOrder = { ...workOrder, sentDelay: computeClientSentDelay(workOrder) };
+      }
+      syncMachineForm(workOrder);
+      holdRemark = workOrder?.status === "Hold" ? (workOrder.remarks || "") : "";
     } catch (err) {
       errorMessage = "Failed to load workOrder data.";
     } finally {
@@ -172,11 +324,21 @@
             {/if}
             {#if workOrder}
               <span
-                class="badge {workOrder.status === 'Completed' ? 'bg-success' : 'bg-warning text-dark'}"
+                class="badge {statusBadgeClass(workOrder.status)}"
                 style="font-size:11px;"
               >
-                {workOrder.status === "Completed" ? "Completed" : "Pending"}
+                {workOrder.status || "Pending"}
               </span>
+              {#if workOrder.category || workOrder.order?.category}
+                <span class="badge bg-light text-dark border" style="font-size:11px;">
+                  {workOrder.category || workOrder.order?.category}
+                </span>
+              {/if}
+              {#if workOrder.sentDelay?.delayed && workOrder.sentDelay?.label}
+                <span class="badge bg-danger" style="font-size:11px;" title="Pending more than 2 days">
+                  {workOrder.sentDelay.label}
+                </span>
+              {/if}
             {/if}
           </div>
           <nav aria-label="breadcrumb">
@@ -188,9 +350,49 @@
           </nav>
         </div>
       </div>
-      <div class="d-flex align-items-center gap-2 no-print">
+      <div class="d-flex align-items-center gap-2 no-print flex-wrap">
         {#if workOrder}
-          {#if workOrder.status === "Completed"}
+          {#if isDispatchCat(workOrder)}
+            <select
+              class="form-select form-select-sm"
+              style="width:auto;min-width:140px;"
+              disabled={statusUpdating}
+              value={workOrder.status || "Pending"}
+              on:change={(e) => updateStatus(e.currentTarget.value)}
+            >
+              <option value="Pending">Pending</option>
+              <option value="Dispatched">Dispatched</option>
+              <option value="Hold">Hold</option>
+              <option value="Completed">Completed</option>
+            </select>
+            <input
+              type="text"
+              class="form-control form-control-sm"
+              style="width:200px;"
+              placeholder="Remark (required for Hold)"
+              bind:value={holdRemark}
+              disabled={statusUpdating}
+            />
+            {#if workOrder.status !== "Completed"}
+              <button
+                type="button"
+                class="btn btn-outline-success btn-sm"
+                disabled={statusUpdating}
+                on:click={() => updateStatus("Completed")}
+              >
+                Mark Completed
+              </button>
+            {:else}
+              <button
+                type="button"
+                class="btn btn-outline-warning btn-sm"
+                disabled={statusUpdating}
+                on:click={() => updateStatus("Pending")}
+              >
+                Mark Pending
+              </button>
+            {/if}
+          {:else if workOrder.status === "Completed"}
             <button
               type="button"
               class="btn btn-outline-warning btn-sm"
@@ -215,8 +417,110 @@
         </a>
       </div>
     </div>
+    {#if statusError}
+      <div class="alert alert-danger py-2 no-print" style="font-size:13px;">{statusError}</div>
+    {/if}
     <!-- End Page Header -->
     {#if workOrder}
+      {#if isDispatchCat(workOrder) && workOrder.sentDelay?.delayed}
+        <div class="alert alert-warning py-2 no-print mb-3" style="font-size:13px;">
+          <i class="ti ti-clock-exclamation me-1"></i>
+          Sent delay: <strong>{workOrder.sentDelay.label}</strong>
+          (still Pending more than 2 days after creation)
+        </div>
+      {/if}
+
+      {#if isMachineCat(workOrder)}
+        <div class="card no-print mb-3">
+          <div class="card-header py-2">
+            <h6 class="mb-0"><i class="ti ti-settings me-1"></i>Machine details</h6>
+          </div>
+          <div class="card-body">
+            <div class="row g-3 align-items-end">
+              <div class="col-md-3">
+                <label class="form-label mb-1" style="font-size:12px;">Completion date</label>
+                <input type="date" class="form-control form-control-sm" bind:value={machineCompletionDate} disabled={machineSaving} />
+              </div>
+              <div class="col-md-3">
+                <label class="form-label mb-1" style="font-size:12px;">Color</label>
+                <input type="text" class="form-control form-control-sm" bind:value={machineColor} placeholder="Color" disabled={machineSaving} />
+              </div>
+              <div class="col-md-3">
+                <label class="form-label mb-1" style="font-size:12px;">Size</label>
+                <input type="text" class="form-control form-control-sm" bind:value={machineSize} placeholder="Size" disabled={machineSaving} />
+              </div>
+              <div class="col-md-3">
+                <button type="button" class="btn btn-primary btn-sm" disabled={machineSaving} on:click={saveMachinePanel}>
+                  {machineSaving ? "Saving…" : "Save machine details"}
+                </button>
+              </div>
+            </div>
+            {#if machineMsg}
+              <div class="text-success mt-2" style="font-size:12px;">{machineMsg}</div>
+            {/if}
+            {#if machineErr}
+              <div class="text-danger mt-2" style="font-size:12px;">{machineErr}</div>
+            {/if}
+            {#if workOrder.machine?.completionDate}
+              <div class="text-muted mt-2" style="font-size:12px;">
+                Current completion:
+                {new Date(workOrder.machine.completionDate).toLocaleDateString("en-IN", { dateStyle: "medium" })}
+                {#if workOrder.machine.color} · Color: {workOrder.machine.color}{/if}
+                {#if workOrder.machine.size} · Size: {workOrder.machine.size}{/if}
+              </div>
+            {/if}
+          </div>
+        </div>
+      {/if}
+
+      {#if isMaster && isMachineCat(workOrder)}
+        <div class="card no-print mb-3">
+          <div class="card-header py-2 d-flex align-items-center justify-content-between gap-2 flex-wrap">
+            <h6 class="mb-0"><i class="ti ti-messages me-1"></i>Discussions (master view)</h6>
+            <span class="text-muted" style="font-size:11px;">Updates via guest API only</span>
+          </div>
+          <div class="card-body">
+            {#if discussionEvents.length}
+              <ul class="list-group list-group-flush">
+                {#each discussionEvents as ev}
+                  <li class="list-group-item px-0 py-2">
+                    <div class="d-flex justify-content-between gap-2">
+                      <div style="font-size:13px;">
+                        <strong>{ev.remark || "(no remark)"}</strong>
+                        {#if Array.isArray(ev.images) && ev.images.length}
+                          <div class="d-flex flex-wrap gap-1 mt-1">
+                            {#each ev.images as img}
+                              <a
+                                href={ATTACHMENT_BASE_URL + (img.url || "")}
+                                target="_blank"
+                                rel="noopener"
+                                class="badge bg-light text-dark border"
+                                style="font-size:10px;"
+                              >
+                                {img.fileName || "file"}
+                              </a>
+                            {/each}
+                          </div>
+                        {/if}
+                      </div>
+                      <div class="text-muted text-nowrap" style="font-size:11px;">
+                        {#if ev.date}
+                          {new Date(ev.date).toLocaleDateString("en-IN", { dateStyle: "medium" })}
+                        {:else if ev.createdAt}
+                          {new Date(ev.createdAt).toLocaleString("en-IN")}
+                        {/if}
+                      </div>
+                    </div>
+                  </li>
+                {/each}
+              </ul>
+            {:else}
+              <div class="text-muted" style="font-size:12px;">No discussions yet. Partners add via guest API.</div>
+            {/if}
+          </div>
+        </div>
+      {/if}
+
       <div class="row">
         <div class="col-lg-10 mx-auto">
           <div class="card printWorkOrder" id="printWorkOrder">
