@@ -1,4 +1,4 @@
-﻿<script>
+<script>
   import { createEventDispatcher } from "svelte";
   import { authApiFetch } from "$lib/api/client";
   import { API_ROUTES } from "$lib/constants/apiRoutes";
@@ -101,6 +101,7 @@
   })();
 
   let workOrderDate        = today();
+  let woOrderType          = "";
   let woPoNumber           = "";
   let dispatchAddress      = "";
   let dispatchPincode      = "";
@@ -241,6 +242,7 @@
 
     } else if (type === "WO") {
       workOrderDate        = today();
+      woOrderType          = "";
       woPoNumber = "";
       dispatchAddress      = ""; dispatchPincode = "";
       transporterName      = "";
@@ -374,6 +376,7 @@
     }
 
     if (type === "WO" && step === 1) {
+      if (!woOrderType) { formErrors.orderType = "Order type is required."; return; }
       if (!woItems.length) { Swal.fire("Warning", "Add at least one item.", "warning"); return; }
     }
 
@@ -401,6 +404,7 @@
     }
 
     if (type === "WO") {
+      if (!woOrderType) { formErrors.orderType = "Order type is required."; return; }
       if (!woItems.length) { Swal.fire("Warning", "Add at least one item.", "warning"); return; }
       const emptyIdx = woItems.findIndex(i => !i.item.trim());
       if (emptyIdx !== -1) { Swal.fire("Warning", `Item #${emptyIdx + 1} has no description.`, "warning"); return; }
@@ -445,6 +449,7 @@
     const payload = {
       orderId: order.id, companyId,
       title: order.title || "",
+      orderType: woOrderType,
       items: woItems, remarks: woRemarks,
       dispatchAddress, dispatchPincode, transporterName,
       packingType, packingCharges, inCoterms, inCotermsBy,
@@ -1041,6 +1046,16 @@
                 <div class="col-md-4">
                   <label class="form-label fw-semibold" style="font-size:12px;">Work Order Date</label>
                   <input type="date" class="form-control form-control-sm" bind:value={workOrderDate} />
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label fw-semibold" style="font-size:12px;">Order Type <span class="text-danger">*</span></label>
+                  <select class="form-select form-select-sm" class:is-invalid={formErrors.orderType} bind:value={woOrderType}>
+                    <option value="">— Select —</option>
+                    <option value="Machine">Machine</option>
+                    <option value="Abrasive">Abrasive</option>
+                    <option value="SpareParts">SpareParts</option>
+                  </select>
+                  {#if formErrors.orderType}<div class="invalid-feedback">{formErrors.orderType}</div>{/if}
                 </div>
 
                 <div class="col-md-4">

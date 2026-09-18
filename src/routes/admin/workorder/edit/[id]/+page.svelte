@@ -35,6 +35,7 @@
   let items = [];
   let remarks = "";
   let status = "Pending";
+  let orderType = "";
   let dispatchAddress = "";
   let installationDate = null;
   let orderByName = "";
@@ -130,6 +131,7 @@
       title, items, remarks, poNumber, dispatchAddress, orderByName,
       installationEngineer, dispatchPincode, packingType, packingCharges,
       inCoterms, inCotermsBy, transporterName, paymentMethod, status,
+      orderType: orderType || null,
     };
     if (isMaster && workOrderNo) newWorkOrder.workOrderNo = workOrderNo;
     if (workOrderDate) newWorkOrder.workOrderDate = workOrderDate;
@@ -151,6 +153,7 @@
       if (!linkedOrder && !title?.trim()) { formErrors.title = ["Title is required when no order is linked."]; loading = false; return; }
     }
     if (companyId == null) { formErrors.companyId = ["Company is required."]; loading = false; return; }
+    if (!orderType) { formErrors.orderType = ["Order type is required."]; loading = false; return; }
     if (items.length == 0) { Swal.fire("Warning!", "Please add at least one item.", "warning"); loading = false; return; }
 
     try {
@@ -219,7 +222,11 @@
       }
       if (data?.workOrderDate) workOrderDate = formatDateForInput(data.workOrderDate);
       if (data?.installationDate) installationDate = formatDateForInput(data.installationDate);
-      status = data?.status === "Completed" ? "Completed" : "Pending";
+      const st = data?.status || "Pending";
+      status = ["Pending", "Completed", "Dispatched", "Hold"].includes(st)
+        ? st
+        : "Pending";
+      orderType = data?.orderType || "";
       dispatchAddress = data?.dispatchAddress;
       orderByName = data?.orderByName ?? "";
       installationEngineer = data?.installationEngineer;
@@ -464,6 +471,18 @@
               <div>
                 <label class="form-label">Work Order Date <span class="text-muted small">(Date of this Work Order)</span></label>
                 <input type="date" class="form-control" bind:value={workOrderDate} />
+              </div>
+              <div>
+                <label class="form-label fw-semibold">Order Type <span class="text-danger">*</span> <span class="text-muted small">(Machine / Abrasive / SpareParts)</span></label>
+                <select class="form-select" bind:value={orderType} required>
+                  <option value="">Select type</option>
+                  <option value="Machine">Machine</option>
+                  <option value="Abrasive">Abrasive</option>
+                  <option value="SpareParts">SpareParts</option>
+                </select>
+                {#if formErrors.orderType}
+                  <div class="text-danger small">{formErrors.orderType}</div>
+                {/if}
               </div>
               <div>
                 <label class="form-label fw-semibold">Status <span class="text-muted small">(Pending / Completed for guest sync)</span></label>
