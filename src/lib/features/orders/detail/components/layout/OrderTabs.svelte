@@ -1,5 +1,4 @@
 <script>
-  import DispatchProcess from "$lib/components/DispatchProcess.svelte";
   import OrderActivityTab from "../tabs/OrderActivityTab.svelte";
   import OrderChatsTab from "../tabs/OrderChatsTab.svelte";
   import OrderFilesTab from "../tabs/OrderFilesTab.svelte";
@@ -9,6 +8,7 @@
   import OrderComponentsTab from "../tabs/OrderComponentsTab.svelte";
   import OrderFeedbackTab from "../tabs/OrderFeedbackTab.svelte";
   import OrderSampleTab from "../tabs/OrderSampleTab.svelte";
+  import { goto } from "$app/navigation";
 
   export let order;
   export let currentUser;
@@ -44,9 +44,11 @@
   export let setSampleCompany = async () => {};
   export let addSampleMovement = async () => {};
   export let updateSampleMovement = async () => {};
+  export let changeSampleStatus = async () => {};
   export let markSampleReceived = async () => {};
   export let deleteSampleMovement = async () => {};
   export let addSampleEvent = async () => {};
+  export let approveDelayRemark = async () => {};
   export let approveSample = async () => {};
   export let rejectSample = async () => {};
   export let cerateChildOrder = async () => {};
@@ -245,17 +247,16 @@
       {#if ["Dispatched", "Completed"].includes(order?.status)}
         <li class="nav-item" role="presentation">
           <a
-            href="#tab_9"
-            data-bs-toggle="tab"
+            href="/admin/order/{order.id}/dispatch"
             class="nav-link border-3"
             class:active={activeTab === "Installation"}
-            on:click|preventDefault={() => (activeTab = "Installation")}
-            aria-selected={activeTab === "Installation"}
+            on:click|preventDefault={() => goto(`/admin/order/${order.id}/dispatch`)}
             role="tab"
             tabindex="-1"
           >
             <span class="d-md-inline-block">
               <i class="ti ti-truck-delivery me-1"></i>Dispatched
+              <i class="ti ti-external-link ms-1" style="font-size:12px;opacity:0.7;"></i>
             </span>
           </a>
         </li>
@@ -335,9 +336,11 @@
       {setSampleCompany}
       {addSampleMovement}
       {updateSampleMovement}
+      {changeSampleStatus}
       {markSampleReceived}
       {deleteSampleMovement}
       {addSampleEvent}
+      {approveDelayRemark}
       {approveSample}
       {rejectSample}
       {openImageLightbox}
@@ -354,11 +357,6 @@
         canMutateOrder={canMutateOrder}
         isOldAssignee={isOldAssignee}
       />
-    {/if}
-  {/if}
-  {#if ["Dispatched", "Completed"].includes(order?.status)}
-    {#if activeTab === "Installation"}
-      <DispatchProcess {order} />
     {/if}
   {/if}
 </div>

@@ -19,11 +19,12 @@
   let rowsPerPage = 10;
   let totalItems = 0;
   let search = "";
+  let orderTypeFilter = "";
   let searchTimeout;
   let trashBin = false;
 
   function saveFilterStore() {
-    taxInvoiceFilterStore.set({ search, currentPage, rowsPerPage });
+    taxInvoiceFilterStore.set({ search, orderTypeFilter, currentPage, rowsPerPage });
   }
 
   onMount(async () => {
@@ -48,6 +49,7 @@
     const saved = get(taxInvoiceFilterStore);
     if (saved && Object.keys(saved).length > 0) {
       if (saved.search      !== undefined) search      = saved.search;
+      if (saved.orderTypeFilter !== undefined) orderTypeFilter = saved.orderTypeFilter;
       if (saved.currentPage !== undefined) currentPage = saved.currentPage;
       if (saved.rowsPerPage !== undefined) rowsPerPage = saved.rowsPerPage;
     }
@@ -62,6 +64,7 @@
         page: String(currentPage),
         limit: String(rowsPerPage),
         ...(search ? { search } : {}),
+        ...(orderTypeFilter ? { orderType: orderTypeFilter } : {}),
         ...(trashBin ? { withDeleted: "true" } : {}),
       });
       const data = await authApiFetch(`${API_ROUTES.INVOICE}?${params}`);
@@ -103,6 +106,23 @@
       },
     },
     { key: "companySnapshot", label: "Company", render: (val) => val?.name ?? "-" },
+    {
+      key: "orderType",
+      label: "Order Type",
+      render: (val, row) => {
+        const t = row?.orderType;
+        const map = {
+          Machine: { label: "Machine", bg: "#0ea5e9", color: "#fff" },
+          Abrasive: { label: "Abrasive", bg: "#f59e0b", color: "#1f2937" },
+          SpareParts: { label: "Spare Parts", bg: "#64748b", color: "#fff" },
+        };
+        if (t && map[t]) {
+          const m = map[t];
+          return `<span class="badge" style="font-size:10px;background:${m.bg};color:${m.color};">${m.label}</span>`;
+        }
+        return t ? `<span class="badge bg-secondary">${t}</span>` : `<span class="text-muted">—</span>`;
+      },
+    },
     {
       key: "order",
       label: "Order",
@@ -211,13 +231,25 @@
     <div class="card">
       <div class="card-body">
         <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
-          <input
-            type="text"
-            class="form-control"
-            style="max-width:280px"
-            placeholder="Search invoices..."
-            on:input={handleSearch}
-          />
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            <input
+              type="text"
+              class="form-control"
+              style="max-width:280px"
+              placeholder="Search invoices..."
+              on:input={handleSearch}
+            />
+            <select
+              class="form-select w-auto"
+              bind:value={orderTypeFilter}
+              on:change={() => { currentPage = 1; saveFilterStore(); fetchInvoices(); }}
+            >
+              <option value="">All Order Types</option>
+              <option value="Machine">Machine</option>
+              <option value="Abrasive">Abrasive</option>
+              <option value="SpareParts">Spare Parts</option>
+            </select>
+          </div>
           {#if trashBin}
             <button class="btn btn-outline-secondary d-flex align-items-center gap-1" on:click={() => toggleTrash(false)}>
               <i class="ti ti-arrow-left"></i> Back to Invoices

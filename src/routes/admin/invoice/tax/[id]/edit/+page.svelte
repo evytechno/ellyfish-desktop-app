@@ -21,6 +21,7 @@
 
   let invoiceDate = "";
   let title = "";
+  let orderType = "";
   let poNumber = "";
   let currency = "INR";
   let discount = 0;
@@ -146,6 +147,7 @@
     companySnapshot = data.companySnapshot ?? null;
     bankSnapshot = data.bankSnapshot ?? null;
     title = data.title ?? "";
+    orderType = data.orderType ?? "";
     poNumber = data.poNumber ?? "";
     currency = data.currency ?? "INR";
     discount = data.discount ?? 0;
@@ -265,9 +267,14 @@
     loading = true;
     formErrors = {};
     errorMessage = "";
+    if (!orderType) {
+      formErrors.orderType = ["Order type is required."];
+      loading = false;
+      return;
+    }
     try {
       const payload = {
-        invoiceDate, title, poNumber, currency, discount,
+        invoiceDate, title, orderType, poNumber, currency, discount,
         totalAmountTitle, totalAmountValue, items, extraItems, taxItems,
         isOutOfIndia: taxCountry === "Outside India",
         country: taxCountry, customerState: taxCountry === "India" ? taxState : null, taxSlab: taxSlab || null,
@@ -339,6 +346,18 @@
               <div>
                 <label class="form-label">Invoice Date</label>
                 <input type="date" class="form-control" bind:value={invoiceDate} />
+              </div>
+              <div>
+                <label class="form-label">Order Type <span class="text-danger">*</span></label>
+                <select class="form-select" class:is-invalid={formErrors.orderType} bind:value={orderType}>
+                  <option value="">— Select —</option>
+                  <option value="Machine">Machine</option>
+                  <option value="Abrasive">Abrasive</option>
+                  <option value="SpareParts">SpareParts</option>
+                </select>
+                {#if formErrors.orderType}
+                  <ul class="text-danger mt-1 text-xs"><li>{formErrors.orderType[0]}</li></ul>
+                {/if}
               </div>
               <div>
                 <label class="form-label">Title</label>

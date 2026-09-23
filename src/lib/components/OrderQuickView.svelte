@@ -348,6 +348,12 @@
               <dd class="font-mono">{order.inqCode}</dd>
             </div>
           {/if}
+          {#if order.sampleCode}
+            <div class="oq-row">
+              <dt>Sample code</dt>
+              <dd class="font-mono">{order.sampleCode}</dd>
+            </div>
+          {/if}
           {#if order.workOrderNumber || latestWo}
             <div class="oq-row">
               <dt>Work Order</dt>

@@ -546,7 +546,7 @@
                         <li class="submenu">
                           <a
                             href="#orders"
-                            class:active={currentPath.startsWith("/admin/order") || currentPath.startsWith("/admin/order-list")}
+                            class:active={currentPath.startsWith("/admin/order") || currentPath.startsWith("/admin/order-list") || currentPath.startsWith("/admin/sample-delay-remarks")}
                           >
                             <i class="ti ti-shopping-cart"></i><span>Orders</span>
                             <span class="menu-arrow"></span>
@@ -587,6 +587,15 @@
                                   "/admin/order/lost"}>Lost</a
                               >
                             </li>
+                            {#if currentUser?.role === "master" || currentUser?.role === "admin"}
+                              <li>
+                                <a
+                                  href="/admin/sample-delay-remarks"
+                                  class:active={currentPath ===
+                                    "/admin/sample-delay-remarks"}>Delay Remarks</a
+                                >
+                              </li>
+                            {/if}
                           </ul>
                         </li>
                         {/if}

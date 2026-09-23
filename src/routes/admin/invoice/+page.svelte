@@ -28,6 +28,7 @@
 
     userId = filterState.userId || null;
     byCompanyId = filterState.byCompanyId || null;
+    orderTypeFilter = filterState.orderTypeFilter || "";
     searchTerm = filterState.searchTerm || "";
     currentPage = filterState.currentPage || 1;
     rowsPerPage = filterState.rowsPerPage || 10;
@@ -69,6 +70,7 @@
   let updateInvoice = null;
   let userId = null;
   let byCompanyId = null;
+  let orderTypeFilter = "";
   let searchTerm = "";
   let currentPage = 1;
   let rowsPerPage = 10;
@@ -612,6 +614,9 @@
       if (byCompanyId) {
         query.append("byCompanyId", byCompanyId);
       }
+      if (orderTypeFilter) {
+        query.append("orderType", orderTypeFilter);
+      }
       if (trashBin) {
         query.append("withDeleted", trashBin);
       }
@@ -619,6 +624,7 @@
       updateFilterStore({
         userId,
         byCompanyId,
+        orderTypeFilter,
         searchTerm,
         currentPage,
         rowsPerPage,
@@ -678,6 +684,7 @@
     rowsPerPage,
     userId,
     byCompanyId,
+    orderTypeFilter,
     trashBin,
   ],
     checkFetchRecord();
@@ -739,6 +746,23 @@
       },
     },
     { key: "status", label: "Status" },
+    {
+      key: "orderType",
+      label: "Order Type",
+      render: (val, row) => {
+        const t = row?.orderType;
+        const map = {
+          Machine: { label: "Machine", bg: "#0ea5e9", color: "#fff" },
+          Abrasive: { label: "Abrasive", bg: "#f59e0b", color: "#1f2937" },
+          SpareParts: { label: "Spare Parts", bg: "#64748b", color: "#fff" },
+        };
+        if (t && map[t]) {
+          const m = map[t];
+          return `<span class="badge" style="font-size:10px;background:${m.bg};color:${m.color};">${m.label}</span>`;
+        }
+        return t ? `<span class="badge bg-secondary">${t}</span>` : `<span class="text-muted">—</span>`;
+      },
+    },
     // { key: "paymentMethod", label: "Payment Method" },
     {
       key: "invoiceDate",
@@ -1087,6 +1111,14 @@
             </select>
           </div>
         {/if}
+        <div class="col-auto">
+          <select bind:value={orderTypeFilter} class="form-select w-auto">
+            <option value="">All Order Types</option>
+            <option value="Machine">Machine</option>
+            <option value="Abrasive">Abrasive</option>
+            <option value="SpareParts">Spare Parts</option>
+          </select>
+        </div>
         <div class="col"></div>
         {#if currentUser?.role != "user"}
           <div class="col-auto">

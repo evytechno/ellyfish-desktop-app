@@ -152,6 +152,17 @@ export async function loadOrderSamples(orderId) {
   return authApiFetch(`${API_ROUTES.ORDER_SAMPLE}/order/${orderId}`);
 }
 
+/** Step images for one movement (optional step filter). */
+export async function loadOrderSampleStepImages(orderSampleId, step) {
+  const q =
+    step != null && String(step).trim() !== ""
+      ? `?step=${encodeURIComponent(String(step).trim())}`
+      : "";
+  return authApiFetch(
+    `${API_ROUTES.ORDER_SAMPLE}/${orderSampleId}/step-images${q}`,
+  );
+}
+
 export async function setOrderSampleFlag(orderId, isSample, sampleCompanyId) {
   const body = { isSample };
   if (isSample && sampleCompanyId != null) {
@@ -177,10 +188,13 @@ export async function createOrderSample(payload) {
   });
 }
 
-export async function markOrderSampleReceived(id, receivedDate) {
+export async function markOrderSampleReceived(id, { receivedDate, delayRemark } = {}) {
+  const body = {};
+  if (receivedDate) body.receivedDate = receivedDate;
+  if (delayRemark) body.delayRemark = delayRemark;
   return authApiFetch(`${API_ROUTES.ORDER_SAMPLE}/${id}/received`, {
     method: "PATCH",
-    data: JSON.stringify(receivedDate ? { receivedDate } : {}),
+    data: JSON.stringify(body),
   });
 }
 
@@ -192,6 +206,22 @@ export async function updateOrderSample(id, payload) {
   return authApiFetch(`${API_ROUTES.ORDER_SAMPLE}/${id}`, {
     method: "PUT",
     data: JSON.stringify(payload),
+  });
+}
+
+/** Change movement status; optional image-step event + files in one request. */
+export async function changeOrderSampleStatus(id, payload = {}, files = []) {
+  const form = new FormData();
+  for (const [key, value] of Object.entries(payload || {})) {
+    if (value === undefined || value === null) continue;
+    form.append(key, String(value));
+  }
+  for (const file of files || []) {
+    if (file) form.append("images", file);
+  }
+  return authApiFetch(`${API_ROUTES.ORDER_SAMPLE}/${id}/status`, {
+    method: "PATCH",
+    data: form,
   });
 }
 
@@ -209,11 +239,23 @@ export async function rejectOrderSample(orderId, note) {
   });
 }
 
-export async function createOrderSampleEvent(sampleId, { note, type, status } = {}, files = []) {
+export async function approveSampleDelayRemark(eventId) {
+  return authApiFetch(
+    `${API_ROUTES.ORDER_SAMPLE}/events/${eventId}/approve-delay`,
+    { method: "POST" },
+  );
+}
+
+export async function createOrderSampleEvent(
+  sampleId,
+  { note, type, status, delayRemark } = {},
+  files = [],
+) {
   const form = new FormData();
   if (note) form.append("note", note);
   if (type) form.append("type", type);
   if (status) form.append("status", status);
+  if (delayRemark) form.append("delayRemark", delayRemark);
   for (const file of files || []) {
     if (file) form.append("images", file);
   }

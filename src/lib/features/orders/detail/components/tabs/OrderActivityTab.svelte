@@ -114,6 +114,61 @@
                         <i class="ti ti-alarm-off fs-20"></i>
                       </span>
                     {/if}
+                    {#if activity.title == "Sample Case Enabled"}
+                      <span class="avatar avatar-md flex-shrink-0 rounded me-2 bg-orange-500 text-orange-600">
+                        <i class="ti ti-package-export fs-20"></i>
+                      </span>
+                    {/if}
+                    {#if activity.title == "Sample Case Disabled"}
+                      <span class="avatar avatar-md flex-shrink-0 rounded me-2 bg-orange-500 text-orange-600">
+                        <i class="ti ti-package-off fs-20"></i>
+                      </span>
+                    {/if}
+                    {#if activity.title == "Sample Company Updated"}
+                      <span class="avatar avatar-md flex-shrink-0 rounded me-2 bg-orange-500 text-orange-600">
+                        <i class="ti ti-building fs-20"></i>
+                      </span>
+                    {/if}
+                    {#if activity.title == "Sample Movement Added"}
+                      <span class="avatar avatar-md flex-shrink-0 rounded me-2 bg-orange-500 text-orange-600">
+                        <i class="ti ti-truck-delivery fs-20"></i>
+                      </span>
+                    {/if}
+                    {#if activity.title == "Sample Movement Updated" || activity.title == "Sample Event Added"}
+                      <span class="avatar avatar-md flex-shrink-0 rounded me-2 bg-orange-500 text-orange-600">
+                        <i class="ti ti-package fs-20"></i>
+                      </span>
+                    {/if}
+                    {#if activity.title == "Sample Movement Deleted"}
+                      <span class="avatar avatar-md flex-shrink-0 rounded me-2 bg-orange-500 text-orange-600">
+                        <i class="ti ti-trash fs-20"></i>
+                      </span>
+                    {/if}
+                    {#if activity.title == "Sample Received" || activity.title == "Sample Received (External)"}
+                      <span class="avatar avatar-md flex-shrink-0 rounded me-2 bg-orange-500 text-orange-600">
+                        <i class="ti ti-package-import fs-20"></i>
+                      </span>
+                    {/if}
+                    {#if activity.title == "Sample Delay Remark Approved"}
+                      <span class="avatar avatar-md flex-shrink-0 rounded me-2 bg-orange-500 text-orange-600">
+                        <i class="ti ti-clock-check fs-20"></i>
+                      </span>
+                    {/if}
+                    {#if activity.title == "Sample Approved"}
+                      <span class="avatar avatar-md flex-shrink-0 rounded me-2 bg-green-500 text-green-600">
+                        <i class="ti ti-check fs-20"></i>
+                      </span>
+                    {/if}
+                    {#if activity.title == "Sample Rejected"}
+                      <span class="avatar avatar-md flex-shrink-0 rounded me-2 bg-red-500 text-red-600">
+                        <i class="ti ti-x fs-20"></i>
+                      </span>
+                    {/if}
+                    {#if activity.title == "Sample Upserted (External)" || activity.title == "Sample Order Updated (External)" || activity.title == "Sample Order Status Updated (External)" || activity.title == "Sample Movement Added (External)" || activity.title == "Sample Movement Updated (External)" || activity.title == "Sample Review Added (External)"}
+                      <span class="avatar avatar-md flex-shrink-0 rounded me-2 bg-orange-500 text-orange-600">
+                        <i class="ti ti-world fs-20"></i>
+                      </span>
+                    {/if}
                     <div>
                       <h6 class="fw-medium fs-14 mb-1">
                         {#if currentUser?.subRole === 'telecaller' || currentUser?.subRole === 'tech' || currentUser?.subRole === 'tech_helper'}

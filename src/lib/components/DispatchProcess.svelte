@@ -47,17 +47,19 @@
   // Visit tab: show from installationInProgress onwards
   $: showVisit = statusGte(workOrderStatus, "installationInProgress");
 
-  // Edit permissions
-  // Dispatch: editable while dispatchInProgress → delivered (not after installationInProgress)
+  // Edit permissions — CRM has full manage access
+  // Dispatch: editable while dispatchInProgress → inTransit
   $: canEditDispatch =
     statusGte(workOrderStatus, "dispatchInProgress") &&
     statusLte(workOrderStatus, "inTransit");
-  // Installation: editable only while installationInProgress
+  // Installation: editable while delivered → installationInProgress
   $: canEditInstallation =
     statusGte(workOrderStatus, "delivered") &&
     statusLte(workOrderStatus, "installationInProgress");
+  $: canEditAssignees = canEditInstallation;
   // Visits: add/edit while installationInProgress only
   $: canEditVisits = workOrderStatus === "installationInProgress";
+  $: canEditVisitAssignees = false; // kept for template branches; CRM uses full visit edit
 
   // Derived current status label for the status badge
   const WO_STATUS_LABELS = {
@@ -96,6 +98,35 @@
     { id: "installation", label: "Installation", icon: "🔧" },
     { id: "visit", label: "Service Visit", icon: "🚗" },
   ];
+
+  let currentTab = "dispatch";
+
+  function sectionUnlocked(id) {
+    if (id === "dispatch") return showDispatch;
+    if (id === "installation") return showInstallation;
+    if (id === "visit") return showVisit;
+    return false;
+  }
+
+  function sectionLockHint(id) {
+    if (id === "dispatch") return "Unlocks when work order is Completed";
+    if (id === "installation") return "Unlocks after Delivered";
+    if (id === "visit") return "Unlocks when Installation begins";
+    return "";
+  }
+
+  function focusSection(id) {
+    if (sectionUnlocked(id)) currentTab = id;
+  }
+
+  // Keep active tab on an unlocked section when status changes
+  $: {
+    if (!sectionUnlocked(currentTab)) {
+      if (showVisit) currentTab = "visit";
+      else if (showInstallation) currentTab = "installation";
+      else if (showDispatch) currentTab = "dispatch";
+    }
+  }
 
   const VISIT_STATUS_MAP = {
     pending: { cls: "bg-gray-100 text-gray-600", label: "Pending" },
@@ -318,17 +349,6 @@
     // orderUpdate();
   });
 
-  // ── Tab state ────────────────────────────────────────────
-  let currentTab = "dispatch";
-
-  // Auto-select the first available tab when status changes
-  $: {
-    if (showVisit && currentTab === "dispatch" && !showDispatch)
-      currentTab = "visit";
-    else if (showInstallation && currentTab === "dispatch" && !showDispatch)
-      currentTab = "installation";
-  }
-
   // ── Dispatch state ───────────────────────────────────────
   let dispatchEditing = false;
   let dispatchLoading = false;
@@ -404,7 +424,7 @@
         await apiFetchForm(`/project/sales/${projectDetails.uuid}`, "PUT", fd2);
 
         workOrderStatus = "dispatchInProgress";
-        currentTab = "dispatch";
+        focusSection("dispatch");
       }
 
       dispatchData = resp.data;
@@ -503,7 +523,7 @@
           status: "installationInProgress",
         });
         workOrderStatus = "installationInProgress";
-        currentTab = "visit";
+        focusSection("visit");
       }
 
       installEditing = false;
@@ -514,6 +534,60 @@
       else Swal.fire("Error", error.message || "Something went wrong", "error");
     } finally {
       installLoading = false;
+    }
+  }
+
+  async function saveInstallAssignees() {
+    if (!dispatchData?.uuid) {
+      Swal.fire(
+        "Warning",
+        "No dispatch record yet. Create it in Workshop first.",
+        "warning",
+      );
+      return;
+    }
+    try {
+      installLoading = true;
+      formErrors = {};
+      const fd = new FormData();
+      installForm.employees.forEach((id) => fd.append("employees", id));
+      const resp = await apiFetchForm(
+        `/dispatch/sales/${dispatchData.uuid}`,
+        "PUT",
+        fd,
+      );
+      dispatchData = resp.data;
+      syncForms(dispatchData);
+      dispatchedDetailsStore.set(dispatchData);
+      Swal.fire("Success", resp.message || "Assignees updated", "success");
+    } catch (error) {
+      const ve = parseValidationErrors(error);
+      if (ve) formErrors = ve;
+      else Swal.fire("Error", error.message || "Something went wrong", "error");
+    } finally {
+      installLoading = false;
+    }
+  }
+
+  async function saveVisitAssignees(idx) {
+    if (!dispatchData?.uuid) return;
+    try {
+      isSaving = true;
+      const payload = { lastInstallationDetails: visits };
+      const resp = await apiFetch(
+        `/dispatch/sales/${dispatchData.uuid}`,
+        "PUT",
+        payload,
+      );
+      dispatchData = resp.data;
+      syncForms(dispatchData);
+      dispatchedDetailsStore.set(dispatchData);
+      editingIdx = null;
+      Swal.fire("Success", resp.message || "Visit assignees updated", "success");
+    } catch (e) {
+      Swal.fire("Error", e.message || "Something went wrong", "error");
+    } finally {
+      isSaving = false;
     }
   }
 
@@ -532,7 +606,7 @@
     editingIdx === null;
   $: completedCount = visits.filter((v) => v.status === "Installed").length;
   $: if (workOrderStatus === "completed") {
-    currentTab = "dispatch";
+    focusSection("dispatch");
   }
 
   function visitEdit(idx) {
@@ -617,7 +691,7 @@
           "Please create dispatch before moving forward",
           "warning",
         );
-        currentTab = "dispatch";
+        focusSection("dispatch");
         dispatchEditing = true;
         return;
       }
@@ -632,7 +706,7 @@
           "Complete dispatch details before proceeding",
           "warning",
         );
-        currentTab = "dispatch";
+        focusSection("dispatch");
         return;
       }
 
@@ -647,7 +721,7 @@
           "Please assign at least one employee for installation",
           "warning",
         );
-        currentTab = "installation";
+        focusSection("installation");
         return;
       }
       // 🚫 Installation fields incomplete
@@ -665,7 +739,7 @@
           "Complete installation details before proceeding",
           "warning",
         );
-        currentTab = "installation";
+        focusSection("installation");
         return;
       }
 
@@ -679,7 +753,7 @@
             "Complete final service visit before marking Installed",
             "warning",
           );
-          currentTab = "visit";
+          focusSection("visit");
           return;
         }
       }
@@ -706,9 +780,9 @@
       workOrderStatus = resp.data.status;
 
       // Auto switch tab for better UX
-      if (nextStatus === "dispatchInProgress") currentTab = "dispatch";
-      if (nextStatus === "delivered") currentTab = "installation";
-      if (nextStatus === "installationInProgress") currentTab = "visit";
+      if (nextStatus === "dispatchInProgress") focusSection("dispatch");
+      if (nextStatus === "delivered") focusSection("installation");
+      if (nextStatus === "installationInProgress") focusSection("visit");
 
       Swal.fire("Success", resp.message || "Status updated", "success");
     } catch (error) {
@@ -875,18 +949,17 @@
       </div>
     </div>
 
-    <!-- Tab bar — only show tabs that are unlocked -->
+    <!-- Tabs — show only the active section -->
     <div
       class="bg-white rounded-2xl border border-gray-100 shadow-sm p-1 mb-3 flex gap-1"
     >
       {#each TABS as tab}
-        {@const unlocked =
-          (tab.id === "dispatch" && showDispatch) ||
-          (tab.id === "installation" && showInstallation) ||
-          (tab.id === "visit" && showVisit)}
+        {@const unlocked = sectionUnlocked(tab.id)}
         <button
+          type="button"
           on:click={() => unlocked && (currentTab = tab.id)}
           disabled={!unlocked}
+          title={unlocked ? tab.label : sectionLockHint(tab.id)}
           class="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium transition-all"
           class:bg-indigo-600={currentTab === tab.id && unlocked}
           class:text-white={currentTab === tab.id && unlocked}
@@ -897,23 +970,30 @@
           class:cursor-not-allowed={!unlocked}
         >
           <span>{tab.icon}</span><span>{tab.label}</span>
-          {#if !unlocked}<span class="text-gray-300 text-[10px]">🔒</span>{/if}
+          {#if !unlocked}<span class="text-[10px]">🔒</span>{/if}
         </button>
       {/each}
     </div>
 
-    <!-- ── DISPATCH TAB ───────────────────────────────────── -->
+    <!-- ── DISPATCH TAB ─────────────────────────────────── -->
     {#if currentTab === "dispatch"}
-      <div
-        class="bg-white border border-gray-100 rounded-xl shadow-sm p-6 mb-3"
-      >
+    <section
+      id="dp-section-dispatch"
+      class="bg-white border border-gray-100 rounded-xl shadow-sm p-6"
+    >
         <div class="flex items-center justify-between mb-3">
-          <h3 class="text-sm font-semibold text-gray-800">
-            {dispatchEditing
-              ? dispatchData
-                ? "Edit Dispatch"
-                : "Create Dispatch"
-              : "Dispatch Details"}
+          <h3 class="text-sm font-semibold text-gray-800 flex items-center gap-2">
+            <span>📦</span>
+            <span>
+              {dispatchEditing
+                ? dispatchData
+                  ? "Edit Dispatch"
+                  : "Create Dispatch"
+                : "Dispatch Details"}
+            </span>
+            {#if !showDispatch || (!canEditDispatch && !dispatchData)}
+              <span class="text-[10px] font-medium text-amber-600 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded-full">Locked</span>
+            {/if}
           </h3>
           {#if !dispatchEditing && canEditDispatch}
             <button
@@ -1195,16 +1275,23 @@
             {/if}
           </div>
         {/if}
-      </div>
+    </section>
+    {/if}
 
-      <!-- ── INSTALLATION TAB ───────────────────────────────── -->
-    {:else if currentTab === "installation"}
-      <div
-        class="bg-white border border-gray-100 rounded-xl shadow-sm p-6 mb-3"
-      >
+    <!-- ── INSTALLATION TAB ─────────────────────────────── -->
+    {#if currentTab === "installation"}
+    <section
+      id="dp-section-installation"
+      class="bg-white border border-gray-100 rounded-xl shadow-sm p-6"
+      class:opacity-90={!showInstallation}
+    >
         <div class="flex items-center justify-between mb-3">
-          <h3 class="text-sm font-semibold text-gray-800">
-            {installEditing ? "Edit Installation" : "Installation Details"}
+          <h3 class="text-sm font-semibold text-gray-800 flex items-center gap-2">
+            <span>🔧</span>
+            <span>{installEditing ? "Edit Installation" : "Installation Details"}</span>
+            {#if !showInstallation}
+              <span class="text-[10px] font-medium text-amber-600 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded-full">Unlocks after Delivered</span>
+            {/if}
           </h3>
           {#if !installEditing && canEditInstallation}
             <button
@@ -1614,26 +1701,41 @@
             </div>
           {/if}
         {/if}
-      </div>
+    </section>
+    {/if}
 
-      <!-- ── SERVICE VISIT TAB ──────────────────────────────── -->
-    {:else if currentTab === "visit"}
-      <div class="mb-3">
+    <!-- ── SERVICE VISIT TAB ────────────────────────────── -->
+    {#if currentTab === "visit"}
+    <section id="dp-section-visit" class="mb-3">
         {#if !showVisit}
           <div
-            class="flex flex-col items-center justify-center py-20 bg-white rounded-xl border border-gray-100 shadow-sm text-gray-400"
+            class="bg-white rounded-xl border border-gray-100 shadow-sm p-6"
           >
-            <span class="text-4xl mb-3">🚗</span>
-            <p class="text-sm font-medium">
-              Available after installation begins
-            </p>
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                <span>🚗</span>
+                <span>Service Visits</span>
+                <span class="text-[10px] font-medium text-amber-600 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded-full">Unlocks at Installation</span>
+              </h3>
+            </div>
+            <div
+              class="flex flex-col items-center justify-center py-12 text-gray-400"
+            >
+              <span class="text-4xl mb-3">🚗</span>
+              <p class="text-sm font-medium">
+                Available after installation begins
+              </p>
+              <p class="text-xs mt-1 text-gray-400">Move stages forward to unlock this section.</p>
+            </div>
           </div>
         {:else}
+          <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
           <!-- Visit header -->
           <div class="flex items-start justify-between mb-3">
             <div>
-              <h3 class="text-sm font-semibold text-gray-800">
-                Service Visits
+              <h3 class="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                <span>🚗</span>
+                <span>Service Visits</span>
               </h3>
               <div class="flex gap-3 mt-1">
                 <span class="text-xs text-gray-400"
@@ -1706,6 +1808,8 @@
                 {@const isEditing = editingIdx === i}
                 {@const isCompleted = visit.status === "Installed"}
                 {@const canEdit = canEditVisits && editingIdx === null}
+                {@const canAssign =
+                  canEditVisitAssignees && editingIdx === null && !isCompleted}
                 {@const statusCfg = VISIT_STATUS_MAP[visit.status] ?? null}
 
                 <div
@@ -1752,17 +1856,25 @@
                         {/if}
                       </div>
                     </div>
-                    {#if isEditing}
+                    {#if isEditing && canEditVisits}
                       <span class="text-xs text-gray-400"
                         >Step {visitStep} of 2</span
                       >
+                    {:else if isEditing && canEditVisitAssignees}
+                      <span class="text-xs text-indigo-500">Assigning…</span>
                     {:else if canEdit}
                       <button
                         on:click={() => visitEdit(i)}
                         class="flex items-center gap-1 px-3 py-1.5 text-xs font-medium border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 cursor-pointer transition"
                         >✏️ Edit</button
                       >
-                    {:else if !canEditVisits}
+                    {:else if canAssign}
+                      <button
+                        on:click={() => visitEdit(i)}
+                        class="flex items-center gap-1 px-3 py-1.5 text-xs font-medium border border-indigo-200 text-indigo-700 rounded-lg hover:bg-indigo-50 cursor-pointer transition"
+                        >👤 Assignees</button
+                      >
+                    {:else if !canEditVisits && !canEditVisitAssignees}
                       <span class="text-xs text-gray-300">🔒</span>
                     {:else}
                       <button
@@ -1776,7 +1888,95 @@
 
                   <!-- Visit card body -->
                   <div class="px-3 pb-5">
-                    {#if isEditing}
+                    {#if isEditing && canEditVisitAssignees}
+                      <div class="pt-3 border-t border-gray-100">
+                        <label class={lc}>Assign Employees</label>
+                        {#if (visit.employees || []).length > 0}
+                          <div class="flex flex-wrap gap-1.5 mb-2">
+                            {#each selectedLabels(visit.employees) as emp}
+                              <span
+                                class="flex items-center gap-1.5 pl-1.5 pr-2 py-1 bg-indigo-50 border border-indigo-200 text-indigo-800 rounded-full text-xs font-medium"
+                              >
+                                <span
+                                  class="w-4 h-4 rounded-full bg-indigo-200 flex items-center justify-center text-[9px] font-bold text-indigo-700 shrink-0"
+                                  >{emp.username.charAt(0)}</span
+                                >
+                                {emp.username}
+                                <button
+                                  type="button"
+                                  on:click={() =>
+                                    (visits[i].employees = toggleEmployee(
+                                      visit.employees || [],
+                                      emp._id,
+                                    ))}
+                                  class="ml-0.5 text-indigo-400 hover:text-indigo-700 leading-none"
+                                  >×</button
+                                >
+                              </span>
+                            {/each}
+                          </div>
+                        {/if}
+                        <div class="relative mb-3">
+                          <button
+                            type="button"
+                            on:click={() => toggleDropdown(`visit-${i}`)}
+                            class="w-full flex items-center justify-between px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 hover:bg-white transition text-left"
+                          >
+                            <span class="text-gray-400"
+                              >{(visit.employees || []).length
+                                ? `${visit.employees.length} selected`
+                                : "Select employees..."}</span
+                            >
+                          </button>
+                          {#if dropdownOpen[`visit-${i}`]}
+                            <div
+                              class="absolute z-20 mt-1 w-full max-h-48 overflow-auto bg-white border border-gray-200 rounded-lg shadow-lg"
+                            >
+                              {#each users as u}
+                                <button
+                                  type="button"
+                                  class="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-indigo-50"
+                                  on:click={() => {
+                                    visits[i].employees = toggleEmployee(
+                                      visit.employees || [],
+                                      u._id,
+                                    );
+                                    visits = visits;
+                                  }}
+                                >
+                                  <span
+                                    class="w-4 h-4 rounded border flex items-center justify-center text-[10px]"
+                                    class:bg-indigo-600={(visit.employees || []).includes(
+                                      u._id,
+                                    )}
+                                    class:text-white={(visit.employees || []).includes(
+                                      u._id,
+                                    )}>{(visit.employees || []).includes(u._id)
+                                      ? "✓"
+                                      : ""}</span
+                                  >
+                                  {u.username}
+                                </button>
+                              {/each}
+                            </div>
+                          {/if}
+                        </div>
+                        <div class="flex justify-end gap-2">
+                          <button
+                            on:click={() => visitCancel(i)}
+                            class="px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+                            >Cancel</button
+                          >
+                          <button
+                            on:click={() => saveVisitAssignees(i)}
+                            disabled={isSaving}
+                            class="px-4 py-1.5 text-xs font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                          >
+                            {isSaving ? "Saving..." : "Save assignees"}
+                          </button>
+                        </div>
+                      </div>
+                    {:else if isEditing}
                       <!-- Step indicator -->
                       <div
                         class="flex items-center gap-2 pt-3 pb-4 border-t border-gray-100 mb-2"
@@ -2152,8 +2352,9 @@
               {/each}
             </div>
           {/if}
+          </div>
         {/if}
-      </div>
+    </section>
     {/if}
   </div>
 {/if}

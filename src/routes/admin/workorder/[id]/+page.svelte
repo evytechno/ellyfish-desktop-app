@@ -4,6 +4,7 @@
   import { authApiFetch } from "$lib/api/client";
   import { API_ROUTES } from "$lib/constants/apiRoutes";
   import Loader from "$lib/components/Loader.svelte";
+  import LightBox from "$lib/components/LightBox.svelte";
   import { ATTACHMENT_BASE_URL } from "$lib/constants/constants";
   import PIWOTIModal from "$lib/components/PIWOTIModal.svelte";
   import { checkAuth } from "$lib/utils/auth";
@@ -36,6 +37,10 @@
   let machineMsg = "";
   let machineErr = "";
   let machineDrawerOpen = false;
+  let historyBusyId = null;
+  let addImagesEventId = null;
+  let lightboxImages = [];
+  let lightboxStart = 0;
 
   const MACHINE_STAGES = [
     "Meeting",
@@ -344,13 +349,63 @@
     }
   }
 
-  async function applyMachineStage({ stage, remark }) {
-    const res = await authApiFetch(`${API_ROUTES.WORK_ORDER}/${workOrderId}/stage`, {
-      method: "PUT",
-      data: JSON.stringify({
+  function isHistoryImage(img) {
+    const name = String(img?.fileName || img?.url || "").toLowerCase();
+    return /\.(jpe?g|png|gif|webp)$/i.test(name) || /\.(jpe?g|png|gif|webp)(\?|$)/i.test(String(img?.url || ""));
+  }
+
+  function mediaUrl(url) {
+    if (!url) return "";
+    if (/^https?:\/\//i.test(url)) return url;
+    return ATTACHMENT_BASE_URL + url;
+  }
+
+  function openImageLightbox(urls, index = 0) {
+    lightboxStart = index;
+    lightboxImages = Array.isArray(urls) ? urls.filter(Boolean) : [urls].filter(Boolean);
+  }
+
+  function openHistoryImage(ev, imgIdx) {
+    const imgs = (ev?.images || []).filter(isHistoryImage);
+    const urls = imgs.map((x) => mediaUrl(x.url));
+    const clicked = ev?.images?.[imgIdx];
+    const start = Math.max(
+      0,
+      imgs.findIndex((x) => x === clicked || x?.url === clicked?.url),
+    );
+    if (!urls.length) return;
+    openImageLightbox(urls, start);
+  }
+
+  function patchLocalEvent(eventId, nextEvent) {
+    workOrder = {
+      ...workOrder,
+      events: (workOrder.events || []).map((e) =>
+        e.id === eventId ? { ...e, ...nextEvent } : e,
+      ),
+    };
+  }
+
+  async function applyMachineStage({ stage, remark, files = [] }) {
+    const hasFiles = Array.isArray(files) && files.length > 0;
+    let data;
+    if (hasFiles) {
+      const form = new FormData();
+      form.append("stage", stage);
+      if (remark) form.append("remark", remark);
+      for (const file of files) {
+        if (file) form.append("images", file);
+      }
+      data = form;
+    } else {
+      data = JSON.stringify({
         stage,
         remark: remark || undefined,
-      }),
+      });
+    }
+    const res = await authApiFetch(`${API_ROUTES.WORK_ORDER}/${workOrderId}/stage`, {
+      method: "PUT",
+      data,
     });
     if (res?.data?.machine) {
       workOrder = {
@@ -365,6 +420,113 @@
       };
     }
     return res;
+  }
+
+  async function deleteStageHistory(ev) {
+    if (!isMaster || !ev?.id || historyBusyId) return;
+    const confirm = await Swal.fire({
+      title: "Delete history entry?",
+      text: "This removes the stage history row and its images.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Delete",
+      confirmButtonColor: "#dc2626",
+      cancelButtonColor: "#9ca3af",
+    });
+    if (!confirm.isConfirmed) return;
+
+    historyBusyId = ev.id;
+    machineErr = "";
+    try {
+      await authApiFetch(
+        `${API_ROUTES.WORK_ORDER}/${workOrderId}/machine-events/${ev.id}`,
+        { method: "DELETE" },
+      );
+      workOrder = {
+        ...workOrder,
+        events: (workOrder.events || []).filter((e) => e.id !== ev.id),
+      };
+      machineMsg = "Stage history entry deleted.";
+    } catch (err) {
+      machineErr = err?.message || "Failed to delete history entry.";
+      Swal.fire("Error", machineErr, "error");
+    } finally {
+      historyBusyId = null;
+    }
+  }
+
+  async function removeStageHistoryImage(ev, imageIndex) {
+    if (!isMaster || !ev?.id || historyBusyId) return;
+    const confirm = await Swal.fire({
+      title: "Remove image?",
+      text: "This image will be removed from the history entry.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Remove",
+      confirmButtonColor: "#dc2626",
+      cancelButtonColor: "#9ca3af",
+    });
+    if (!confirm.isConfirmed) return;
+
+    historyBusyId = ev.id;
+    machineErr = "";
+    try {
+      const res = await authApiFetch(
+        `${API_ROUTES.WORK_ORDER}/${workOrderId}/machine-events/${ev.id}/images/${imageIndex}`,
+        { method: "DELETE" },
+      );
+      if (res?.data?.event) {
+        patchLocalEvent(ev.id, res.data.event);
+      } else {
+        const nextImages = [...(ev.images || [])];
+        nextImages.splice(imageIndex, 1);
+        patchLocalEvent(ev.id, { images: nextImages.length ? nextImages : null });
+      }
+      machineMsg = "Image removed.";
+    } catch (err) {
+      machineErr = err?.message || "Failed to remove image.";
+      Swal.fire("Error", machineErr, "error");
+    } finally {
+      historyBusyId = null;
+    }
+  }
+
+  function triggerAddHistoryImages(eventId) {
+    if (!isMaster || historyBusyId) return;
+    addImagesEventId = eventId;
+    const input = document.getElementById("wo-history-image-input");
+    if (input) {
+      input.value = "";
+      input.click();
+    }
+  }
+
+  async function onHistoryImagesSelected(e) {
+    const eventId = addImagesEventId;
+    const files = Array.from(e?.target?.files || []);
+    addImagesEventId = null;
+    if (!eventId || !files.length) return;
+
+    historyBusyId = eventId;
+    machineErr = "";
+    try {
+      const form = new FormData();
+      for (const file of files) form.append("images", file);
+      const res = await authApiFetch(
+        `${API_ROUTES.WORK_ORDER}/${workOrderId}/machine-events/${eventId}/images`,
+        { method: "POST", data: form },
+      );
+      if (res?.data?.event) {
+        patchLocalEvent(eventId, res.data.event);
+      }
+      machineMsg = "Images added.";
+    } catch (err) {
+      machineErr = err?.message || "Failed to add images.";
+      Swal.fire("Error", machineErr, "error");
+    } finally {
+      historyBusyId = null;
+      if (e?.target) e.target.value = "";
+    }
   }
 
   function escAttr(v) {
@@ -435,6 +597,11 @@
             <input id="wo-mach-size" class="swal2-input" style="width:100%;margin:6px 0 0;" placeholder="Size" value="${escAttr(currentSize)}" />
           </div>
         </div>
+        <div style="text-align:left;margin-top:10px;">
+          <label style="font-size:12px;font-weight:600;color:#374151;">Stage images (optional)</label>
+          <input id="wo-stage-images" type="file" accept="image/jpeg,image/png,image/webp,image/gif,application/pdf" multiple class="swal2-file" style="width:100%;margin:6px 0 0;font-size:12px;" />
+          <div style="font-size:11px;color:#9ca3af;margin-top:4px;">Attached to the new stage history entry.</div>
+        </div>
         <input type="hidden" id="wo-stage-value" value="${escAttr(currentStage)}" />
       `,
       width: 480,
@@ -450,25 +617,25 @@
         const completionDate = String(document.getElementById("wo-mach-date")?.value || "").trim();
         const color = String(document.getElementById("wo-mach-color")?.value || "").trim();
         const size = String(document.getElementById("wo-mach-size")?.value || "").trim();
+        const files = Array.from(document.getElementById("wo-stage-images")?.files || []);
 
         const stageChanged = stage !== currentStage;
         const attrsChanged =
           completionDate !== currentDate ||
           color !== currentColor ||
           size !== currentSize;
+        const hasImages = files.length > 0;
 
-        if (!stageChanged && !remark && !attrsChanged) {
-          Swal.showValidationMessage("Change a field, or add a stage remark.");
+        if (!stageChanged && !remark && !attrsChanged && !hasImages) {
+          Swal.showValidationMessage("Change a field, add a remark, or attach images.");
           return false;
-        }
-        if (!stageChanged && remark && !attrsChanged) {
-          // same-stage note only — ok
         }
         return {
           stage,
           remark: remark || undefined,
           stageChanged,
-          updateStage: stageChanged || !!remark,
+          updateStage: stageChanged || !!remark || hasImages,
+          files,
           completionDate,
           color,
           size,
@@ -514,7 +681,11 @@
     machineStageSaving = true;
     try {
       if (result.updateStage) {
-        await applyMachineStage({ stage: result.stage, remark: result.remark });
+        await applyMachineStage({
+          stage: result.stage,
+          remark: result.remark,
+          files: result.files || [],
+        });
       }
       if (result.attrsChanged) {
         await applyMachineAttrs({
@@ -965,6 +1136,8 @@
   on:refresh={onPIWOTIRefresh}
 />
 
+<LightBox bind:data={lightboxImages} startIndex={lightboxStart} />
+
 {#if workOrder && isMachineCat(workOrder)}
   {#if machineDrawerOpen}
     <div
@@ -999,138 +1172,217 @@
       </button>
     </div>
     <div class="wo-mach-drawer__body">
-      <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-        <span class="text-muted" style="font-size:12px;">Stage</span>
+      <section class="wo-mach-status">
+        <div class="wo-mach-status__stage">
+          <span class="wo-mach-label">Current stage</span>
+          <button
+            type="button"
+            class="wo-mach-stage-pill"
+            style={stageBadgeStyle(workOrder.machine?.stage || machineStage)}
+            disabled={machineSaving || machineStageSaving}
+            title="Edit machine details"
+            on:click={openMachineDetailsModal}
+          >
+            {workOrder.machine?.stage || machineStage || "Meeting"}
+          </button>
+        </div>
+
+        <dl class="wo-mach-meta">
+          <div>
+            <dt>Completion date</dt>
+            <dd>
+              {#if workOrder.machine?.completionDate}
+                {new Date(workOrder.machine.completionDate).toLocaleDateString("en-IN", { dateStyle: "medium" })}
+              {:else}
+                <span class="wo-mach-empty">Not set</span>
+              {/if}
+            </dd>
+          </div>
+          <div>
+            <dt>Color</dt>
+            <dd>
+              {#if workOrder.machine?.color}
+                {workOrder.machine.color}
+              {:else}
+                <span class="wo-mach-empty">Not set</span>
+              {/if}
+            </dd>
+          </div>
+          <div>
+            <dt>Size</dt>
+            <dd>
+              {#if workOrder.machine?.size}
+                {workOrder.machine.size}
+              {:else}
+                <span class="wo-mach-empty">Not set</span>
+              {/if}
+            </dd>
+          </div>
+        </dl>
+
         <button
           type="button"
-          class="badge border-0"
-          style="font-size:12px;padding:7px 14px;cursor:pointer;{stageBadgeStyle(workOrder.machine?.stage || machineStage)}"
+          class="btn btn-outline-primary btn-sm w-100 wo-mach-edit-btn"
           disabled={machineSaving || machineStageSaving}
-          title="Click to edit"
           on:click={openMachineDetailsModal}
         >
-          {workOrder.machine?.stage || machineStage || "Meeting"}
+          <i class="ti ti-edit me-1"></i>
+          {machineSaving || machineStageSaving ? "Saving…" : "Edit machine details"}
         </button>
-      </div>
-
-      <dl class="wo-mach-meta mb-3">
-        <div>
-          <dt>Completion date</dt>
-          <dd>
-            {#if workOrder.machine?.completionDate}
-              {new Date(workOrder.machine.completionDate).toLocaleDateString("en-IN", { dateStyle: "medium" })}
-            {:else}
-              —
-            {/if}
-          </dd>
-        </div>
-        <div>
-          <dt>Color</dt>
-          <dd>{workOrder.machine?.color || "—"}</dd>
-        </div>
-        <div>
-          <dt>Size</dt>
-          <dd>{workOrder.machine?.size || "—"}</dd>
-        </div>
-      </dl>
-
-      <button
-        type="button"
-        class="btn btn-primary btn-sm w-100 mb-3"
-        disabled={machineSaving || machineStageSaving}
-        on:click={openMachineDetailsModal}
-      >
-        {machineSaving || machineStageSaving ? "Saving…" : "Edit machine details"}
-      </button>
+      </section>
 
       {#if isMaster}
-        <div class="wo-mach-history">
+        <input
+          id="wo-history-image-input"
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+          multiple
+          class="d-none"
+          on:change={onHistoryImagesSelected}
+        />
+        <section class="wo-mach-history">
           <div class="wo-mach-history__title">
-            <span>Stage history</span>
-            {#if stageEvents.length}
-              <span class="badge bg-secondary" style="font-size:10px;">{stageEvents.length}</span>
-            {/if}
+            <div class="wo-mach-history__heading">
+              <i class="ti ti-timeline"></i>
+              <span>Stage history</span>
+              {#if stageEvents.length}
+                <span class="wo-mach-history__count">{stageEvents.length}</span>
+              {/if}
+            </div>
           </div>
+
           {#if stageEvents.length}
-            <ul class="list-group list-group-flush">
-              {#each [...stageEvents].reverse() as ev}
-                <li class="list-group-item px-2 py-2" style="font-size:12px;">
-                  <div class="d-flex justify-content-between gap-2">
-                    <span>
-                      <span
-                        class="badge"
-                        style="font-size:10px;{stageBadgeStyle(ev.meta?.stage || workOrder.machine?.stage)}"
-                      >
-                        {ev.meta?.stage || workOrder.machine?.stage || "—"}
-                      </span>
-                      {#if ev.meta?.previousStage && ev.meta?.stageChanged !== false && ev.meta?.previousStage !== ev.meta?.stage}
-                        <span class="text-muted"> (from {ev.meta.previousStage})</span>
-                      {:else if ev.meta?.stageChanged === false}
-                        <span class="badge bg-light text-dark border ms-1" style="font-size:9px;">same stage</span>
-                      {/if}
-                      {#if ev.remark}<div class="text-muted mt-1">{ev.remark}</div>{/if}
-                    </span>
-                    <span class="text-muted text-nowrap" style="font-size:11px;">
-                      {#if ev.date}
-                        {new Date(ev.date).toLocaleDateString("en-IN", { dateStyle: "medium" })}
-                      {:else if ev.createdAt}
-                        {new Date(ev.createdAt).toLocaleString("en-IN")}
-                      {/if}
-                    </span>
+            <ul class="wo-mach-history__list">
+              {#each [...stageEvents].reverse() as ev, i}
+                <li class="wo-hist-item" class:wo-hist-item--busy={historyBusyId === ev.id}>
+                  <div class="wo-hist-item__rail" aria-hidden="true">
+                    <span
+                      class="wo-hist-item__dot"
+                      style="background:{(MACHINE_STAGE_STYLE[ev.meta?.stage || workOrder.machine?.stage] || {}).bg || '#94a3b8'};"
+                    ></span>
+                    {#if i < stageEvents.length - 1}
+                      <span class="wo-hist-item__line"></span>
+                    {/if}
                   </div>
-                  {#if Array.isArray(ev.images) && ev.images.length}
-                    <div class="d-flex flex-wrap gap-1 mt-1">
-                      {#each ev.images as img}
-                        <a
-                          href={ATTACHMENT_BASE_URL + (img.url || "")}
-                          target="_blank"
-                          rel="noopener"
-                          class="badge bg-light text-dark border"
-                          style="font-size:10px;"
+
+                  <div class="wo-hist-item__body">
+                    <div class="wo-hist-item__top">
+                      <div class="wo-hist-item__badges">
+                        <span
+                          class="wo-hist-stage"
+                          style={stageBadgeStyle(ev.meta?.stage || workOrder.machine?.stage)}
                         >
-                          {img.fileName || "file"}
-                        </a>
-                      {/each}
+                          {ev.meta?.stage || workOrder.machine?.stage || "—"}
+                        </span>
+                        {#if ev.meta?.previousStage && ev.meta?.stageChanged !== false && ev.meta?.previousStage !== ev.meta?.stage}
+                          <span class="wo-hist-chip">from {ev.meta.previousStage}</span>
+                        {:else if ev.meta?.stageChanged === false}
+                          <span class="wo-hist-chip wo-hist-chip--muted">same stage</span>
+                        {/if}
+                      </div>
+
+                      <div class="wo-hist-item__aside">
+                        <time class="wo-hist-date">
+                          {#if ev.date}
+                            {new Date(ev.date).toLocaleDateString("en-IN", { dateStyle: "medium" })}
+                          {:else if ev.createdAt}
+                            {new Date(ev.createdAt).toLocaleString("en-IN")}
+                          {/if}
+                        </time>
+                        <div class="wo-hist-actions">
+                          <button
+                            type="button"
+                            class="wo-hist-action"
+                            title="Add images"
+                            aria-label="Add images"
+                            disabled={historyBusyId === ev.id}
+                            on:click={() => triggerAddHistoryImages(ev.id)}
+                          >
+                            <i class="ti ti-photo-plus"></i>
+                          </button>
+                          <button
+                            type="button"
+                            class="wo-hist-action wo-hist-action--danger"
+                            title="Delete history entry"
+                            aria-label="Delete history entry"
+                            disabled={historyBusyId === ev.id}
+                            on:click={() => deleteStageHistory(ev)}
+                          >
+                            <i class="ti ti-trash"></i>
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  {/if}
+
+                    {#if ev.remark}
+                      <p class="wo-hist-remark">{ev.remark}</p>
+                    {/if}
+
+                    {#if Array.isArray(ev.images) && ev.images.length}
+                      <div class="wo-hist-gallery">
+                        {#each ev.images as img, imgIdx}
+                          <div class="wo-hist-thumb">
+                            {#if isHistoryImage(img)}
+                              <button
+                                type="button"
+                                class="wo-hist-thumb-btn"
+                                title="Quick view"
+                                on:click={() => openHistoryImage(ev, imgIdx)}
+                              >
+                                <img src={mediaUrl(img.url)} alt={img.fileName || "stage"} />
+                                <span class="wo-hist-thumb__zoom"><i class="ti ti-zoom-in"></i></span>
+                              </button>
+                            {:else}
+                              <a
+                                href={mediaUrl(img.url)}
+                                target="_blank"
+                                rel="noopener"
+                                class="wo-hist-file"
+                                title={img.fileName || "file"}
+                              >
+                                <i class="ti ti-file-text"></i>
+                                <span>{img.fileName || "file"}</span>
+                              </a>
+                            {/if}
+                            <button
+                              type="button"
+                              class="wo-hist-thumb__rm"
+                              title="Remove image"
+                              aria-label="Remove image"
+                              disabled={historyBusyId === ev.id}
+                              on:click|stopPropagation={() => removeStageHistoryImage(ev, imgIdx)}
+                            >
+                              <i class="ti ti-x"></i>
+                            </button>
+                          </div>
+                        {/each}
+                      </div>
+                    {/if}
+                  </div>
                 </li>
               {/each}
             </ul>
           {:else}
-            <div class="text-muted px-2 py-2" style="font-size:12px;">No stage history yet.</div>
+            <div class="wo-mach-history__empty">
+              <i class="ti ti-history"></i>
+              <div>No stage history yet</div>
+              <small>Updates from Edit machine details will appear here.</small>
+            </div>
           {/if}
-        </div>
+        </section>
       {/if}
 
       {#if machineMsg}
-        <div class="text-success mt-3" style="font-size:12px;">{machineMsg}</div>
+        <div class="wo-mach-toast wo-mach-toast--ok">{machineMsg}</div>
       {/if}
       {#if machineErr}
-        <div class="text-danger mt-3" style="font-size:12px;">{machineErr}</div>
+        <div class="wo-mach-toast wo-mach-toast--err">{machineErr}</div>
       {/if}
     </div>
   </aside>
 {/if}
 
 <style>
-  .wo-mach-history {
-    border: 1px solid #e5e7eb;
-    border-radius: 10px;
-    overflow: hidden;
-    background: #fafafa;
-  }
-  .wo-mach-history__title {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 10px 12px;
-    font-size: 12px;
-    font-weight: 700;
-    color: #374151;
-    background: #fff;
-    border-bottom: 1px solid #e5e7eb;
-  }
   .wo-mach-drawer-backdrop {
     position: fixed;
     inset: 0;
@@ -1141,13 +1393,13 @@
     position: fixed;
     top: 0;
     right: 0;
-    width: min(420px, 100vw);
+    width: min(440px, 100vw);
     height: 100vh;
     background: #fff;
     z-index: 1050;
     display: flex;
     flex-direction: column;
-    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12);
+    box-shadow: -8px 0 32px rgba(15, 23, 42, 0.14);
     transform: translateX(100%);
     transition: transform 0.25s ease;
     pointer-events: none;
@@ -1161,37 +1413,419 @@
     align-items: flex-start;
     justify-content: space-between;
     gap: 12px;
-    padding: 16px 18px;
-    border-bottom: 1px solid #e5e7eb;
+    padding: 18px 20px 16px;
+    border-bottom: 1px solid #eef2f7;
+    background: linear-gradient(180deg, #fafbfd 0%, #fff 100%);
   }
   .wo-mach-drawer__body {
     flex: 1;
     overflow-y: auto;
-    padding: 16px 18px 24px;
+    padding: 16px 18px 28px;
+    background: #f7f8fb;
+  }
+
+  .wo-mach-status {
+    background: #fff;
+    border: 1px solid #e8ecf2;
+    border-radius: 14px;
+    padding: 14px 14px 12px;
+    margin-bottom: 14px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  }
+  .wo-mach-status__stage {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #f1f5f9;
+  }
+  .wo-mach-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #94a3b8;
+  }
+  .wo-mach-stage-pill {
+    border: 0;
+    border-radius: 999px;
+    padding: 7px 14px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+  }
+  .wo-mach-stage-pill:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
   }
   .wo-mach-meta {
-    margin: 0;
+    margin: 0 0 12px;
     display: grid;
-    gap: 10px;
+    gap: 8px;
   }
   .wo-mach-meta > div {
     display: grid;
-    grid-template-columns: 120px 1fr;
+    grid-template-columns: 118px 1fr;
     gap: 8px;
     font-size: 13px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid #f3f4f6;
+    align-items: baseline;
   }
   .wo-mach-meta dt {
     margin: 0;
-    color: #6b7280;
+    color: #64748b;
     font-weight: 500;
   }
   .wo-mach-meta dd {
     margin: 0;
-    color: #111827;
+    color: #0f172a;
     font-weight: 600;
   }
+  .wo-mach-empty {
+    color: #94a3b8;
+    font-weight: 500;
+  }
+  .wo-mach-edit-btn {
+    border-radius: 10px;
+    font-weight: 600;
+    padding: 8px 12px;
+  }
+
+  .wo-mach-history {
+    border: 1px solid #e8ecf2;
+    border-radius: 14px;
+    overflow: hidden;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  }
+  .wo-mach-history__title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 12px 14px;
+    background: #fff;
+    border-bottom: 1px solid #eef2f7;
+  }
+  .wo-mach-history__heading {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #1e293b;
+  }
+  .wo-mach-history__heading i {
+    color: #64748b;
+    font-size: 16px;
+  }
+  .wo-mach-history__count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: #eef2ff;
+    color: #4338ca;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .wo-mach-history__list {
+    list-style: none;
+    margin: 0;
+    padding: 8px 0 4px;
+  }
+  .wo-mach-history__empty {
+    padding: 28px 16px;
+    text-align: center;
+    color: #64748b;
+  }
+  .wo-mach-history__empty i {
+    display: block;
+    font-size: 28px;
+    color: #cbd5e1;
+    margin-bottom: 8px;
+  }
+  .wo-mach-history__empty div {
+    font-size: 13px;
+    font-weight: 600;
+    color: #475569;
+  }
+  .wo-mach-history__empty small {
+    display: block;
+    margin-top: 4px;
+    font-size: 11px;
+    color: #94a3b8;
+  }
+
+  .wo-hist-item {
+    display: grid;
+    grid-template-columns: 18px 1fr;
+    gap: 10px;
+    padding: 10px 14px 14px;
+    position: relative;
+  }
+  .wo-hist-item + .wo-hist-item {
+    border-top: 1px solid #f1f5f9;
+  }
+  .wo-hist-item--busy {
+    opacity: 0.65;
+    pointer-events: none;
+  }
+  .wo-hist-item__rail {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 6px;
+  }
+  .wo-hist-item__dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1px #e2e8f0;
+    flex-shrink: 0;
+    z-index: 1;
+  }
+  .wo-hist-item__line {
+    flex: 1;
+    width: 2px;
+    margin-top: 4px;
+    background: #e2e8f0;
+    border-radius: 2px;
+    min-height: 24px;
+  }
+  .wo-hist-item__body {
+    min-width: 0;
+  }
+  .wo-hist-item__top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .wo-hist-item__badges {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .wo-hist-stage {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .wo-hist-chip {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 3px 8px;
+    font-size: 10px;
+    font-weight: 600;
+    color: #475569;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+  }
+  .wo-hist-chip--muted {
+    color: #64748b;
+    background: #f8fafc;
+  }
+  .wo-hist-item__aside {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .wo-hist-date {
+    font-size: 11px;
+    color: #94a3b8;
+    white-space: nowrap;
+  }
+  .wo-hist-actions {
+    display: inline-flex;
+    gap: 4px;
+  }
+  .wo-hist-action {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    color: #475569;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  }
+  .wo-hist-action i {
+    font-size: 15px;
+  }
+  .wo-hist-action:hover:not(:disabled) {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+    color: #0f172a;
+  }
+  .wo-hist-action--danger:hover:not(:disabled) {
+    background: #fef2f2;
+    border-color: #fecaca;
+    color: #dc2626;
+  }
+  .wo-hist-action:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .wo-hist-remark {
+    margin: 8px 0 0;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: #f8fafc;
+    border: 1px solid #eef2f7;
+    color: #475569;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  .wo-hist-gallery {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .wo-hist-thumb {
+    position: relative;
+    width: 64px;
+    height: 64px;
+    flex-shrink: 0;
+  }
+  .wo-hist-thumb-btn {
+    display: block;
+    width: 64px;
+    height: 64px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    cursor: zoom-in;
+    border-radius: 10px;
+    overflow: hidden;
+    position: relative;
+  }
+  .wo-hist-thumb img {
+    width: 64px;
+    height: 64px;
+    object-fit: cover;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    display: block;
+    background: #fff;
+    transition: transform 0.2s ease;
+  }
+  .wo-hist-thumb-btn:hover img {
+    transform: scale(1.04);
+  }
+  .wo-hist-thumb__zoom {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 23, 42, 0.35);
+    color: #fff;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    border-radius: 10px;
+    pointer-events: none;
+  }
+  .wo-hist-thumb-btn:hover .wo-hist-thumb__zoom {
+    opacity: 1;
+  }
+  .wo-hist-file {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    width: 64px;
+    height: 64px;
+    padding: 6px;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    color: #475569;
+    font-size: 9px;
+    text-align: center;
+    text-decoration: none;
+    word-break: break-all;
+    line-height: 1.15;
+  }
+  .wo-hist-file i {
+    font-size: 16px;
+    color: #64748b;
+  }
+  .wo-hist-thumb__rm {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    color: #64748b;
+    font-size: 12px;
+    line-height: 1;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+    opacity: 0;
+    transition: opacity 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  }
+  .wo-hist-thumb:hover .wo-hist-thumb__rm,
+  .wo-hist-thumb__rm:focus-visible {
+    opacity: 1;
+  }
+  .wo-hist-thumb__rm:hover:not(:disabled) {
+    color: #dc2626;
+    border-color: #fecaca;
+    background: #fef2f2;
+  }
+  .wo-hist-thumb__rm:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .wo-mach-toast {
+    margin-top: 12px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .wo-mach-toast--ok {
+    background: #ecfdf5;
+    color: #047857;
+    border: 1px solid #a7f3d0;
+  }
+  .wo-mach-toast--err {
+    background: #fef2f2;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+  }
+
   .item-cell { cursor: pointer; }
   .item-cell:hover { background: #f0f4ff; }
   .inline-cell-input {

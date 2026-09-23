@@ -20,6 +20,7 @@
 
   let invoiceDate = "";
   let title = "";
+  let orderType = "";
   let poNumber = "";
   let currency = "INR";
   let discount = 0;
@@ -224,6 +225,7 @@
       }
 
       title = pi.title ?? "";
+      orderType = pi.orderType || workOrder.orderType || "";
       poNumber = pi.poNumber ?? "";
       currency = pi.currency ?? "INR";
       discount = pi.discount ?? 0;
@@ -282,6 +284,11 @@
     loading = true;
     formErrors = {};
     errorMessage = "";
+    if (!orderType) {
+      formErrors.orderType = ["Order type is required."];
+      loading = false;
+      return;
+    }
     try {
       // Use pi.companySnapshot if available, else build from pi.company (the relation object)
       const piSnap = pi?.companySnapshot;
@@ -309,6 +316,7 @@
         workOrderId: workOrder.id,
         invoiceDate,
         title,
+        orderType,
         poNumber,
         currency,
         discount,
@@ -452,6 +460,23 @@
                 />
                 {#if fieldError("invoiceDate")}
                   <div class="invalid-feedback d-block">{fieldError("invoiceDate")}</div>
+                {/if}
+              </div>
+              <div class="col-md-4">
+                <label class="form-label" for="orderType">Order Type <span class="text-danger">*</span></label>
+                <select
+                  id="orderType"
+                  class="form-select"
+                  class:is-invalid={fieldError("orderType") || formErrors.orderType}
+                  bind:value={orderType}
+                >
+                  <option value="">— Select —</option>
+                  <option value="Machine">Machine</option>
+                  <option value="Abrasive">Abrasive</option>
+                  <option value="SpareParts">SpareParts</option>
+                </select>
+                {#if formErrors.orderType}
+                  <div class="invalid-feedback d-block">{formErrors.orderType[0]}</div>
                 {/if}
               </div>
               <div class="col-md-4">

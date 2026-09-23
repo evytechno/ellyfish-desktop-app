@@ -1889,6 +1889,11 @@
                               >{order.inqCode}</span
                             >
                           {:else}<span class="text-gray-300">—</span>{/if}
+                          {#if order.sampleCode}<div
+                              class="mt-0.5 font-mono text-[10px] text-gray-500 truncate"
+                            >
+                              {order.sampleCode}
+                            </div>{/if}
                         </td>
                       {:else if col.key === "title"}
                         <!-- Title -->

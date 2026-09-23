@@ -26,6 +26,7 @@
   // ── Form state ────────────────────────────────────────────────────────────
   let invoiceType = "order";
   let title = "";
+  let orderType = "";
   let orderId = null;
   let companyId = null;
   let invoiceDate = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split("T")[0];
@@ -185,6 +186,15 @@
       if (!order) return;
       const client = order.orderClients?.[0];
       if (order.title)          title           = order.title;
+      if (!orderType) {
+        const texts = [order.category, order.title].filter(Boolean);
+        for (const raw of texts) {
+          const s = String(raw).toLowerCase();
+          if (s.includes("machine")) { orderType = "Machine"; break; }
+          if (s.includes("abrasive") || s.includes("abresive")) { orderType = "Abrasive"; break; }
+          if (s.includes("spare")) { orderType = "SpareParts"; break; }
+        }
+      }
       if (order.currency)       currency        = order.currency;
       if (order.priceTerms)     priceTerms      = order.priceTerms;
       if (order.termsCondition) termsConditions = order.termsCondition;
@@ -252,12 +262,13 @@
     e.preventDefault();
     formErrors = {};
     if (!companyId) { formErrors.companyId = ["Company is required."]; return; }
+    if (!orderType) { formErrors.orderType = ["Order type is required."]; return; }
     if (items.length === 0) { Swal.fire("Warning!", "Please add at least one line item.", "warning"); return; }
     if (total === 0) { Swal.fire("Warning!", "Invoice total amount cannot be zero.", "warning"); return; }
     loading = true;
     try {
       const payload = {
-        title, items, extraItems, taxItems, isOutOfIndia,
+        title, orderType, items, extraItems, taxItems, isOutOfIndia,
         country: taxCountry, customerState: taxCountry === "India" ? taxState : null, taxSlab: taxSlab || null,
         priceTerms, inCoterms, inCotermsBy, swiftCode, currency,
         paymentMethod, status, termsConditions, remarks, poNumber, discount,
@@ -439,6 +450,19 @@
                 <div>
                   <label class="form-label">Invoice Date</label>
                   <input type="date" class="form-control" bind:value={invoiceDate} />
+                </div>
+
+                <div>
+                  <label class="form-label">Order Type <span class="text-danger">*</span></label>
+                  <select class="form-select" class:is-invalid={formErrors.orderType} bind:value={orderType}>
+                    <option value="">— Select —</option>
+                    <option value="Machine">Machine</option>
+                    <option value="Abrasive">Abrasive</option>
+                    <option value="SpareParts">SpareParts</option>
+                  </select>
+                  {#if formErrors.orderType}
+                    <ul class="text-danger mt-1 text-xs"><li>{formErrors.orderType[0]}</li></ul>
+                  {/if}
                 </div>
 
                 <div>

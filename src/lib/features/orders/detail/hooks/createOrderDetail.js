@@ -33,15 +33,18 @@ import {
   createOrderFeedback as createOrderFeedbackApi,
   deleteOrderFeedback as deleteOrderFeedbackApi,
   loadOrderSamples as loadOrderSamplesApi,
+  loadOrderSampleStepImages as loadOrderSampleStepImagesApi,
   setOrderSampleFlag as setOrderSampleFlagApi,
   setOrderSampleCompany as setOrderSampleCompanyApi,
   createOrderSample as createOrderSampleApi,
   markOrderSampleReceived as markOrderSampleReceivedApi,
   deleteOrderSample as deleteOrderSampleApi,
   updateOrderSample as updateOrderSampleApi,
+  changeOrderSampleStatus as changeOrderSampleStatusApi,
   approveOrderSample as approveOrderSampleApi,
   rejectOrderSample as rejectOrderSampleApi,
   createOrderSampleEvent as createOrderSampleEventApi,
+  approveSampleDelayRemark as approveSampleDelayRemarkApi,
   loadOrderVisits as loadOrderVisitsApi,
   createOrderVisit as createOrderVisitApi,
   linkOrderContact as linkOrderContactApi,
@@ -1247,6 +1250,19 @@ export function createOrderDetail({ getOrderId }) {
     try {
       const res = await loadOrderSamplesApi(o.id);
       samples.set(res?.data ?? []);
+      if (res?.sampleCode != null || res?.sampleCompanyId !== undefined) {
+        order.update((cur) =>
+          cur
+            ? {
+                ...cur,
+                ...(res.sampleCode != null ? { sampleCode: res.sampleCode } : {}),
+                ...(res.sampleCompanyId !== undefined
+                  ? { sampleCompanyId: res.sampleCompanyId }
+                  : {}),
+              }
+            : cur,
+        );
+      }
     } catch (_) {
     } finally {
       loadingSamples.set(false);
@@ -1370,11 +1386,13 @@ export function createOrderDetail({ getOrderId }) {
     }
   }
 
-  async function markSampleReceived(id) {
+  async function markSampleReceived(id, delayRemark) {
     if (!assertCanMutate("mark sample received")) return;
     sampleSaving.set(true);
     try {
-      const res = await markOrderSampleReceivedApi(id);
+      const res = await markOrderSampleReceivedApi(id, {
+        delayRemark: delayRemark || undefined,
+      });
       if (res?.data) {
         samples.update((list) =>
           list.map((s) => (s.id === id ? { ...s, ...res.data } : s)),
@@ -1388,17 +1406,39 @@ export function createOrderDetail({ getOrderId }) {
     }
   }
 
+  async function changeSampleStatus(id, payload, files = []) {
+    if (!assertCanMutate("change sample status")) return false;
+    sampleSaving.set(true);
+    try {
+      await changeOrderSampleStatusApi(id, payload, files);
+      await loadSamples();
+      Swal.fire(
+        "Updated",
+        files?.length || payload?.eventNote || payload?.eventType
+          ? "Sample status and event updated."
+          : "Sample status updated.",
+        "success",
+      );
+      return true;
+    } catch (err) {
+      errorHandle(err);
+      return false;
+    } finally {
+      sampleSaving.set(false);
+    }
+  }
+
   async function updateSampleMovement(id, payload) {
     if (!assertCanMutate("update sample movement")) return false;
     sampleSaving.set(true);
     try {
-      const res = await updateOrderSampleApi(id, payload);
-      if (res?.data) {
-        samples.update((list) =>
-          list.map((s) => (s.id === id ? { ...s, ...res.data, events: s.events } : s)),
-        );
-      }
-      Swal.fire("Updated", "Sample details saved.", "success");
+      await updateOrderSampleApi(id, payload);
+      await loadSamples();
+      Swal.fire(
+        "Updated",
+        payload?.status ? "Sample status updated." : "Sample details saved.",
+        "success",
+      );
       return true;
     } catch (err) {
       errorHandle(err);
@@ -1430,18 +1470,26 @@ export function createOrderDetail({ getOrderId }) {
     }
   }
 
-  async function addSampleEvent(sampleId, { note, type, status } = {}, files = []) {
+  async function addSampleEvent(
+    sampleId,
+    { note, type, status, delayRemark } = {},
+    files = [],
+  ) {
     if (!assertCanMutate("add sample event")) return false;
     sampleSaving.set(true);
     try {
-      const res = await createOrderSampleEventApi(sampleId, { note, type, status }, files);
+      const res = await createOrderSampleEventApi(
+        sampleId,
+        { note, type, status, delayRemark },
+        files,
+      );
       if (res?.data) {
         const { sampleImages, ...eventData } = res.data;
         samples.update((list) =>
           list.map((s) => {
             if (s.id !== sampleId) return s;
             const events = Array.isArray(s.events)
-              ? [...s.events, eventData]
+              ? [eventData, ...s.events]
               : [eventData];
             return {
               ...s,
@@ -1451,7 +1499,32 @@ export function createOrderDetail({ getOrderId }) {
           }),
         );
       }
+      // Reload so admin/master see any delay_remark; others get filtered list
+      const o = get(order);
+      if (o?.id) {
+        const refreshed = await loadOrderSamplesApi(o.id);
+        samples.set(refreshed?.data ?? []);
+      }
       Swal.fire("Saved", "Sample event added.", "success");
+      return true;
+    } catch (err) {
+      errorHandle(err);
+      return false;
+    } finally {
+      sampleSaving.set(false);
+    }
+  }
+
+  async function approveDelayRemark(eventId) {
+    sampleSaving.set(true);
+    try {
+      await approveSampleDelayRemarkApi(eventId);
+      const o = get(order);
+      if (o?.id) {
+        const refreshed = await loadOrderSamplesApi(o.id);
+        samples.set(refreshed?.data ?? []);
+      }
+      Swal.fire("Approved", "Delay remark approved.", "success");
       return true;
     } catch (err) {
       errorHandle(err);
@@ -1935,9 +2008,11 @@ export function createOrderDetail({ getOrderId }) {
     setSampleCompany,
     addSampleMovement,
     updateSampleMovement,
+    changeSampleStatus,
     markSampleReceived,
     deleteSampleMovement,
     addSampleEvent,
+    approveDelayRemark,
     approveSample,
     rejectSample,
     toggleAccordion,

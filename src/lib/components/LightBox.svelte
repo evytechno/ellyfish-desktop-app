@@ -1,6 +1,7 @@
 <script>
   import { portal } from "$lib/utils/portal";
 
+  /** @type {Array<string | { url: string, label?: string, status?: string, note?: string, date?: string }>} */
   export let data = [];
   export let startIndex = 0;
 
@@ -44,13 +45,61 @@
     }
   }
 
-  const imageExtensions = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"];
-  const isImage = (url) => {
-    if (!url) return false;
+  const imageExtensions = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "jfif", "avif", "heic", "heif"];
+
+  function itemUrl(item) {
+    if (!item) return "";
+    if (typeof item === "string") return item;
+    return item.url || "";
+  }
+
+  function itemMeta(item) {
+    if (!item || typeof item === "string") return null;
+    const label = item.label || item.type || "";
+    const status = item.status || "";
+    const note = item.note || "";
+    const date = item.date || item.createdAt || "";
+    if (!label && !status && !note && !date) return null;
+    return { label, status, note, date };
+  }
+
+  function extOf(url) {
+    if (!url || typeof url !== "string") return "";
+    try {
+      const path = url.split(/[?#]/)[0] || "";
+      return path.split(".").pop()?.toLowerCase() || "";
+    } catch {
+      return "";
+    }
+  }
+
+  function isPdf(url) {
+    return extOf(url) === "pdf" || /\.pdf([?#]|$)/i.test(String(url || ""));
+  }
+
+  function isExcel(url) {
+    const ext = extOf(url);
+    return ["xlsx", "xls", "csv"].includes(ext);
+  }
+
+  /** Prefer <img> for uploads / unknown binary; only use iframe for docs. */
+  function isImage(url) {
+    if (!url || typeof url !== "string") return false;
     if (url.startsWith("blob:") || url.startsWith("data:image/")) return true;
-    const ext = url.split(".").pop()?.split(/[?#]/)[0]?.toLowerCase();
-    return imageExtensions.includes(ext);
-  };
+    if (isPdf(url) || isExcel(url)) return false;
+    const ext = extOf(url);
+    if (imageExtensions.includes(ext)) return true;
+    if (/\/uploads\//i.test(url)) return true;
+    if (/\/(image|images|photo|photos|media|img)\b/i.test(url)) return true;
+    return !ext || imageExtensions.includes(ext);
+  }
+
+  $: currentItem = displayImages[selectedIndex];
+  $: currentUrl = itemUrl(currentItem);
+  $: currentMeta = itemMeta(currentItem);
+  $: showAsImage = isImage(currentUrl);
+  $: showAsPdf = !showAsImage && isPdf(currentUrl);
+  $: showAsExcel = !showAsImage && isExcel(currentUrl);
 
   $: if (data.length > 0 && selectedIndex === null) {
     selectedIndex = 0;
@@ -91,22 +140,22 @@
     {/if}
 
     <div class="lightbox-stage" on:click|stopPropagation role="presentation">
-      {#if isImage(displayImages[selectedIndex])}
+      {#if showAsImage}
         <img
-          src={displayImages[selectedIndex]}
-          alt="Gallery item"
+          src={currentUrl}
+          alt={currentMeta?.label || "Gallery item"}
           class="lightbox-img"
         />
-      {:else if displayImages[selectedIndex].toLowerCase().endsWith(".pdf")}
+      {:else if showAsPdf}
         <iframe
-          src={displayImages[selectedIndex]}
+          src={currentUrl}
           title="Gallery item"
           class="lightbox-frame"
         ></iframe>
-      {:else if displayImages[selectedIndex].toLowerCase().endsWith(".xlsx")}
+      {:else if showAsExcel}
         <div class="lightbox-download-card">
           <a
-            href={displayImages[selectedIndex]}
+            href={currentUrl}
             target="_blank"
             rel="noopener noreferrer"
             class="lightbox-download-btn"
@@ -115,11 +164,30 @@
           </a>
         </div>
       {:else}
-        <iframe
-          src={displayImages[selectedIndex]}
-          title="Gallery item"
-          class="lightbox-frame"
-        ></iframe>
+        <img
+          src={currentUrl}
+          alt={currentMeta?.label || "Gallery item"}
+          class="lightbox-img"
+        />
+      {/if}
+
+      {#if currentMeta}
+        <div class="lightbox-caption" on:click|stopPropagation role="presentation">
+          <div class="lightbox-caption-row">
+            {#if currentMeta.label}
+              <span class="lightbox-badge lightbox-badge--label">{currentMeta.label}</span>
+            {/if}
+            {#if currentMeta.status}
+              <span class="lightbox-badge lightbox-badge--status">{currentMeta.status}</span>
+            {/if}
+            {#if currentMeta.date}
+              <span class="lightbox-caption-date">{currentMeta.date}</span>
+            {/if}
+          </div>
+          {#if currentMeta.note}
+            <div class="lightbox-caption-note">{currentMeta.note}</div>
+          {/if}
+        </div>
       {/if}
 
       {#if displayImages.length > 1}
@@ -144,11 +212,12 @@
     position: fixed;
     inset: 0;
     z-index: 100000;
-    background: rgba(0, 0, 0, 0.72);
+    background: rgba(0, 0, 0, 0.78);
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 1rem;
+    padding: 3.5rem 4.5rem;
+    box-sizing: border-box;
   }
 
   .lightbox-close {
@@ -156,7 +225,7 @@
     top: 1rem;
     right: 1rem;
     color: #fff;
-    background: none;
+    background: rgba(0, 0, 0, 0.35);
     border: none;
     padding: 0.5rem;
     border-radius: 9999px;
@@ -165,16 +234,16 @@
     transition: background 0.15s, color 0.15s;
   }
   .lightbox-close:hover {
-    color: #e9ecef;
-    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    background: rgba(255, 255, 255, 0.2);
   }
 
   .lightbox-nav {
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
-    color: #fff;
-    background: rgba(255, 255, 255, 0.92);
+    color: #212529;
+    background: rgba(255, 255, 255, 0.95);
     border: 1px solid #dee2e6;
     padding: 0.75rem;
     border-radius: 9999px;
@@ -195,24 +264,31 @@
 
   .lightbox-stage {
     position: relative;
-    max-width: min(72rem, 96vw);
-    max-height: 96vh;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    max-width: min(72rem, 92vw);
+    max-height: 90vh;
+    gap: 0.75rem;
   }
 
   .lightbox-img {
-    max-width: 100%;
-    max-height: 90vh;
+    display: block;
+    max-width: min(72rem, 92vw);
+    max-height: 72vh;
+    width: auto;
+    height: auto;
     object-fit: contain;
+    margin: 0 auto;
     border-radius: 0.5rem;
     box-shadow: 0 8px 40px rgba(0, 0, 0, 0.45);
+    background: transparent;
   }
 
   .lightbox-frame {
-    width: 80vw;
-    height: 90vh;
+    width: min(80vw, 72rem);
+    height: min(70vh, 800px);
     background: #fff;
     border-radius: 0.5rem;
     box-shadow: 0 8px 40px rgba(0, 0, 0, 0.45);
@@ -236,9 +312,62 @@
   }
   .lightbox-download-btn:hover { background: #1d4ed8; color: #fff; }
 
+  .lightbox-caption {
+    width: min(36rem, 92vw);
+    max-width: 100%;
+    background: rgba(15, 23, 42, 0.88);
+    color: #f8fafc;
+    border-radius: 0.65rem;
+    padding: 0.65rem 0.85rem;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  }
+
+  .lightbox-caption-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.55rem;
+  }
+
+  .lightbox-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.15rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+
+  .lightbox-badge--label {
+    background: #f59e0b;
+    color: #fff;
+  }
+
+  .lightbox-badge--status {
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    color: #e2e8f0;
+  }
+
+  .lightbox-caption-date {
+    font-size: 0.75rem;
+    color: #cbd5e1;
+    margin-left: auto;
+  }
+
+  .lightbox-caption-note {
+    margin-top: 0.4rem;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #f1f5f9;
+  }
+
   .lightbox-counter {
     position: absolute;
-    bottom: 1rem;
+    bottom: -2.25rem;
     left: 50%;
     transform: translateX(-50%);
     background: rgba(0, 0, 0, 0.7);
@@ -246,6 +375,7 @@
     padding: 0.35rem 1rem;
     border-radius: 9999px;
     font-size: 0.875rem;
+    pointer-events: none;
   }
 
   @keyframes fade-in {

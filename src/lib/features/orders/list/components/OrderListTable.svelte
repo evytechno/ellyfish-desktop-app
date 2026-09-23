@@ -75,6 +75,7 @@
         const sub = [
           row?.pId ? `#${String(row.pId).padStart(6, "0")}` : null,
           row?.inqCode ? row.inqCode : null,
+          row?.sampleCode ? row.sampleCode : null,
         ].filter(Boolean).join(" · ");
         const label = row?.pId ? `#${row.pId} - ${row?.title || ""}` : (row?.title || "");
         const pendingReminder = row?.orderReminders?.find(r => !r.sent && !r.deletedAt);

@@ -107,6 +107,12 @@
               <span class="order-sidebar-value font-mono">{order.inqCode}</span>
             </div>
           {/if}
+          {#if order?.sampleCode}
+            <div class="order-sidebar-row">
+              <span class="order-sidebar-label"><i class="ti ti-package"></i>Sample code</span>
+              <span class="order-sidebar-value font-mono">{order.sampleCode}</span>
+            </div>
+          {/if}
           <div class="order-sidebar-row">
             <span class="order-sidebar-label"><i class="ti ti-calendar-event"></i>Order Date</span>
             <span class="order-sidebar-value">

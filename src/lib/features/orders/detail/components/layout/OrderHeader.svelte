@@ -95,6 +95,18 @@
                 {order.workOrderNumber}
               </span>
             {/if}
+            {#if order?.inqCode}
+              <span class="order-header-chip font-mono">
+                <i class="ti ti-file-code"></i>
+                {order.inqCode}
+              </span>
+            {/if}
+            {#if order?.sampleCode}
+              <span class="order-header-chip font-mono">
+                <i class="ti ti-package"></i>
+                {order.sampleCode}
+              </span>
+            {/if}
             {#if order?.category}
               <span class="order-header-chip">
                 <i class="ti ti-layout-grid"></i>{order.category}
@@ -284,6 +296,15 @@
         </div>
 
         <div class="order-header-doc-item ms-auto d-flex align-items-center gap-2">
+          {#if ["Dispatched", "Completed"].includes(order?.status)}
+            <a
+              href="/admin/order/{order.id}/dispatch"
+              class="btn btn-outline-indigo btn-sm"
+              style="border-color:#6366f1;color:#4f46e5;"
+            >
+              <i class="ti ti-truck-delivery me-1"></i>Manage Dispatch
+            </a>
+          {/if}
           {#if canMutateOrder}
             <button class="btn btn-outline-primary btn-sm" on:click={openFeedbackModal}>
               <i class="ti ti-message-star me-1"></i>Add Feedback

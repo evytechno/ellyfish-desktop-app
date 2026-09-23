@@ -114,9 +114,11 @@
     setSampleCompany,
     addSampleMovement,
     updateSampleMovement,
+    changeSampleStatus,
     markSampleReceived,
     deleteSampleMovement,
     addSampleEvent,
+    approveDelayRemark,
     approveSample,
     rejectSample,
     toggleAccordion,
@@ -245,9 +247,11 @@
               {setSampleCompany}
               {addSampleMovement}
               {updateSampleMovement}
+              {changeSampleStatus}
               {markSampleReceived}
               {deleteSampleMovement}
               {addSampleEvent}
+              {approveDelayRemark}
               {approveSample}
               {rejectSample}
               {cerateChildOrder}

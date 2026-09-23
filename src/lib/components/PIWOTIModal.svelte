@@ -43,6 +43,7 @@
   // ── PI / TI fields ────────────────────────────────────────────────────────
   let invoiceDate      = today();
   let piTitle          = "";
+  let docOrderType     = "";
   let poNumber         = "";
   let poDate           = null;
   let currency         = "INR";
@@ -118,6 +119,21 @@
 
   const inCotermsArray        = ["In India", "Outside India"];
   const inCotermsInArray      = ["Ex", "Door Delivery", "Godown"];
+
+  function inferDocOrderType(...texts) {
+    for (const raw of texts) {
+      const s = String(raw || "").trim().toLowerCase().replace(/[\s_-]+/g, "");
+      if (!s) continue;
+      if (s === "machine") return "Machine";
+      if (s === "abrasive") return "Abrasive";
+      if (s === "spareparts" || s === "sparepart") return "SpareParts";
+      const c = String(raw || "").toLowerCase();
+      if (c.includes("machine")) return "Machine";
+      if (c.includes("abrasive") || c.includes("abresive")) return "Abrasive";
+      if (c.includes("spare")) return "SpareParts";
+    }
+    return "";
+  }
   const inCotermsOutsideArray = ["Ex", "FOB", "CIF"];
   const paymentMethodArray    = ["To Pay", "Paid"];
 
@@ -205,6 +221,7 @@
     if (type === "PI") {
       invoiceDate      = today();
       piTitle          = order?.title || "";
+      docOrderType     = inferDocOrderType(order?.category, order?.title);
       poNumber         = ""; poDate = null;
       currency         = order?.currency || "INR";
       paymentMethod    = "Other";
@@ -258,6 +275,9 @@
     } else if (type === "TI") {
       invoiceDate     = today();
       piTitle         = pi?.title || order?.title || "";
+      docOrderType    = inferDocOrderType(
+        pi?.orderType, wo?.orderType, order?.category, order?.title, pi?.title,
+      );
       poNumber        = pi?.poNumber || "";
       poDate          = pi?.poDate ? new Date(pi.poDate).toISOString().split("T")[0] : null;
       currency        = pi?.currency || order?.currency || "INR";
@@ -369,6 +389,10 @@
     // TI uses companySnapshot from PI — no companyId needed
     if (type !== "TI" && !companyId) { formErrors.company = "Company is required."; return; }
 
+    if (type === "PI" && step === 1) {
+      if (!docOrderType) { formErrors.orderType = "Order type is required."; return; }
+    }
+
     if (type === "PI" && step === 2) {
       if (!items.length) { Swal.fire("Warning", "Add at least one item.", "warning"); return; }
       const emptyIdx = items.findIndex(i => !i.item.trim());
@@ -378,6 +402,10 @@
     if (type === "WO" && step === 1) {
       if (!woOrderType) { formErrors.orderType = "Order type is required."; return; }
       if (!woItems.length) { Swal.fire("Warning", "Add at least one item.", "warning"); return; }
+    }
+
+    if (type === "TI" && step === 1) {
+      if (!docOrderType) { formErrors.orderType = "Order type is required."; return; }
     }
 
     if (type === "TI" && step === 2) {
@@ -397,6 +425,7 @@
     if (type !== "TI" && !companyId) { formErrors.company = "Company is required."; return; }
 
     if (type !== "WO") {
+      if (!docOrderType) { formErrors.orderType = "Order type is required."; return; }
       if (!items.length) { Swal.fire("Warning", "Add at least one item.", "warning"); return; }
       const emptyIdx = items.findIndex(i => !i.item.trim());
       if (emptyIdx !== -1) { Swal.fire("Warning", `Item #${emptyIdx + 1} has no description.`, "warning"); return; }
@@ -424,6 +453,7 @@
     const payload = {
       orderId: order.id, companyId, selectedBankAccount,
       title: piTitle, currency,
+      orderType: docOrderType,
       paymentMethod, status: piStatus, priceTerms, swiftCode,
       termsConditions, remarks,
       discount: Math.round(discount || 0),
@@ -485,6 +515,7 @@
       orderId: order.id, piId: pi?.id, workOrderId: wo?.id,
       companySnapshot, bankSnapshot,
       title: piTitle, currency,
+      orderType: docOrderType,
       discount: Math.round(discount || 0),
       totalAmountTitle,
       totalAmountValue: Math.round(effectiveTotal || 0),
@@ -606,6 +637,7 @@
               <div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Date</div><div>{fmtDate(pi.invoiceDate)}</div></div>
               <div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Status</div><span class="badge {pi.status === 'Paid' ? 'bg-success' : pi.status === 'Partially Paid' ? 'bg-warning text-dark' : pi.status === 'To Pay' ? 'bg-info' : 'bg-secondary'}">{pi.status}</span></div>
               <div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Total</div><div class="fw-bold text-success">{fmtCur(resolvedTotal(pi), pi.currency)}</div></div>
+              {#if pi.orderType}<div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Order Type</div><div>{pi.orderType === "SpareParts" ? "Spare Parts" : pi.orderType}</div></div>{/if}
               {#if pi.poNumber}<div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">PO Number</div><div class="font-mono">{pi.poNumber}</div></div>{/if}
               {#if pi.currency}<div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Currency</div><div>{pi.currency}</div></div>{/if}
               {#if pi.paymentMethod}<div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Payment</div><div>{pi.paymentMethod}</div></div>{/if}
@@ -677,6 +709,7 @@
               <div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Date</div><div>{fmtDate(ti.invoiceDate)}</div></div>
               <div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Status</div><span class="badge {ti.isLocked ? 'bg-danger' : 'bg-warning text-dark'}">{ti.isLocked ? "Locked" : "Draft"}</span></div>
               <div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Total</div><div class="fw-bold text-success">{fmtCur(resolvedTotal(ti), ti.currency)}</div></div>
+              {#if ti.orderType}<div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Order Type</div><div>{ti.orderType === "SpareParts" ? "Spare Parts" : ti.orderType}</div></div>{/if}
               {#if ti.poNumber}<div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">PO Number</div><div class="font-mono">{ti.poNumber}</div></div>{/if}
               {#if ti.currency}<div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Currency</div><div>{ti.currency}</div></div>{/if}
             </div>
@@ -746,6 +779,16 @@
                 <div class="col-md-4">
                   <label class="form-label fw-semibold" style="font-size:12px;">Invoice Date</label>
                   <input type="date" class="form-control form-control-sm" bind:value={invoiceDate} />
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label fw-semibold" style="font-size:12px;">Order Type <span class="text-danger">*</span></label>
+                  <select class="form-select form-select-sm" class:is-invalid={formErrors.orderType} bind:value={docOrderType}>
+                    <option value="">— Select —</option>
+                    <option value="Machine">Machine</option>
+                    <option value="Abrasive">Abrasive</option>
+                    <option value="SpareParts">SpareParts</option>
+                  </select>
+                  {#if formErrors.orderType}<div class="invalid-feedback">{formErrors.orderType}</div>{/if}
                 </div>
                 <div class="col-md-4">
                   <label class="form-label fw-semibold" style="font-size:12px;">PO Number</label>
@@ -1191,6 +1234,16 @@
                 <div class="col-md-4">
                   <label class="form-label fw-semibold" style="font-size:12px;">Invoice Date</label>
                   <input type="date" class="form-control form-control-sm" bind:value={invoiceDate} />
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label fw-semibold" style="font-size:12px;">Order Type <span class="text-danger">*</span></label>
+                  <select class="form-select form-select-sm" class:is-invalid={formErrors.orderType} bind:value={docOrderType}>
+                    <option value="">— Select —</option>
+                    <option value="Machine">Machine</option>
+                    <option value="Abrasive">Abrasive</option>
+                    <option value="SpareParts">SpareParts</option>
+                  </select>
+                  {#if formErrors.orderType}<div class="invalid-feedback">{formErrors.orderType}</div>{/if}
                 </div>
                 <div class="col-md-4">
                   <label class="form-label fw-semibold" style="font-size:12px;">Title</label>
