@@ -7,7 +7,7 @@
   import { companiesAllStore } from "$lib/stores/dataStores";
   import { checkAuth } from "$lib/utils/auth";
   import TypeableSelect from "$lib/components/TypeableSelect.svelte";
-  import { loadOrderSampleStepImages } from "../../api/orderDetailApi.js";
+  import { loadOrderSampleStepImages, loadOrderSampleMediaTypes } from "../../api/orderDetailApi.js";
 
   export let order;
   export let samples = [];
@@ -128,6 +128,49 @@
   ];
   const IMAGE_STEP_ORDER = IMAGE_STEP_OPTIONS.map((o) => o.value);
 
+  /** Loaded from GET /order-samples/media-types (backend sample-media-types.ts). */
+  let MEDIA_TYPE_OPTIONS = [];
+  let mediaTypesLoaded = false;
+
+  function stepAllowsMediaType(step) {
+    const t = String(step || "").toLowerCase();
+    return t === "before" || t === "after";
+  }
+
+  async function ensureMediaTypeOptions() {
+    if (mediaTypesLoaded && MEDIA_TYPE_OPTIONS.length) return;
+    try {
+      const res = await loadOrderSampleMediaTypes();
+      const opts = res?.data?.options;
+      const list = res?.data?.mediaTypes;
+      if (Array.isArray(opts) && opts.length) {
+        MEDIA_TYPE_OPTIONS = opts.map((o) => ({
+          value: o.value || o,
+          label: o.label || o.value || o,
+        }));
+      } else if (Array.isArray(list) && list.length) {
+        MEDIA_TYPE_OPTIONS = list.map((v) => ({ value: v, label: v }));
+      }
+      mediaTypesLoaded = true;
+    } catch (_) {
+      MEDIA_TYPE_OPTIONS = [];
+    }
+  }
+
+  /** Flatten step-images `items` (object keyed by step, or legacy array). */
+  function flattenStepApiItems(apiItems) {
+    if (Array.isArray(apiItems)) return apiItems;
+    if (!apiItems || typeof apiItems !== "object") return [];
+    const out = [];
+    for (const [step, list] of Object.entries(apiItems)) {
+      if (!Array.isArray(list)) continue;
+      for (const it of list) {
+        out.push({ ...it, step: it.step || step });
+      }
+    }
+    return out;
+  }
+
   /** Next pipeline step for this movement (after furthest step already logged). */
   function nextImageStepForSample(sampleId) {
     const sample = (samples || []).find((s) => s.id === sampleId);
@@ -172,6 +215,7 @@
   let pendingEnableSample = false;
 
   onMount(async () => {
+    ensureMediaTypeOptions();
     const cached = get(companiesAllStore);
     if (cached?.length) {
       companies = cached;
@@ -264,6 +308,7 @@
   let statusChangeExpectedDelivery = "";
   let statusChangeExpectedReturn = "";
   let statusChangeStep = "sample";
+  let statusChangeMediaType = "";
   /** @type {{ file: File, previewUrl: string }[]} */
   let statusChangeFiles = [];
   let statusFileInputEl = null;
@@ -275,6 +320,7 @@
   let eventSampleId = null;
   let eventNote = "";
   let eventStep = "sample";
+  let eventMediaType = "";
   let eventDelayRemark = "";
   /** @type {{ file: File, previewUrl: string }[]} */
   let eventFiles = [];
@@ -430,6 +476,7 @@
 
   function openStatusModal(s, presetStatus = null) {
     if (!s || hasPendingDelayRemark(s)) return;
+    ensureMediaTypeOptions();
     statusSampleId = s.id;
     statusChangeStatus = presetStatus || nextMovementStatus(s.status);
     statusChangeNote = "";
@@ -444,6 +491,7 @@
     statusChangeExpectedDelivery = toDateInput(s.expectedDeliveryDate);
     statusChangeExpectedReturn = toDateInput(s.expectedReturnDate);
     statusChangeStep = suggestedStepForStatus(statusChangeStatus);
+    statusChangeMediaType = "";
     clearStatusFiles();
     statusShowPhotos = false;
     statusShowMoreDates = false;
@@ -457,6 +505,7 @@
     statusChangeNote = "";
     statusChangeHoldRemark = "";
     statusChangeDelayRemark = "";
+    statusChangeMediaType = "";
     clearStatusFiles();
     statusShowPhotos = false;
     statusShowMoreDates = false;
@@ -627,6 +676,16 @@
         "Select an image step (sample, before, after, packing, completed, dispatched).";
       return;
     }
+    if (
+      statusChangeFiles.length &&
+      stepAllowsMediaType(statusChangeStep) &&
+      statusChangeMediaType &&
+      !MEDIA_TYPE_OPTIONS.some((o) => o.value === statusChangeMediaType)
+    ) {
+      statusChangeError =
+        "Select a valid media type (abrasive media list).";
+      return;
+    }
     statusChangeError = "";
 
     /** @type {Record<string, any>} */
@@ -671,6 +730,9 @@
       payload.eventType = statusChangeStep;
       const eventNote = statusChangeNote.trim();
       if (eventNote) payload.eventNote = eventNote;
+      if (stepAllowsMediaType(statusChangeStep) && statusChangeMediaType) {
+        payload.mediaType = statusChangeMediaType;
+      }
     }
 
     const ok = await changeSampleStatus(
@@ -742,9 +804,11 @@
   function openEventModal(sampleId) {
     const sample = (samples || []).find((s) => s.id === sampleId);
     if (hasPendingDelayRemark(sample)) return;
+    ensureMediaTypeOptions();
     eventSampleId = sampleId;
     eventNote = "";
     eventStep = nextImageStepForSample(sampleId);
+    eventMediaType = "";
     eventDelayRemark = "";
     clearEventFiles();
     eventError = "";
@@ -772,6 +836,7 @@
     eventSampleId = null;
     eventNote = "";
     eventStep = "sample";
+    eventMediaType = "";
     eventDelayRemark = "";
     clearEventFiles();
     eventError = "";
@@ -843,6 +908,14 @@
       eventError = "Select an image step (sample, before, after, packing, completed, dispatched).";
       return;
     }
+    if (
+      stepAllowsMediaType(eventStep) &&
+      eventMediaType &&
+      !MEDIA_TYPE_OPTIONS.some((o) => o.value === eventMediaType)
+    ) {
+      eventError = "Select a valid media type (abrasive media list).";
+      return;
+    }
     if (needsDelayRemarkInput(sample) && !eventDelayRemark.trim()) {
       eventError = "This movement is overdue — add a delay remark.";
       return;
@@ -853,13 +926,18 @@
       : note
         ? "note"
         : eventStep;
+    /** @type {Record<string, any>} */
+    const payload = {
+      note: note || undefined,
+      type,
+      delayRemark: eventDelayRemark.trim() || undefined,
+    };
+    if (stepAllowsMediaType(type) && eventMediaType) {
+      payload.mediaType = eventMediaType;
+    }
     const ok = await addSampleEvent(
       eventSampleId,
-      {
-        note: note || undefined,
-        type,
-        delayRemark: eventDelayRemark.trim() || undefined,
-      },
+      payload,
       eventFiles.map((x) => x.file),
     );
     if (ok !== false) {
@@ -890,14 +968,16 @@
     const label = ev?.type || "event";
     const status = ev?.status || "";
     const note = ev?.note || "";
+    const mediaType = ev?.mediaType || "";
     return images
       .filter((x) => x?.url)
       .map((x) => ({
         url: mediaUrl(x.url),
-        label,
+        label: mediaType ? `${label} · ${mediaType}` : label,
         status,
         note,
         date,
+        mediaType,
       }));
   }
 
@@ -905,6 +985,37 @@
     const items = eventLightboxItems(ev);
     if (!items.length) return;
     openImageLightbox(items, imgIdx);
+  }
+
+  /** Prefer full movement gallery (slider); fall back to this event’s images only. */
+  async function openEventLightboxInSample(s, ev, imgIdx = 0) {
+    const eventItems = eventLightboxItems(ev);
+    if (!eventItems.length) return;
+    const targetUrl = eventItems[Math.min(imgIdx, eventItems.length - 1)]?.url;
+    try {
+      await ensureStepImages(s?.id);
+    } catch (_) {
+      /* use fallback below */
+    }
+    const gallery = samplePhotoGallery(s);
+    if (gallery.length > 1 && targetUrl) {
+      let idx = gallery.findIndex((x) => x.url === targetUrl);
+      if (idx < 0) {
+        idx = gallery.findIndex(
+          (x) =>
+            String(x.url || "").endsWith(String(targetUrl).split("/").pop() || ""),
+        );
+      }
+      if (idx >= 0) {
+        openImageLightbox(gallery, idx);
+        return;
+      }
+    }
+    if (gallery.length === 1 && targetUrl && gallery[0].url === targetUrl) {
+      openImageLightbox(gallery, 0);
+      return;
+    }
+    openEventLightbox(ev, imgIdx);
   }
 
   function addItemRow() {
@@ -1057,16 +1168,19 @@
   function galleryFromStepApiItems(apiItems, movementStatus) {
     const items = [];
     const seen = new Set();
-    for (const it of Array.isArray(apiItems) ? apiItems : []) {
+    for (const it of flattenStepApiItems(apiItems)) {
       for (const img of Array.isArray(it?.images) ? it.images : []) {
         if (!img?.url || seen.has(img.url)) continue;
         seen.add(img.url);
         items.push({
           url: mediaUrl(img.url),
-          label: it.step || "event",
+          label: it.mediaType
+            ? `${it.step || "event"} · ${it.mediaType}`
+            : it.step || "event",
           status: it.status || movementStatus || "",
           note: it.note || "",
           date: formatEventTime(it.createdAt),
+          mediaType: it.mediaType || "",
         });
       }
     }
@@ -1086,10 +1200,13 @@
         seen.add(img.url);
         items.push({
           url: mediaUrl(img.url),
-          label: ev.type || "event",
+          label: ev.mediaType
+            ? `${ev.type || "event"} · ${ev.mediaType}`
+            : ev.type || "event",
           status: ev.status || s.status || "",
           note: ev.note || "",
           date: formatEventTime(ev.createdAt),
+          mediaType: ev.mediaType || "",
         });
       }
     }
@@ -1136,10 +1253,13 @@
           seen.add(img.url);
           fallback.push({
             url: mediaUrl(img.url),
-            label: ev.type || "event",
+            label: ev.mediaType
+              ? `${ev.type || "event"} · ${ev.mediaType}`
+              : ev.type || "event",
             status: ev.status || s.status || "",
             note: ev.note || "",
             date: formatEventTime(ev.createdAt),
+            mediaType: ev.mediaType || "",
           });
         }
       }
@@ -1150,9 +1270,10 @@
     openImageLightbox(items, imgIdx);
   }
 
-  function onEventRowClick(ev) {
+  function onEventRowClick(ev, s = null) {
     if (Array.isArray(ev?.images) && ev.images.length) {
-      openEventLightbox(ev, 0);
+      if (s) openEventLightboxInSample(s, ev, 0);
+      else openEventLightbox(ev, 0);
     }
   }
 
@@ -1738,11 +1859,11 @@
                               class:sample-event-item--clickable={Array.isArray(ev.images) && ev.images.length}
                               role={Array.isArray(ev.images) && ev.images.length ? "button" : undefined}
                               tabindex={Array.isArray(ev.images) && ev.images.length ? 0 : undefined}
-                              on:click={() => onEventRowClick(ev)}
+                              on:click={() => onEventRowClick(ev, s)}
                               on:keydown={(e) => {
                                 if (e.key === "Enter" || e.key === " ") {
                                   e.preventDefault();
-                                  onEventRowClick(ev);
+                                  onEventRowClick(ev, s);
                                 }
                               }}
                             >
@@ -1756,6 +1877,11 @@
                                 >
                                   {ev.type || "update"}
                                 </span>
+                                {#if ev.mediaType && stepAllowsMediaType(ev.type)}
+                                  <span class="badge bg-info text-dark" style="font-size:9px;">
+                                    {ev.mediaType}
+                                  </span>
+                                {/if}
                                 {#if ev.status}
                                   <span
                                     class="badge border"
@@ -1793,7 +1919,7 @@
                                       type="button"
                                       class="sample-event-thumb-btn"
                                       title="View full image"
-                                      on:click|stopPropagation={() => openEventLightbox(ev, imgIdx)}
+                                      on:click|stopPropagation={() => openEventLightboxInSample(s, ev, imgIdx)}
                                     >
                                       <img
                                         src={mediaUrl(img.url)}
@@ -2551,12 +2677,31 @@
                   class="form-select"
                   bind:value={statusChangeStep}
                   disabled={sampleSaving}
+                  on:change={() => {
+                    if (!stepAllowsMediaType(statusChangeStep)) statusChangeMediaType = "";
+                  }}
                 >
                   {#each IMAGE_STEP_OPTIONS as opt}
                     <option value={opt.value}>{opt.label}</option>
                   {/each}
                 </select>
               </div>
+              {#if stepAllowsMediaType(statusChangeStep)}
+                <div class="mb-2">
+                  <label class="sample-label" for="statusChangeMediaType">Media type</label>
+                  <select
+                    id="statusChangeMediaType"
+                    class="form-select"
+                    bind:value={statusChangeMediaType}
+                    disabled={sampleSaving}
+                  >
+                    <option value="">Select (optional)</option>
+                    {#each MEDIA_TYPE_OPTIONS as opt}
+                      <option value={opt.value}>{opt.label}</option>
+                    {/each}
+                  </select>
+                </div>
+              {/if}
               {#if statusNeedsHoldRemark}
                 <div class="mb-2">
                   <label class="sample-label" for="statusChangeEventNote">Event note</label>
@@ -2826,6 +2971,11 @@
                       >
                         {ev.type || "event"}
                       </span>
+                      {#if ev.mediaType && stepAllowsMediaType(ev.type)}
+                        <span class="badge bg-info text-dark" style="font-size:10px;">
+                          {ev.mediaType}
+                        </span>
+                      {/if}
                       {#if ev.status}
                         <span class="badge bg-light text-dark border" style="font-size:10px;">{ev.status}</span>
                       {/if}
@@ -2840,7 +2990,7 @@
                           <button
                             type="button"
                             class="sample-event-thumb-btn"
-                            on:click={() => openEventLightbox(ev, imgIdx)}
+                            on:click={() => openEventLightboxInSample(viewSample, ev, imgIdx)}
                           >
                             <img
                               src={mediaUrl(img.url)}
@@ -2929,11 +3079,28 @@
             class="form-select mb-3"
             bind:value={eventStep}
             disabled={sampleSaving}
+            on:change={() => {
+              if (!stepAllowsMediaType(eventStep)) eventMediaType = "";
+            }}
           >
             {#each IMAGE_STEP_OPTIONS as opt}
               <option value={opt.value}>{opt.label}</option>
             {/each}
           </select>
+          {#if stepAllowsMediaType(eventStep)}
+            <label class="sample-label" for="sampleEventMediaType">Media type</label>
+            <select
+              id="sampleEventMediaType"
+              class="form-select mb-3"
+              bind:value={eventMediaType}
+              disabled={sampleSaving}
+            >
+              <option value="">Select (optional)</option>
+              {#each MEDIA_TYPE_OPTIONS as opt}
+                <option value={opt.value}>{opt.label}</option>
+              {/each}
+            </select>
+          {/if}
           <label class="sample-label" for="sampleEventNote">Note</label>
           <textarea
             id="sampleEventNote"

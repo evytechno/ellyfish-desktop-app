@@ -1472,7 +1472,7 @@ export function createOrderDetail({ getOrderId }) {
 
   async function addSampleEvent(
     sampleId,
-    { note, type, status, delayRemark } = {},
+    { note, type, status, delayRemark, mediaType } = {},
     files = [],
   ) {
     if (!assertCanMutate("add sample event")) return false;
@@ -1480,7 +1480,7 @@ export function createOrderDetail({ getOrderId }) {
     try {
       const res = await createOrderSampleEventApi(
         sampleId,
-        { note, type, status, delayRemark },
+        { note, type, status, delayRemark, mediaType },
         files,
       );
       if (res?.data) {

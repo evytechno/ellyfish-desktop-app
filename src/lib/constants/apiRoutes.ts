@@ -31,4 +31,7 @@ export const API_ROUTES = {
   ORDER_FEEDBACK: `order-feedbacks`,
   ORDER_SAMPLE: `order-samples`,
   MEDIA: `media`,
+  APP_USER: `app-users`,
+  APP_AUTH_LOGIN: `app-auth/login`,
+  APP_AUTH_LOGOUT: `app-auth/logout`,
 };

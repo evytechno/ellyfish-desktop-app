@@ -163,6 +163,11 @@ export async function loadOrderSampleStepImages(orderSampleId, step) {
   );
 }
 
+/** Allowed mediaType list (backend SAMPLE_MEDIA_TYPES). */
+export async function loadOrderSampleMediaTypes() {
+  return authApiFetch(`${API_ROUTES.ORDER_SAMPLE}/media-types`);
+}
+
 export async function setOrderSampleFlag(orderId, isSample, sampleCompanyId) {
   const body = { isSample };
   if (isSample && sampleCompanyId != null) {
@@ -248,7 +253,7 @@ export async function approveSampleDelayRemark(eventId) {
 
 export async function createOrderSampleEvent(
   sampleId,
-  { note, type, status, delayRemark } = {},
+  { note, type, status, delayRemark, mediaType } = {},
   files = [],
 ) {
   const form = new FormData();
@@ -256,6 +261,7 @@ export async function createOrderSampleEvent(
   if (type) form.append("type", type);
   if (status) form.append("status", status);
   if (delayRemark) form.append("delayRemark", delayRemark);
+  if (mediaType) form.append("mediaType", mediaType);
   for (const file of files || []) {
     if (file) form.append("images", file);
   }

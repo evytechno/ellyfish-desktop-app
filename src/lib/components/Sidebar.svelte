@@ -26,6 +26,7 @@
     "/admin/category",
     "/admin/company",
     "/admin/user",
+    "/admin/app-user",
     "/admin/history",
     "/admin/setting",
   ];
@@ -766,13 +767,25 @@
                             </li>
                             {#if canAccess('users', 'view', currentUser)}
                             <li
-                              class:active={currentPath.startsWith("/admin/user")}
+                              class:active={currentPath.startsWith("/admin/user") && !currentPath.startsWith("/admin/app-user")}
                             >
                               <a
                                 href="/admin/user"
-                                class:active={currentPath.startsWith("/admin/user")}
+                                class:active={currentPath.startsWith("/admin/user") && !currentPath.startsWith("/admin/app-user")}
                               >
                                 <i class="ti ti-user-up"></i><span>Users</span>
+                              </a>
+                            </li>
+                            {/if}
+                            {#if currentUser?.role === "master"}
+                            <li
+                              class:active={currentPath.startsWith("/admin/app-user")}
+                            >
+                              <a
+                                href="/admin/app-user"
+                                class:active={currentPath.startsWith("/admin/app-user")}
+                              >
+                                <i class="ti ti-device-mobile"></i><span>App Users</span>
                               </a>
                             </li>
                             {/if}
