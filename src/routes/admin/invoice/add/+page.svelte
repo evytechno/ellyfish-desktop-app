@@ -55,7 +55,8 @@
   let inCoterms = null;
   let inCotermsBy = null;
   const inCotermsArray = ["In India", "Outside India"];
-  const inCotermsInArray = ["Ex", "Door Delivery", "Godown"];
+  const inCotermsByPaid = ["Ex", "Godown", "Door Delivery"];
+  const inCotermsByToPay = ["Ex", "Godown"];
   const inCotermsOutsideArray = ["Ex", "FOB", "CIF"];
   let swiftCode = "";
   let currency = "INR";
@@ -73,6 +74,22 @@
   let selectedBankAccount = null;
   let bankAccounts = [];
   let activeTab = 1;
+
+  /** Paid → Ex/Godown/Door Delivery; To Pay/COD/other → Ex/Godown only. Outside India unchanged. */
+  $: allowedInCotermsBy =
+    inCoterms === "Outside India"
+      ? inCotermsOutsideArray
+      : String(status || "").trim().toLowerCase() === "paid"
+        ? inCotermsByPaid
+        : inCotermsByToPay;
+
+  $: if (
+    inCoterms !== "Outside India" &&
+    inCotermsBy &&
+    !allowedInCotermsBy.includes(inCotermsBy)
+  ) {
+    inCotermsBy = null;
+  }
 
   // ── Reactive calculations ─────────────────────────────────────────────────
   $: itemsSubtotal = items.reduce((s, i) => s + (i.total || 0), 0);
@@ -237,34 +254,97 @@
     }, 50);
   }
 
-  function goToStep2() {
-    formErrors = {};
-    if (!companyId) {
-      formErrors.companyId = ["Company is required."];
-      scrollToId("field-company");
-      return;
+  /** Step that owns a field (for redirect on submit / API errors). */
+  function stepForField(field) {
+    const f = String(field || "");
+    if (
+      ["companyId", "orderType", "orderId", "items", "title", "invoiceDate"].includes(f) ||
+      f.startsWith("items") ||
+      f.startsWith("billTo") ||
+      f.startsWith("shipTo")
+    ) {
+      return 1;
     }
+    return 2;
+  }
+
+  /**
+   * Client validation for all steps.
+   * @returns {{ errors: Record<string, string[]>, step: number|null, scrollId: string|null }}
+   */
+  function collectClientErrors() {
+    /** @type {Record<string, string[]>} */
+    const errors = {};
+    let step = null;
+    let scrollId = null;
+    const mark = (field, msg, tab, sid) => {
+      if (!errors[field]) errors[field] = [msg];
+      if (step == null) {
+        step = tab;
+        scrollId = sid;
+      }
+    };
+    if (!companyId) mark("companyId", "Company is required.", 1, "field-company");
+    if (!orderType) mark("orderType", "Order type is required.", 1, "field-orderType");
     if (items.length === 0) {
-      Swal.fire("Warning!", "Please add at least one line item.", "warning");
-      scrollToId("field-items");
+      mark("items", "Please add at least one line item.", 1, "field-items");
+    } else {
+      const emptyIdx = items.findIndex((i) => !i.item || !String(i.item).trim());
+      if (emptyIdx !== -1) {
+        mark("items", "Please fill in all item descriptions.", 1, `field-item-${emptyIdx}`);
+      }
+    }
+    if (Number(total) === 0) {
+      mark("total", "Invoice total amount cannot be zero.", 2, "field-total");
+    }
+    return { errors, step, scrollId };
+  }
+
+  function applyErrorsAndGoToStep(errors, preferredStep, preferredScrollId) {
+    formErrors = errors || {};
+    const keys = Object.keys(formErrors);
+    if (!keys.length) return false;
+    let step = preferredStep;
+    let scrollId = preferredScrollId;
+    if (step == null) {
+      step = stepForField(keys[0]);
+      scrollId =
+        keys[0] === "companyId"
+          ? "field-company"
+          : keys[0] === "orderType"
+            ? "field-orderType"
+            : keys[0] === "items"
+              ? "field-items"
+              : keys[0] === "total"
+                ? "field-total"
+                : null;
+    }
+    activeTab = step;
+    if (scrollId) scrollToId(scrollId);
+    return true;
+  }
+
+  function goToStep2() {
+    const { errors, step, scrollId } = collectClientErrors();
+    // Only block on step-1 issues when moving forward
+    const step1Keys = ["companyId", "orderType", "items"];
+    const step1Errors = {};
+    for (const k of step1Keys) {
+      if (errors[k]) step1Errors[k] = errors[k];
+    }
+    if (Object.keys(step1Errors).length) {
+      applyErrorsAndGoToStep(step1Errors, step === 2 ? 1 : step, scrollId);
       return;
     }
-    const emptyIdx = items.findIndex(i => !i.item || !i.item.trim());
-    if (emptyIdx !== -1) {
-      Swal.fire("Warning!", "Please fill in all item descriptions.", "warning");
-      scrollToId(`field-item-${emptyIdx}`);
-      return;
-    }
+    formErrors = {};
     activeTab = 2;
   }
 
   async function handleSubmit(e) {
     e.preventDefault();
-    formErrors = {};
-    if (!companyId) { formErrors.companyId = ["Company is required."]; return; }
-    if (!orderType) { formErrors.orderType = ["Order type is required."]; return; }
-    if (items.length === 0) { Swal.fire("Warning!", "Please add at least one line item.", "warning"); return; }
-    if (total === 0) { Swal.fire("Warning!", "Invoice total amount cannot be zero.", "warning"); return; }
+    const { errors, step, scrollId } = collectClientErrors();
+    if (applyErrorsAndGoToStep(errors, step, scrollId)) return;
+
     loading = true;
     try {
       const payload = {
@@ -288,8 +368,9 @@
     } catch (error) {
       loading = false;
       const errs = errorHandle(error);
-      if (errs && typeof errs === "object") formErrors = errs;
-      else Swal.fire("Error!", "An unexpected error occurred.", "error");
+      if (errs && typeof errs === "object") {
+        applyErrorsAndGoToStep(errs, null, null);
+      } else Swal.fire("Error!", "An unexpected error occurred.", "error");
     } finally { loading = false; }
   }
 
@@ -452,7 +533,7 @@
                   <input type="date" class="form-control" bind:value={invoiceDate} />
                 </div>
 
-                <div>
+                <div id="field-orderType">
                   <label class="form-label">Order Type <span class="text-danger">*</span></label>
                   <select class="form-select" class:is-invalid={formErrors.orderType} bind:value={orderType}>
                     <option value="">— Select —</option>
@@ -500,6 +581,7 @@
                   <select class="form-select" bind:value={status}>
                     <option value="Unpaid">Unpaid</option>
                     <option value="To Pay">To Pay</option>
+                    <option value="COD">COD</option>
                     <option value="Paid">Paid</option>
                     <option value="Partially Paid">Partially Paid</option>
                   </select>
@@ -522,11 +604,7 @@
                   <label class="form-label">Incoterms By</label>
                   <select class="form-select" bind:value={inCotermsBy}>
                     <option value={null}>— Select —</option>
-                    {#if inCoterms === "Outside India"}
-                      {#each inCotermsOutsideArray as c}<option>{c}</option>{/each}
-                    {:else}
-                      {#each inCotermsInArray as c}<option>{c}</option>{/each}
-                    {/if}
+                    {#each allowedInCotermsBy as c}<option>{c}</option>{/each}
                   </select>
                 </div>
 
@@ -621,6 +699,9 @@
                 <i class="ti ti-plus me-1"></i>Add Item
               </button>
             </div>
+            {#if formErrors.items}
+              <div class="alert alert-danger py-2 mb-0 rounded-0" style="font-size:12px;">{formErrors.items[0]}</div>
+            {/if}
             <div class="card-body p-0">
               <div class="table-responsive">
                 <table class="table table-bordered mb-0">
@@ -913,7 +994,7 @@
                       </tr>
                     {/if}
                   {/each}
-                  <tr class="border-top">
+                  <tr class="border-top" id="field-total">
                     <td class="fw-bold py-2">Grand Total</td>
                     <td class="text-end py-2">
                       <span class="fw-bold text-primary" style="font-size:1.2rem">
@@ -923,6 +1004,9 @@
                   </tr>
                 </tbody>
               </table>
+              {#if formErrors.total}
+                <div class="text-danger small mt-2 px-1">{formErrors.total[0]}</div>
+              {/if}
 
               <hr class="my-3" />
 

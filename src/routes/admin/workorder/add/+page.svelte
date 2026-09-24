@@ -83,13 +83,73 @@
     }, 50);
   }
 
+  function stepForField(field) {
+    const f = String(field || "");
+    if (["companyId", "orderType", "orderId", "title"].includes(f)) return 1;
+    return 2;
+  }
+
+  function collectClientErrors() {
+    /** @type {Record<string, string[]>} */
+    const errors = {};
+    let step = null;
+    let scrollId = null;
+    const mark = (field, msg, tab, sid) => {
+      if (!errors[field]) errors[field] = [msg];
+      if (step == null) {
+        step = tab;
+        scrollId = sid;
+      }
+    };
+    if (companyId == null) mark("companyId", "Company is required.", 1, "field-company");
+    if (!orderType) mark("orderType", "Order type is required.", 1, "field-orderType");
+    if (items.length === 0) {
+      mark("items", "Please add at least one item.", 2, "field-items");
+    } else {
+      const emptyIdx = items.findIndex((i) => !i.item || !String(i.item).trim());
+      if (emptyIdx !== -1) {
+        mark("items", "Please fill in all item descriptions.", 2, `field-item-${emptyIdx}`);
+      }
+    }
+    return { errors, step, scrollId };
+  }
+
+  function applyErrorsAndGoToStep(errors, preferredStep, preferredScrollId) {
+    formErrors = errors || {};
+    const keys = Object.keys(formErrors);
+    if (!keys.length) return false;
+    let step = preferredStep;
+    let scrollId = preferredScrollId;
+    if (step == null) {
+      step = stepForField(keys[0]);
+      scrollId =
+        keys[0] === "companyId"
+          ? "field-company"
+          : keys[0] === "orderType"
+            ? "field-orderType"
+            : keys[0] === "title"
+              ? "field-title"
+              : keys[0] === "items"
+                ? "field-items"
+                : null;
+    }
+    activeTab = step;
+    if (scrollId) scrollToId(scrollId);
+    return true;
+  }
+
   function goToStep2() {
-    formErrors = {};
-    if (!companyId) {
-      formErrors.companyId = ["Company is required."];
-      scrollToId("field-company");
+    const { errors, step, scrollId } = collectClientErrors();
+    const step1Keys = ["companyId", "orderType", "title"];
+    const step1Errors = {};
+    for (const k of step1Keys) {
+      if (errors[k]) step1Errors[k] = errors[k];
+    }
+    if (Object.keys(step1Errors).length) {
+      applyErrorsAndGoToStep(step1Errors, 1, scrollId);
       return;
     }
+    formErrors = {};
     activeTab = 2;
   }
 
@@ -112,6 +172,9 @@
   async function handleSubmit(event) {
     event.preventDefault();
     errorMessage = "";
+    const { errors, step, scrollId } = collectClientErrors();
+    if (applyErrorsAndGoToStep(errors, step, scrollId)) return;
+
     loading = true;
     formErrors = {};
 
@@ -125,21 +188,6 @@
     if (installationDate) newWorkOrder.installationDate = installationDate;
     newWorkOrder.companyId = companyId;
     if (fromOrder && orderId) newWorkOrder.orderId = orderId;
-    if (companyId == null) {
-      formErrors.companyId = ["Company is required."];
-      loading = false;
-      return;
-    }
-    if (!orderType) {
-      formErrors.orderType = ["Order type is required."];
-      loading = false;
-      return;
-    }
-    if (items.length == 0) {
-      Swal.fire("Warning!", "Please add at least one item.", "warning");
-      loading = false;
-      return;
-    }
     try {
       const data = await authApiFetch(API_ROUTES.WORK_ORDER, {
         method: "POST",
@@ -152,7 +200,7 @@
       loading = false;
       const validationErrors = errorHandle(error);
       if (validationErrors && typeof validationErrors === "object") {
-        formErrors = validationErrors;
+        applyErrorsAndGoToStep(validationErrors, null, null);
       } else {
         errorMessage = "An unexpected error occurred.";
       }
@@ -338,7 +386,7 @@
                   </div>
                 </div>
               {:else}
-                <div class="col-span-2">
+                <div id="field-title" class="col-span-2">
                   <label class="form-label fw-semibold">
                     Work Order Title / Description
                     <span class="text-danger">*</span>
@@ -389,16 +437,16 @@
                 <label class="form-label">Work Order Date <span class="text-muted small">(Date of this Work Order)</span></label>
                 <input type="date" class="form-control" bind:value={workOrderDate} />
               </div>
-              <div>
+              <div id="field-orderType">
                 <label class="form-label fw-semibold">Order Type <span class="text-danger">*</span> <span class="text-muted small">(Machine / Abrasive / SpareParts)</span></label>
-                <select class="form-select" bind:value={orderType} required>
+                <select class="form-select" class:is-invalid={!!formErrors.orderType} bind:value={orderType}>
                   <option value="">Select type</option>
                   <option value="Machine">Machine</option>
                   <option value="Abrasive">Abrasive</option>
                   <option value="SpareParts">SpareParts</option>
                 </select>
                 {#if formErrors.orderType}
-                  <div class="text-danger small">{formErrors.orderType}</div>
+                  <div class="text-danger small">{formErrors.orderType[0] || formErrors.orderType}</div>
                 {/if}
               </div>
               <div>
@@ -519,12 +567,15 @@
 
         <!-- Items -->
         <div class="card border mb-3">
-          <div class="card-header py-2 bg-white d-flex align-items-center justify-content-between">
+          <div class="card-header py-2 bg-white d-flex align-items-center justify-content-between" id="field-items">
             <h6 class="mb-0 fw-semibold"><i class="ti ti-list-details me-2 text-primary"></i>Product / Item List — What Will Be Manufactured or Supplied <span class="badge bg-primary ms-2">{items.length} item{items.length !== 1 ? 's' : ''}</span></h6>
             <button type="button" class="btn btn-sm btn-primary" on:click={addItem}>
               <i class="ti ti-plus me-1"></i>Add New Item
             </button>
           </div>
+          {#if formErrors.items}
+            <div class="alert alert-danger py-2 mb-0 rounded-0" style="font-size:12px;">{formErrors.items[0]}</div>
+          {/if}
           <div class="card-body p-0">
             <div class="table-responsive">
               <table class="table table-bordered mb-0">
@@ -539,7 +590,7 @@
                 </thead>
                 <tbody>
                   {#each items as item, index}
-                    <tr>
+                    <tr id="field-item-{index}">
                       <td class="px-3 py-2 text-center text-muted small align-middle">{index + 1}</td>
                       <td class="px-2 py-1">
                         <input type="text" class="form-control form-control-sm" bind:value={item.item} placeholder="Enter item name or description" />

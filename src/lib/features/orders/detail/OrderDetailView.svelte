@@ -119,6 +119,7 @@
     deleteSampleMovement,
     addSampleEvent,
     approveDelayRemark,
+    returnDelayRemark,
     approveSample,
     rejectSample,
     toggleAccordion,
@@ -252,6 +253,7 @@
               {deleteSampleMovement}
               {addSampleEvent}
               {approveDelayRemark}
+              {returnDelayRemark}
               {approveSample}
               {rejectSample}
               {cerateChildOrder}

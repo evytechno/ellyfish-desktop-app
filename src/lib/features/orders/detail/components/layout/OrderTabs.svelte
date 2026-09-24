@@ -49,6 +49,7 @@
   export let deleteSampleMovement = async () => {};
   export let addSampleEvent = async () => {};
   export let approveDelayRemark = async () => {};
+  export let returnDelayRemark = async () => {};
   export let approveSample = async () => {};
   export let rejectSample = async () => {};
   export let cerateChildOrder = async () => {};
@@ -341,6 +342,7 @@
       {deleteSampleMovement}
       {addSampleEvent}
       {approveDelayRemark}
+      {returnDelayRemark}
       {approveSample}
       {rejectSample}
       {openImageLightbox}

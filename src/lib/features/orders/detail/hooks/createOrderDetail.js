@@ -45,6 +45,7 @@ import {
   rejectOrderSample as rejectOrderSampleApi,
   createOrderSampleEvent as createOrderSampleEventApi,
   approveSampleDelayRemark as approveSampleDelayRemarkApi,
+  returnSampleDelayRemark as returnSampleDelayRemarkApi,
   loadOrderVisits as loadOrderVisitsApi,
   createOrderVisit as createOrderVisitApi,
   linkOrderContact as linkOrderContactApi,
@@ -1516,15 +1517,56 @@ export function createOrderDetail({ getOrderId }) {
   }
 
   async function approveDelayRemark(eventId) {
+    const ask = await Swal.fire({
+      title: "Approve delay remark?",
+      input: "textarea",
+      inputLabel: "Reply (optional)",
+      inputPlaceholder: "Optional reply to the submitter…",
+      showCancelButton: true,
+      confirmButtonText: "Approve",
+      confirmButtonColor: "#198754",
+    });
+    if (!ask.isConfirmed) return false;
+
     sampleSaving.set(true);
     try {
-      await approveSampleDelayRemarkApi(eventId);
+      await approveSampleDelayRemarkApi(eventId, ask.value);
       const o = get(order);
       if (o?.id) {
         const refreshed = await loadOrderSamplesApi(o.id);
         samples.set(refreshed?.data ?? []);
       }
       Swal.fire("Approved", "Delay remark approved.", "success");
+      return true;
+    } catch (err) {
+      errorHandle(err);
+      return false;
+    } finally {
+      sampleSaving.set(false);
+    }
+  }
+
+  async function returnDelayRemark(eventId) {
+    const ask = await Swal.fire({
+      title: "Return delay remark?",
+      input: "textarea",
+      inputLabel: "Reply (optional)",
+      inputPlaceholder: "Optional reason / reply…",
+      showCancelButton: true,
+      confirmButtonText: "Return",
+      confirmButtonColor: "#dc3545",
+    });
+    if (!ask.isConfirmed) return false;
+
+    sampleSaving.set(true);
+    try {
+      await returnSampleDelayRemarkApi(eventId, ask.value);
+      const o = get(order);
+      if (o?.id) {
+        const refreshed = await loadOrderSamplesApi(o.id);
+        samples.set(refreshed?.data ?? []);
+      }
+      Swal.fire("Returned", "Delay remark returned.", "success");
       return true;
     } catch (err) {
       errorHandle(err);
@@ -2013,6 +2055,7 @@ export function createOrderDetail({ getOrderId }) {
     deleteSampleMovement,
     addSampleEvent,
     approveDelayRemark,
+    returnDelayRemark,
     approveSample,
     rejectSample,
     toggleAccordion,

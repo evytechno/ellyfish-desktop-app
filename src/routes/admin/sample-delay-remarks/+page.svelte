@@ -100,19 +100,63 @@
     }
     const result = await Swal.fire({
       title: "Approve delay remark?",
-      text: (row.note || "").slice(0, 200) || "No remark text",
-      icon: "question",
+      input: "textarea",
+      inputLabel: "Reply (optional)",
+      inputPlaceholder: "Optional reply to the submitter…",
+      inputValue: "",
       showCancelButton: true,
       confirmButtonText: "Approve",
+      confirmButtonColor: "#198754",
+      footer: (row.note || "").slice(0, 200) || "No remark text",
     });
     if (!result.isConfirmed) return;
 
     try {
+      const body =
+        result.value != null && String(result.value).trim() !== ""
+          ? { reply: String(result.value).trim() }
+          : {};
       const data = await authApiFetch(
         `${API_ROUTES.ORDER_SAMPLE}/events/${row.id}/approve-delay`,
-        { method: "POST" },
+        { method: "POST", data: JSON.stringify(body) },
       );
       Swal.fire("Approved", data.message || "Delay remark approved.", "success");
+      await fetchList();
+    } catch (err) {
+      errorHandle(err);
+    }
+  }
+
+  async function returnRecord(id) {
+    const row = rows.find((r) => r.id === Number(id));
+    if (!row) return;
+    if (!isPending(row)) {
+      Swal.fire("Already handled", "This delay remark is not pending.", "info");
+      return;
+    }
+    const result = await Swal.fire({
+      title: "Return delay remark?",
+      input: "textarea",
+      inputLabel: "Reply (optional)",
+      inputPlaceholder: "Optional reason / reply…",
+      inputValue: "",
+      showCancelButton: true,
+      confirmButtonText: "Return",
+      confirmButtonColor: "#dc3545",
+      footer: (row.note || "").slice(0, 200) || "No remark text",
+    });
+    if (!result.isConfirmed) return;
+
+    try {
+      const body =
+        result.value != null && String(result.value).trim() !== ""
+          ? { reply: String(result.value).trim() }
+          : {};
+      const data = await authApiFetch(
+        `${API_ROUTES.ORDER_SAMPLE}/events/${row.id}/return-delay`,
+        { method: "POST", data: JSON.stringify(body) },
+      );
+      Swal.fire("Returned", data.message || "Delay remark returned.", "success");
       await fetchList();
     } catch (err) {
       errorHandle(err);
@@ -152,6 +196,14 @@
         `<div class="small" style="white-space:pre-wrap;max-width:360px;">${escapeHtml(val || "—")}</div>`,
     },
     {
+      key: "reply",
+      label: "Reply",
+      render: (val) =>
+        val
+          ? `<div class="small text-muted" style="white-space:pre-wrap;max-width:280px;">${escapeHtml(val)}</div>`
+          : `<span class="text-muted">—</span>`,
+    },
+    {
       key: "status",
       label: "Status",
       render: (val) => {
@@ -161,6 +213,9 @@
         }
         if (s === "approved") {
           return `<span class="badge bg-success">Approved</span>`;
+        }
+        if (s === "returned") {
+          return `<span class="badge bg-danger">Returned</span>`;
         }
         return `<span class="badge bg-secondary">${escapeHtml(val || "—")}</span>`;
       },
@@ -193,6 +248,14 @@
       icon: "ti ti-check",
       onClick: (id) => approveRecord(id),
       color: "btn-soft-success",
+      hidden: (row) => !isPending(row),
+    },
+    {
+      label: "Return",
+      icon: "ti ti-arrow-back-up",
+      onClick: (id) => returnRecord(id),
+      color: "btn-soft-danger",
+      hidden: (row) => !isPending(row),
     },
   ];
 
@@ -289,6 +352,7 @@
         >
           <option value="Pending">Pending</option>
           <option value="Approved">Approved</option>
+          <option value="Returned">Returned</option>
           <option value="All">All</option>
         </select>
       </div>

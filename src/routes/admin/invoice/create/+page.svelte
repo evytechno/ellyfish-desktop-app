@@ -287,6 +287,10 @@
     if (!orderType) {
       formErrors.orderType = ["Order type is required."];
       loading = false;
+      setTimeout(() => {
+        const el = document.getElementById("orderType") || document.getElementById("field-orderType");
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 50);
       return;
     }
     try {

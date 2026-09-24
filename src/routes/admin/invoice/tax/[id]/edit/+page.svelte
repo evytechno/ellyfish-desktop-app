@@ -270,6 +270,10 @@
     if (!orderType) {
       formErrors.orderType = ["Order type is required."];
       loading = false;
+      setTimeout(() => {
+        const el = document.getElementById("field-orderType");
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 50);
       return;
     }
     try {
@@ -349,6 +353,7 @@
               </div>
               <div>
                 <label class="form-label">Order Type <span class="text-danger">*</span></label>
+                <div id="field-orderType">
                 <select class="form-select" class:is-invalid={formErrors.orderType} bind:value={orderType}>
                   <option value="">— Select —</option>
                   <option value="Machine">Machine</option>
@@ -358,6 +363,7 @@
                 {#if formErrors.orderType}
                   <ul class="text-danger mt-1 text-xs"><li>{formErrors.orderType[0]}</li></ul>
                 {/if}
+                </div>
               </div>
               <div>
                 <label class="form-label">Title</label>

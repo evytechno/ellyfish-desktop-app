@@ -119,6 +119,9 @@
 
   const inCotermsArray        = ["In India", "Outside India"];
   const inCotermsInArray      = ["Ex", "Door Delivery", "Godown"];
+  /** Paid → Ex, Godown, Door Delivery; To Pay / COD (and other non-Paid) → Ex, Godown only */
+  const inCotermsByPaid       = ["Ex", "Godown", "Door Delivery"];
+  const inCotermsByToPay      = ["Ex", "Godown"];
 
   function inferDocOrderType(...texts) {
     for (const raw of texts) {
@@ -136,6 +139,27 @@
   }
   const inCotermsOutsideArray = ["Ex", "FOB", "CIF"];
   const paymentMethodArray    = ["To Pay", "Paid"];
+
+  /** India Incoterms By options for PI, driven by Status. */
+  function piInCotermsByOptions(status) {
+    const s = String(status || "").trim().toLowerCase();
+    if (s === "paid") return inCotermsByPaid;
+    return inCotermsByToPay; // To Pay, COD, Unpaid, Partially Paid
+  }
+
+  $: piAllowedInCotermsBy =
+    inCoterms === "Outside India"
+      ? inCotermsOutsideArray
+      : piInCotermsByOptions(piStatus);
+
+  $: if (
+    type === "PI" &&
+    inCoterms !== "Outside India" &&
+    inCotermsBy &&
+    !piAllowedInCotermsBy.includes(inCotermsBy)
+  ) {
+    inCotermsBy = null;
+  }
 
   // ── Steps config ──────────────────────────────────────────────────────────
   $: steps = type === "PI"
@@ -635,7 +659,7 @@
             <div class="row g-3 mb-3">
               <div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">PI Number</div><div class="fw-semibold font-mono">{fmtRef(pi.financialYear, pi.invoiceNo)}</div></div>
               <div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Date</div><div>{fmtDate(pi.invoiceDate)}</div></div>
-              <div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Status</div><span class="badge {pi.status === 'Paid' ? 'bg-success' : pi.status === 'Partially Paid' ? 'bg-warning text-dark' : pi.status === 'To Pay' ? 'bg-info' : 'bg-secondary'}">{pi.status}</span></div>
+              <div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Status</div><span class="badge {pi.status === 'Paid' ? 'bg-success' : pi.status === 'Partially Paid' ? 'bg-warning text-dark' : pi.status === 'To Pay' || pi.status === 'COD' ? 'bg-info' : 'bg-secondary'}">{pi.status}</span></div>
               <div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Total</div><div class="fw-bold text-success">{fmtCur(resolvedTotal(pi), pi.currency)}</div></div>
               {#if pi.orderType}<div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">Order Type</div><div>{pi.orderType === "SpareParts" ? "Spare Parts" : pi.orderType}</div></div>{/if}
               {#if pi.poNumber}<div class="col-6 col-md-3"><div class="text-muted" style="font-size:11px;">PO Number</div><div class="font-mono">{pi.poNumber}</div></div>{/if}
@@ -821,6 +845,7 @@
                   <select class="form-select form-select-sm" bind:value={piStatus}>
                     <option value="Unpaid">Unpaid</option>
                     <option value="To Pay">To Pay</option>
+                    <option value="COD">COD</option>
                     <option value="Paid">Paid</option>
                     <option value="Partially Paid">Partially Paid</option>
                   </select>
@@ -840,11 +865,7 @@
                   <label class="form-label fw-semibold" style="font-size:12px;">Incoterms By</label>
                   <select class="form-select form-select-sm" bind:value={inCotermsBy}>
                     <option value={null}>— Select —</option>
-                    {#if inCoterms === "Outside India"}
-                      {#each inCotermsOutsideArray as c}<option>{c}</option>{/each}
-                    {:else}
-                      {#each inCotermsInArray as c}<option>{c}</option>{/each}
-                    {/if}
+                    {#each piAllowedInCotermsBy as c}<option>{c}</option>{/each}
                   </select>
                 </div>
               </div>

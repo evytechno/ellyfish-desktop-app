@@ -244,10 +244,23 @@ export async function rejectOrderSample(orderId, note) {
   });
 }
 
-export async function approveSampleDelayRemark(eventId) {
+export async function approveSampleDelayRemark(eventId, reply) {
   return authApiFetch(
     `${API_ROUTES.ORDER_SAMPLE}/events/${eventId}/approve-delay`,
-    { method: "POST" },
+    {
+      method: "POST",
+      data: JSON.stringify(reply != null && String(reply).trim() !== "" ? { reply: String(reply).trim() } : {}),
+    },
+  );
+}
+
+export async function returnSampleDelayRemark(eventId, reply) {
+  return authApiFetch(
+    `${API_ROUTES.ORDER_SAMPLE}/events/${eventId}/return-delay`,
+    {
+      method: "POST",
+      data: JSON.stringify(reply != null && String(reply).trim() !== "" ? { reply: String(reply).trim() } : {}),
+    },
   );
 }
 

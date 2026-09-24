@@ -23,6 +23,7 @@
   export let deleteSampleMovement = async () => {};
   export let addSampleEvent = async () => {};
   export let approveDelayRemark = async () => {};
+  export let returnDelayRemark = async () => {};
   export let approveSample = async () => {};
   export let rejectSample = async () => {};
   export let openImageLightbox = () => {};
@@ -195,13 +196,10 @@
     return !!s?.sentDelay?.delayed;
   }
 
-  function hasPendingDelayRemark(s) {
-    return String(s?.delayRemarkStatus || "").toLowerCase() === "pending";
-  }
-
   function needsDelayRemarkInput(s) {
     if (!isOverdueSample(s)) return false;
     const st = String(s?.delayRemarkStatus || "").toLowerCase();
+    // Any existing remark (pending or approved) → no need to ask again
     return st !== "approved" && st !== "pending";
   }
   const defaultSampleCompanyId =
@@ -402,7 +400,6 @@
         openCompanyModal();
         return;
       }
-      if (hasPendingDelayRemark(s)) return;
       openEditModal(s);
     }
   }
@@ -415,27 +412,23 @@
         openCompanyModal();
         return;
       }
-      if (hasPendingDelayRemark(s)) return;
       openStatusModal(s);
     }
   }
 
   function openEventFromView() {
     const id = viewSample?.id;
-    const s = viewSample;
     closeViewModal();
     if (id) {
       if (!hasSampleCompany) {
         openCompanyModal();
         return;
       }
-      if (hasPendingDelayRemark(s)) return;
       openEventModal(id);
     }
   }
 
   function openEditModal(s) {
-    if (hasPendingDelayRemark(s)) return;
     editSampleId = s.id;
     editDirection = s.direction || "Outbound";
     editTracking = s.tracking || "";
@@ -475,7 +468,7 @@
   }
 
   function openStatusModal(s, presetStatus = null) {
-    if (!s || hasPendingDelayRemark(s)) return;
+    if (!s) return;
     ensureMediaTypeOptions();
     statusSampleId = s.id;
     statusChangeStatus = presetStatus || nextMovementStatus(s.status);
@@ -655,11 +648,6 @@
   async function submitStatusChange() {
     const sample = statusChangeSample;
     if (!sample || !statusSampleId) return;
-    if (hasPendingDelayRemark(sample)) {
-      statusChangeError =
-        "A delay remark is pending approval. Wait until it is approved before changing status.";
-      return;
-    }
     if (statusNeedsHoldRemark && !statusChangeHoldRemark.trim()) {
       statusChangeError = 'Status "Hold" requires a remark.';
       return;
@@ -803,7 +791,6 @@
 
   function openEventModal(sampleId) {
     const sample = (samples || []).find((s) => s.id === sampleId);
-    if (hasPendingDelayRemark(sample)) return;
     ensureMediaTypeOptions();
     eventSampleId = sampleId;
     eventNote = "";
@@ -817,17 +804,11 @@
 
   function addEventBlockedTitle(s) {
     if (!hasSampleCompany) return "Select company first";
-    if (hasPendingDelayRemark(s)) {
-      return "Delay remark pending approval — wait until approved";
-    }
     return "Add note / images";
   }
 
   function mutateBlockedTitle(s, actionLabel) {
     if (!hasSampleCompany) return "Select company first";
-    if (hasPendingDelayRemark(s)) {
-      return "Delay remark pending approval — wait until approved";
-    }
     return actionLabel;
   }
 
@@ -895,11 +876,6 @@
   async function submitEvent() {
     const note = eventNote.trim();
     const sample = (samples || []).find((s) => s.id === eventSampleId);
-    if (hasPendingDelayRemark(sample)) {
-      eventError =
-        "A delay remark is pending approval. Wait until it is approved before adding further updates.";
-      return;
-    }
     if (!note && !eventFiles.length) {
       eventError = "Add a note and/or at least one image.";
       return;
@@ -1288,9 +1264,6 @@
 
   function nextStepHint(s) {
     if (!hasSampleCompany) return "Select company first.";
-    if (hasPendingDelayRemark(s)) {
-      return "Delay remark pending approval — wait until approved.";
-    }
     if (needsDelayRemarkInput(s)) {
       return "Overdue — change status and add a delay remark.";
     }
@@ -1305,7 +1278,6 @@
     return `Next: Add ${step} photos, or update status if needed.`;
   }
 
-  $: anySamplePendingDelay = (samples || []).some((s) => hasPendingDelayRemark(s));
   $: anySampleOverdue = (samples || []).some((s) => needsDelayRemarkInput(s));
 </script>
 
@@ -1440,8 +1412,6 @@
           <div class="text-muted" style="font-size:12px;">
             {#if !hasSampleCompany}
               Select company before you can add a sample or approve / reject.
-            {:else if anySamplePendingDelay}
-              A delay remark is pending approval — status / photos stay locked until approved.
             {:else if anySampleOverdue}
               A sample is overdue — change status and add a delay remark before more updates.
             {:else if !samples?.length}
@@ -1462,28 +1432,24 @@
             {/if}
             <button
               class="btn btn-success btn-sm"
-              disabled={sampleSaving || !hasSampleCompany || !samples?.length || anySamplePendingDelay}
-              title={anySamplePendingDelay
-                ? "Delay remark pending approval"
-                : !hasSampleCompany
-                  ? "Select company first"
-                  : !samples?.length
-                    ? "Add a sample first"
-                    : "Approve sample"}
+              disabled={sampleSaving || !hasSampleCompany || !samples?.length}
+              title={!hasSampleCompany
+                ? "Select company first"
+                : !samples?.length
+                  ? "Add a sample first"
+                  : "Approve sample"}
               on:click={() => openDecisionModal("approve")}
             >
               <i class="ti ti-check me-1"></i>Approve → Qualified
             </button>
             <button
               class="btn btn-outline-danger btn-sm"
-              disabled={sampleSaving || !hasSampleCompany || !samples?.length || anySamplePendingDelay}
-              title={anySamplePendingDelay
-                ? "Delay remark pending approval"
-                : !hasSampleCompany
-                  ? "Select company first"
-                  : !samples?.length
-                    ? "Add a sample first"
-                    : "Reject sample"}
+              disabled={sampleSaving || !hasSampleCompany || !samples?.length}
+              title={!hasSampleCompany
+                ? "Select company first"
+                : !samples?.length
+                  ? "Add a sample first"
+                  : "Reject sample"}
               on:click={() => openDecisionModal("reject")}
             >
               <i class="ti ti-x me-1"></i>Reject → Unqualified
@@ -1612,7 +1578,7 @@
                           class="badge {movementBadgeClass(s.status)} border-0"
                           style="font-size:10px; cursor:pointer;"
                           title={mutateBlockedTitle(s, "Change status")}
-                          disabled={sampleSaving || !hasSampleCompany || hasPendingDelayRemark(s)}
+                          disabled={sampleSaving || !hasSampleCompany}
                           on:click={() => {
                             if (!hasSampleCompany) {
                               openCompanyModal();
@@ -1646,6 +1612,7 @@
                           class:bg-warning={String(s.delayRemarkStatus).toLowerCase() === "pending"}
                           class:text-dark={String(s.delayRemarkStatus).toLowerCase() === "pending"}
                           class:bg-success={String(s.delayRemarkStatus).toLowerCase() === "approved"}
+                          class:bg-danger={String(s.delayRemarkStatus).toLowerCase() === "returned"}
                           style="font-size:9px;"
                         >
                           delay {s.delayRemarkStatus}
@@ -1686,7 +1653,7 @@
                       <button
                         class="btn btn-sm btn-outline-warning p-0 px-1 me-1"
                         title={mutateBlockedTitle(s, "Change status")}
-                        disabled={sampleSaving || !hasSampleCompany || hasPendingDelayRemark(s)}
+                        disabled={sampleSaving || !hasSampleCompany}
                         on:click={() => {
                           if (!hasSampleCompany) {
                             openCompanyModal();
@@ -1714,7 +1681,7 @@
                             <button
                               type="button"
                               class="dropdown-item"
-                              disabled={!hasSampleCompany || hasPendingDelayRemark(s)}
+                              disabled={!hasSampleCompany}
                               on:click={() => {
                                 closeSampleActionMenu();
                                 if (!hasSampleCompany) {
@@ -1729,7 +1696,7 @@
                             <button
                               type="button"
                               class="dropdown-item"
-                              disabled={!hasSampleCompany || hasPendingDelayRemark(s)}
+                              disabled={!hasSampleCompany}
                               on:click={() => {
                                 closeSampleActionMenu();
                                 if (!hasSampleCompany) {
@@ -1835,7 +1802,7 @@
                             type="button"
                             class="btn btn-sm btn-link p-0"
                             style="font-size:12px;"
-                            disabled={sampleSaving || !hasSampleCompany || hasPendingDelayRemark(s)}
+                            disabled={sampleSaving || !hasSampleCompany}
                             title={addEventBlockedTitle(s)}
                             on:click={() => {
                               if (!hasSampleCompany) {
@@ -1886,9 +1853,10 @@
                                   <span
                                     class="badge border"
                                     class:bg-success={String(ev.status).toLowerCase() === "approved"}
-                                    class:text-white={String(ev.status).toLowerCase() === "approved"}
-                                    class:bg-light={String(ev.status).toLowerCase() !== "approved"}
-                                    class:text-dark={String(ev.status).toLowerCase() !== "approved"}
+                                    class:text-white={String(ev.status).toLowerCase() === "approved" || String(ev.status).toLowerCase() === "returned"}
+                                    class:bg-danger={String(ev.status).toLowerCase() === "returned"}
+                                    class:bg-light={String(ev.status).toLowerCase() !== "approved" && String(ev.status).toLowerCase() !== "returned"}
+                                    class:text-dark={String(ev.status).toLowerCase() !== "approved" && String(ev.status).toLowerCase() !== "returned"}
                                     style="font-size:9px;"
                                   >
                                     {ev.status}
@@ -1905,12 +1873,26 @@
                                     disabled={sampleSaving}
                                     on:click|stopPropagation={() => approveDelayRemark(ev.id)}
                                   >
-                                    Approve delay
+                                    Approve
+                                  </button>
+                                  <button
+                                    type="button"
+                                    class="btn btn-sm btn-outline-danger py-0 px-2"
+                                    style="font-size:11px;"
+                                    disabled={sampleSaving}
+                                    on:click|stopPropagation={() => returnDelayRemark(ev.id)}
+                                  >
+                                    Return
                                   </button>
                                 {/if}
                               </div>
                               {#if ev.note}
                                 <div style="font-size:12px;">{ev.note}</div>
+                              {/if}
+                              {#if ev.reply}
+                                <div class="text-muted mt-1" style="font-size:11px; white-space:pre-wrap;">
+                                  <span class="fw-semibold">Reply:</span> {ev.reply}
+                                </div>
                               {/if}
                               {#if Array.isArray(ev.images) && ev.images.length}
                                 <div class="d-flex flex-wrap gap-2 mt-1">
@@ -2948,6 +2930,7 @@
                   class:bg-warning={String(viewSample.delayRemarkStatus).toLowerCase() === "pending"}
                   class:text-dark={String(viewSample.delayRemarkStatus).toLowerCase() === "pending"}
                   class:bg-success={String(viewSample.delayRemarkStatus).toLowerCase() === "approved"}
+                  class:bg-danger={String(viewSample.delayRemarkStatus).toLowerCase() === "returned"}
                   style="font-size:9px;"
                 >
                   delay {viewSample.delayRemarkStatus}
@@ -2984,6 +2967,11 @@
                     {#if ev.note}
                       <div style="font-size:13px; white-space:pre-wrap;">{ev.note}</div>
                     {/if}
+                    {#if ev.reply}
+                      <div class="text-muted mt-1" style="font-size:12px; white-space:pre-wrap;">
+                        <span class="fw-semibold">Reply:</span> {ev.reply}
+                      </div>
+                    {/if}
                     {#if Array.isArray(ev.images) && ev.images.length}
                       <div class="d-flex flex-wrap gap-2 mt-2">
                         {#each ev.images as img, imgIdx}
@@ -3015,7 +3003,7 @@
             <button
               type="button"
               class="btn btn-outline-warning"
-              disabled={sampleSaving || !hasSampleCompany || hasPendingDelayRemark(viewSample)}
+              disabled={sampleSaving || !hasSampleCompany}
               title={mutateBlockedTitle(viewSample, "Change status")}
               on:click={openStatusFromView}
             >
@@ -3024,7 +3012,7 @@
             <button
               type="button"
               class="btn btn-outline-primary"
-              disabled={sampleSaving || !hasSampleCompany || hasPendingDelayRemark(viewSample)}
+              disabled={sampleSaving || !hasSampleCompany}
               title={addEventBlockedTitle(viewSample)}
               on:click={openEventFromView}
             >
@@ -3033,7 +3021,7 @@
             <button
               type="button"
               class="btn btn-primary"
-              disabled={sampleSaving || !hasSampleCompany || hasPendingDelayRemark(viewSample)}
+              disabled={sampleSaving || !hasSampleCompany}
               title={mutateBlockedTitle(viewSample, "Edit")}
               on:click={openEditFromView}
             >
