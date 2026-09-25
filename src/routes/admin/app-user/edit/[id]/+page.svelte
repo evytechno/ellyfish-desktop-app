@@ -9,6 +9,10 @@
   import Loader from "$lib/components/Loader.svelte";
   import { checkAuth } from "$lib/utils/auth";
   import AppUserPermissionsEditor from "$lib/components/AppUserPermissionsEditor.svelte";
+  import {
+    fetchWorkshopSalesEmployees,
+    workshopEmployeeLabel,
+  } from "$lib/api/workshopSales";
 
   let loadingData = true;
   let loading = false;
@@ -22,6 +26,9 @@
   let email = "";
   let mobile = "";
   let status = "active";
+  let workshopEmployeeId = "";
+  let workshopEmployees = [];
+  let workshopLoadError = "";
   let permissions = {
     sample_view: true,
     sample_update: true,
@@ -29,6 +36,14 @@
     dispatch_update: true,
     dispatch_hold: true,
   };
+
+  function onWorkshopPick() {
+    if (!workshopEmployeeId) return;
+    const emp = workshopEmployees.find((e) => e._id === workshopEmployeeId);
+    if (!emp) return;
+    if (!name?.trim()) name = emp.username || emp.name || "";
+    if (!email?.trim() && emp.email) email = emp.email;
+  }
 
   onMount(async () => {
     currentUser = checkAuth();
@@ -42,8 +57,20 @@
       }).then(() => window.history.back());
       return;
     }
-    await loadUser();
+    await Promise.all([loadUser(), loadWorkshop()]);
   });
+
+  async function loadWorkshop() {
+    try {
+      workshopEmployees = await fetchWorkshopSalesEmployees();
+      if (!workshopEmployees.length) {
+        workshopLoadError =
+          "Workshop list empty — link id can still be kept or cleared.";
+      }
+    } catch {
+      workshopLoadError = "Could not load workshop employees.";
+    }
+  }
 
   async function loadUser() {
     loadingData = true;
@@ -53,6 +80,7 @@
       email = data.email || "";
       mobile = data.mobile || "";
       status = data.status || "active";
+      workshopEmployeeId = data.workshopEmployeeId || "";
       permissions = {
         sample_view: true,
         sample_update: true,
@@ -79,7 +107,14 @@
     try {
       const data = await authApiFetch(`${API_ROUTES.APP_USER}/${userId}`, {
         method: "PUT",
-        data: { name, email, mobile, status, permissions },
+        data: {
+          name,
+          email,
+          mobile,
+          status,
+          permissions,
+          workshopEmployeeId: workshopEmployeeId || null,
+        },
       });
       Swal.fire("Success!", data.message, "success");
       goto(`/admin/app-user/${userId}`);
@@ -98,7 +133,7 @@
 
 <div class="page-wrapper">
   <div class="content pb-0">
-    <div class="flex items-start justify-between gap-3 mb-4 flex-wrap">
+    <div class="mb-3 flex items-center justify-between flex-wrap gap-2">
       <div>
         <h4 class="mb-1">Edit App User</h4>
         <nav aria-label="breadcrumb">
@@ -111,111 +146,117 @@
       </div>
       <div class="flex gap-2">
         <a href="/admin/app-user/{userId}" class="btn btn-outline-secondary btn-sm">View</a>
-        <a href="/admin/app-user" class="btn btn-outline-secondary btn-sm">
-          <i class="ti ti-arrow-left me-1"></i>List
+        <a href="/admin/app-user" class="btn btn-primary btn-sm">
+          <i class="ti ti-list me-1"></i>List
         </a>
       </div>
     </div>
 
-    <form on:submit={handleSubmit} autocomplete="off">
-      <div class="grid gap-3" style="max-width: 920px;">
-        <div class="card border-0 shadow-sm rounded-3 overflow-hidden">
-          <div class="card-header bg-white border-bottom py-3">
-            <div class="flex items-center gap-2">
-              <span class="app-user-icon"><i class="ti ti-user-edit"></i></span>
-              <div>
-                <h5 class="mb-0">Account details</h5>
-                <small class="text-muted">Sample / Dispatch app login</small>
-              </div>
-            </div>
-          </div>
-          <div class="card-body p-4">
-            {#if errorMessage}
-              <div class="alert alert-danger py-2">{errorMessage}</div>
-            {/if}
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label class="form-label fw-semibold" for="name"
-                  >Name <span class="text-danger">*</span></label
-                >
-                <input
-                  class="form-control"
-                  class:is-invalid={formErrors.name}
-                  type="text"
-                  bind:value={name}
-                  id="name"
-                  required
-                />
-              </div>
-              <div>
-                <label class="form-label fw-semibold" for="email"
-                  >Email <span class="text-danger">*</span></label
-                >
-                <input
-                  class="form-control"
-                  class:is-invalid={formErrors.email}
-                  type="email"
-                  bind:value={email}
-                  id="email"
-                  required
-                />
-              </div>
-              <div>
-                <label class="form-label fw-semibold" for="mobile">Mobile</label>
-                <input class="form-control" type="text" bind:value={mobile} id="mobile" />
-              </div>
-              <div>
-                <label class="form-label fw-semibold" for="status">Status</label>
-                <select class="form-select" id="status" bind:value={status}>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="card border-0 shadow-sm rounded-3 overflow-hidden">
-          <div class="card-header bg-white border-bottom py-3">
-            <div class="flex items-center gap-2">
-              <span class="app-user-icon"><i class="ti ti-key"></i></span>
-              <div>
-                <h5 class="mb-0">Permissions</h5>
-                <small class="text-muted">What this user can do in the app</small>
-              </div>
-            </div>
-          </div>
-          <div class="card-body p-4">
-            <AppUserPermissionsEditor bind:permissions />
-          </div>
-        </div>
-
-        <div class="flex items-center gap-2 pb-3">
-          <button type="submit" class="btn btn-primary px-4" disabled={loading}>
-            {#if loading}
-              <span class="spinner-border spinner-border-sm me-1"></span>
-              Saving…
-            {:else}
-              <i class="ti ti-device-floppy me-1"></i>Save Changes
-            {/if}
-          </button>
-          <a href="/admin/app-user/{userId}" class="btn btn-light">Cancel</a>
-        </div>
+    <div class="card border-0 rounded-0">
+      <div class="card-header flex items-center justify-between flex-wrap gap-2">
+        <h5 class="mb-0">Edit app user</h5>
+        <span class="badge bg-soft-danger text-danger">App only · no CRM login</span>
       </div>
-    </form>
+
+      <div class="card-body">
+        <form on:submit={handleSubmit} autocomplete="off" class="needs-validation" novalidate>
+          {#if errorMessage}
+            <div class="alert alert-danger py-2 mb-3">{errorMessage}</div>
+          {/if}
+          {#if workshopLoadError}
+            <div class="alert alert-warning py-2 mb-3">{workshopLoadError}</div>
+          {/if}
+
+          <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <div>
+              <div class="fw-semibold mb-2">Account</div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div class="sm:col-span-2">
+                  <label class="form-label" for="workshopEmployeeId"
+                    >Workshop employee <span class="text-muted">(optional)</span></label
+                  >
+                  <select
+                    class="form-select"
+                    class:is-invalid={formErrors.workshopEmployeeId}
+                    id="workshopEmployeeId"
+                    bind:value={workshopEmployeeId}
+                    on:change={onWorkshopPick}
+                  >
+                    <option value="">— None —</option>
+                    {#each workshopEmployees as emp}
+                      <option value={emp._id}>{workshopEmployeeLabel(emp)}</option>
+                    {/each}
+                  </select>
+                  {#if workshopEmployeeId && !workshopEmployees.some((e) => e._id === workshopEmployeeId)}
+                    <small class="text-warning d-block mt-1"
+                      >Linked id <code>{workshopEmployeeId}</code> not in list
+                      (kept).</small
+                    >
+                  {/if}
+                </div>
+
+                <div>
+                  <label class="form-label" for="name"
+                    >Name <span class="text-danger">*</span></label
+                  >
+                  <input
+                    class="form-control"
+                    class:is-invalid={formErrors.name}
+                    type="text"
+                    bind:value={name}
+                    id="name"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label class="form-label" for="email"
+                    >Email <span class="text-danger">*</span></label
+                  >
+                  <input
+                    class="form-control"
+                    class:is-invalid={formErrors.email}
+                    type="email"
+                    bind:value={email}
+                    id="email"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label class="form-label" for="mobile">Mobile</label>
+                  <input class="form-control" type="text" bind:value={mobile} id="mobile" />
+                </div>
+
+                <div>
+                  <label class="form-label" for="status">Status</label>
+                  <select class="form-select" id="status" bind:value={status}>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div class="fw-semibold mb-2">Permissions</div>
+              <AppUserPermissionsEditor bind:permissions />
+            </div>
+          </div>
+
+          <div class="mt-4 pt-3 border-top flex items-center gap-2">
+            <button type="submit" class="btn btn-primary" disabled={loading}>
+              {#if loading}
+                <span class="spinner-border spinner-border-sm me-1"></span>
+                Saving…
+              {:else}
+                <i class="ti ti-device-floppy me-1"></i>Save changes
+              {/if}
+            </button>
+            <a href="/admin/app-user/{userId}" class="btn btn-light">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 </div>
-
-<style>
-  .app-user-icon {
-    width: 2.25rem;
-    height: 2.25rem;
-    border-radius: 0.5rem;
-    background: #fef2f2;
-    color: #dc2626;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-</style>

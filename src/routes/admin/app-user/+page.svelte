@@ -55,6 +55,14 @@
       render: (val) => val || "—",
     },
     {
+      key: "workshopEmployeeId",
+      label: "Workshop",
+      render: (val) =>
+        val
+          ? `<span class="badge bg-info-subtle text-info border">${String(val).slice(0, 8)}…</span>`
+          : "—",
+    },
+    {
       key: "permissions",
       label: "Access",
       render: (val, row) => {

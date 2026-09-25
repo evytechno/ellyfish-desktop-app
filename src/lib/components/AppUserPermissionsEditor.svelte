@@ -121,8 +121,13 @@
   }
   .app-perm__grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+  @media (min-width: 992px) {
+    .app-perm__grid {
+      grid-template-columns: 1fr 1fr;
+    }
   }
   @media (max-width: 768px) {
     .app-perm__grid {
@@ -131,26 +136,26 @@
   }
   .app-perm__card {
     border: 1px solid #e5e7eb;
-    border-radius: 0.625rem;
+    border-radius: 0.5rem;
     background: #fafafa;
-    padding: 0.875rem;
+    padding: 0.75rem;
   }
   .app-perm__card-head {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
     gap: 0.5rem;
-    margin-bottom: 0.75rem;
+    margin-bottom: 0.65rem;
   }
   .app-perm__card-title {
     display: flex;
-    gap: 0.6rem;
+    gap: 0.5rem;
     align-items: flex-start;
   }
   .app-perm__card-title > i {
-    width: 2rem;
-    height: 2rem;
-    border-radius: 0.5rem;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 0.4rem;
     background: #fff;
     border: 1px solid #e5e7eb;
     display: inline-flex;
@@ -162,16 +167,16 @@
   .app-perm__items {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.4rem;
   }
   .app-perm__chip {
     display: flex;
     align-items: center;
-    gap: 0.65rem;
+    gap: 0.5rem;
     width: 100%;
     text-align: left;
-    padding: 0.55rem 0.65rem;
-    border-radius: 0.5rem;
+    padding: 0.4rem 0.55rem;
+    border-radius: 0.4rem;
     border: 1px solid #e5e7eb;
     background: #fff;
     cursor: pointer;

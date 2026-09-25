@@ -1,13 +1,11 @@
 <script>
   import { onMount } from "svelte";
-  import crypto from "crypto-js";
   import Swal from "sweetalert2";
   import { dispatchedDetailsStore } from "$lib/stores/dataStores";
-  import {
-    HMAC_WEBAPP_SECRET,
-    WORKSHOP_BASE_URL,
-    WORKSHOP_IMAGE_BASE_URL,
-  } from "$lib/constants/constants";
+  import { API_BASE_URL } from "$lib/constants/constants";
+  import { API_ROUTES } from "$lib/constants/apiRoutes";
+  import { authApiFetch } from "$lib/api/client";
+  import { fetchWorkshopSalesEmployees } from "$lib/api/workshopSales";
 
   // ── Props ────────────────────────────────────────────────
   export let order = { workOrderNumber: "" };
@@ -173,9 +171,11 @@
   ];
 
   const ic =
-    "w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 transition";
-  const lc =
-    "block mb-1 text-xs font-semibold text-gray-500 uppercase tracking-wide";
+    "w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition";
+  const lc = "block mb-1 text-xs font-semibold text-gray-600";
+  const sectionCard = "pt-1";
+  const formGrid =
+    "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3";
 
   // ── Multi-select dropdown state ──────────────────────────
   let dropdownOpen = {};
@@ -186,88 +186,61 @@
     dropdownOpen = { ...dropdownOpen, [id]: false };
   }
   function toggleEmployee(arr, id) {
-    return arr.includes(id) ? arr.filter((x) => x !== id) : [...arr, id];
+    const sid = String(id);
+    const has = (arr || []).some((x) => String(x) === sid);
+    return has
+      ? (arr || []).filter((x) => String(x) !== sid)
+      : [...(arr || []), id];
   }
   function selectedLabels(ids) {
-    return ids.map((id) => users.find((u) => u._id === id)).filter(Boolean);
+    const pool = [
+      ...(dispatchData?.employeesDetails ?? []),
+      ...users,
+    ];
+    return (ids || [])
+      .map((id) => pool.find((u) => String(u._id) === String(id)))
+      .filter(Boolean);
   }
 
-  // ── API helpers ──────────────────────────────────────────
-  function generateHmacSignature({ method, path, timestamp }) {
-    const secret = HMAC_WEBAPP_SECRET || "labourManagementAndBomProject";
-
-    const payload = `${method.toUpperCase()}|${path}|${timestamp}`;
-    return crypto.enc.Hex.stringify(crypto.HmacSHA256(payload, secret));
-  }
-  function generateHmacSignature1({ method, path, timestamp }) {
-    const secret = "salesProject";
-
-    const payload = `${method.toUpperCase()}|${path}|${timestamp}`;
-    return crypto.enc.Hex.stringify(crypto.HmacSHA256(payload, secret));
+  /** Visit assignees = Installation team only (not full warehouse list). */
+  function installationAssigneeOptions() {
+    const details = dispatchData?.employeesDetails ?? [];
+    if (details.length) return details;
+    const ids = dispatchData?.employees ?? installForm?.employees ?? [];
+    return selectedLabels(ids);
   }
 
-  async function apiFetch1(path, method = "GET", data = null) {
-    const timestamp = Math.floor(Date.now() / 1000);
-    const options = {
+  // ── API helpers (Nest CRM for dispatch; warehouse only for assignees) ──
+  async function crmFetch(path, method = "GET", data = null) {
+    const resp = await authApiFetch(path, {
       method,
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": "salesProject",
-        "x-signature": generateHmacSignature1({ method, path, timestamp }),
-        "x-timestamp": timestamp.toString(),
-      },
-    };
-    if (data && method !== "GET") options.body = JSON.stringify(data);
-    const resp = await (
-      await fetch("http://localhost:3000" + path, options)
-    ).json();
-    if (!resp.success) throw resp;
+      data: data && method !== "GET" ? data : undefined,
+    });
+    if (resp && resp.success === false) throw resp;
     return resp;
   }
-  async function apiFetch(path, method = "GET", data = null) {
-    const timestamp = Math.floor(Date.now() / 1000);
-    const options = {
-      method,
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": "BOM_PROJECT",
-        "x-signature": generateHmacSignature({ method, path, timestamp }),
-        "x-timestamp": timestamp.toString(),
-      },
-    };
-    if (data && method !== "GET") options.body = JSON.stringify(data);
-    const resp = await (await fetch(WORKSHOP_BASE_URL + path, options)).json();
-    if (!resp.success) throw resp;
-    return resp;
-  }
-  async function apiFetchForm(path, method, formData) {
-    let isFormData = formData instanceof FormData;
-    const timestamp = Math.floor(Date.now() / 1000);
-    let options = {
-      method,
-      headers: {
-        "x-api-key": "BOM_PROJECT",
-        "x-signature": generateHmacSignature({ method, path, timestamp }),
-        "x-timestamp": timestamp.toString(),
-      },
-    };
-    if (isFormData) {
-      options.body = formData;
-    } else {
-      options.headers["Content-Type"] = "application/json";
-      options.body = JSON.stringify(formData);
-    }
 
-    const resp = await (await fetch(WORKSHOP_BASE_URL + path, options)).json();
-    if (!resp.success) throw resp;
+  async function crmFetchForm(path, method, formData) {
+    // Multipart updates must use Nest /form (multer). Paths are like "dispatch/12" (no leading /).
+    const normalized = String(path || "").replace(/^\//, "");
+    const isDispatchPut =
+      method === "PUT" &&
+      /^dispatch\/\d+$/.test(normalized);
+    const url = isDispatchPut ? `${normalized}/form` : path;
+    const resp = await authApiFetch(url, {
+      method,
+      data: formData,
+    });
+    if (resp && resp.success === false) throw resp;
     return resp;
   }
 
   function parseValidationErrors(error) {
-    if (!error?.errors) return null;
+    if (!error?.errors && !error?.data?.errors) return null;
+    const list = error.errors || error.data?.errors || [];
     const fmt = {};
-    error.errors.forEach((e) => (fmt[e.field] = e.errors));
-    return fmt;
+    list.forEach((e) => (fmt[e.field] = e.errors));
+    return Object.keys(fmt).length ? fmt : null;
   }
 
   // ── Global data ──────────────────────────────────────────
@@ -308,34 +281,49 @@
 
   async function fetchEmployees() {
     try {
-      const resp = await apiFetch(`/user/sales/all`, "GET");
-      users = resp?.data ?? [];
+      users = await fetchWorkshopSalesEmployees();
     } catch (e) {
+      users = [];
     }
   }
 
   async function fetchDispatch() {
     try {
       loadingData = true;
-      const resp = await apiFetch(
-        `/dispatch/sales/${order.workOrderNumber}`,
+      const wo = encodeURIComponent(order.workOrderNumber);
+      const resp = await crmFetch(
+        `${API_ROUTES.DISPATCH_BY_WO}/${wo}`,
         "GET",
       );
-      projectDetails = resp?.data?.projectDetails ?? {};
-      workOrderStatus = resp?.data?.projectDetails?.status ?? "open";
-      delete resp.data.projectDetails;
+      projectDetails = resp?.data?.projectDetails ?? { status: "completed" };
+      workOrderStatus = projectDetails?.status ?? "open";
 
-      // if (projectDetails) {
-      //   const resp = await apiFetchForm(
-      //     `/project/sales/${projectDetails.uuid}`,
-      //     "PUT",
-      //     // { status: "installationInProgress" },
-      //     { status: "completed" },
-      //   );
-      // }
-
-      dispatchData = Object.keys(resp.data).length > 0 ? resp.data : null;
-      syncForms(dispatchData);
+      const raw = { ...(resp?.data ?? {}) };
+      delete raw.projectDetails;
+      // Prefer id — stub rows still have id even when fields are empty
+      dispatchData = raw.id != null ? raw : Object.keys(raw).length > 0 ? raw : null;
+      if (
+        dispatchData &&
+        (dispatchData.employees ?? []).length > 0 &&
+        !(dispatchData.employeesDetails ?? []).length
+      ) {
+        dispatchData = {
+          ...dispatchData,
+          employeesDetails: selectedLabels(dispatchData.employees),
+        };
+      }
+      if (dispatchData) syncForms(dispatchData);
+      else {
+        dispatchForm = {
+          medium: "",
+          dispatchDate: "",
+          packaging: "",
+          description: "",
+          city: "",
+          state: "",
+        };
+        existingImages = [];
+      }
       dispatchedDetailsStore.set(dispatchData);
     } catch (e) {
     } finally {
@@ -364,7 +352,12 @@
   let newImageFiles = [],
     newImagePreviews = [],
     existingImages = [];
-  const imgUrl = (img) => `${WORKSHOP_IMAGE_BASE_URL}/${img.path}`;
+  const imgUrl = (img) => {
+    if (!img?.path) return "";
+    if (String(img.path).startsWith("http")) return img.path;
+    const base = String(API_BASE_URL || "").replace(/\/$/, "");
+    return `${base}/uploads/${String(img.path).replace(/^\//, "")}`;
+  };
 
   function syncImages(d) {
     existingImages = d?.dispatchImages ? structuredClone(d.dispatchImages) : [];
@@ -390,8 +383,26 @@
   }
   async function saveDispatch() {
     try {
-      dispatchLoading = true;
       formErrors = {};
+      if (!String(dispatchForm.medium || "").trim()) {
+        formErrors = { ...formErrors, medium: "Transport medium is required" };
+      }
+      if (!String(dispatchForm.dispatchDate || "").trim()) {
+        formErrors = {
+          ...formErrors,
+          dispatchDate: "Dispatch date is required",
+        };
+      }
+      if (Object.keys(formErrors).length) {
+        Swal.fire(
+          "Missing fields",
+          "Please fill transport medium and dispatch date.",
+          "warning",
+        );
+        return;
+      }
+
+      dispatchLoading = true;
       const fd = new FormData();
       [
         "medium",
@@ -400,43 +411,46 @@
         "description",
         "city",
         "state",
-      ].forEach((k) => fd.append(k, dispatchForm[k]));
+      ].forEach((k) => fd.append(k, dispatchForm[k] ?? ""));
+      // Kept image list (so removals persist); new files use same field for multer
+      fd.append("keptDispatchImages", JSON.stringify(existingImages));
       newImageFiles.forEach((f) => fd.append("dispatchImages", f));
 
       let resp;
-      if (dispatchData) {
-        // UPDATE
-        resp = await apiFetchForm(
-          `/dispatch/sales/${dispatchData.uuid}`,
+      if (dispatchData?.id) {
+        resp = await crmFetchForm(
+          `${API_ROUTES.DISPATCH}/${dispatchData.id}`,
           "PUT",
           fd,
         );
       } else {
-        // CREATE DISPATCH
         fd.append("workOrder", order.workOrderNumber);
-
-        resp = await apiFetchForm(`/dispatch/sales`, "POST", fd);
-
-        // 🚀 Move status ONLY after successful creation
-        const fd2 = new FormData();
-        fd2.append("status", "dispatchInProgress");
-
-        await apiFetchForm(`/project/sales/${projectDetails.uuid}`, "PUT", fd2);
-
+        resp = await crmFetchForm(`${API_ROUTES.DISPATCH}`, "POST", fd);
         workOrderStatus = "dispatchInProgress";
         focusSection("dispatch");
       }
 
-      dispatchData = resp.data;
+      dispatchData = resp?.data ?? resp;
+      if (dispatchData?.projectDetails) {
+        projectDetails = dispatchData.projectDetails;
+        workOrderStatus = projectDetails.status ?? workOrderStatus;
+        const { projectDetails: _pd, ...rest } = dispatchData;
+        dispatchData = rest;
+      } else if (resp?.data?.projectDetails) {
+        projectDetails = resp.data.projectDetails;
+        workOrderStatus = projectDetails.status ?? workOrderStatus;
+      }
       syncForms(dispatchData);
       dispatchedDetailsStore.set(dispatchData);
+      newImageFiles = [];
+      newImagePreviews.forEach((u) => URL.revokeObjectURL(u));
+      newImagePreviews = [];
 
       dispatchEditing = false;
 
       Swal.fire(
         "Success",
-        resp.message ||
-          (dispatchData ? "Dispatch Updated" : "Dispatch Created"),
+        resp?.message || "Dispatch saved",
         "success",
       );
     } catch (error) {
@@ -465,7 +479,7 @@
   let installNewFiles = [],
     installNewPreviews = [],
     installExisting = [];
-  const installImgUrl = (img) => `${WORKSHOP_IMAGE_BASE_URL}/${img.path}`;
+  const installImgUrl = (img) => imgUrl(img);
 
   function syncInstallImages(d) {
     installExisting = d?.images ? structuredClone(d.images) : [];
@@ -505,23 +519,54 @@
         "compressorLine",
       ].forEach((k) => fd.append(k, installForm[k]));
       installForm.employees.forEach((id) => fd.append("employees", id));
+      fd.append(
+        "employeesDetails",
+        JSON.stringify(
+          selectedLabels(installForm.employees).map((e) => ({
+            _id: e._id,
+            username: e.username,
+            email: e.email,
+          })),
+        ),
+      );
+      fd.append("keptImages", JSON.stringify(installExisting));
       installNewFiles.forEach((f) => fd.append("images", f));
 
-      const resp = await apiFetchForm(
-        `/dispatch/sales/${dispatchData.uuid}`,
+      const resp = await crmFetchForm(
+        `${API_ROUTES.DISPATCH}/${dispatchData.id}`,
         "PUT",
         fd,
       );
-      dispatchData = resp.data;
+      dispatchData = resp?.data ?? resp;
+      if (dispatchData?.projectDetails) {
+        projectDetails = dispatchData.projectDetails;
+        workOrderStatus =
+          projectDetails.status ?? workOrderStatus;
+        const { projectDetails: _pd, ...rest } = dispatchData;
+        dispatchData = rest;
+      }
+      // Ensure chips show even if API omits employeesDetails
+      if (
+        (dispatchData?.employees ?? []).length > 0 &&
+        !(dispatchData.employeesDetails ?? []).length
+      ) {
+        dispatchData = {
+          ...dispatchData,
+          employeesDetails: selectedLabels(dispatchData.employees),
+        };
+      }
       syncForms(dispatchData);
       dispatchedDetailsStore.set(dispatchData);
 
-      // 🚀 When status is delivered and installation form is saved,
-      // advance the work-order status to installationInProgress
-      if (workOrderStatus === "delivered" && projectDetails?.uuid) {
-        await apiFetchForm(`/project/sales/${projectDetails.uuid}`, "PUT", {
-          status: "installationInProgress",
-        });
+      // When status is delivered and installation form is saved,
+      // advance to installationInProgress
+      if (workOrderStatus === "delivered" && dispatchData?.id) {
+        const st = await crmFetch(
+          `${API_ROUTES.DISPATCH}/${dispatchData.id}/status`,
+          "PUT",
+          { status: "installationInProgress" },
+        );
+        projectDetails = st.data?.projectDetails ?? projectDetails;
         workOrderStatus = "installationInProgress";
         focusSection("visit");
       }
@@ -538,10 +583,10 @@
   }
 
   async function saveInstallAssignees() {
-    if (!dispatchData?.uuid) {
+    if (!dispatchData?.id) {
       Swal.fire(
         "Warning",
-        "No dispatch record yet. Create it in Workshop first.",
+        "No dispatch record yet. Create dispatch first.",
         "warning",
       );
       return;
@@ -551,12 +596,31 @@
       formErrors = {};
       const fd = new FormData();
       installForm.employees.forEach((id) => fd.append("employees", id));
-      const resp = await apiFetchForm(
-        `/dispatch/sales/${dispatchData.uuid}`,
+      fd.append(
+        "employeesDetails",
+        JSON.stringify(
+          selectedLabels(installForm.employees).map((e) => ({
+            _id: e._id,
+            username: e.username,
+            email: e.email,
+          })),
+        ),
+      );
+      const resp = await crmFetchForm(
+        `${API_ROUTES.DISPATCH}/${dispatchData.id}`,
         "PUT",
         fd,
       );
-      dispatchData = resp.data;
+      dispatchData = resp?.data ?? resp;
+      if (
+        (dispatchData?.employees ?? []).length > 0 &&
+        !(dispatchData.employeesDetails ?? []).length
+      ) {
+        dispatchData = {
+          ...dispatchData,
+          employeesDetails: selectedLabels(dispatchData.employees),
+        };
+      }
       syncForms(dispatchData);
       dispatchedDetailsStore.set(dispatchData);
       Swal.fire("Success", resp.message || "Assignees updated", "success");
@@ -570,12 +634,12 @@
   }
 
   async function saveVisitAssignees(idx) {
-    if (!dispatchData?.uuid) return;
+    if (!dispatchData?.id) return;
     try {
       isSaving = true;
       const payload = { lastInstallationDetails: visits };
-      const resp = await apiFetch(
-        `/dispatch/sales/${dispatchData.uuid}`,
+      const resp = await crmFetch(
+        `${API_ROUTES.DISPATCH}/${dispatchData.id}`,
         "PUT",
         payload,
       );
@@ -631,24 +695,48 @@
   async function visitSave(idx) {
     try {
       isSaving = true;
+      // Persist names with IDs so view mode can show chips without re-fetching users
+      visits = visits.map((v, vi) =>
+        vi === idx
+          ? {
+              ...v,
+              employeesDetails: selectedLabels(v.employees || []).map((e) => ({
+                _id: e._id,
+                username: e.username,
+                email: e.email,
+              })),
+            }
+          : v,
+      );
       const s = visits[idx]?.status;
       const payload = { lastInstallationDetails: visits };
       if (s === "partiallyInstalled") payload.status = "installationInProgress";
       if (s === "Installed") payload.status = "installed";
 
-      const resp = await apiFetch(
-        `/dispatch/sales/${dispatchData.uuid}`,
+      const resp = await crmFetch(
+        `${API_ROUTES.DISPATCH}/${dispatchData.id}`,
         "PUT",
         payload,
       );
-      dispatchData = resp.data;
+      dispatchData = resp?.data ?? resp;
+      if (resp?.data?.projectDetails?.status || dispatchData?.projectDetails?.status) {
+        projectDetails =
+          resp?.data?.projectDetails ??
+          dispatchData.projectDetails ??
+          projectDetails;
+        workOrderStatus = projectDetails.status ?? workOrderStatus;
+        if (dispatchData?.projectDetails) {
+          const { projectDetails: _pd, ...rest } = dispatchData;
+          dispatchData = rest;
+        }
+      }
       syncForms(dispatchData);
       dispatchedDetailsStore.set(dispatchData);
       editingIdx = null;
       visitStep = 1;
       const { [idx]: _, ...rest } = snapshots;
       snapshots = rest;
-      Swal.fire("Success", resp.message || "Visit Saved", "success");
+      Swal.fire("Success", resp?.message || "Visit Saved", "success");
     } catch (e) {
       Swal.fire("Error", e.message || "Something went wrong", "error");
     } finally {
@@ -769,15 +857,34 @@
 
       if (!confirm.isConfirmed) return;
 
-      // ── API CALL ────────────────────────────────
-      const resp = await apiFetchForm(
-        `/project/sales/${projectDetails.uuid}`,
-        "PUT",
-        { status: nextStatus },
-      );
+      // ── API CALL (Nest CRM) ──────────────────────
+      let resp;
+      if (dispatchData?.id || projectDetails?.id) {
+        const id = dispatchData?.id || projectDetails.id;
+        resp = await crmFetch(
+          `${API_ROUTES.DISPATCH}/${id}/status`,
+          "PUT",
+          { status: nextStatus },
+        );
+      } else {
+        const wo = encodeURIComponent(order.workOrderNumber);
+        resp = await crmFetch(
+          `${API_ROUTES.DISPATCH_BY_WO}/${wo}/status`,
+          "PUT",
+          { status: nextStatus },
+        );
+      }
 
-      projectDetails = resp.data;
-      workOrderStatus = resp.data.status;
+      projectDetails = resp.data?.projectDetails ?? {
+        id: resp.data?.id,
+        status: nextStatus,
+      };
+      workOrderStatus = projectDetails.status || nextStatus;
+      if (resp.data?.id) {
+        dispatchData = { ...(dispatchData || {}), ...resp.data };
+        delete dispatchData.projectDetails;
+        syncForms(dispatchData);
+      }
 
       // Auto switch tab for better UX
       if (nextStatus === "dispatchInProgress") focusSection("dispatch");
@@ -951,7 +1058,7 @@
 
     <!-- Tabs — show only the active section -->
     <div
-      class="bg-white rounded-2xl border border-gray-100 shadow-sm p-1 mb-3 flex gap-1"
+      class="rounded-xl border border-gray-200 bg-gray-50 p-1 mb-3 flex gap-1"
     >
       {#each TABS as tab}
         {@const unlocked = sectionUnlocked(tab.id)}
@@ -977,10 +1084,7 @@
 
     <!-- ── DISPATCH TAB ─────────────────────────────────── -->
     {#if currentTab === "dispatch"}
-    <section
-      id="dp-section-dispatch"
-      class="bg-white border border-gray-100 rounded-xl shadow-sm p-6"
-    >
+    <section id="dp-section-dispatch" class={sectionCard}>
         <div class="flex items-center justify-between mb-3">
           <h3 class="text-sm font-semibold text-gray-800 flex items-center gap-2">
             <span>📦</span>
@@ -1010,269 +1114,241 @@
         </div>
 
         {#if dispatchEditing && canEditDispatch}
-          <!-- Form -->
-          <div class="grid grid-cols-2 gap-x-5 gap-y-4">
-            <div>
-              <label class={lc}>Transport Medium</label>
-              <input class={ic} bind:value={dispatchForm.medium} />
-              {#if formErrors.medium}<p class="mt-1 text-xs text-red-500">
-                  {formErrors.medium}
-                </p>{/if}
-            </div>
-            <div>
-              <label class={lc}>Dispatch Date</label>
-              <input
-                type="date"
-                class={ic}
-                bind:value={dispatchForm.dispatchDate}
-              />
-              {#if formErrors.dispatchDate}<p class="mt-1 text-xs text-red-500">
-                  {formErrors.dispatchDate}
-                </p>{/if}
-            </div>
-            <div>
-              <label class={lc}>Packaging</label>
-              <input class={ic} bind:value={dispatchForm.packaging} />
-              {#if formErrors.packaging}<p class="mt-1 text-xs text-red-500">
-                  {formErrors.packaging}
-                </p>{/if}
-            </div>
-            <div>
-              <label class={lc}>City</label><input
-                class={ic}
-                bind:value={dispatchForm.city}
-              />
-            </div>
-            <div>
-              <label class={lc}>State</label><input
-                class={ic}
-                bind:value={dispatchForm.state}
-              />
-            </div>
-            <div class="col-span-2">
-              <label class={lc}>Description</label>
-              <textarea
-                class="{ic} min-h-[80px] resize-y"
-                bind:value={dispatchForm.description}
-              />
-            </div>
-            <!-- Image upload -->
-            <div class="col-span-2">
-              <label class={lc}>Images</label>
-              <label
-                class="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-gray-200 rounded-lg bg-gray-50 hover:bg-gray-100 cursor-pointer transition"
-              >
-                <span class="text-2xl mb-1">📎</span>
-                <span class="text-xs text-gray-500 font-medium"
-                  >Click to upload images</span
-                >
-                <span class="text-xs text-gray-400 mt-0.5"
-                  >PNG, JPG, WEBP supported</span
+          <p class="text-[11px] text-gray-500 mb-2.5">
+            <span class="text-red-500 font-semibold">*</span> Required to move stages
+          </p>
+          <div class={formGrid}>
+              <div>
+                <label class={lc}
+                  >Transport medium <span class="text-red-500">*</span></label
                 >
                 <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  class="hidden"
-                  on:change={onDispatchImagesChange}
+                  class={ic}
+                  bind:value={dispatchForm.medium}
+                  placeholder="e.g. Road, Courier, Air, Sea"
+                  title="How the goods will be transported"
+                  autocomplete="off"
                 />
-              </label>
-              {#if existingImages.length > 0}
-                <p
-                  class="mt-3 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wide"
+                {#if formErrors.medium}<p class="mt-0.5 text-xs text-red-500">
+                    {formErrors.medium}
+                  </p>{/if}
+              </div>
+              <div>
+                <label class={lc}
+                  >Dispatch date <span class="text-red-500">*</span></label
                 >
-                  Saved Images ({existingImages.length})
-                </p>
-                <div class="grid grid-cols-4 gap-2">
-                  {#each existingImages as img}
-                    <div
-                      class="relative group rounded-lg overflow-hidden border border-gray-200 aspect-square"
-                    >
-                      <img
-                        src={imgUrl(img)}
-                        alt={img.originalName}
-                        class="w-full h-full object-cover"
-                      />
+                <input
+                  type="date"
+                  class={ic}
+                  bind:value={dispatchForm.dispatchDate}
+                  title="Planned or actual ship-out date"
+                />
+                {#if formErrors.dispatchDate}<p class="mt-0.5 text-xs text-red-500">
+                    {formErrors.dispatchDate}
+                  </p>{/if}
+              </div>
+              <div>
+                <label class={lc}>Packaging</label>
+                <input
+                  class={ic}
+                  bind:value={dispatchForm.packaging}
+                  placeholder="e.g. Wooden crate, Carton"
+                  title="Packing type or notes for warehouse"
+                  autocomplete="off"
+                />
+                {#if formErrors.packaging}<p class="mt-0.5 text-xs text-red-500">
+                    {formErrors.packaging}
+                  </p>{/if}
+              </div>
+              <div>
+                <label class={lc}>City</label>
+                <input
+                  class={ic}
+                  bind:value={dispatchForm.city}
+                  placeholder="e.g. Ahmedabad"
+                  autocomplete="address-level2"
+                />
+              </div>
+              <div>
+                <label class={lc}>State</label>
+                <input
+                  class={ic}
+                  bind:value={dispatchForm.state}
+                  placeholder="e.g. Gujarat"
+                  autocomplete="address-level1"
+                />
+              </div>
+              <div class="sm:col-span-2 lg:col-span-3">
+                <label class={lc}>Description</label>
+                <textarea
+                  class="{ic} min-h-[64px] resize-y"
+                  bind:value={dispatchForm.description}
+                  placeholder="Transporter, AWB / LR, special handling…"
+                  rows="2"
+                />
+              </div>
+              <div class="sm:col-span-2 lg:col-span-3">
+                <label class={lc}>Dispatch images</label>
+                <label
+                  class="flex items-center justify-center gap-3 w-full h-16 px-3 border border-dashed border-gray-200 rounded-lg bg-gray-50 hover:bg-indigo-50/50 hover:border-indigo-200 cursor-pointer transition"
+                >
+                  <span class="text-lg text-indigo-400">📷</span>
+                  <span class="text-xs text-gray-600"
+                    >Upload images <span class="text-gray-400">(PNG, JPG, WEBP)</span></span
+                  >
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    class="hidden"
+                    on:change={onDispatchImagesChange}
+                  />
+                </label>
+                {#if existingImages.length > 0}
+                  <p class="mt-2 mb-1.5 text-[11px] font-semibold text-gray-500">
+                    Saved ({existingImages.length})
+                  </p>
+                  <div class="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                    {#each existingImages as img}
                       <div
-                        class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition"
-                      />
-                      <button
-                        type="button"
-                        on:click={() => removeExistingImage(img.fileName)}
-                        class="absolute top-1 right-1 w-5 h-5 flex items-center justify-center bg-red-500 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition"
-                        >✕</button
+                        class="relative group rounded-lg overflow-hidden border border-gray-200 aspect-square bg-gray-50"
                       >
-                      <p
-                        class="absolute bottom-0 left-0 right-0 px-1.5 py-1 bg-black/40 text-white text-[9px] truncate opacity-0 group-hover:opacity-100 transition"
+                        <img
+                          src={imgUrl(img)}
+                          alt={img.originalName}
+                          class="w-full h-full object-cover"
+                        />
+                        <button
+                          type="button"
+                          on:click={() => removeExistingImage(img.fileName)}
+                          class="absolute top-1 right-1 w-5 h-5 flex items-center justify-center bg-red-500 text-white rounded-full text-[10px] opacity-0 group-hover:opacity-100 transition"
+                          >✕</button
+                        >
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
+                {#if newImageFiles.length > 0}
+                  <p class="mt-2 mb-1.5 text-[11px] font-semibold text-indigo-600">
+                    New ({newImageFiles.length})
+                  </p>
+                  <div class="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                    {#each newImagePreviews as src, idx}
+                      <div
+                        class="relative group rounded-lg overflow-hidden border border-indigo-200 aspect-square"
                       >
-                        {img.originalName}
-                      </p>
-                    </div>
-                  {/each}
-                </div>
-              {/if}
-              {#if newImageFiles.length > 0}
-                <p
-                  class="mt-3 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wide"
-                >
-                  New Images ({newImageFiles.length})
-                </p>
-                <div class="grid grid-cols-4 gap-2">
-                  {#each newImagePreviews as src, idx}
-                    <div
-                      class="relative group rounded-lg overflow-hidden border border-indigo-200 aspect-square"
-                    >
-                      <img
-                        {src}
-                        alt="new {idx + 1}"
-                        class="w-full h-full object-cover"
-                      />
-                      <button
-                        type="button"
-                        on:click={() => removeNewImage(idx)}
-                        class="absolute top-1 right-1 w-5 h-5 flex items-center justify-center bg-red-500 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition"
-                        >✕</button
-                      >
-                      <span
-                        class="absolute bottom-1 left-1 bg-indigo-600 text-white text-[10px] px-1.5 py-0.5 rounded"
-                        >New</span
-                      >
-                    </div>
-                  {/each}
-                </div>
-              {/if}
-            </div>
+                        <img
+                          {src}
+                          alt="new {idx + 1}"
+                          class="w-full h-full object-cover"
+                        />
+                        <button
+                          type="button"
+                          on:click={() => removeNewImage(idx)}
+                          class="absolute top-1 right-1 w-5 h-5 flex items-center justify-center bg-red-500 text-white rounded-full text-[10px] opacity-0 group-hover:opacity-100 transition"
+                          >✕</button
+                        >
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
           </div>
-          <div
-            class="flex justify-end gap-2 mt-3 pt-4 border-t border-gray-100"
-          >
+          <div class="flex justify-end gap-2 mt-3 pt-3 border-t border-gray-100">
             <button
+              type="button"
               on:click={() => {
                 dispatchEditing = false;
                 formErrors = {};
+                syncForms(dispatchData);
                 syncImages(dispatchData);
               }}
-              class="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition"
+              class="px-3.5 py-2 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition"
               >Cancel</button
             >
             <button
+              type="button"
               on:click={saveDispatch}
               disabled={dispatchLoading}
-              class="px-5 py-2 text-sm font-medium text-white rounded-lg transition"
+              class="px-4 py-2 text-xs font-semibold text-white rounded-lg transition"
               class:bg-indigo-300={dispatchLoading}
               class:cursor-not-allowed={dispatchLoading}
               class:bg-indigo-600={!dispatchLoading}
               class:hover:bg-indigo-700={!dispatchLoading}
             >
               {dispatchLoading
-                ? "Saving..."
-                : dispatchData
-                  ? "Update Dispatch"
-                  : "Create Dispatch"}
+                ? "Saving…"
+                : dispatchData?.id
+                  ? "Save dispatch"
+                  : "Create dispatch"}
             </button>
           </div>
         {:else if !dispatchData}
           <!-- No dispatch yet -->
           {#if canEditDispatch}
-            <!-- ✅ Dispatch stage (editable) -->
-            <div
-              class="flex flex-col items-center justify-center py-12 text-gray-400"
-            >
-              <span class="text-4xl mb-3">📦</span>
+            <div class="flex flex-col items-center justify-center py-8 text-gray-400">
+              <span class="text-3xl mb-2">📦</span>
               <p class="text-sm font-medium">No dispatch created yet</p>
-              <p class="text-xs mt-1">Click "+ Create" to get started</p>
+              <p class="text-xs mt-0.5">Click "+ Create" to get started</p>
             </div>
           {:else if workOrderStatus === "completed"}
-            <!-- 🔒 Completed stage (NO create allowed) -->
-            <div
-              class="flex flex-col items-center justify-center py-12 text-gray-400"
-            >
-              <span class="text-4xl mb-3">📦</span>
+            <div class="flex flex-col items-center justify-center py-8 text-gray-400">
+              <span class="text-3xl mb-2">📦</span>
               <p class="text-sm font-medium">Dispatch not started</p>
-              <p class="text-xs mt-1 text-indigo-500">
-                👉 Move to next stage to start dispatch
+              <p class="text-xs mt-0.5 text-indigo-500">
+                Move to next stage to start dispatch
               </p>
             </div>
           {:else}
-            <!-- 📄 Other states -->
-            <div
-              class="flex flex-col items-center justify-center py-12 text-gray-400"
-            >
-              <span class="text-4xl mb-3">📦</span>
+            <div class="flex flex-col items-center justify-center py-8 text-gray-400">
+              <span class="text-3xl mb-2">📦</span>
               <p class="text-sm font-medium">No dispatch data available</p>
             </div>
           {/if}
         {:else}
           <!-- View mode -->
-          <div class="grid grid-cols-2 gap-x-8 gap-y-4">
-            {#each [{ label: "Transport Medium", value: dispatchData.medium }, { label: "Dispatch Date", value: dispatchData.dispatchDate }, { label: "Packaging", value: dispatchData.packaging }, { label: "City", value: dispatchData.city }, { label: "State", value: dispatchData.state }] as f}
-              <div>
-                <p
-                  class="mb-1 text-xs font-semibold text-gray-400 uppercase tracking-wide"
-                >
-                  {f.label}
-                </p>
-                <p class="text-sm text-gray-800">{f.value || "—"}</p>
-              </div>
-            {/each}
-            <div class="col-span-2">
-              <p
-                class="mb-1 text-xs font-semibold text-gray-400 uppercase tracking-wide"
-              >
-                Description
-              </p>
-              <p class="text-sm text-gray-800 whitespace-pre-line">
-                {dispatchData.description || "—"}
-              </p>
-            </div>
-            {#if (dispatchData.dispatchImages ?? []).length > 0}
-              <div class="col-span-2">
-                <p
-                  class="mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wide"
-                >
-                  Images ({dispatchData.dispatchImages.length})
-                </p>
-                <div class="grid grid-cols-4 gap-2">
-                  {#each dispatchData.dispatchImages as img}
-                    <a
-                      href={imgUrl(img)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      class="relative group block rounded-lg overflow-hidden border border-gray-200 aspect-square hover:opacity-90 transition"
-                      title={img.originalName}
-                    >
-                      <img
-                        src={imgUrl(img)}
-                        alt={img.originalName}
-                        class="w-full h-full object-cover"
-                      />
-                      <div
-                        class="absolute inset-0 bg-black/0 group-hover:bg-black/25 transition"
-                      />
-                      <p
-                        class="absolute bottom-0 left-0 right-0 px-1.5 py-1 bg-black/40 text-white text-[9px] truncate opacity-0 group-hover:opacity-100 transition"
-                      >
-                        {img.originalName}
-                      </p>
-                      <p
-                        class="absolute top-1 right-1 text-[9px] bg-black/40 text-white px-1 py-0.5 rounded opacity-0 group-hover:opacity-100 transition"
-                      >
-                        {img.date}
-                      </p>
-                    </a>
-                  {/each}
+          <div class={formGrid}>
+              {#each [{ label: "Transport medium", value: dispatchData.medium }, { label: "Dispatch date", value: dispatchData.dispatchDate }, { label: "Packaging", value: dispatchData.packaging }, { label: "City", value: dispatchData.city }, { label: "State", value: dispatchData.state }] as f}
+                <div>
+                  <p class="mb-0.5 text-[11px] font-semibold text-gray-500">{f.label}</p>
+                  <p class="text-sm text-gray-900 font-medium">{f.value || "—"}</p>
                 </div>
-              </div>
-            {:else}
-              <div class="col-span-2">
-                <p
-                  class="mb-1 text-xs font-semibold text-gray-400 uppercase tracking-wide"
-                >
-                  Images
+              {/each}
+              <div class="sm:col-span-2 lg:col-span-3">
+                <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Description</p>
+                <p class="text-sm text-gray-800 whitespace-pre-line leading-snug">
+                  {dispatchData.description || "—"}
                 </p>
-                <p class="text-sm text-gray-300">No images uploaded</p>
               </div>
-            {/if}
+              {#if (dispatchData.dispatchImages ?? []).length > 0}
+                <div class="sm:col-span-2 lg:col-span-3">
+                  <p class="mb-1.5 text-[11px] font-semibold text-gray-500">
+                    Images ({dispatchData.dispatchImages.length})
+                  </p>
+                  <div class="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                    {#each dispatchData.dispatchImages as img}
+                      <a
+                        href={imgUrl(img)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="relative group block rounded-lg overflow-hidden border border-gray-200 aspect-square hover:opacity-90 transition"
+                        title={img.originalName}
+                      >
+                        <img
+                          src={imgUrl(img)}
+                          alt={img.originalName}
+                          class="w-full h-full object-cover"
+                        />
+                      </a>
+                    {/each}
+                  </div>
+                </div>
+              {:else}
+                <div class="sm:col-span-2 lg:col-span-3">
+                  <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Images</p>
+                  <p class="text-sm text-gray-400">No images uploaded</p>
+                </div>
+              {/if}
           </div>
         {/if}
     </section>
@@ -1282,7 +1358,7 @@
     {#if currentTab === "installation"}
     <section
       id="dp-section-installation"
-      class="bg-white border border-gray-100 rounded-xl shadow-sm p-6"
+      class={sectionCard}
       class:opacity-90={!showInstallation}
     >
         <div class="flex items-center justify-between mb-3">
@@ -1307,15 +1383,12 @@
         </div>
 
         {#if !showInstallation}
-          <div
-            class="flex flex-col items-center justify-center py-12 text-gray-400"
-          >
-            <span class="text-4xl mb-3">🔧</span>
+          <div class="flex flex-col items-center justify-center py-8 text-gray-400">
+            <span class="text-3xl mb-2">🔧</span>
             <p class="text-sm font-medium">Available after delivery</p>
           </div>
         {:else if installEditing && canEditInstallation}
-          <!-- Form -->
-          <div class="grid grid-cols-2 gap-x-5 gap-y-4">
+          <div class={formGrid}>
             <div>
               <label class={lc}>Delivery Date</label>
               <input
@@ -1343,8 +1416,7 @@
               </div>
             {/each}
 
-            <!-- Employee multi-select -->
-            <div class="col-span-2">
+            <div class="sm:col-span-2 lg:col-span-3">
               <label class={lc}>Assign Employees</label>
               {#if installForm.employees.length > 0}
                 <div class="flex flex-wrap gap-1.5 mb-2">
@@ -1459,17 +1531,14 @@
             </div>
 
             <!-- Image upload -->
-            <div class="col-span-2">
+            <div class="sm:col-span-2 lg:col-span-3">
               <label class={lc}>Images</label>
               <label
-                class="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-gray-200 rounded-lg bg-gray-50 hover:bg-gray-100 cursor-pointer transition"
+                class="flex items-center justify-center gap-3 w-full h-16 px-3 border border-dashed border-gray-200 rounded-lg bg-gray-50 hover:bg-indigo-50/50 hover:border-indigo-200 cursor-pointer transition"
               >
-                <span class="text-2xl mb-1">📎</span>
-                <span class="text-xs text-gray-500 font-medium"
-                  >Click to upload images</span
-                >
-                <span class="text-xs text-gray-400 mt-0.5"
-                  >PNG, JPG, WEBP supported</span
+                <span class="text-lg text-indigo-400">📎</span>
+                <span class="text-xs text-gray-600"
+                  >Upload images <span class="text-gray-400">(PNG, JPG, WEBP)</span></span
                 >
                 <input
                   type="file"
@@ -1480,12 +1549,10 @@
                 />
               </label>
               {#if installExisting.length > 0}
-                <p
-                  class="mt-3 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wide"
-                >
-                  Saved Images ({installExisting.length})
+                <p class="mt-2 mb-1.5 text-[11px] font-semibold text-gray-500">
+                  Saved ({installExisting.length})
                 </p>
-                <div class="grid grid-cols-4 gap-2">
+                <div class="grid grid-cols-4 sm:grid-cols-6 gap-2">
                   {#each installExisting as img}
                     <div
                       class="relative group rounded-lg overflow-hidden border border-gray-200 aspect-square"
@@ -1495,32 +1562,22 @@
                         alt={img.originalName}
                         class="w-full h-full object-cover"
                       />
-                      <div
-                        class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition"
-                      />
                       <button
                         type="button"
                         on:click={() =>
                           removeInstallExistingImage(img.fileName)}
-                        class="absolute top-1 right-1 w-5 h-5 flex items-center justify-center bg-red-500 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition"
+                        class="absolute top-1 right-1 w-5 h-5 flex items-center justify-center bg-red-500 text-white rounded-full text-[10px] opacity-0 group-hover:opacity-100 transition"
                         >✕</button
                       >
-                      <p
-                        class="absolute bottom-0 left-0 right-0 px-1.5 py-1 bg-black/40 text-white text-[9px] truncate opacity-0 group-hover:opacity-100 transition"
-                      >
-                        {img.originalName}
-                      </p>
                     </div>
                   {/each}
                 </div>
               {/if}
               {#if installNewFiles.length > 0}
-                <p
-                  class="mt-3 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wide"
-                >
-                  New Images ({installNewFiles.length})
+                <p class="mt-2 mb-1.5 text-[11px] font-semibold text-indigo-600">
+                  New ({installNewFiles.length})
                 </p>
-                <div class="grid grid-cols-4 gap-2">
+                <div class="grid grid-cols-4 sm:grid-cols-6 gap-2">
                   {#each installNewPreviews as src, idx}
                     <div
                       class="relative group rounded-lg overflow-hidden border border-indigo-200 aspect-square"
@@ -1533,12 +1590,8 @@
                       <button
                         type="button"
                         on:click={() => removeInstallNewImage(idx)}
-                        class="absolute top-1 right-1 w-5 h-5 flex items-center justify-center bg-red-500 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition"
+                        class="absolute top-1 right-1 w-5 h-5 flex items-center justify-center bg-red-500 text-white rounded-full text-[10px] opacity-0 group-hover:opacity-100 transition"
                         >✕</button
-                      >
-                      <span
-                        class="absolute bottom-1 left-1 bg-indigo-600 text-white text-[10px] px-1.5 py-0.5 rounded"
-                        >New</span
                       >
                     </div>
                   {/each}
@@ -1546,22 +1599,20 @@
               {/if}
             </div>
           </div>
-          <div
-            class="flex justify-end gap-2 mt-3 pt-4 border-t border-gray-100"
-          >
+          <div class="flex justify-end gap-2 mt-3 pt-3 border-t border-gray-100">
             <button
               on:click={() => {
                 installEditing = false;
                 formErrors = {};
                 syncInstallImages(dispatchData);
               }}
-              class="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition"
+              class="px-3.5 py-2 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition"
               >Cancel</button
             >
             <button
               on:click={saveInstall}
               disabled={installLoading || installForm.employees.length === 0}
-              class="px-5 py-2 text-sm font-medium text-white rounded-lg transition"
+              class="px-4 py-2 text-xs font-semibold text-white rounded-lg transition"
               class:bg-indigo-300={installLoading ||
                 installForm.employees.length === 0}
               class:cursor-not-allowed={installLoading ||
@@ -1571,47 +1622,31 @@
               class:hover:bg-indigo-700={!installLoading &&
                 installForm.employees.length > 0}
             >
-              {installLoading ? "Saving..." : "Save Changes"}
+              {installLoading ? "Saving…" : "Save Changes"}
             </button>
           </div>
         {:else}
           <!-- View mode -->
-          <div class="grid grid-cols-2 gap-x-8 gap-y-4 mb-3">
+          <div class="grid grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3 mb-3">
             <div>
-              <p
-                class="mb-1 text-xs font-semibold text-gray-400 uppercase tracking-wide"
-              >
-                Delivery Date
-              </p>
-              <p class="text-sm text-gray-800">
-                {dispatchData?.deliveryDate || "—"}
-              </p>
+              <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Delivery Date</p>
+              <p class="text-sm text-gray-800">{dispatchData?.deliveryDate || "—"}</p>
             </div>
             <div>
-              <p
-                class="mb-1 text-xs font-semibold text-gray-400 uppercase tracking-wide"
-              >
-                Installation Type
-              </p>
-              <p class="text-sm text-gray-800">
-                {dispatchData?.installationType || "—"}
-              </p>
+              <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Installation Type</p>
+              <p class="text-sm text-gray-800">{dispatchData?.installationType || "—"}</p>
             </div>
           </div>
-          <p
-            class="mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wide"
-          >
-            Equipment Requirements
-          </p>
-          <div class="bg-gray-50 rounded-lg divide-y divide-gray-100 px-4 mb-3">
+          <p class="mb-1.5 text-[11px] font-semibold text-gray-500">Equipment Requirements</p>
+          <div class="bg-gray-50 rounded-lg divide-y divide-gray-100 px-3 mb-3">
             {#each REQUIREMENTS as req}
               {@const val = installForm[req.field]}
               {@const on = val === "available"}
               {@const nr = val === "notRequired"}
-              <div class="flex items-center justify-between py-3">
+              <div class="flex items-center justify-between py-2">
                 <span class="text-sm text-gray-700">{req.label}</span>
                 <span
-                  class="inline-flex items-center gap-1 px-3 py-0.5 rounded-full text-xs font-medium"
+                  class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium"
                   class:bg-green-100={on}
                   class:text-green-800={on}
                   class:bg-gray-100={nr}
@@ -1632,21 +1667,19 @@
           </div>
           {#if (dispatchData?.employees ?? []).length > 0}
             <div class="mb-3">
-              <p
-                class="mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wide"
-              >
-                Assigned Employees
-              </p>
-              <div class="flex flex-wrap gap-2">
-                {#each dispatchData.employeesDetails ?? [] as emp}
+              <p class="mb-1.5 text-[11px] font-semibold text-gray-500">Assigned Employees</p>
+              <div class="flex flex-wrap gap-1.5">
+                {#each (dispatchData.employeesDetails?.length
+                  ? dispatchData.employeesDetails
+                  : selectedLabels(dispatchData.employees)) as emp}
                   <span
-                    class="flex items-center gap-2 pl-1 pr-3 py-1 bg-indigo-50 text-indigo-800 rounded-full text-xs font-medium"
+                    class="flex items-center gap-1.5 pl-1 pr-2.5 py-0.5 bg-indigo-50 text-indigo-800 rounded-full text-xs font-medium"
                   >
                     <span
-                      class="w-5 h-5 rounded-full bg-indigo-200 flex items-center justify-center text-[10px] font-bold text-indigo-700"
-                      >{emp.username.charAt(0)}</span
+                      class="w-4 h-4 rounded-full bg-indigo-200 flex items-center justify-center text-[9px] font-bold text-indigo-700"
+                      >{(emp.username || emp.name || "?").charAt(0)}</span
                     >
-                    {emp.username}
+                    {emp.username || emp.name || emp._id}
                   </span>
                 {/each}
               </div>
@@ -1654,12 +1687,10 @@
           {/if}
           {#if (dispatchData?.images ?? []).length > 0}
             <div>
-              <p
-                class="mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wide"
-              >
+              <p class="mb-1.5 text-[11px] font-semibold text-gray-500">
                 Images ({dispatchData.images.length})
               </p>
-              <div class="grid grid-cols-4 gap-2">
+              <div class="grid grid-cols-4 sm:grid-cols-6 gap-2">
                 {#each dispatchData.images as img}
                   <a
                     href={installImgUrl(img)}
@@ -1673,31 +1704,14 @@
                       alt={img.originalName}
                       class="w-full h-full object-cover"
                     />
-                    <div
-                      class="absolute inset-0 bg-black/0 group-hover:bg-black/25 transition"
-                    />
-                    <p
-                      class="absolute bottom-0 left-0 right-0 px-1.5 py-1 bg-black/40 text-white text-[9px] truncate opacity-0 group-hover:opacity-100 transition"
-                    >
-                      {img.originalName}
-                    </p>
-                    <p
-                      class="absolute top-1 right-1 text-[9px] bg-black/40 text-white px-1 py-0.5 rounded opacity-0 group-hover:opacity-100 transition"
-                    >
-                      {img.date}
-                    </p>
                   </a>
                 {/each}
               </div>
             </div>
           {:else}
             <div>
-              <p
-                class="mb-1 text-xs font-semibold text-gray-400 uppercase tracking-wide"
-              >
-                Images
-              </p>
-              <p class="text-sm text-gray-300">No images uploaded</p>
+              <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Images</p>
+              <p class="text-sm text-gray-400">No images uploaded</p>
             </div>
           {/if}
         {/if}
@@ -1708,28 +1722,22 @@
     {#if currentTab === "visit"}
     <section id="dp-section-visit" class="mb-3">
         {#if !showVisit}
-          <div
-            class="bg-white rounded-xl border border-gray-100 shadow-sm p-6"
-          >
-            <div class="flex items-center justify-between mb-3">
+          <div class={sectionCard}>
+            <div class="flex items-center justify-between mb-2">
               <h3 class="text-sm font-semibold text-gray-800 flex items-center gap-2">
                 <span>🚗</span>
                 <span>Service Visits</span>
                 <span class="text-[10px] font-medium text-amber-600 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded-full">Unlocks at Installation</span>
               </h3>
             </div>
-            <div
-              class="flex flex-col items-center justify-center py-12 text-gray-400"
-            >
-              <span class="text-4xl mb-3">🚗</span>
-              <p class="text-sm font-medium">
-                Available after installation begins
-              </p>
-              <p class="text-xs mt-1 text-gray-400">Move stages forward to unlock this section.</p>
+            <div class="flex flex-col items-center justify-center py-8 text-gray-400">
+              <span class="text-3xl mb-2">🚗</span>
+              <p class="text-sm font-medium">Available after installation begins</p>
+              <p class="text-xs mt-0.5 text-gray-400">Move stages forward to unlock this section.</p>
             </div>
           </div>
         {:else}
-          <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
+          <div class={sectionCard}>
           <!-- Visit header -->
           <div class="flex items-start justify-between mb-3">
             <div>
@@ -1737,7 +1745,7 @@
                 <span>🚗</span>
                 <span>Service Visits</span>
               </h3>
-              <div class="flex gap-3 mt-1">
+              <div class="flex gap-3 mt-0.5">
                 <span class="text-xs text-gray-400"
                   >Total: <strong class="text-gray-700">{visits.length}</strong
                   ></span
@@ -1748,7 +1756,7 @@
                   >{/if}
               </div>
             </div>
-            <div class="flex flex-col items-end gap-1.5">
+            <div class="flex flex-col items-end gap-1">
               {#if canEditVisits}
                 <button
                   on:click={addVisit}
@@ -1758,7 +1766,7 @@
                     : !lastIsInstalled && visits.length > 0
                       ? "Mark last visit as Successfully Done first"
                       : "Add new service visit"}
-                  class="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border transition"
+                  class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition"
                   class:bg-green-50={canAddNew}
                   class:text-green-700={canAddNew}
                   class:border-green-200={canAddNew}
@@ -1770,13 +1778,12 @@
                   class:cursor-not-allowed={!canAddNew}>+ New Visit</button
                 >
                 {#if visits.length > 0 && !lastIsInstalled && editingIdx === null}
-                  <p class="text-xs text-amber-500">
-                    ⚠ Mark Visit #{visits.length} as Successfully Done to add a
-                    new one
+                  <p class="text-[11px] text-amber-500">
+                    Mark Visit #{visits.length} as Successfully Done to add a new one
                   </p>
                 {/if}
                 {#if editingIdx !== null}
-                  <p class="text-xs text-indigo-500">
+                  <p class="text-[11px] text-indigo-500">
                     Editing Visit #{editingIdx + 1} — save or cancel first
                   </p>
                 {/if}
@@ -1790,20 +1797,18 @@
 
           {#if visits.length === 0}
             <div
-              class="flex flex-col items-center justify-center py-16 bg-gray-50 rounded-xl border border-dashed border-gray-200"
+              class="flex flex-col items-center justify-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-200"
             >
-              <span class="text-4xl mb-3">🚗</span>
-              <p class="text-sm font-medium text-gray-500">
-                No service visits yet
-              </p>
+              <span class="text-3xl mb-2">🚗</span>
+              <p class="text-sm font-medium text-gray-500">No service visits yet</p>
               {#if canEditVisits}
-                <p class="text-xs text-gray-400 mt-1">
+                <p class="text-xs text-gray-400 mt-0.5">
                   Click "+ New Visit" to record the first visit
                 </p>
               {/if}
             </div>
           {:else}
-            <div class="flex flex-col gap-3">
+            <div class="flex flex-col gap-2.5">
               {#each visits as visit, i (i)}
                 {@const isEditing = editingIdx === i}
                 {@const isCompleted = visit.status === "Installed"}
@@ -1813,7 +1818,7 @@
                 {@const statusCfg = VISIT_STATUS_MAP[visit.status] ?? null}
 
                 <div
-                  class="bg-white rounded-xl border shadow-sm transition-all duration-200"
+                  class="bg-white rounded-lg border transition-all duration-200"
                   class:border-indigo-300={isEditing}
                   class:ring-2={isEditing}
                   class:ring-indigo-100={isEditing}
@@ -1821,10 +1826,10 @@
                   class:border-gray-100={!isCompleted && !isEditing}
                 >
                   <!-- Visit card header -->
-                  <div class="flex items-center justify-between px-3 py-4">
-                    <div class="flex items-center gap-3">
+                  <div class="flex items-center justify-between px-3 py-2.5">
+                    <div class="flex items-center gap-2.5">
                       <div
-                        class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0"
+                        class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
                         class:bg-green-100={isCompleted}
                         class:text-green-700={isCompleted}
                         class:bg-indigo-100={isEditing && !isCompleted}
@@ -1850,7 +1855,7 @@
                           >
                         {:else if statusCfg}
                           <span
-                            class="px-3 py-0.5 rounded-full text-xs font-semibold {statusCfg.cls}"
+                            class="px-2.5 py-0.5 rounded-full text-xs font-semibold {statusCfg.cls}"
                             >{statusCfg.label}</span
                           >
                         {/if}
@@ -1887,9 +1892,9 @@
                   </div>
 
                   <!-- Visit card body -->
-                  <div class="px-3 pb-5">
+                  <div class="px-3 pb-3">
                     {#if isEditing && canEditVisitAssignees}
-                      <div class="pt-3 border-t border-gray-100">
+                      <div class="pt-2 border-t border-gray-100">
                         <label class={lc}>Assign Employees</label>
                         {#if (visit.employees || []).length > 0}
                           <div class="flex flex-wrap gap-1.5 mb-2">
@@ -1932,7 +1937,10 @@
                             <div
                               class="absolute z-20 mt-1 w-full max-h-48 overflow-auto bg-white border border-gray-200 rounded-lg shadow-lg"
                             >
-                              {#each users as u}
+                              {#each installationAssigneeOptions() as u}
+                                {@const checked = (visit.employees || []).some(
+                                  (id) => String(id) === String(u._id),
+                                )}
                                 <button
                                   type="button"
                                   class="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-indigo-50"
@@ -1946,17 +1954,16 @@
                                 >
                                   <span
                                     class="w-4 h-4 rounded border flex items-center justify-center text-[10px]"
-                                    class:bg-indigo-600={(visit.employees || []).includes(
-                                      u._id,
-                                    )}
-                                    class:text-white={(visit.employees || []).includes(
-                                      u._id,
-                                    )}>{(visit.employees || []).includes(u._id)
-                                      ? "✓"
-                                      : ""}</span
+                                    class:bg-indigo-600={checked}
+                                    class:text-white={checked}
+                                    >{checked ? "✓" : ""}</span
                                   >
-                                  {u.username}
+                                  {u.username || u.name || u._id}
                                 </button>
+                              {:else}
+                                <p class="px-3 py-2 text-xs text-gray-400">
+                                  Assign employees on Installation first
+                                </p>
                               {/each}
                             </div>
                           {/if}
@@ -1979,7 +1986,7 @@
                     {:else if isEditing}
                       <!-- Step indicator -->
                       <div
-                        class="flex items-center gap-2 pt-3 pb-4 border-t border-gray-100 mb-2"
+                        class="flex items-center gap-2 pt-2 pb-3 border-t border-gray-100 mb-1"
                       >
                         <div class="flex items-center gap-1.5">
                           <span
@@ -2019,7 +2026,7 @@
 
                       <!-- Step 1 -->
                       {#if visitStep === 1}
-                        <div class="grid grid-cols-2 gap-x-5 gap-y-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
                           <div>
                             <label class={lc}>Visit Date</label>
                             <input
@@ -2036,16 +2043,17 @@
                               bind:value={visit.installDate}
                             />
                           </div>
-                          <div class="col-span-2">
+                          <div class="sm:col-span-2">
                             <label class={lc}>Final Notes</label>
                             <textarea
-                              class="{ic} min-h-[60px] resize-y"
+                              class="{ic} min-h-[56px] resize-y"
                               bind:value={visit.finalDesc}
                               placeholder="Finalization notes..."
+                              rows="2"
                             />
                           </div>
                           <!-- Employee multi-select -->
-                          <div class="col-span-2">
+                          <div class="sm:col-span-2">
                             <label class={lc}>Assign Employees</label>
                             {#if visit.employees.length > 0}
                               <div class="flex flex-wrap gap-1.5 mb-2">
@@ -2110,12 +2118,12 @@
                                 <!-- svelte-ignore a11y-click-events-have-key-events -->
                                 <!-- svelte-ignore a11y-no-static-element-interactions -->
                                 <div
-                                  class="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-52 overflow-y-auto"
+                                  class="absolute z-30 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-52 overflow-y-auto"
                                   on:click|stopPropagation
                                 >
-                                  {#each dispatchData?.employeesDetails as emp}
-                                    {@const checked = visit.employees.includes(
-                                      emp._id,
+                                  {#each installationAssigneeOptions() as emp}
+                                    {@const checked = (visit.employees || []).some(
+                                      (id) => String(id) === String(emp._id),
                                     )}
                                     <button
                                       type="button"
@@ -2125,7 +2133,7 @@
                                             ? {
                                                 ...v,
                                                 employees: toggleEmployee(
-                                                  v.employees,
+                                                  v.employees || [],
                                                   emp._id,
                                                 ),
                                               }
@@ -2152,34 +2160,35 @@
                                       </span>
                                       <span
                                         class="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-700 shrink-0"
-                                        >{emp.username.charAt(0)}</span
+                                        >{(emp.username || emp.name || "?").charAt(0)}</span
                                       >
                                       <div class="min-w-0">
                                         <p
                                           class="text-sm font-medium text-gray-800 truncate mb-0"
                                         >
-                                          {emp.username}
+                                          {emp.username || emp.name || emp._id}
                                         </p>
-                                        <p
-                                          class="text-xs text-gray-400 truncate mb-0"
-                                        >
-                                          {emp.email}
-                                        </p>
+                                        {#if emp.email}
+                                          <p
+                                            class="text-xs text-gray-400 truncate mb-0"
+                                          >
+                                            {emp.email}
+                                          </p>
+                                        {/if}
                                       </div>
                                     </button>
+                                  {:else}
+                                    <p class="px-4 py-3 text-sm text-gray-400">
+                                      Assign employees on Installation first
+                                    </p>
                                   {/each}
-                                  {#if dispatchData?.employees.length === 0}<p
-                                      class="px-4 py-3 text-sm text-gray-400"
-                                    >
-                                      No employees found
-                                    </p>{/if}
                                 </div>
                               {/if}
                             </div>
                           </div>
                         </div>
                         <div
-                          class="flex justify-between mt-4 pt-3 border-t border-gray-100"
+                          class="flex justify-between mt-3 pt-3 border-t border-gray-100"
                         >
                           <button
                             on:click={() => visitCancel(i)}
@@ -2198,7 +2207,7 @@
 
                         <!-- Step 2 -->
                       {:else}
-                        <div class="grid grid-cols-2 gap-x-5 gap-y-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
                           <div>
                             <label class={lc}>Visit Cost (₹)</label>
                             <input
@@ -2215,16 +2224,17 @@
                               {/each}
                             </select>
                           </div>
-                          <div class="col-span-2">
+                          <div class="sm:col-span-2">
                             <label class={lc}>Remark</label>
                             <textarea
-                              class="{ic} min-h-[60px] resize-y"
+                              class="{ic} min-h-[56px] resize-y"
                               bind:value={visit.remark}
+                              rows="2"
                             />
                           </div>
                         </div>
                         <div
-                          class="flex justify-between mt-4 pt-3 border-t border-gray-100"
+                          class="flex justify-between mt-3 pt-3 border-t border-gray-100"
                         >
                           <div></div>
                           <div class="flex gap-2">
@@ -2250,47 +2260,25 @@
                     {:else}
                       <!-- View mode -->
                       <div
-                        class="grid grid-cols-2 gap-x-8 gap-y-3 pt-3 border-t border-gray-100"
+                        class="grid grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-2.5 pt-2 border-t border-gray-100"
                       >
                         <div>
-                          <p
-                            class="mb-1 text-xs font-semibold text-gray-400 uppercase tracking-wide"
-                          >
-                            Visit Date
-                          </p>
-                          <p class="text-sm text-gray-800">
-                            {visit.installationDate || "—"}
-                          </p>
+                          <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Visit Date</p>
+                          <p class="text-sm text-gray-800">{visit.installationDate || "—"}</p>
                         </div>
                         <div>
-                          <p
-                            class="mb-1 text-xs font-semibold text-gray-400 uppercase tracking-wide"
-                          >
-                            Cost
-                          </p>
-                          <p class="text-sm text-gray-800">
-                            ₹{visit.installationCost ?? 0}
-                          </p>
+                          <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Cost</p>
+                          <p class="text-sm text-gray-800">₹{visit.installationCost ?? 0}</p>
                         </div>
                         <div>
-                          <p
-                            class="mb-1 text-xs font-semibold text-gray-400 uppercase tracking-wide"
-                          >
-                            Install Date
-                          </p>
-                          <p class="text-sm text-gray-800">
-                            {visit.installDate || "—"}
-                          </p>
+                          <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Install Date</p>
+                          <p class="text-sm text-gray-800">{visit.installDate || "—"}</p>
                         </div>
                         <div>
-                          <p
-                            class="mb-1 text-xs font-semibold text-gray-400 uppercase tracking-wide"
-                          >
-                            Status
-                          </p>
+                          <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Status</p>
                           {#if statusCfg}
                             <span
-                              class="inline-block px-3 py-0.5 rounded-full text-xs font-semibold {statusCfg.cls}"
+                              class="inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold {statusCfg.cls}"
                               >{statusCfg.label}</span
                             >
                           {:else}
@@ -2298,53 +2286,52 @@
                           {/if}
                         </div>
                         {#if visit.remark}
-                          <div class="col-span-2">
-                            <p
-                              class="mb-1 text-xs font-semibold text-gray-400 uppercase tracking-wide"
-                            >
-                              Remark
-                            </p>
+                          <div class="col-span-2 lg:col-span-4">
+                            <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Remark</p>
                             <p class="text-sm text-gray-800">{visit.remark}</p>
                           </div>
                         {/if}
                         {#if visit.finalDesc}
-                          <div class="col-span-2">
-                            <p
-                              class="mb-1 text-xs font-semibold text-gray-400 uppercase tracking-wide"
-                            >
-                              Final Notes
-                            </p>
+                          <div class="col-span-2 lg:col-span-4">
+                            <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Final Notes</p>
+                            <p class="text-sm text-gray-800">{visit.finalDesc}</p>
+                          </div>
+                        {/if}
+                        <div class="col-span-2 lg:col-span-4">
+                          <p class="mb-1.5 text-[11px] font-semibold text-gray-500">Employees</p>
+                          <div class="flex flex-wrap gap-1.5">
+                            {#each ((visit.employeesDetails ?? []).length
+                              ? visit.employeesDetails
+                              : selectedLabels(visit.employees || [])) as emp}
+                              <span
+                                class="flex items-center gap-1.5 pl-1 pr-2.5 py-0.5 bg-indigo-50 text-indigo-800 rounded-full text-xs font-medium"
+                              >
+                                <span
+                                  class="w-4 h-4 rounded-full bg-indigo-200 flex items-center justify-center text-[9px] font-bold text-indigo-700"
+                                  >{(emp.username || emp.name || "?").charAt(0)}</span
+                                >
+                                {emp.username || emp.name || emp._id}
+                              </span>
+                            {:else}
+                              <span class="text-xs text-gray-400"
+                                >No employees assigned</span
+                              >
+                            {/each}
+                          </div>
+                        </div>
+                        {#if visit.latitude != null && visit.longitude != null}
+                          <div class="col-span-2 lg:col-span-4">
+                            <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Location</p>
                             <p class="text-sm text-gray-800">
-                              {visit.finalDesc}
+                              {Number(visit.latitude).toFixed(5)}, {Number(visit.longitude).toFixed(5)}
+                              {#if visit.locationCapturedAt}
+                                <span class="text-xs text-gray-400 ml-2"
+                                  >{String(visit.locationCapturedAt).replace("T", " ").slice(0, 19)}</span
+                                >
+                              {/if}
                             </p>
                           </div>
                         {/if}
-                        <div class="col-span-2">
-                          <p
-                            class="mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wide"
-                          >
-                            Employees
-                          </p>
-                          <div class="flex flex-wrap gap-2">
-                            {#if (visit.employeesDetails ?? []).length > 0}
-                              {#each visit.employeesDetails as emp}
-                                <span
-                                  class="flex items-center gap-2 pl-1 pr-3 py-1 bg-indigo-50 text-indigo-800 rounded-full text-xs font-medium"
-                                >
-                                  <span
-                                    class="w-5 h-5 rounded-full bg-indigo-200 flex items-center justify-center text-[10px] font-bold text-indigo-700"
-                                    >{emp.username.charAt(0)}</span
-                                  >
-                                  {emp.username}
-                                </span>
-                              {/each}
-                            {:else}
-                              <span class="text-xs text-gray-300"
-                                >No employees assigned</span
-                              >
-                            {/if}
-                          </div>
-                        </div>
                       </div>
                     {/if}
                   </div>

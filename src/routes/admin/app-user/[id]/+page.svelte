@@ -136,7 +136,7 @@
     {/if}
 
     {#if user}
-      <div class="grid grid-cols-1 lg:grid-cols-5 gap-3" style="max-width: 1100px;">
+      <div class="grid grid-cols-1 lg:grid-cols-5 gap-3">
         <div class="lg:col-span-3 grid gap-3">
           <div class="card border-0 shadow-sm rounded-3 overflow-hidden">
             <div class="card-body p-4">
@@ -166,6 +166,22 @@
                 <div>
                   <div class="detail-label">Last login</div>
                   <div class="detail-value">{formatLogin(user.lastLogin)}</div>
+                </div>
+                <div class="detail-span-2">
+                  <div class="detail-label">Workshop employee link</div>
+                  <div class="detail-value">
+                    {#if user.workshopEmployeeId}
+                      <code>{user.workshopEmployeeId}</code>
+                      <span class="text-muted text-sm ms-1"
+                        >(Installation visits)</span
+                      >
+                    {:else}
+                      —
+                      <span class="text-muted text-sm"
+                        >Not linked — samples only or email match</span
+                      >
+                    {/if}
+                  </div>
                 </div>
               </div>
             </div>
@@ -295,6 +311,9 @@
     gap: 1rem;
     padding-top: 0.5rem;
     border-top: 1px solid #f3f4f6;
+  }
+  .detail-span-2 {
+    grid-column: 1 / -1;
   }
   .detail-label {
     font-size: 0.75rem;

@@ -18,6 +18,23 @@ const axiosInstance = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
+// FormData must use multipart boundary — strip default JSON Content-Type
+axiosInstance.interceptors.request.use((config) => {
+  if (typeof FormData !== "undefined" && config.data instanceof FormData) {
+    const h = config.headers;
+    if (h) {
+      if (typeof h.delete === "function") {
+        h.delete("Content-Type");
+        h.delete("content-type");
+      } else {
+        delete (h as any)["Content-Type"];
+        delete (h as any)["content-type"];
+      }
+    }
+  }
+  return config;
+});
+
 // ── Retry helpers ─────────────────────────────────────────────────────────────
 const MAX_RETRIES    = 2;
 const RETRY_DELAYS   = [1000, 2500];
@@ -112,43 +129,52 @@ export async function authApiFetch(
   endpoint: string,
   options: AxiosRequestConfig = {}
 ) {
-  let authToken    = localStorage.getItem("access_token");
+  let authToken = localStorage.getItem("access_token");
   const isFormData = options.data instanceof FormData;
 
-  const buildHeaders = (token: string | null) => ({
-    ...(token ? {
-      Authorization:  `Bearer ${token}`,
-      "Content-Type": isFormData ? undefined : "application/json",
-    } : {}),
-    ...(options.headers || {}),
-  });
+  const buildHeaders = (token: string | null) => {
+    const headers: Record<string, any> = {
+      ...(options.headers || {}),
+    };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    // Must not send application/json for FormData — browser/axios sets multipart boundary
+    if (isFormData) {
+      delete headers["Content-Type"];
+      delete headers["content-type"];
+    } else if (!headers["Content-Type"] && !headers["content-type"]) {
+      headers["Content-Type"] = "application/json";
+    }
+    return headers;
+  };
+
+  const { headers: _h, ...restOptions } = options;
 
   try {
     const response = await requestWithRetry({
-      url:     endpoint,
+      url: endpoint,
+      ...restOptions,
       headers: buildHeaders(authToken),
-      data:    options.data,
-      ...options,
+      data: options.data,
+      // Axios: false removes default Content-Type so FormData works
+      ...(isFormData ? { transformRequest: [(data) => data] } : {}),
     });
     return response.data;
   } catch (err: any) {
-    // ── 401 → shared token refresh (race-safe) ───────────────────────────────
     if (err.response?.status === 401) {
       try {
         authToken = await getRefreshedToken();
         const retryResponse = await requestWithRetry({
-          url:     endpoint,
+          url: endpoint,
+          ...restOptions,
           headers: buildHeaders(authToken),
-          data:    options.data,
-          ...options,
+          data: options.data,
+          ...(isFormData ? { transformRequest: [(data) => data] } : {}),
         });
         return retryResponse.data;
       } catch (refreshErr: any) {
         await logoutUser();
-        // Surface the server's reason (e.g. "logged in on another device") so
-        // users understand why they were logged out rather than seeing a blank redirect.
-        const reason = refreshErr?.data?.message || refreshErr?.message || '';
-        const query  = reason ? `?reason=${encodeURIComponent(reason)}` : '';
+        const reason = refreshErr?.data?.message || refreshErr?.message || "";
+        const query = reason ? `?reason=${encodeURIComponent(reason)}` : "";
         goto(`/login${query}`);
         throwAuthRedirect();
       }

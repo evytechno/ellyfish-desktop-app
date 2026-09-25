@@ -34,4 +34,6 @@ export const API_ROUTES = {
   APP_USER: `app-users`,
   APP_AUTH_LOGIN: `app-auth/login`,
   APP_AUTH_LOGOUT: `app-auth/logout`,
+  DISPATCH: `dispatch`,
+  DISPATCH_BY_WO: `dispatch/work-order`,
 };
