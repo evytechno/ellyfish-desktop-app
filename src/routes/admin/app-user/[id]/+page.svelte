@@ -59,9 +59,12 @@
   const permMeta = [
     { key: "sample_view", group: "Sample", label: "View" },
     { key: "sample_update", group: "Sample", label: "Update" },
-    { key: "dispatch_view", group: "Dispatch", label: "View" },
-    { key: "dispatch_update", group: "Dispatch", label: "Update" },
-    { key: "dispatch_hold", group: "Dispatch", label: "Hold" },
+    { key: "sample_hold", group: "Sample", label: "Hold" },
+    { key: "work_order_view", group: "Work orders", label: "View" },
+    { key: "work_order_update", group: "Work orders", label: "Update" },
+    { key: "work_order_hold", group: "Work orders", label: "Hold" },
+    { key: "installation_view", group: "Installation", label: "View" },
+    { key: "installation_update", group: "Installation", label: "Update" },
   ];
 
   async function handleChangePassword(event) {
@@ -193,7 +196,7 @@
             </div>
             <div class="card-body p-4">
               <div class="perm-readout">
-                {#each ["Sample", "Dispatch"] as group}
+                {#each ["Sample", "Work orders", "Installation"] as group}
                   <div class="perm-readout__group">
                     <div class="perm-readout__title">{group}</div>
                     <div class="flex flex-wrap gap-2">

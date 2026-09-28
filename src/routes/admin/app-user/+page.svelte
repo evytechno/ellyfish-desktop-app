@@ -68,9 +68,11 @@
       render: (val, row) => {
         const p = row.permissions || {};
         const bits = [];
-        if (p.sample_view || p.sample_update) bits.push("Sample");
-        if (p.dispatch_view || p.dispatch_update || p.dispatch_hold)
-          bits.push("Dispatch");
+        if (p.sample_view || p.sample_update || p.sample_hold) bits.push("Sample");
+        if (p.work_order_view || p.work_order_update || p.work_order_hold || p.dispatch_view)
+          bits.push("WO");
+        if (p.installation_view || p.installation_update || p.dispatch_update)
+          bits.push("Install");
         return bits.length
           ? bits
               .map((b) => `<span class="badge bg-primary me-1">${b}</span>`)

@@ -31,9 +31,12 @@
   let permissions = {
     sample_view: true,
     sample_update: true,
-    dispatch_view: true,
-    dispatch_update: true,
-    dispatch_hold: true,
+    sample_hold: true,
+    work_order_view: true,
+    work_order_update: true,
+    work_order_hold: true,
+    installation_view: true,
+    installation_update: true,
   };
 
   function onWorkshopPick() {

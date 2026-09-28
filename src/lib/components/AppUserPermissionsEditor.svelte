@@ -1,5 +1,5 @@
 <script>
-  /** @type {{ sample_view: boolean, sample_update: boolean, dispatch_view: boolean, dispatch_update: boolean, dispatch_hold: boolean }} */
+  /** @type {Record<string, boolean>} */
   export let permissions;
 
   const groups = [
@@ -10,16 +10,26 @@
       items: [
         { key: "sample_view", label: "View", desc: "List & detail" },
         { key: "sample_update", label: "Update", desc: "Status & photos" },
+        { key: "sample_hold", label: "Hold", desc: "Put sample on hold" },
       ],
     },
     {
-      title: "Order dispatch",
-      icon: "ti ti-truck-delivery",
-      hint: "Dispatch stages & hold",
+      title: "Work orders",
+      icon: "ti ti-clipboard-list",
+      hint: "Abrasive, spare parts & machine",
       items: [
-        { key: "dispatch_view", label: "View", desc: "List & detail" },
-        { key: "dispatch_update", label: "Update", desc: "Status & stages" },
-        { key: "dispatch_hold", label: "Hold", desc: "Hold + remark" },
+        { key: "work_order_view", label: "View", desc: "List & detail" },
+        { key: "work_order_update", label: "Update", desc: "Status & stages" },
+        { key: "work_order_hold", label: "Hold", desc: "Hold + remark" },
+      ],
+    },
+    {
+      title: "Installation",
+      icon: "ti ti-tools",
+      hint: "Service visits for assigned jobs",
+      items: [
+        { key: "installation_view", label: "View", desc: "List & detail" },
+        { key: "installation_update", label: "Update", desc: "Add / edit visits" },
       ],
     },
   ];
@@ -44,7 +54,7 @@
     <i class="ti ti-shield-lock"></i>
     <div>
       <strong>App-only access</strong>
-      <span>CRM login is never granted. These rights apply only to the Sample / Dispatch app.</span>
+      <span>CRM login is never granted. These rights apply only to the ShipMate app (Samples, Work Orders, Installation).</span>
     </div>
   </div>
 
@@ -126,10 +136,10 @@
   }
   @media (min-width: 992px) {
     .app-perm__grid {
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr 1fr 1fr;
     }
   }
-  @media (max-width: 768px) {
+  @media (max-width: 991px) {
     .app-perm__grid {
       grid-template-columns: 1fr;
     }
