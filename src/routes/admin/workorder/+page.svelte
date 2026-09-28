@@ -624,19 +624,19 @@
     }
   }
 
-  async function changeStatusFromList(id) {
-    const row = workorders.find((w) => w.id === Number(id));
-    if (!row) return;
-    const companyIdVal = row.company?.id ?? row.companyId;
-    if (!companyIdVal) {
-      Swal.fire("Error", "Company is missing on this work order.", "error");
-      return;
-    }
+  let showListStatusModal = false;
+  let listStatusRow = null;
+  let listStatusDraft = "Pending";
+  let listStatusRemark = "";
+  let listStatusError = "";
+  let listStatusUpdating = false;
+  let listStatusPhotoFiles = [];
+  let listStatusPhotoPreviews = [];
 
-    const current = row.status || "Pending";
+  function listStatusOptions(row) {
     const isDispatch =
-      row.orderType === "Abrasive" || row.orderType === "SpareParts";
-    const options = [
+      row?.orderType === "Abrasive" || row?.orderType === "SpareParts";
+    return [
       { value: "Pending", label: "Pending", bg: "#eab308", color: "#1f2937" },
       ...(isDispatch
         ? [
@@ -646,138 +646,136 @@
         : []),
       { value: "Completed", label: "Completed", bg: "#16a34a", color: "#fff" },
     ];
+  }
 
-    const optsHtml = options
-      .map(
-        (o) => `
-        <button type="button" class="wo-st-opt" data-value="${o.value}" style="
-          display:flex;align-items:center;gap:12px;width:100%;text-align:left;
-          border:1.5px solid ${o.value === current ? "#2563eb" : "#e5e7eb"};
-          border-radius:12px;padding:11px 14px;margin:0 0 8px;
-          background:${o.value === current ? "#f8fafc" : "#fff"};cursor:pointer;outline:none;
-          box-shadow:${o.value === current ? "0 0 0 3px rgba(37,99,235,0.12)" : "none"};
-        ">
-          <span style="
-            flex-shrink:0;min-width:88px;text-align:center;padding:5px 10px;border-radius:999px;
-            font-size:11px;font-weight:700;background:${o.bg};color:${o.color};
-          ">${o.label}</span>
-          <span style="flex:1;font-size:13px;font-weight:600;color:#111827;">${o.label}</span>
-          <span class="wo-st-check" style="
-            flex-shrink:0;width:20px;height:20px;border-radius:50%;border:2px solid ${o.value === current ? "#2563eb" : "#d1d5db"};
-            background:${o.value === current ? "#2563eb" : "transparent"};color:${o.value === current ? "#fff" : "transparent"};
-            display:inline-flex;align-items:center;justify-content:center;font-size:12px;
-          ">✓</span>
-        </button>`,
-      )
-      .join("");
+  function clearListStatusPhotos() {
+    for (const p of listStatusPhotoPreviews) {
+      if (p?.url) URL.revokeObjectURL(p.url);
+    }
+    listStatusPhotoFiles = [];
+    listStatusPhotoPreviews = [];
+  }
 
-    const { value: result, isConfirmed } = await Swal.fire({
-      title: "Change status",
-      html: `
-        <div style="text-align:left;margin:0 0 12px;">
-          <div style="font-size:12px;color:#6b7280;">Work order</div>
-          <div style="font-size:15px;font-weight:700;color:#111827;font-family:ui-monospace,monospace;">${row.workOrderNo || `WO #${row.id}`}</div>
-        </div>
-        <div id="wo-st-opts" style="text-align:left;">${optsHtml}</div>
-        <div id="wo-st-hold-wrap" style="display:${current === "Hold" ? "block" : "none"};text-align:left;margin-top:4px;">
-          <label style="font-size:12px;font-weight:600;color:#374151;">Hold remark</label>
-          <input id="wo-st-hold-remark" class="swal2-input" style="width:100%;margin:6px 0 0;" placeholder="Required for Hold" value="${(row.remarks || "").replace(/"/g, "&quot;")}" />
-        </div>
-        <input type="hidden" id="wo-st-value" value="${current}" />
-      `,
-      width: 420,
-      showCancelButton: true,
-      confirmButtonText: "Update status",
-      cancelButtonText: "Cancel",
-      confirmButtonColor: "#2563eb",
-      cancelButtonColor: "#9ca3af",
-      focusConfirm: false,
-      preConfirm: () => {
-        const status = document.getElementById("wo-st-value")?.value;
-        if (!status) {
-          Swal.showValidationMessage("Please choose a status.");
-          return false;
-        }
-        let remarks = undefined;
-        if (status === "Hold") {
-          remarks = String(document.getElementById("wo-st-hold-remark")?.value || "").trim();
-          if (!remarks) {
-            Swal.showValidationMessage('Status "Hold" requires a remark.');
-            return false;
-          }
-        }
-        return { status, remarks };
-      },
-      didOpen: () => {
-        const wrap = document.getElementById("wo-st-opts");
-        const hidden = document.getElementById("wo-st-value");
-        const holdWrap = document.getElementById("wo-st-hold-wrap");
-        if (!wrap || !hidden) return;
+  function openListStatusModal(id) {
+    const row = workorders.find((w) => w.id === Number(id));
+    if (!row) return;
+    listStatusRow = row;
+    listStatusDraft = row.status || "Pending";
+    listStatusRemark = row.status === "Hold" ? row.remarks || "" : "";
+    listStatusError = "";
+    clearListStatusPhotos();
+    showListStatusModal = true;
+  }
 
-        const select = (btn) => {
-          wrap.querySelectorAll(".wo-st-opt").forEach((el) => {
-            el.style.borderColor = "#e5e7eb";
-            el.style.boxShadow = "none";
-            el.style.background = "#fff";
-            const check = el.querySelector(".wo-st-check");
-            if (check) {
-              check.style.borderColor = "#d1d5db";
-              check.style.background = "transparent";
-              check.style.color = "transparent";
-            }
-          });
-          btn.style.borderColor = "#2563eb";
-          btn.style.boxShadow = "0 0 0 3px rgba(37,99,235,0.15)";
-          btn.style.background = "#f8fafc";
-          const check = btn.querySelector(".wo-st-check");
-          if (check) {
-            check.style.borderColor = "#2563eb";
-            check.style.background = "#2563eb";
-            check.style.color = "#fff";
-          }
-          const val = btn.getAttribute("data-value") || "";
-          hidden.value = val;
-          if (holdWrap) holdWrap.style.display = val === "Hold" ? "block" : "none";
-        };
+  function closeListStatusModal() {
+    if (listStatusUpdating) return;
+    showListStatusModal = false;
+    listStatusError = "";
+    clearListStatusPhotos();
+    listStatusRow = null;
+  }
 
-        wrap.querySelectorAll(".wo-st-opt").forEach((btn) => {
-          btn.addEventListener("click", () => select(btn));
-        });
-      },
-    });
+  function onListStatusPhotosPick(e) {
+    const picked = Array.from(e?.target?.files || []);
+    e.target.value = "";
+    if (!picked.length) return;
+    const room = Math.max(0, 5 - listStatusPhotoFiles.length);
+    const next = picked.slice(0, room);
+    listStatusError = picked.length > room ? "Maximum 5 photos." : "";
+    const previews = next.map((file) => ({
+      url: URL.createObjectURL(file),
+      name: file.name,
+    }));
+    listStatusPhotoFiles = [...listStatusPhotoFiles, ...next];
+    listStatusPhotoPreviews = [...listStatusPhotoPreviews, ...previews];
+  }
 
-    if (!isConfirmed || !result?.status) return;
-    if (result.status === current && result.status !== "Hold") {
-      Swal.fire("No change", "Status is already set to that value.", "info");
+  function removeListStatusPhoto(idx) {
+    const prev = listStatusPhotoPreviews[idx];
+    if (prev?.url) URL.revokeObjectURL(prev.url);
+    listStatusPhotoFiles = listStatusPhotoFiles.filter((_, i) => i !== idx);
+    listStatusPhotoPreviews = listStatusPhotoPreviews.filter((_, i) => i !== idx);
+  }
+
+  async function submitListStatusModal() {
+    const row = listStatusRow;
+    if (!row?.id || listStatusUpdating) return;
+    listStatusError = "";
+    const current = row.status || "Pending";
+    const isDispatch =
+      row.orderType === "Abrasive" || row.orderType === "SpareParts";
+    if (listStatusDraft === "Hold" && !String(listStatusRemark || "").trim()) {
+      listStatusError = 'Status "Hold" requires a remark.';
+      return;
+    }
+    if (
+      listStatusDraft === current &&
+      listStatusDraft !== "Hold" &&
+      !listStatusPhotoFiles.length
+    ) {
+      listStatusError = "Status is already set to that value.";
+      return;
+    }
+    if (!isDispatch && listStatusPhotoFiles.length) {
+      listStatusError =
+        "Photos are only allowed for Abrasive or Spare Parts work orders.";
       return;
     }
 
+    listStatusUpdating = true;
     try {
-      Swal.showLoading();
-      const payload = {
-        companyId: companyIdVal,
-        status: result.status,
-      };
-      if (result.status === "Hold") {
-        payload.remarks = result.remarks;
+      let data;
+      if (listStatusPhotoFiles.length) {
+        const form = new FormData();
+        form.append("status", listStatusDraft);
+        if (listStatusDraft === "Hold" || listStatusRemark) {
+          form.append("remarks", String(listStatusRemark || "").trim());
+        }
+        for (const file of listStatusPhotoFiles.slice(0, 5)) {
+          form.append("images", file);
+        }
+        data = await authApiFetch(`${API_ROUTES.WORK_ORDER}/${row.id}/status`, {
+          method: "PUT",
+          data: form,
+        });
+      } else {
+        const payload = { status: listStatusDraft };
+        if (listStatusDraft === "Hold" || listStatusRemark) {
+          payload.remarks = String(listStatusRemark || "").trim() || null;
+        }
+        data = await authApiFetch(`${API_ROUTES.WORK_ORDER}/${row.id}/status`, {
+          method: "PUT",
+          data: JSON.stringify(payload),
+        });
       }
-      await authApiFetch(`${API_ROUTES.WORK_ORDER}/${row.id}`, {
-        method: "PUT",
-        data: JSON.stringify(payload),
-      });
+      const next = data?.data || {};
       workorders = workorders.map((w) =>
         w.id === row.id
           ? {
               ...w,
-              status: result.status,
-              ...(result.status === "Hold" ? { remarks: result.remarks } : {}),
+              status: next.status ?? listStatusDraft,
+              remarks:
+                next.remarks !== undefined
+                  ? next.remarks
+                  : listStatusDraft === "Hold"
+                    ? listStatusRemark
+                    : w.remarks,
+              sentDelay: next.sentDelay ?? w.sentDelay,
             }
           : w,
       );
-      Swal.fire("Updated", `Status set to ${result.status}.`, "success");
+      showListStatusModal = false;
+      clearListStatusPhotos();
+      listStatusRow = null;
     } catch (err) {
-      Swal.fire("Error", err?.message || "Failed to update status.", "error");
+      listStatusError = err?.message || "Failed to update status.";
+    } finally {
+      listStatusUpdating = false;
     }
+  }
+
+  function changeStatusFromList(id) {
+    openListStatusModal(id);
   }
 
   async function deleteRecord(id) {
@@ -986,3 +984,201 @@
   </div>
   <!-- End Content -->
 </div>
+
+{#if showListStatusModal && listStatusRow}
+  <div
+    class="modal fade show d-block"
+    tabindex="-1"
+    role="dialog"
+    style="background:rgba(0,0,0,0.5);z-index:1060;"
+    on:click|self={closeListStatusModal}
+  >
+    <div class="modal-dialog modal-dialog-centered" role="document">
+      <div class="modal-content">
+        <div class="modal-header py-2">
+          <h5 class="modal-title mb-0 fw-semibold">
+            <i class="ti ti-refresh me-2 text-primary"></i>Change status
+          </h5>
+          <button
+            type="button"
+            class="btn-close"
+            aria-label="Close"
+            disabled={listStatusUpdating}
+            on:click={closeListStatusModal}
+          ></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <div class="text-muted" style="font-size:12px;">Work order</div>
+            <div class="fw-semibold font-monospace">
+              {listStatusRow.workOrderNo || `WO #${listStatusRow.id}`}
+            </div>
+          </div>
+
+          <label class="form-label">Status <span class="text-danger">*</span></label>
+          <div class="wo-list-st-opts mb-3">
+            {#each listStatusOptions(listStatusRow) as opt}
+              <button
+                type="button"
+                class="wo-list-st-chip"
+                class:is-active={listStatusDraft === opt.value}
+                style="--st-bg:{opt.bg};--st-fg:{opt.color};"
+                on:click={() => (listStatusDraft = opt.value)}
+              >
+                {#if listStatusDraft === opt.value}<i class="ti ti-check"></i>{/if}
+                {opt.label}
+              </button>
+            {/each}
+          </div>
+
+          {#if listStatusDraft === "Hold"}
+            <div class="mb-3">
+              <label class="form-label">Hold remark <span class="text-danger">*</span></label>
+              <textarea
+                class="form-control"
+                rows="2"
+                bind:value={listStatusRemark}
+                placeholder="Why is this on hold?"
+              ></textarea>
+            </div>
+          {/if}
+
+          {#if listStatusRow.orderType === "Abrasive" || listStatusRow.orderType === "SpareParts"}
+            <div class="mb-1">
+              <label class="form-label">
+                Photos <span class="text-muted fw-normal">(optional, max 5)</span>
+              </label>
+              <div class="d-flex flex-wrap gap-2 align-items-start mb-2">
+                {#each listStatusPhotoPreviews as preview, idx}
+                  <div class="wo-list-st-preview">
+                    <img src={preview.url} alt={preview.name || "photo"} />
+                    <button
+                      type="button"
+                      class="wo-list-st-preview__rm"
+                      title="Remove"
+                      on:click={() => removeListStatusPhoto(idx)}
+                    ><i class="ti ti-x"></i></button>
+                  </div>
+                {/each}
+                {#if listStatusPhotoFiles.length < 5}
+                  <label class="wo-list-st-add">
+                    <i class="ti ti-photo-plus"></i>
+                    <span>Add</span>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      multiple
+                      hidden
+                      on:change={onListStatusPhotosPick}
+                    />
+                  </label>
+                {/if}
+              </div>
+              <div class="text-muted" style="font-size:11px;">
+                Shown in status history (CRM + app).
+              </div>
+            </div>
+          {/if}
+
+          {#if listStatusError}
+            <div class="alert alert-danger py-2 mb-0 mt-3" style="font-size:13px;">
+              {listStatusError}
+            </div>
+          {/if}
+        </div>
+        <div class="modal-footer py-2">
+          <button
+            type="button"
+            class="btn btn-light btn-sm"
+            disabled={listStatusUpdating}
+            on:click={closeListStatusModal}
+          >Cancel</button>
+          <button
+            type="button"
+            class="btn btn-primary btn-sm"
+            disabled={listStatusUpdating}
+            on:click={submitListStatusModal}
+          >
+            {listStatusUpdating ? "Updating…" : "Update status"}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<style>
+  .wo-list-st-opts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .wo-list-st-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 999px;
+    padding: 7px 14px;
+    background: #fff;
+    color: #475569;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    outline: none;
+  }
+  .wo-list-st-chip.is-active {
+    background: var(--st-bg, #2563eb);
+    border-color: var(--st-bg, #2563eb);
+    color: var(--st-fg, #fff);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--st-bg, #2563eb) 22%, transparent);
+  }
+  .wo-list-st-preview {
+    position: relative;
+    width: 72px;
+    height: 72px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #e5e7eb;
+  }
+  .wo-list-st-preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .wo-list-st-preview__rm {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 20px;
+    height: 20px;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(15, 23, 42, 0.7);
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    padding: 0;
+    cursor: pointer;
+  }
+  .wo-list-st-add {
+    width: 72px;
+    height: 72px;
+    border: 1.5px dashed #cbd5e1;
+    border-radius: 8px;
+    background: #f8fafc;
+    color: #64748b;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    margin: 0;
+  }
+</style>

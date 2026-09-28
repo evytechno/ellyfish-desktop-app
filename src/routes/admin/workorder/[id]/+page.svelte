@@ -21,8 +21,14 @@
   let piNumber = null;
   let piId = null;
   let statusUpdating = false;
-  let holdRemark = "";
   let statusError = "";
+  let statusMsg = "";
+  let showStatusModal = false;
+  let statusDraft = "Pending";
+  let statusRemarkDraft = "";
+  let statusModalError = "";
+  let statusPhotoFiles = [];
+  let statusPhotoPreviews = [];
 
   const currentUser = checkAuth();
   const isMaster = currentUser?.role === "master";
@@ -37,10 +43,26 @@
   let machineMsg = "";
   let machineErr = "";
   let machineDrawerOpen = false;
+  let statusHistoryDrawerOpen = false;
   let historyBusyId = null;
   let addImagesEventId = null;
   let lightboxImages = [];
   let lightboxStart = 0;
+  let showMachineModal = false;
+  let machineModalError = "";
+  let machineStageDraft = "Meeting";
+  let machineRemarkDraft = "";
+  let machineDateDraft = "";
+  let machineColorDraft = "";
+  let machineSizeDraft = "";
+  let machinePhotoFiles = [];
+  let machinePhotoPreviews = [];
+  let machineModalBaseline = {
+    stage: "Meeting",
+    completionDate: "",
+    color: "",
+    size: "",
+  };
 
   const MACHINE_STAGES = [
     "Meeting",
@@ -75,6 +97,9 @@
   $: workOrderId = $page.params.id;
 
   $: stageEvents = (workOrder?.events || []).filter((e) => e.type === "stage");
+  $: statusEvents = Array.isArray(workOrder?.statusEvents)
+    ? workOrder.statusEvents
+    : [];
 
   function isDispatchCat(wo) {
     if (wo?.isDispatchCategory != null) return !!wo.isDispatchCategory;
@@ -116,42 +141,68 @@
     return map[t] || { label: t || "—", bg: "#e5e7eb", color: "#374151" };
   }
 
-  async function updateStatus(nextStatus, remarks) {
+  async function updateStatus(nextStatus, remarks, files = []) {
     if (!workOrder?.id || statusUpdating) return;
     statusError = "";
+    statusMsg = "";
     const remarkVal =
       remarks !== undefined
         ? String(remarks || "").trim()
-        : holdRemark.trim() || String(workOrder.remarks || "").trim();
+        : String(workOrder.remarks || "").trim();
     if (nextStatus === "Hold" && !remarkVal) {
       statusError = 'Status "Hold" requires a remark.';
       return;
     }
     statusUpdating = true;
     try {
-      const payload = {
-        status: nextStatus,
-        companyId: workOrder.company?.id ?? workOrder.companyId,
-      };
-      if (nextStatus === "Hold" || remarkVal) {
-        payload.remarks = remarkVal || null;
+      let data;
+      const fileList = Array.isArray(files) ? files.filter(Boolean) : [];
+      if (fileList.length) {
+        const form = new FormData();
+        form.append("status", nextStatus);
+        if (nextStatus === "Hold" || remarkVal) {
+          form.append("remarks", remarkVal || "");
+        }
+        for (const file of fileList.slice(0, 5)) {
+          form.append("images", file);
+        }
+        data = await authApiFetch(
+          `${API_ROUTES.WORK_ORDER}/${workOrderId}/status`,
+          { method: "PUT", data: form },
+        );
+      } else {
+        const payload = { status: nextStatus };
+        if (nextStatus === "Hold" || remarkVal) {
+          payload.remarks = remarkVal || null;
+        }
+        data = await authApiFetch(
+          `${API_ROUTES.WORK_ORDER}/${workOrderId}/status`,
+          { method: "PUT", data: JSON.stringify(payload) },
+        );
       }
-      const data = await authApiFetch(`${API_ROUTES.WORK_ORDER}/${workOrderId}`, {
-        method: "PUT",
-        data: JSON.stringify(payload),
-      });
+
+      const next = data?.data || {};
+      const prevEvents = Array.isArray(workOrder.statusEvents)
+        ? workOrder.statusEvents
+        : [];
       workOrder = {
         ...workOrder,
-        status: data?.data?.status ?? nextStatus,
-        remarks: payload.remarks !== undefined ? payload.remarks : workOrder.remarks,
+        status: next.status ?? nextStatus,
+        remarks:
+          next.remarks !== undefined
+            ? next.remarks
+            : remarkVal || workOrder.remarks,
+        sentDelay: next.sentDelay ?? workOrder.sentDelay,
+        statusEvents: next.statusEvent
+          ? [next.statusEvent, ...prevEvents]
+          : prevEvents,
       };
-      if (isDispatchCat(workOrder)) {
+      if (isDispatchCat(workOrder) && !next.sentDelay) {
         workOrder = {
           ...workOrder,
           sentDelay: computeClientSentDelay(workOrder),
         };
       }
-      holdRemark = workOrder.status === "Hold" ? (workOrder.remarks || "") : "";
     } catch (err) {
       statusError = err?.message || "Failed to update work order status.";
       errorMessage = statusError;
@@ -161,12 +212,9 @@
     }
   }
 
-  async function openStatusChangeModal() {
-    if (!workOrder?.id || statusUpdating) return;
-    statusError = "";
-    const current = workOrder.status || "Pending";
-    const isDispatch = isDispatchCat(workOrder);
-    const options = [
+  function statusOptionsForWo(wo) {
+    const isDispatch = isDispatchCat(wo);
+    return [
       { value: "Pending", label: "Pending", bg: "#eab308", color: "#1f2937" },
       ...(isDispatch
         ? [
@@ -176,114 +224,91 @@
         : []),
       { value: "Completed", label: "Completed", bg: "#16a34a", color: "#fff" },
     ];
+  }
 
-    const optsHtml = options
-      .map(
-        (o) => `
-        <button type="button" class="wo-st-opt" data-value="${o.value}" style="
-          display:flex;align-items:center;gap:12px;width:100%;text-align:left;
-          border:1.5px solid ${o.value === current ? "#2563eb" : "#e5e7eb"};
-          border-radius:12px;padding:11px 14px;margin:0 0 8px;
-          background:${o.value === current ? "#f8fafc" : "#fff"};cursor:pointer;outline:none;
-          box-shadow:${o.value === current ? "0 0 0 3px rgba(37,99,235,0.12)" : "none"};
-        ">
-          <span style="
-            flex-shrink:0;min-width:88px;text-align:center;padding:5px 10px;border-radius:999px;
-            font-size:11px;font-weight:700;background:${o.bg};color:${o.color};
-          ">${o.label}</span>
-          <span style="flex:1;font-size:13px;font-weight:600;color:#111827;">${o.label}</span>
-          <span class="wo-st-check" style="
-            flex-shrink:0;width:20px;height:20px;border-radius:50%;border:2px solid ${o.value === current ? "#2563eb" : "#d1d5db"};
-            background:${o.value === current ? "#2563eb" : "transparent"};color:${o.value === current ? "#fff" : "transparent"};
-            display:inline-flex;align-items:center;justify-content:center;font-size:12px;
-          ">✓</span>
-        </button>`,
-      )
-      .join("");
+  function clearStatusPhotos() {
+    for (const p of statusPhotoPreviews) {
+      if (p?.url) URL.revokeObjectURL(p.url);
+    }
+    statusPhotoFiles = [];
+    statusPhotoPreviews = [];
+  }
 
-    const { value: result, isConfirmed } = await Swal.fire({
-      title: "Change status",
-      html: `
-        <div style="text-align:left;margin:0 0 12px;">
-          <div style="font-size:12px;color:#6b7280;">Work order</div>
-          <div style="font-size:15px;font-weight:700;color:#111827;font-family:ui-monospace,monospace;">${workOrder.workOrderNo || `WO #${workOrder.id}`}</div>
-        </div>
-        <div id="wo-st-opts" style="text-align:left;">${optsHtml}</div>
-        <div id="wo-st-hold-wrap" style="display:${current === "Hold" ? "block" : "none"};text-align:left;margin-top:4px;">
-          <label style="font-size:12px;font-weight:600;color:#374151;">Hold remark</label>
-          <input id="wo-st-hold-remark" class="swal2-input" style="width:100%;margin:6px 0 0;" placeholder="Required for Hold" value="${String(workOrder.remarks || "").replace(/"/g, "&quot;")}" />
-        </div>
-        <input type="hidden" id="wo-st-value" value="${current}" />
-      `,
-      width: 420,
-      showCancelButton: true,
-      confirmButtonText: "Update status",
-      cancelButtonText: "Cancel",
-      confirmButtonColor: "#2563eb",
-      cancelButtonColor: "#9ca3af",
-      focusConfirm: false,
-      preConfirm: () => {
-        const status = document.getElementById("wo-st-value")?.value;
-        if (!status) {
-          Swal.showValidationMessage("Please choose a status.");
-          return false;
-        }
-        let remarks = undefined;
-        if (status === "Hold") {
-          remarks = String(document.getElementById("wo-st-hold-remark")?.value || "").trim();
-          if (!remarks) {
-            Swal.showValidationMessage('Status "Hold" requires a remark.');
-            return false;
-          }
-        }
-        return { status, remarks };
-      },
-      didOpen: () => {
-        const wrap = document.getElementById("wo-st-opts");
-        const hidden = document.getElementById("wo-st-value");
-        const holdWrap = document.getElementById("wo-st-hold-wrap");
-        if (!wrap || !hidden) return;
-        const select = (btn) => {
-          wrap.querySelectorAll(".wo-st-opt").forEach((el) => {
-            el.style.borderColor = "#e5e7eb";
-            el.style.boxShadow = "none";
-            el.style.background = "#fff";
-            const check = el.querySelector(".wo-st-check");
-            if (check) {
-              check.style.borderColor = "#d1d5db";
-              check.style.background = "transparent";
-              check.style.color = "transparent";
-            }
-          });
-          btn.style.borderColor = "#2563eb";
-          btn.style.boxShadow = "0 0 0 3px rgba(37,99,235,0.15)";
-          btn.style.background = "#f8fafc";
-          const check = btn.querySelector(".wo-st-check");
-          if (check) {
-            check.style.borderColor = "#2563eb";
-            check.style.background = "#2563eb";
-            check.style.color = "#fff";
-          }
-          const val = btn.getAttribute("data-value") || "";
-          hidden.value = val;
-          if (holdWrap) holdWrap.style.display = val === "Hold" ? "block" : "none";
-        };
-        wrap.querySelectorAll(".wo-st-opt").forEach((btn) => {
-          btn.addEventListener("click", () => select(btn));
-        });
-      },
-    });
+  function openStatusChangeModal() {
+    if (!workOrder?.id || statusUpdating) return;
+    statusError = "";
+    statusModalError = "";
+    statusDraft = workOrder.status || "Pending";
+    statusRemarkDraft =
+      workOrder.status === "Hold" ? workOrder.remarks || "" : "";
+    clearStatusPhotos();
+    showStatusModal = true;
+  }
 
-    if (!isConfirmed || !result?.status) return;
-    if (result.status === current && result.status !== "Hold") {
-      Swal.fire("No change", "Status is already set to that value.", "info");
+  function closeStatusModal() {
+    if (statusUpdating) return;
+    showStatusModal = false;
+    statusModalError = "";
+    clearStatusPhotos();
+  }
+
+  function onStatusPhotosPick(e) {
+    const picked = Array.from(e?.target?.files || []);
+    e.target.value = "";
+    if (!picked.length) return;
+    const room = Math.max(0, 5 - statusPhotoFiles.length);
+    const next = picked.slice(0, room);
+    if (picked.length > room) {
+      statusModalError = "Maximum 5 photos.";
+    } else {
+      statusModalError = "";
+    }
+    const previews = next.map((file) => ({
+      url: URL.createObjectURL(file),
+      name: file.name,
+    }));
+    statusPhotoFiles = [...statusPhotoFiles, ...next];
+    statusPhotoPreviews = [...statusPhotoPreviews, ...previews];
+  }
+
+  function removeStatusPhoto(idx) {
+    const prev = statusPhotoPreviews[idx];
+    if (prev?.url) URL.revokeObjectURL(prev.url);
+    statusPhotoFiles = statusPhotoFiles.filter((_, i) => i !== idx);
+    statusPhotoPreviews = statusPhotoPreviews.filter((_, i) => i !== idx);
+  }
+
+  async function submitStatusModal() {
+    if (!workOrder?.id || statusUpdating) return;
+    statusModalError = "";
+    const current = workOrder.status || "Pending";
+    if (statusDraft === "Hold" && !String(statusRemarkDraft || "").trim()) {
+      statusModalError = 'Status "Hold" requires a remark.';
+      return;
+    }
+    if (
+      statusDraft === current &&
+      statusDraft !== "Hold" &&
+      !statusPhotoFiles.length
+    ) {
+      statusModalError = "Status is already set to that value.";
       return;
     }
     try {
-      await updateStatus(result.status, result.remarks);
-      Swal.fire("Updated", `Status set to ${result.status}.`, "success");
+      await updateStatus(
+        statusDraft,
+        statusDraft === "Hold" || statusRemarkDraft
+          ? statusRemarkDraft
+          : undefined,
+        statusPhotoFiles,
+      );
+      showStatusModal = false;
+      clearStatusPhotos();
+      statusMsg = `Status set to ${statusDraft}.`;
+      statusHistoryDrawerOpen = true;
     } catch (err) {
-      Swal.fire("Error", err?.message || statusError || "Failed to update status.", "error");
+      statusModalError =
+        err?.message || statusError || "Failed to update status.";
     }
   }
 
@@ -529,177 +554,105 @@
     }
   }
 
-  function escAttr(v) {
-    return String(v ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/"/g, "&quot;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
+  function clearMachinePhotos() {
+    for (const p of machinePhotoPreviews) {
+      if (p?.url) URL.revokeObjectURL(p.url);
+    }
+    machinePhotoFiles = [];
+    machinePhotoPreviews = [];
   }
 
-  async function openMachineDetailsModal() {
+  function openMachineDetailsModal() {
     if (!workOrder?.id || machineSaving || machineStageSaving) return;
     machineMsg = "";
     machineErr = "";
+    machineModalError = "";
+    const stage = workOrder.machine?.stage || machineStage || "Meeting";
+    const completionDate =
+      toDateInput(workOrder.machine?.completionDate) || machineCompletionDate || "";
+    const color = workOrder.machine?.color || machineColor || "";
+    const size = workOrder.machine?.size || machineSize || "";
+    machineStageDraft = stage;
+    machineRemarkDraft = "";
+    machineDateDraft = completionDate;
+    machineColorDraft = color;
+    machineSizeDraft = size;
+    machineModalBaseline = { stage, completionDate, color, size };
+    clearMachinePhotos();
+    showMachineModal = true;
+  }
 
-    const currentStage = workOrder.machine?.stage || machineStage || "Meeting";
-    const currentDate = toDateInput(workOrder.machine?.completionDate) || machineCompletionDate || "";
-    const currentColor = workOrder.machine?.color || machineColor || "";
-    const currentSize = workOrder.machine?.size || machineSize || "";
+  function closeMachineModal() {
+    if (machineSaving || machineStageSaving) return;
+    showMachineModal = false;
+    machineModalError = "";
+    clearMachinePhotos();
+  }
 
-    const optsHtml = MACHINE_STAGES.map((st) => {
-      const s = MACHINE_STAGE_STYLE[st] || { bg: "#e5e7eb", color: "#374151" };
-      const selected = st === currentStage;
-      return `
-        <button type="button" class="wo-stage-opt" data-value="${st}" style="
-          display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;
-          border:1.5px solid ${selected ? "#2563eb" : "#e5e7eb"};border-radius:12px;padding:10px 12px;margin:0 0 6px;
-          background:${selected ? "#f8fafc" : "#fff"};cursor:pointer;outline:none;
-          box-shadow:${selected ? "0 0 0 3px rgba(37,99,235,0.12)" : "none"};
-        ">
-          <span style="
-            display:inline-flex;align-items:center;justify-content:center;
-            min-width:120px;padding:6px 12px;border-radius:999px;font-size:12px;font-weight:700;
-            background:${s.bg};color:${s.color};
-          ">${st}</span>
-          <span class="wo-stage-check" style="
-            flex-shrink:0;width:20px;height:20px;border-radius:50%;border:2px solid ${selected ? "#2563eb" : "#d1d5db"};
-            background:${selected ? "#2563eb" : "transparent"};color:${selected ? "#fff" : "transparent"};
-            display:inline-flex;align-items:center;justify-content:center;font-size:11px;
-          ">✓</span>
-        </button>`;
-    }).join("");
+  function onMachinePhotosPick(e) {
+    const picked = Array.from(e?.target?.files || []);
+    e.target.value = "";
+    if (!picked.length) return;
+    const room = Math.max(0, 5 - machinePhotoFiles.length);
+    const next = picked.slice(0, room);
+    machineModalError =
+      picked.length > room ? "Maximum 5 files." : "";
+    const previews = next.map((file) => ({
+      url: file.type?.startsWith("image/")
+        ? URL.createObjectURL(file)
+        : null,
+      name: file.name,
+      isPdf: file.type === "application/pdf",
+    }));
+    machinePhotoFiles = [...machinePhotoFiles, ...next];
+    machinePhotoPreviews = [...machinePhotoPreviews, ...previews];
+  }
 
-    const { value: result, isConfirmed } = await Swal.fire({
-      title: "Edit machine details",
-      html: `
-        <div style="text-align:left;margin:0 0 12px;">
-          <div style="font-size:12px;color:#6b7280;">Work order</div>
-          <div style="font-size:15px;font-weight:700;color:#111827;font-family:ui-monospace,monospace;">${escAttr(workOrder.workOrderNo || `WO #${workOrder.id}`)}</div>
-        </div>
-        <div style="text-align:left;margin-bottom:6px;font-size:12px;font-weight:600;color:#374151;">Production stage</div>
-        <div id="wo-stage-opts" style="text-align:left;max-height:220px;overflow:auto;margin-bottom:10px;">${optsHtml}</div>
-        <div style="text-align:left;margin-bottom:10px;">
-          <label style="font-size:12px;font-weight:600;color:#374151;">Stage remark (optional)</label>
-          <input id="wo-stage-remark" class="swal2-input" style="width:100%;margin:6px 0 0;" placeholder="Note when updating stage" />
-        </div>
-        <div style="text-align:left;margin-bottom:10px;">
-          <label style="font-size:12px;font-weight:600;color:#374151;">Completion date</label>
-          <input id="wo-mach-date" type="date" class="swal2-input" style="width:100%;margin:6px 0 0;" value="${escAttr(currentDate)}" />
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;text-align:left;">
-          <div>
-            <label style="font-size:12px;font-weight:600;color:#374151;">Color</label>
-            <input id="wo-mach-color" class="swal2-input" style="width:100%;margin:6px 0 0;" placeholder="Color" value="${escAttr(currentColor)}" />
-          </div>
-          <div>
-            <label style="font-size:12px;font-weight:600;color:#374151;">Size</label>
-            <input id="wo-mach-size" class="swal2-input" style="width:100%;margin:6px 0 0;" placeholder="Size" value="${escAttr(currentSize)}" />
-          </div>
-        </div>
-        <div style="text-align:left;margin-top:10px;">
-          <label style="font-size:12px;font-weight:600;color:#374151;">Stage images (optional)</label>
-          <input id="wo-stage-images" type="file" accept="image/jpeg,image/png,image/webp,image/gif,application/pdf" multiple class="swal2-file" style="width:100%;margin:6px 0 0;font-size:12px;" />
-          <div style="font-size:11px;color:#9ca3af;margin-top:4px;">Attached to the new stage history entry.</div>
-        </div>
-        <input type="hidden" id="wo-stage-value" value="${escAttr(currentStage)}" />
-      `,
-      width: 480,
-      showCancelButton: true,
-      confirmButtonText: "Save details",
-      cancelButtonText: "Cancel",
-      confirmButtonColor: "#2563eb",
-      cancelButtonColor: "#9ca3af",
-      focusConfirm: false,
-      preConfirm: () => {
-        const stage = document.getElementById("wo-stage-value")?.value || currentStage;
-        const remark = String(document.getElementById("wo-stage-remark")?.value || "").trim();
-        const completionDate = String(document.getElementById("wo-mach-date")?.value || "").trim();
-        const color = String(document.getElementById("wo-mach-color")?.value || "").trim();
-        const size = String(document.getElementById("wo-mach-size")?.value || "").trim();
-        const files = Array.from(document.getElementById("wo-stage-images")?.files || []);
+  function removeMachinePhoto(idx) {
+    const prev = machinePhotoPreviews[idx];
+    if (prev?.url) URL.revokeObjectURL(prev.url);
+    machinePhotoFiles = machinePhotoFiles.filter((_, i) => i !== idx);
+    machinePhotoPreviews = machinePhotoPreviews.filter((_, i) => i !== idx);
+  }
 
-        const stageChanged = stage !== currentStage;
-        const attrsChanged =
-          completionDate !== currentDate ||
-          color !== currentColor ||
-          size !== currentSize;
-        const hasImages = files.length > 0;
+  async function submitMachineModal() {
+    if (!workOrder?.id || machineSaving || machineStageSaving) return;
+    machineModalError = "";
+    const stage = machineStageDraft || machineModalBaseline.stage;
+    const remark = String(machineRemarkDraft || "").trim();
+    const completionDate = String(machineDateDraft || "").trim();
+    const color = String(machineColorDraft || "").trim();
+    const size = String(machineSizeDraft || "").trim();
+    const files = machinePhotoFiles;
 
-        if (!stageChanged && !remark && !attrsChanged && !hasImages) {
-          Swal.showValidationMessage("Change a field, add a remark, or attach images.");
-          return false;
-        }
-        return {
-          stage,
-          remark: remark || undefined,
-          stageChanged,
-          updateStage: stageChanged || !!remark || hasImages,
-          files,
-          completionDate,
-          color,
-          size,
-          attrsChanged,
-        };
-      },
-      didOpen: () => {
-        const wrap = document.getElementById("wo-stage-opts");
-        const hidden = document.getElementById("wo-stage-value");
-        if (!wrap || !hidden) return;
-        const select = (btn) => {
-          wrap.querySelectorAll(".wo-stage-opt").forEach((el) => {
-            el.style.borderColor = "#e5e7eb";
-            el.style.boxShadow = "none";
-            el.style.background = "#fff";
-            const check = el.querySelector(".wo-stage-check");
-            if (check) {
-              check.style.borderColor = "#d1d5db";
-              check.style.background = "transparent";
-              check.style.color = "transparent";
-            }
-          });
-          btn.style.borderColor = "#2563eb";
-          btn.style.boxShadow = "0 0 0 3px rgba(37,99,235,0.15)";
-          btn.style.background = "#f8fafc";
-          const check = btn.querySelector(".wo-stage-check");
-          if (check) {
-            check.style.borderColor = "#2563eb";
-            check.style.background = "#2563eb";
-            check.style.color = "#fff";
-          }
-          hidden.value = btn.getAttribute("data-value") || "";
-        };
-        wrap.querySelectorAll(".wo-stage-opt").forEach((btn) => {
-          btn.addEventListener("click", () => select(btn));
-        });
-      },
-    });
+    const stageChanged = stage !== machineModalBaseline.stage;
+    const attrsChanged =
+      completionDate !== machineModalBaseline.completionDate ||
+      color !== machineModalBaseline.color ||
+      size !== machineModalBaseline.size;
+    const hasImages = files.length > 0;
 
-    if (!isConfirmed || !result) return;
+    if (!stageChanged && !remark && !attrsChanged && !hasImages) {
+      machineModalError = "Change a field, add a remark, or attach images.";
+      return;
+    }
 
     machineSaving = true;
     machineStageSaving = true;
     try {
-      if (result.updateStage) {
-        await applyMachineStage({
-          stage: result.stage,
-          remark: result.remark,
-          files: result.files || [],
-        });
+      if (stageChanged || remark || hasImages) {
+        await applyMachineStage({ stage, remark: remark || undefined, files });
       }
-      if (result.attrsChanged) {
-        await applyMachineAttrs({
-          completionDate: result.completionDate,
-          color: result.color,
-          size: result.size,
-        });
+      if (attrsChanged) {
+        await applyMachineAttrs({ completionDate, color, size });
       }
       syncMachineForm(workOrder);
       machineMsg = "Machine details saved.";
-      Swal.fire("Updated", "Machine details saved.", "success");
+      showMachineModal = false;
+      clearMachinePhotos();
     } catch (err) {
-      machineErr = err?.message || "Failed to save machine details.";
-      Swal.fire("Error", machineErr, "error");
+      machineModalError = err?.message || "Failed to save machine details.";
+      machineErr = machineModalError;
     } finally {
       machineSaving = false;
       machineStageSaving = false;
@@ -734,7 +687,6 @@
         workOrder = { ...workOrder, sentDelay: computeClientSentDelay(workOrder) };
       }
       syncMachineForm(workOrder);
-      holdRemark = workOrder?.status === "Hold" ? (workOrder.remarks || "") : "";
     } catch (err) {
       errorMessage = "Failed to load workOrder data.";
     } finally {
@@ -879,14 +831,30 @@
           >
             {statusUpdating ? "Updating…" : "Change status"}
           </button>
+          <button
+            type="button"
+            class="btn btn-outline-secondary btn-sm"
+            on:click={() => {
+              machineDrawerOpen = false;
+              statusHistoryDrawerOpen = true;
+            }}
+          >
+            <i class="ti ti-history me-1"></i>Status history
+            {#if statusEvents.length}
+              <span class="badge bg-secondary ms-1" style="font-size:10px;">{statusEvents.length}</span>
+            {/if}
+          </button>
           {#if isMachineCat(workOrder)}
             <button
               type="button"
               class="btn btn-outline-primary btn-sm"
-              on:click={() => (machineDrawerOpen = true)}
+              on:click={() => {
+                statusHistoryDrawerOpen = false;
+                machineDrawerOpen = true;
+              }}
             >
               <i class="ti ti-settings me-1"></i>Machine detail
-              {#if isMaster && stageEvents.length}
+              {#if stageEvents.length}
                 <span class="badge bg-primary ms-1" style="font-size:10px;">{stageEvents.length}</span>
               {/if}
             </button>
@@ -899,6 +867,9 @@
     </div>
     {#if statusError}
       <div class="alert alert-danger py-2 no-print" style="font-size:13px;">{statusError}</div>
+    {/if}
+    {#if statusMsg}
+      <div class="alert alert-success py-2 no-print" style="font-size:13px;">{statusMsg}</div>
     {/if}
     <!-- End Page Header -->
     {#if workOrder}
@@ -1136,7 +1107,391 @@
   on:refresh={onPIWOTIRefresh}
 />
 
+{#if showStatusModal && workOrder}
+  <div
+    class="modal fade show d-block"
+    tabindex="-1"
+    role="dialog"
+    style="background:rgba(0,0,0,0.5);z-index:1060;"
+    on:click|self={closeStatusModal}
+  >
+    <div class="modal-dialog modal-dialog-centered" role="document">
+      <div class="modal-content">
+        <div class="modal-header py-2">
+          <h5 class="modal-title mb-0 fw-semibold">
+            <i class="ti ti-refresh me-2 text-primary"></i>Change status
+          </h5>
+          <button
+            type="button"
+            class="btn-close"
+            aria-label="Close"
+            disabled={statusUpdating}
+            on:click={closeStatusModal}
+          ></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <div class="text-muted" style="font-size:12px;">Work order</div>
+            <div class="fw-semibold font-monospace">
+              {workOrder.workOrderNo || `WO #${workOrder.id}`}
+            </div>
+          </div>
+
+          <label class="form-label">Status <span class="text-danger">*</span></label>
+          <div class="wo-st-opts mb-3">
+            {#each statusOptionsForWo(workOrder) as opt}
+              <button
+                type="button"
+                class="wo-st-chip"
+                class:is-active={statusDraft === opt.value}
+                style="--st-bg:{opt.bg};--st-fg:{opt.color};"
+                on:click={() => (statusDraft = opt.value)}
+              >
+                {#if statusDraft === opt.value}<i class="ti ti-check"></i>{/if}
+                {opt.label}
+              </button>
+            {/each}
+          </div>
+
+          {#if statusDraft === "Hold"}
+            <div class="mb-3">
+              <label class="form-label">Hold remark <span class="text-danger">*</span></label>
+              <textarea
+                class="form-control"
+                rows="2"
+                bind:value={statusRemarkDraft}
+                placeholder="Why is this on hold?"
+              ></textarea>
+            </div>
+          {/if}
+
+          {#if isDispatchCat(workOrder)}
+            <div class="mb-1">
+              <label class="form-label">
+                Photos <span class="text-muted fw-normal">(optional, max 5)</span>
+              </label>
+              <div class="d-flex flex-wrap gap-2 align-items-start mb-2">
+                {#each statusPhotoPreviews as preview, idx}
+                  <div class="wo-st-preview">
+                    <img src={preview.url} alt={preview.name || "photo"} />
+                    <button
+                      type="button"
+                      class="wo-st-preview__rm"
+                      title="Remove"
+                      on:click={() => removeStatusPhoto(idx)}
+                    ><i class="ti ti-x"></i></button>
+                  </div>
+                {/each}
+                {#if statusPhotoFiles.length < 5}
+                  <label class="wo-st-add-photo">
+                    <i class="ti ti-photo-plus"></i>
+                    <span>Add</span>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      multiple
+                      hidden
+                      on:change={onStatusPhotosPick}
+                    />
+                  </label>
+                {/if}
+              </div>
+              <div class="text-muted" style="font-size:11px;">
+                Shown in status history (CRM + app).
+              </div>
+            </div>
+          {/if}
+
+          {#if statusModalError}
+            <div class="alert alert-danger py-2 mb-0 mt-3" style="font-size:13px;">
+              {statusModalError}
+            </div>
+          {/if}
+        </div>
+        <div class="modal-footer py-2">
+          <button
+            type="button"
+            class="btn btn-light btn-sm"
+            disabled={statusUpdating}
+            on:click={closeStatusModal}
+          >Cancel</button>
+          <button
+            type="button"
+            class="btn btn-primary btn-sm"
+            disabled={statusUpdating}
+            on:click={submitStatusModal}
+          >
+            {statusUpdating ? "Updating…" : "Update status"}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if showMachineModal && workOrder}
+  <div
+    class="modal fade show d-block"
+    tabindex="-1"
+    role="dialog"
+    style="background:rgba(0,0,0,0.5);z-index:1060;"
+    on:click|self={closeMachineModal}
+  >
+    <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+      <div class="modal-content">
+        <div class="modal-header py-2">
+          <h5 class="modal-title mb-0 fw-semibold">
+            <i class="ti ti-settings me-2 text-primary"></i>Edit machine details
+          </h5>
+          <button
+            type="button"
+            class="btn-close"
+            aria-label="Close"
+            disabled={machineSaving || machineStageSaving}
+            on:click={closeMachineModal}
+          ></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <div class="text-muted" style="font-size:12px;">Work order</div>
+            <div class="fw-semibold font-monospace">
+              {workOrder.workOrderNo || `WO #${workOrder.id}`}
+            </div>
+          </div>
+
+          <label class="form-label">Production stage <span class="text-danger">*</span></label>
+          <div class="wo-st-opts mb-3">
+            {#each MACHINE_STAGES as st}
+              {@const style = MACHINE_STAGE_STYLE[st] || { bg: "#e5e7eb", color: "#374151" }}
+              <button
+                type="button"
+                class="wo-st-chip"
+                class:is-active={machineStageDraft === st}
+                style="--st-bg:{style.bg};--st-fg:{style.color};"
+                on:click={() => (machineStageDraft = st)}
+              >
+                {#if machineStageDraft === st}<i class="ti ti-check"></i>{/if}
+                {st}
+              </button>
+            {/each}
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Stage remark <span class="text-muted fw-normal">(optional)</span></label>
+            <input
+              class="form-control"
+              type="text"
+              bind:value={machineRemarkDraft}
+              placeholder="Note when updating stage"
+            />
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Completion date</label>
+            <input
+              class="form-control"
+              type="date"
+              bind:value={machineDateDraft}
+            />
+          </div>
+
+          <div class="row g-2 mb-3">
+            <div class="col-md-6">
+              <label class="form-label">Color</label>
+              <input
+                class="form-control"
+                type="text"
+                bind:value={machineColorDraft}
+                placeholder="Color"
+              />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Size</label>
+              <input
+                class="form-control"
+                type="text"
+                bind:value={machineSizeDraft}
+                placeholder="Size"
+              />
+            </div>
+          </div>
+
+          <div class="mb-1">
+            <label class="form-label">
+              Stage images <span class="text-muted fw-normal">(optional, max 5)</span>
+            </label>
+            <div class="d-flex flex-wrap gap-2 align-items-start mb-2">
+              {#each machinePhotoPreviews as preview, idx}
+                <div class="wo-st-preview">
+                  {#if preview.url}
+                    <img src={preview.url} alt={preview.name || "file"} />
+                  {:else}
+                    <div class="wo-st-preview__file">
+                      <i class="ti ti-file-type-pdf"></i>
+                      <span>{preview.name || "PDF"}</span>
+                    </div>
+                  {/if}
+                  <button
+                    type="button"
+                    class="wo-st-preview__rm"
+                    title="Remove"
+                    on:click={() => removeMachinePhoto(idx)}
+                  ><i class="ti ti-x"></i></button>
+                </div>
+              {/each}
+              {#if machinePhotoFiles.length < 5}
+                <label class="wo-st-add-photo">
+                  <i class="ti ti-photo-plus"></i>
+                  <span>Add</span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+                    multiple
+                    hidden
+                    on:change={onMachinePhotosPick}
+                  />
+                </label>
+              {/if}
+            </div>
+            <div class="text-muted" style="font-size:11px;">
+              Attached to the new stage history entry.
+            </div>
+          </div>
+
+          {#if machineModalError}
+            <div class="alert alert-danger py-2 mb-0 mt-3" style="font-size:13px;">
+              {machineModalError}
+            </div>
+          {/if}
+        </div>
+        <div class="modal-footer py-2">
+          <button
+            type="button"
+            class="btn btn-light btn-sm"
+            disabled={machineSaving || machineStageSaving}
+            on:click={closeMachineModal}
+          >Cancel</button>
+          <button
+            type="button"
+            class="btn btn-primary btn-sm"
+            disabled={machineSaving || machineStageSaving}
+            on:click={submitMachineModal}
+          >
+            {machineSaving || machineStageSaving ? "Saving…" : "Save details"}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
 <LightBox bind:data={lightboxImages} startIndex={lightboxStart} />
+
+{#if workOrder}
+  {#if statusHistoryDrawerOpen}
+    <div
+      class="wo-mach-drawer-backdrop no-print"
+      on:click={() => (statusHistoryDrawerOpen = false)}
+      on:keydown={(e) => e.key === "Escape" && (statusHistoryDrawerOpen = false)}
+      role="presentation"
+    ></div>
+  {/if}
+  <aside
+    class="wo-mach-drawer no-print"
+    class:wo-mach-drawer--open={statusHistoryDrawerOpen}
+    aria-hidden={!statusHistoryDrawerOpen}
+  >
+    <div class="wo-mach-drawer__head">
+      <div>
+        <div class="text-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:0.04em;">Work order</div>
+        <h5 class="mb-0" style="font-size:16px;">
+          <i class="ti ti-history me-1"></i>Status history
+          {#if statusEvents.length}
+            <span class="badge bg-soft-primary text-primary ms-1" style="font-size:10px;">{statusEvents.length}</span>
+          {/if}
+        </h5>
+        <div class="text-muted" style="font-size:12px;font-family:ui-monospace,monospace;">
+          {workOrder.workOrderNo || `WO #${workOrder.id}`}
+        </div>
+      </div>
+      <button
+        type="button"
+        class="btn btn-sm btn-light"
+        aria-label="Close"
+        on:click={() => (statusHistoryDrawerOpen = false)}
+      >
+        <i class="ti ti-x"></i>
+      </button>
+    </div>
+    <div class="wo-mach-drawer__body">
+      {#if statusEvents.length}
+        <ul class="wo-status-drawer-list">
+          {#each statusEvents as ev, i}
+            <li class="wo-status-drawer-item">
+              <div class="wo-status-drawer-item__rail" aria-hidden="true">
+                <span class="wo-status-drawer-item__dot"></span>
+                {#if i < statusEvents.length - 1}
+                  <span class="wo-status-drawer-item__line"></span>
+                {/if}
+              </div>
+              <div class="wo-status-drawer-item__body">
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+                  {#if ev.fromStatus}
+                    <span class="badge border {statusBadgeClass(ev.fromStatus)}" style="font-size:10px;">{ev.fromStatus}</span>
+                    <i class="ti ti-arrow-right text-muted" style="font-size:12px;"></i>
+                  {/if}
+                  <span class="badge {statusBadgeClass(ev.toStatus)}" style="font-size:11px;">{ev.toStatus}</span>
+                </div>
+                <div class="text-muted mb-1" style="font-size:11px;">
+                  {#if ev.createdAt}
+                    {new Date(ev.createdAt).toLocaleString("en-IN")}
+                  {/if}
+                  {#if ev.createdByExternal}
+                    · {String(ev.createdByExternal).replace(/^crm:/, "")}
+                  {/if}
+                </div>
+                {#if ev.remark}
+                  <p class="mb-2 text-secondary" style="font-size:13px;">{ev.remark}</p>
+                {/if}
+                {#if Array.isArray(ev.images) && ev.images.length}
+                  <div class="wo-hist-gallery">
+                    {#each ev.images as img, imgIdx}
+                      {#if isHistoryImage(img)}
+                        <button
+                          type="button"
+                          class="wo-hist-thumb-btn"
+                          title="Quick view"
+                          on:click={() => openHistoryImage(ev, imgIdx)}
+                        >
+                          <img src={mediaUrl(img.url)} alt={img.fileName || "status"} />
+                        </button>
+                      {:else}
+                        <a
+                          href={mediaUrl(img.url)}
+                          target="_blank"
+                          rel="noopener"
+                          class="wo-hist-file"
+                        >
+                          <i class="ti ti-file-text"></i>
+                        </a>
+                      {/if}
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+            </li>
+          {/each}
+        </ul>
+      {:else}
+        <div class="wo-mach-empty-card">
+          <i class="ti ti-history" style="font-size:22px;opacity:0.45;"></i>
+          <div class="fw-semibold mt-2">No status changes yet</div>
+          <small class="text-muted">Updates from Change status will appear here.</small>
+        </div>
+      {/if}
+    </div>
+  </aside>
+{/if}
 
 {#if workOrder && isMachineCat(workOrder)}
   {#if machineDrawerOpen}
@@ -1240,55 +1595,57 @@
           class="d-none"
           on:change={onHistoryImagesSelected}
         />
-        <section class="wo-mach-history">
-          <div class="wo-mach-history__title">
-            <div class="wo-mach-history__heading">
-              <i class="ti ti-timeline"></i>
-              <span>Stage history</span>
-              {#if stageEvents.length}
-                <span class="wo-mach-history__count">{stageEvents.length}</span>
-              {/if}
-            </div>
+      {/if}
+      <section class="wo-mach-history">
+        <div class="wo-mach-history__title">
+          <div class="wo-mach-history__heading">
+            <i class="ti ti-timeline"></i>
+            <span>Stage history</span>
+            {#if stageEvents.length}
+              <span class="wo-mach-history__count">{stageEvents.length}</span>
+            {/if}
           </div>
+        </div>
 
-          {#if stageEvents.length}
-            <ul class="wo-mach-history__list">
-              {#each [...stageEvents].reverse() as ev, i}
-                <li class="wo-hist-item" class:wo-hist-item--busy={historyBusyId === ev.id}>
-                  <div class="wo-hist-item__rail" aria-hidden="true">
-                    <span
-                      class="wo-hist-item__dot"
-                      style="background:{(MACHINE_STAGE_STYLE[ev.meta?.stage || workOrder.machine?.stage] || {}).bg || '#94a3b8'};"
-                    ></span>
-                    {#if i < stageEvents.length - 1}
-                      <span class="wo-hist-item__line"></span>
-                    {/if}
-                  </div>
+        {#if stageEvents.length}
+          <ul class="wo-mach-history__list">
+            {#each [...stageEvents].reverse() as ev, i}
+              <li class="wo-hist-item" class:wo-hist-item--busy={historyBusyId === ev.id}>
+                <div class="wo-hist-item__rail" aria-hidden="true">
+                  <span
+                    class="wo-hist-item__dot"
+                    style="background:{(MACHINE_STAGE_STYLE[ev.meta?.stage || workOrder.machine?.stage] || {}).bg || '#94a3b8'};"
+                  ></span>
+                  {#if i < stageEvents.length - 1}
+                    <span class="wo-hist-item__line"></span>
+                  {/if}
+                </div>
 
-                  <div class="wo-hist-item__body">
-                    <div class="wo-hist-item__top">
-                      <div class="wo-hist-item__badges">
-                        <span
-                          class="wo-hist-stage"
-                          style={stageBadgeStyle(ev.meta?.stage || workOrder.machine?.stage)}
-                        >
-                          {ev.meta?.stage || workOrder.machine?.stage || "—"}
-                        </span>
-                        {#if ev.meta?.previousStage && ev.meta?.stageChanged !== false && ev.meta?.previousStage !== ev.meta?.stage}
-                          <span class="wo-hist-chip">from {ev.meta.previousStage}</span>
-                        {:else if ev.meta?.stageChanged === false}
-                          <span class="wo-hist-chip wo-hist-chip--muted">same stage</span>
+                <div class="wo-hist-item__body">
+                  <div class="wo-hist-item__top">
+                    <div class="wo-hist-item__badges">
+                      <span
+                        class="wo-hist-stage"
+                        style={stageBadgeStyle(ev.meta?.stage || workOrder.machine?.stage)}
+                      >
+                        {ev.meta?.stage || workOrder.machine?.stage || "—"}
+                      </span>
+                      {#if ev.meta?.previousStage && ev.meta?.stageChanged !== false && ev.meta?.previousStage !== ev.meta?.stage}
+                        <span class="wo-hist-chip">from {ev.meta.previousStage}</span>
+                      {:else if ev.meta?.stageChanged === false}
+                        <span class="wo-hist-chip wo-hist-chip--muted">same stage</span>
+                      {/if}
+                    </div>
+
+                    <div class="wo-hist-item__aside">
+                      <time class="wo-hist-date">
+                        {#if ev.date}
+                          {new Date(ev.date).toLocaleDateString("en-IN", { dateStyle: "medium" })}
+                        {:else if ev.createdAt}
+                          {new Date(ev.createdAt).toLocaleString("en-IN")}
                         {/if}
-                      </div>
-
-                      <div class="wo-hist-item__aside">
-                        <time class="wo-hist-date">
-                          {#if ev.date}
-                            {new Date(ev.date).toLocaleDateString("en-IN", { dateStyle: "medium" })}
-                          {:else if ev.createdAt}
-                            {new Date(ev.createdAt).toLocaleString("en-IN")}
-                          {/if}
-                        </time>
+                      </time>
+                      {#if isMaster}
                         <div class="wo-hist-actions">
                           <button
                             type="button"
@@ -1311,39 +1668,41 @@
                             <i class="ti ti-trash"></i>
                           </button>
                         </div>
-                      </div>
+                      {/if}
                     </div>
+                  </div>
 
-                    {#if ev.remark}
-                      <p class="wo-hist-remark">{ev.remark}</p>
-                    {/if}
+                  {#if ev.remark}
+                    <p class="wo-hist-remark">{ev.remark}</p>
+                  {/if}
 
-                    {#if Array.isArray(ev.images) && ev.images.length}
-                      <div class="wo-hist-gallery">
-                        {#each ev.images as img, imgIdx}
-                          <div class="wo-hist-thumb">
-                            {#if isHistoryImage(img)}
-                              <button
-                                type="button"
-                                class="wo-hist-thumb-btn"
-                                title="Quick view"
-                                on:click={() => openHistoryImage(ev, imgIdx)}
-                              >
-                                <img src={mediaUrl(img.url)} alt={img.fileName || "stage"} />
-                                <span class="wo-hist-thumb__zoom"><i class="ti ti-zoom-in"></i></span>
-                              </button>
-                            {:else}
-                              <a
-                                href={mediaUrl(img.url)}
-                                target="_blank"
-                                rel="noopener"
-                                class="wo-hist-file"
-                                title={img.fileName || "file"}
-                              >
-                                <i class="ti ti-file-text"></i>
-                                <span>{img.fileName || "file"}</span>
-                              </a>
-                            {/if}
+                  {#if Array.isArray(ev.images) && ev.images.length}
+                    <div class="wo-hist-gallery">
+                      {#each ev.images as img, imgIdx}
+                        <div class="wo-hist-thumb">
+                          {#if isHistoryImage(img)}
+                            <button
+                              type="button"
+                              class="wo-hist-thumb-btn"
+                              title="Quick view"
+                              on:click={() => openHistoryImage(ev, imgIdx)}
+                            >
+                              <img src={mediaUrl(img.url)} alt={img.fileName || "stage"} />
+                              <span class="wo-hist-thumb__zoom"><i class="ti ti-zoom-in"></i></span>
+                            </button>
+                          {:else}
+                            <a
+                              href={mediaUrl(img.url)}
+                              target="_blank"
+                              rel="noopener"
+                              class="wo-hist-file"
+                              title={img.fileName || "file"}
+                            >
+                              <i class="ti ti-file-text"></i>
+                              <span>{img.fileName || "file"}</span>
+                            </a>
+                          {/if}
+                          {#if isMaster}
                             <button
                               type="button"
                               class="wo-hist-thumb__rm"
@@ -1354,23 +1713,23 @@
                             >
                               <i class="ti ti-x"></i>
                             </button>
-                          </div>
-                        {/each}
-                      </div>
-                    {/if}
-                  </div>
-                </li>
-              {/each}
-            </ul>
-          {:else}
-            <div class="wo-mach-history__empty">
-              <i class="ti ti-history"></i>
-              <div>No stage history yet</div>
-              <small>Updates from Edit machine details will appear here.</small>
-            </div>
-          {/if}
-        </section>
-      {/if}
+                          {/if}
+                        </div>
+                      {/each}
+                    </div>
+                  {/if}
+                </div>
+              </li>
+            {/each}
+          </ul>
+        {:else}
+          <div class="wo-mach-history__empty">
+            <i class="ti ti-history"></i>
+            <div>No stage history yet</div>
+            <small>Updates from Edit machine details will appear here.</small>
+          </div>
+        {/if}
+      </section>
 
       {#if machineMsg}
         <div class="wo-mach-toast wo-mach-toast--ok">{machineMsg}</div>
@@ -1383,6 +1742,129 @@
 {/if}
 
 <style>
+  .wo-st-opts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .wo-st-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 999px;
+    padding: 7px 14px;
+    background: #fff;
+    color: #475569;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.2;
+    cursor: pointer;
+    outline: none;
+    transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s, transform 0.1s;
+  }
+  .wo-st-chip:hover {
+    border-color: var(--st-bg, #94a3b8);
+    color: #0f172a;
+    background: #f8fafc;
+  }
+  .wo-st-chip.is-active {
+    background: var(--st-bg, #2563eb);
+    border-color: var(--st-bg, #2563eb);
+    color: var(--st-fg, #fff);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12),
+      0 0 0 3px color-mix(in srgb, var(--st-bg, #2563eb) 22%, transparent);
+  }
+  .wo-st-chip i {
+    font-size: 14px;
+    line-height: 1;
+  }
+  .wo-st-preview {
+    position: relative;
+    width: 72px;
+    height: 72px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #e5e7eb;
+    background: #f8fafc;
+  }
+  .wo-st-preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .wo-st-preview__file {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 6px;
+    text-align: center;
+    font-size: 9px;
+    font-weight: 600;
+    color: #64748b;
+    line-height: 1.2;
+    overflow: hidden;
+  }
+  .wo-st-preview__file i {
+    font-size: 18px;
+    color: #ef4444;
+  }
+  .wo-st-preview__file span {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    word-break: break-all;
+  }
+  .wo-st-preview__rm {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 20px;
+    height: 20px;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(15, 23, 42, 0.7);
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    padding: 0;
+    cursor: pointer;
+    line-height: 1;
+  }
+  .wo-st-add-photo {
+    width: 72px;
+    height: 72px;
+    border: 1.5px dashed #cbd5e1;
+    border-radius: 8px;
+    background: #f8fafc;
+    color: #64748b;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    margin: 0;
+  }
+  .wo-st-add-photo:hover {
+    border-color: var(--bs-primary, #2563eb);
+    color: var(--bs-primary, #2563eb);
+    background: #fff;
+  }
+  .wo-st-add-photo i {
+    font-size: 18px;
+  }
+
   .wo-mach-drawer-backdrop {
     position: fixed;
     inset: 0;
@@ -1422,6 +1904,63 @@
     overflow-y: auto;
     padding: 16px 18px 28px;
     background: #f7f8fb;
+  }
+
+  .wo-mach-empty-card {
+    background: #fff;
+    border: 1px dashed #dbe3ef;
+    border-radius: 14px;
+    padding: 28px 18px;
+    text-align: center;
+    color: #64748b;
+  }
+
+  .wo-status-drawer-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .wo-status-drawer-item {
+    display: flex;
+    gap: 12px;
+    align-items: stretch;
+  }
+  .wo-status-drawer-item + .wo-status-drawer-item {
+    margin-top: 2px;
+  }
+  .wo-status-drawer-item__rail {
+    width: 14px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .wo-status-drawer-item__dot {
+    width: 10px;
+    height: 10px;
+    margin-top: 6px;
+    border-radius: 50%;
+    background: var(--bs-primary, #2563eb);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+    flex-shrink: 0;
+  }
+  .wo-status-drawer-item__line {
+    flex: 1;
+    width: 2px;
+    margin: 4px 0 0;
+    background: #e2e8f0;
+    border-radius: 1px;
+    min-height: 18px;
+  }
+  .wo-status-drawer-item__body {
+    flex: 1;
+    min-width: 0;
+    background: #fff;
+    border: 1px solid #e8ecf2;
+    border-radius: 12px;
+    padding: 12px 12px 10px;
+    margin-bottom: 10px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   }
 
   .wo-mach-status {
@@ -1721,7 +2260,8 @@
     overflow: hidden;
     position: relative;
   }
-  .wo-hist-thumb img {
+  .wo-hist-thumb img,
+  .wo-hist-thumb-btn img {
     width: 64px;
     height: 64px;
     object-fit: cover;
