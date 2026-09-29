@@ -69,9 +69,9 @@
         const p = row.permissions || {};
         const bits = [];
         if (p.sample_view || p.sample_update || p.sample_hold) bits.push("Sample");
-        if (p.work_order_view || p.work_order_update || p.work_order_hold || p.dispatch_view)
+        if (p.work_order_view || p.work_order_update || p.work_order_hold)
           bits.push("WO");
-        if (p.installation_view || p.installation_update || p.dispatch_update)
+        if (p.installation_view || p.installation_update)
           bits.push("Install");
         return bits.length
           ? bits
