@@ -163,6 +163,12 @@
 
               <div class="detail-grid">
                 <div>
+                  <div class="detail-label">Job role</div>
+                  <div class="detail-value text-capitalize">
+                    {user.appRole || "office"}
+                  </div>
+                </div>
+                <div>
                   <div class="detail-label">Mobile</div>
                   <div class="detail-value">{user.mobile || "—"}</div>
                 </div>

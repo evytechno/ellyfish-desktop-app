@@ -27,6 +27,7 @@
   let workshopEmployeeId = "";
   let workshopEmployees = [];
   let workshopLoadError = "";
+  let appRole = "office";
 
   let permissions = {
     sample_view: true,
@@ -89,6 +90,7 @@
           mobile,
           permissions,
           workshopEmployeeId: workshopEmployeeId || null,
+          appRole,
         },
       });
       Swal.fire("Success!", data.message, "success");
@@ -205,6 +207,19 @@
                       <li>{formErrors.email[0]}</li>
                     </ul>
                   {/if}
+                </div>
+
+                <div>
+                  <label class="form-label" for="appRole">Job role</label>
+                  <select class="form-select" id="appRole" bind:value={appRole}>
+                    <option value="office">Office</option>
+                    <option value="factory">Factory</option>
+                    <option value="sales">Sales</option>
+                    <option value="installation">Installation</option>
+                  </select>
+                  <small class="text-muted"
+                    >Controls which module notifications this user receives</small
+                  >
                 </div>
 
                 <div>

@@ -29,6 +29,7 @@
   let workshopEmployeeId = "";
   let workshopEmployees = [];
   let workshopLoadError = "";
+  let appRole = "office";
   let permissions = {
     sample_view: true,
     sample_update: true,
@@ -84,6 +85,7 @@
       mobile = data.mobile || "";
       status = data.status || "active";
       workshopEmployeeId = data.workshopEmployeeId || "";
+      appRole = data.appRole || "office";
       permissions = {
         sample_view: true,
         sample_update: true,
@@ -120,6 +122,7 @@
           status,
           permissions,
           workshopEmployeeId: workshopEmployeeId || null,
+          appRole,
         },
       });
       Swal.fire("Success!", data.message, "success");
@@ -240,6 +243,19 @@
                     <option value="active">Active</option>
                     <option value="inactive">Inactive</option>
                   </select>
+                </div>
+
+                <div>
+                  <label class="form-label" for="appRole">Job role</label>
+                  <select class="form-select" id="appRole" bind:value={appRole}>
+                    <option value="office">Office</option>
+                    <option value="factory">Factory</option>
+                    <option value="sales">Sales</option>
+                    <option value="installation">Installation</option>
+                  </select>
+                  <small class="text-muted"
+                    >Controls which module notifications this user receives</small
+                  >
                 </div>
               </div>
             </div>
