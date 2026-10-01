@@ -62,7 +62,7 @@
   let swiftCode = "";
   let currency = "INR";
   let paymentMethod = "Other";
-  let status = "Unpaid";
+  let status = "To Pay";
   let termsConditions = "";
   let remarks = "";
   let shipToSameAsBillTo = false;
@@ -373,7 +373,7 @@
       swiftCode        = inv.swiftCode || "";
       currency         = inv.currency || "INR";
       paymentMethod    = inv.paymentMethod || "Other";
-      status           = inv.status || "Unpaid";
+      status           = inv.status === "Unpaid" ? "To Pay" : (inv.status || "To Pay");
       termsConditions  = inv.termsConditions || "";
       remarks          = inv.remarks || "";
       billToName = inv.billToName || ""; billToAddress = inv.billToAddress || "";
@@ -571,7 +571,6 @@
                 <div>
                   <label class="form-label">Status</label>
                   <select class="form-select" bind:value={status}>
-                    <option value="Unpaid">Unpaid</option>
                     <option value="To Pay">To Pay</option>
                     <option value="COD">COD</option>
                     <option value="Paid">Paid</option>

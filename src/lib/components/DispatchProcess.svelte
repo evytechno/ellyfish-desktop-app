@@ -6,9 +6,16 @@
   import { API_ROUTES } from "$lib/constants/apiRoutes";
   import { authApiFetch } from "$lib/api/client";
   import { fetchWorkshopSalesEmployees } from "$lib/api/workshopSales";
+  import { checkAuth } from "$lib/utils/auth";
 
   // ── Props ────────────────────────────────────────────────
   export let order = { workOrderNumber: "" };
+
+  const crmUser = checkAuth();
+  /** Install Manager actions: Head login + manager notes (not plain sales `user`) */
+  $: canManageInstallHead = ["master", "admin", "manager"].includes(
+    crmUser?.role || "",
+  );
 
   // ── Work-order status helpers ────────────────────────────
   // Statuses in progression order
@@ -44,6 +51,11 @@
   $: showInstallation = statusGte(workOrderStatus, "delivered");
   // Visit tab: show from installationInProgress onwards
   $: showVisit = statusGte(workOrderStatus, "installationInProgress");
+  // Manager notes + close-out: only after Installation stage starts
+  $: showPostInstallManager = statusGte(
+    workOrderStatus,
+    "installationInProgress",
+  );
 
   // Edit permissions — CRM has full manage access
   // Dispatch: editable while dispatchInProgress → inTransit
@@ -54,7 +66,8 @@
   $: canEditInstallation =
     statusGte(workOrderStatus, "delivered") &&
     statusLte(workOrderStatus, "installationInProgress");
-  $: canEditAssignees = canEditInstallation;
+  /** Crew assign / change — Install Manager only (workshop users in the list). */
+  $: canEditAssignees = canManageInstallHead && canEditInstallation;
   // Visits: add/edit while installationInProgress only
   $: canEditVisits = workOrderStatus === "installationInProgress";
   $: canEditVisitAssignees = false; // kept for template branches; CRM uses full visit edit
@@ -192,6 +205,18 @@
       ? (arr || []).filter((x) => String(x) !== sid)
       : [...(arr || []), id];
   }
+  /** Installation crew: Head cannot be removed while assigned as Head. */
+  function toggleInstallCrew(arr, id) {
+    const sid = String(id);
+    const isHead =
+      headEmployeeId && String(headEmployeeId) === sid;
+    const has = (arr || []).some((x) => String(x) === sid);
+    if (has && isHead) return arr || [];
+    return toggleEmployee(arr, id);
+  }
+  function isInstallHead(id) {
+    return !!(headEmployeeId && String(headEmployeeId) === String(id));
+  }
   function selectedLabels(ids) {
     const pool = [
       ...(dispatchData?.employeesDetails ?? []),
@@ -271,7 +296,21 @@
       welding: d.welding ?? "notAvailable",
       compressorLine: d.compressorLine ?? "notAvailable",
       employees: d.employees ?? [],
+      basicRequirement: d.basicRequirement ?? "",
+      contactDetails: d.contactDetails ?? "",
     };
+    headEmployeeId = d.headEmployeeId ?? "";
+    headLoginId = d.headEmail || "";
+    headPassword = "";
+    headCredsHint = d.hasHeadLogin || d.headEmail
+      ? {
+          email: d.headEmail,
+          expiresAt: d.headLoginExpiresAt,
+        }
+      : null;
+    managerNotes = structuredClone(d.managerNotes ?? []);
+    processLogs = structuredClone(d.processLogs ?? []);
+    syncCloseOutForm(d);
     visits = structuredClone(d.lastInstallationDetails ?? []);
     editingIdx = null;
     snapshots = {};
@@ -281,6 +320,7 @@
 
   async function fetchEmployees() {
     try {
+      // Workshop field employees (BOM) — list options for Assign Employees.
       users = await fetchWorkshopSalesEmployees();
     } catch (e) {
       users = [];
@@ -474,7 +514,23 @@
     welding: "notAvailable",
     compressorLine: "notAvailable",
     employees: [],
+    basicRequirement: "",
+    contactDetails: "",
   };
+
+  /** Install Manager — Head among crew */
+  let headEmployeeId = "";
+  let headAssignLoading = false;
+  let headLoginId = ""; // head email
+  let headPassword = "";
+  let headCredsHint = null; // { email?, password?, expiresAt }
+  let managerNotes = [];
+  let processLogs = [];
+  let managerNoteDraft = "";
+  let managerNoteLoading = false;
+  let showManagerNotesModal = false;
+  let showCloseOutModal = false;
+  let closeOutLoading = false;
 
   let installNewFiles = [],
     installNewPreviews = [],
@@ -517,12 +573,25 @@
         "compressor",
         "welding",
         "compressorLine",
-      ].forEach((k) => fd.append(k, installForm[k]));
-      installForm.employees.forEach((id) => fd.append("employees", id));
+        "basicRequirement",
+        "contactDetails",
+      ].forEach((k) => fd.append(k, installForm[k] ?? ""));
+      // Only Install Manager may change workshop crew assignment
+      let employeeIds = canManageInstallHead
+        ? [...(installForm.employees || [])]
+        : [...(dispatchData?.employees || [])];
+      if (
+        headEmployeeId &&
+        !employeeIds.some((id) => String(id) === String(headEmployeeId))
+      ) {
+        employeeIds = [...employeeIds, headEmployeeId];
+        if (canManageInstallHead) installForm.employees = employeeIds;
+      }
+      employeeIds.forEach((id) => fd.append("employees", id));
       fd.append(
         "employeesDetails",
         JSON.stringify(
-          selectedLabels(installForm.employees).map((e) => ({
+          selectedLabels(employeeIds).map((e) => ({
             _id: e._id,
             username: e.username,
             email: e.email,
@@ -582,7 +651,298 @@
     }
   }
 
+  async function openHeadManagePopup() {
+    if (!dispatchData?.id) return;
+    const crew = selectedLabels(
+      dispatchData?.employees?.length
+        ? dispatchData.employees
+        : installForm.employees || [],
+    );
+    if (!crew.length) {
+      Swal.fire(
+        "No crew",
+        "Assign installation employees first, then manage Head login.",
+        "warning",
+      );
+      return;
+    }
+
+    const headOptions = crew
+      .map(
+        (e) =>
+          `<option value="${e._id}" data-email="${String(e.email || "").replace(/"/g, "&quot;")}" ${
+            String(e._id) === String(headEmployeeId) ? "selected" : ""
+          }>${e.username || e.name || e._id}</option>`,
+      )
+      .join("");
+
+    const prefill =
+      headCredsHint?.email ||
+      headLoginId ||
+      (crew.find((e) => String(e._id) === String(headEmployeeId))?.email || "");
+
+    const { value: form } = await Swal.fire({
+      title: "Manage Head login",
+      width: 480,
+      html: `
+        <p class="text-left text-xs text-gray-500 mb-3">
+          Creates / updates an <b>Installation App User</b> with the same email + password (role Installation). Also keeps Head process login. Password optional — blank auto-generates.
+        </p>
+        <label class="block text-left text-xs font-semibold text-gray-600 mb-1">Head person</label>
+        <select id="swal-head-person" class="swal2-input" style="width:100%;margin:0 0 10px 0;height:2.5em;">
+          <option value="">Select Head…</option>
+          ${headOptions}
+        </select>
+        <label class="block text-left text-xs font-semibold text-gray-600 mb-1">Email</label>
+        <input id="swal-head-login" class="swal2-input" style="width:100%;margin:0 0 10px 0;" type="email" placeholder="email@company.com" value="${String(prefill).replace(/"/g, "&quot;")}">
+        <label class="block text-left text-xs font-semibold text-gray-600 mb-1">Password (optional — blank = auto)</label>
+        <input id="swal-head-pass" class="swal2-input" style="width:100%;margin:0;" type="text" placeholder="Leave blank to auto-generate" autocomplete="new-password">
+      `,
+      focusConfirm: false,
+      showCancelButton: true,
+      confirmButtonText: headCredsHint?.email
+        ? "Save / reset login"
+        : "Assign Head & create login",
+      cancelButtonText: "Cancel",
+      didOpen: () => {
+        const sel = document.getElementById("swal-head-person");
+        const emailInput = document.getElementById("swal-head-login");
+        sel?.addEventListener("change", () => {
+          const opt = sel.options[sel.selectedIndex];
+          const fromEmp = opt?.getAttribute("data-email") || "";
+          if (fromEmp && emailInput && !emailInput.value) {
+            emailInput.value = fromEmp;
+          }
+        });
+      },
+      preConfirm: () => {
+        const person = document.getElementById("swal-head-person")?.value || "";
+        const login = String(
+          document.getElementById("swal-head-login")?.value || "",
+        ).trim();
+        const pass = String(
+          document.getElementById("swal-head-pass")?.value || "",
+        );
+        if (!person) {
+          Swal.showValidationMessage("Select a Head person");
+          return false;
+        }
+        if (!login || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(login)) {
+          Swal.showValidationMessage("Enter a valid email");
+          return false;
+        }
+        if (pass && pass.length < 6) {
+          Swal.showValidationMessage("Password must be at least 6 characters");
+          return false;
+        }
+        return { person, login, pass };
+      },
+    });
+
+    if (!form) return;
+    await assignHeadFromForm(form.person, form.login, form.pass);
+  }
+
+  async function assignHeadFromForm(personId, loginRaw, passRaw) {
+    try {
+      headAssignLoading = true;
+      const details =
+        selectedLabels([personId]).map((e) => ({
+          _id: e._id,
+          username: e.username,
+          email: e.email,
+        }))[0] || { _id: personId };
+      const resp = await crmFetch(
+        `${API_ROUTES.DISPATCH}/${dispatchData.id}`,
+        "PUT",
+        {
+          assignHead: true,
+          headEmployeeId: personId,
+          headEmployeeDetails: details,
+          headEmail: String(loginRaw || "").trim(),
+          password: passRaw || undefined,
+          employees: installForm.employees?.length
+            ? installForm.employees
+            : dispatchData.employees,
+          employeesDetails: selectedLabels(
+            installForm.employees?.length
+              ? installForm.employees
+              : dispatchData.employees || [],
+          ).map((e) => ({
+            _id: e._id,
+            username: e.username,
+            email: e.email,
+          })),
+          expiresInDays: 60,
+        },
+      );
+      const data = resp?.data ?? resp;
+      dispatchData = { ...dispatchData, ...data };
+      delete dispatchData.headPassword;
+      syncForms(dispatchData);
+      headEmployeeId = personId;
+      headCredsHint = {
+        email: data.headEmail,
+        password: data.headPassword,
+        expiresAt: data.headLoginExpiresAt,
+      };
+      if (data.processLogs) processLogs = data.processLogs;
+      headLoginId = data.headEmail || loginRaw;
+      headPassword = "";
+      await Swal.fire({
+        icon: "success",
+        title: "Head assigned",
+        html: `<p class="text-left text-sm">Email: <b>${data.headEmail}</b><br/>Password: <b>${data.headPassword}</b><br/>${
+          data.appUserCreated
+            ? "Installation <b>App User created</b>."
+            : "Installation <b>App User updated</b>."
+        }${
+          data.previousAppUserRemoved?.email
+            ? `<br/>Previous Head App User <b>removed</b> (${data.previousAppUserRemoved.email}).`
+            : ""
+        }<br/><span class="text-amber-700">Save now — password shown once. Sign in on ShipMate as App User (no Head tab).</span></p>`,
+      });
+    } catch (error) {
+      Swal.fire("Error", error.message || "Could not assign Head", "error");
+    } finally {
+      headAssignLoading = false;
+    }
+  }
+
+  async function deleteManagerNote(noteId) {
+    if (!dispatchData?.id || !noteId) return;
+    const conf = await Swal.fire({
+      title: "Delete note?",
+      text: "This cannot be undone.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Delete",
+    });
+    if (!conf.isConfirmed) return;
+    try {
+      const resp = await crmFetch(
+        `${API_ROUTES.DISPATCH}/${dispatchData.id}`,
+        "PUT",
+        { deleteManagerNoteId: noteId },
+      );
+      const data = resp?.data ?? resp;
+      managerNotes = data.managerNotes ?? [];
+      processLogs = data.processLogs ?? processLogs;
+      dispatchData = { ...dispatchData, managerNotes };
+    } catch (error) {
+      Swal.fire("Error", error.message || "Could not delete note", "error");
+    }
+  }
+
+  async function editManagerNote(note) {
+    if (!dispatchData?.id || !note?.id) return;
+    const { value, isConfirmed } = await Swal.fire({
+      title: "Edit note",
+      input: "textarea",
+      inputValue: note.text || "",
+      inputAttributes: { rows: 4 },
+      showCancelButton: true,
+      confirmButtonText: "Save",
+      inputValidator: (v) => (!String(v || "").trim() ? "Note required" : null),
+    });
+    if (!isConfirmed) return;
+    try {
+      const resp = await crmFetch(
+        `${API_ROUTES.DISPATCH}/${dispatchData.id}`,
+        "PUT",
+        {
+          updateManagerNoteId: note.id,
+          text: String(value).trim(),
+        },
+      );
+      const data = resp?.data ?? resp;
+      managerNotes = data.managerNotes ?? [];
+      processLogs = data.processLogs ?? processLogs;
+      dispatchData = { ...dispatchData, managerNotes };
+      Swal.fire("Success", "Note updated", "success");
+    } catch (error) {
+      Swal.fire("Error", error.message || "Could not update note", "error");
+    }
+  }
+
+  async function saveCloseOutCrm() {
+    if (!dispatchData?.id) return;
+    try {
+      closeOutLoading = true;
+      const resp = await crmFetch(
+        `${API_ROUTES.DISPATCH}/${dispatchData.id}`,
+        "PUT",
+        {
+          saveCloseOut: true,
+          reviewDone: !!closeOutForm.reviewDone,
+          reviewNote: closeOutForm.reviewNote || "",
+          videoUrl: closeOutForm.videoUrl || "",
+          finalClientDone: !!closeOutForm.finalClientDone,
+          finalClientNote: closeOutForm.finalClientNote || "",
+        },
+      );
+      const data = resp?.data ?? resp;
+      dispatchData = { ...dispatchData, ...data };
+      if (data.processLogs) processLogs = data.processLogs;
+      syncCloseOutForm(data);
+      showCloseOutModal = false;
+      Swal.fire("Success", "Close-out saved", "success");
+    } catch (error) {
+      Swal.fire("Error", error.message || "Could not save close-out", "error");
+    } finally {
+      closeOutLoading = false;
+    }
+  }
+
+  let closeOutForm = {
+    reviewDone: false,
+    reviewNote: "",
+    videoUrl: "",
+    finalClientDone: false,
+    finalClientNote: "",
+  };
+
+  function syncCloseOutForm(d) {
+    closeOutForm = {
+      reviewDone: !!d?.reviewDone,
+      reviewNote: d?.reviewNote || "",
+      videoUrl: d?.videoUrl || "",
+      finalClientDone: !!d?.finalClientDone,
+      finalClientNote: d?.finalClientNote || "",
+    };
+  }
+
+  async function saveManagerNote() {
+    if (!dispatchData?.id || !managerNoteDraft.trim()) return;
+    try {
+      managerNoteLoading = true;
+      const resp = await crmFetch(
+        `${API_ROUTES.DISPATCH}/${dispatchData.id}`,
+        "PUT",
+        { addManagerNote: true, text: managerNoteDraft.trim() },
+      );
+      const data = resp?.data ?? resp;
+      managerNotes = data.managerNotes ?? [];
+      processLogs = data.processLogs ?? processLogs;
+      managerNoteDraft = "";
+      dispatchData = { ...dispatchData, managerNotes };
+      Swal.fire("Success", "Note added", "success");
+    } catch (error) {
+      Swal.fire("Error", error.message || "Could not add note", "error");
+    } finally {
+      managerNoteLoading = false;
+    }
+  }
+
   async function saveInstallAssignees() {
+    if (!canManageInstallHead) {
+      Swal.fire(
+        "Access denied",
+        "Only Install Manager can assign workshop employees.",
+        "warning",
+      );
+      return;
+    }
     if (!dispatchData?.id) {
       Swal.fire(
         "Warning",
@@ -594,6 +954,18 @@
     try {
       installLoading = true;
       formErrors = {};
+      // Keep Head in crew
+      if (
+        headEmployeeId &&
+        !(installForm.employees || []).some(
+          (id) => String(id) === String(headEmployeeId),
+        )
+      ) {
+        installForm.employees = [
+          ...(installForm.employees || []),
+          headEmployeeId,
+        ];
+      }
       const fd = new FormData();
       installForm.employees.forEach((id) => fd.append("employees", id));
       fd.append(
@@ -623,6 +995,8 @@
       }
       syncForms(dispatchData);
       dispatchedDetailsStore.set(dispatchData);
+      closeDropdown("install-view");
+      closeDropdown("install");
       Swal.fire("Success", resp.message || "Assignees updated", "success");
     } catch (error) {
       const ve = parseValidationErrors(error);
@@ -1405,6 +1779,24 @@
                   >{/each}
               </select>
             </div>
+            <div class="sm:col-span-2 lg:col-span-3">
+              <label class={lc}>Basic requirement</label>
+              <textarea
+                class={ic}
+                rows="2"
+                placeholder="Site / install requirements..."
+                bind:value={installForm.basicRequirement}
+              ></textarea>
+            </div>
+            <div class="sm:col-span-2 lg:col-span-3">
+              <label class={lc}>Contact details</label>
+              <textarea
+                class={ic}
+                rows="2"
+                placeholder="Site contact name, phone, address notes..."
+                bind:value={installForm.contactDetails}
+              ></textarea>
+            </div>
             {#each REQUIREMENTS as req}
               <div>
                 <label class={lc}>{req.label}</label>
@@ -1416,8 +1808,12 @@
               </div>
             {/each}
 
+            {#if canManageInstallHead}
             <div class="sm:col-span-2 lg:col-span-3">
               <label class={lc}>Assign Employees</label>
+              <p class="text-[10px] text-gray-400 mb-1.5">
+                Workshop users · save crew here or on the Installation view, then pick one as Head
+              </p>
               {#if installForm.employees.length > 0}
                 <div class="flex flex-wrap gap-1.5 mb-2">
                   {#each selectedLabels(installForm.employees) as emp}
@@ -1426,23 +1822,32 @@
                     >
                       <span
                         class="w-4 h-4 rounded-full bg-indigo-200 flex items-center justify-center text-[9px] font-bold text-indigo-700 shrink-0"
-                        >{emp.username.charAt(0)}</span
+                        >{(emp.username || emp.name || "?").charAt(0)}</span
                       >
-                      {emp.username}
-                      <button
-                        type="button"
-                        on:click={() =>
-                          (installForm.employees = toggleEmployee(
-                            installForm.employees,
-                            emp._id,
-                          ))}
-                        class="ml-0.5 text-indigo-400 hover:text-indigo-700 leading-none"
-                        >×</button
-                      >
+                      {emp.username || emp.name || emp._id}
+                      {#if isInstallHead(emp._id)}
+                        <span
+                          class="text-[9px] uppercase tracking-wide text-amber-700 bg-amber-50 border border-amber-200 px-1 rounded"
+                          >Head</span
+                        >
+                      {/if}
+                      {#if canEditAssignees && !isInstallHead(emp._id)}
+                        <button
+                          type="button"
+                          on:click={() =>
+                            (installForm.employees = toggleInstallCrew(
+                              installForm.employees,
+                              emp._id,
+                            ))}
+                          class="ml-0.5 text-indigo-400 hover:text-indigo-700 leading-none"
+                          >×</button
+                        >
+                      {/if}
                     </span>
                   {/each}
                 </div>
               {/if}
+              {#if canEditAssignees}
               <div class="relative">
                 <button
                   type="button"
@@ -1452,7 +1857,7 @@
                   <span class="text-gray-400"
                     >{installForm.employees.length
                       ? `${installForm.employees.length} selected`
-                      : "Select employees..."}</span
+                      : "Select workshop employees..."}</span
                   >
                   <svg
                     class="w-4 h-4 text-gray-400 transition-transform"
@@ -1477,16 +1882,23 @@
                     on:click|stopPropagation
                   >
                     {#each users as emp}
-                      {@const checked = installForm.employees.includes(emp._id)}
+                      {@const checked = (installForm.employees || []).some(
+                        (id) => String(id) === String(emp._id),
+                      )}
+                      {@const lockedHead = checked && isInstallHead(emp._id)}
                       <button
                         type="button"
+                        disabled={lockedHead}
+                        title={lockedHead
+                          ? "Head cannot be removed — change Head first"
+                          : ""}
                         on:click={() => {
-                          installForm.employees = toggleEmployee(
+                          installForm.employees = toggleInstallCrew(
                             installForm.employees,
                             emp._id,
                           );
                         }}
-                        class="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition text-left"
+                        class="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition text-left disabled:opacity-60 disabled:cursor-not-allowed"
                         class:bg-indigo-50={checked}
                       >
                         <span
@@ -1506,7 +1918,7 @@
                         </span>
                         <span
                           class="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-700 shrink-0"
-                          >{emp.username.charAt(0)}</span
+                          >{(emp.username || "?").charAt(0)}</span
                         >
                         <div class="min-w-0">
                           <p
@@ -1515,7 +1927,7 @@
                             {emp.username}
                           </p>
                           <p class="text-xs text-gray-400 truncate mb-0">
-                            {emp.email}
+                            {emp.email || ""}
                           </p>
                         </div>
                       </button>
@@ -1523,12 +1935,16 @@
                     {#if users.length === 0}<p
                         class="px-4 py-3 text-sm text-gray-400"
                       >
-                        No employees found
+                        No workshop employees found
                       </p>{/if}
                   </div>
                 {/if}
               </div>
+              {:else if installForm.employees.length === 0}
+                <p class="text-xs text-gray-400">No employees assigned yet</p>
+              {/if}
             </div>
+            {/if}
 
             <!-- Image upload -->
             <div class="sm:col-span-2 lg:col-span-3">
@@ -1611,16 +2027,17 @@
             >
             <button
               on:click={saveInstall}
-              disabled={installLoading || installForm.employees.length === 0}
+              disabled={installLoading ||
+                (canManageInstallHead && installForm.employees.length === 0)}
               class="px-4 py-2 text-xs font-semibold text-white rounded-lg transition"
               class:bg-indigo-300={installLoading ||
-                installForm.employees.length === 0}
+                (canManageInstallHead && installForm.employees.length === 0)}
               class:cursor-not-allowed={installLoading ||
-                installForm.employees.length === 0}
+                (canManageInstallHead && installForm.employees.length === 0)}
               class:bg-indigo-600={!installLoading &&
-                installForm.employees.length > 0}
+                !(canManageInstallHead && installForm.employees.length === 0)}
               class:hover:bg-indigo-700={!installLoading &&
-                installForm.employees.length > 0}
+                !(canManageInstallHead && installForm.employees.length === 0)}
             >
               {installLoading ? "Saving…" : "Save Changes"}
             </button>
@@ -1665,26 +2082,313 @@
               </div>
             {/each}
           </div>
-          {#if (dispatchData?.employees ?? []).length > 0}
-            <div class="mb-3">
-              <p class="mb-1.5 text-[11px] font-semibold text-gray-500">Assigned Employees</p>
-              <div class="flex flex-wrap gap-1.5">
-                {#each (dispatchData.employeesDetails?.length
-                  ? dispatchData.employeesDetails
-                  : selectedLabels(dispatchData.employees)) as emp}
+          {#if canManageInstallHead}
+          <div class="mb-3 p-3 rounded-lg border border-indigo-100 bg-white">
+            <div class="flex items-start justify-between gap-2 mb-1.5">
+              <div>
+                <p class="mb-0.5 text-[11px] font-semibold text-indigo-800">
+                  Assign workshop employees
+                </p>
+                <p class="text-[10px] text-gray-500">
+                  Select the install crew first, then choose one of them as Head below.
+                </p>
+              </div>
+              {#if canEditAssignees}
+                <button
+                  type="button"
+                  on:click={saveInstallAssignees}
+                  disabled={installLoading || installForm.employees.length === 0}
+                  class="shrink-0 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {installLoading ? "Saving…" : "Save crew"}
+                </button>
+              {/if}
+            </div>
+
+            {#if installForm.employees.length > 0}
+              <div class="flex flex-wrap gap-1.5 mb-2">
+                {#each selectedLabels(installForm.employees) as emp}
                   <span
-                    class="flex items-center gap-1.5 pl-1 pr-2.5 py-0.5 bg-indigo-50 text-indigo-800 rounded-full text-xs font-medium"
+                    class="flex items-center gap-1.5 pl-1.5 pr-2 py-1 bg-indigo-50 border border-indigo-200 text-indigo-800 rounded-full text-xs font-medium"
                   >
                     <span
-                      class="w-4 h-4 rounded-full bg-indigo-200 flex items-center justify-center text-[9px] font-bold text-indigo-700"
+                      class="w-4 h-4 rounded-full bg-indigo-200 flex items-center justify-center text-[9px] font-bold text-indigo-700 shrink-0"
                       >{(emp.username || emp.name || "?").charAt(0)}</span
                     >
                     {emp.username || emp.name || emp._id}
+                    {#if isInstallHead(emp._id)}
+                      <span
+                        class="text-[9px] uppercase tracking-wide text-amber-700 bg-amber-50 border border-amber-200 px-1 rounded"
+                        >Head</span
+                      >
+                    {/if}
+                    {#if canEditAssignees && !isInstallHead(emp._id)}
+                      <button
+                        type="button"
+                        on:click={() =>
+                          (installForm.employees = toggleInstallCrew(
+                            installForm.employees,
+                            emp._id,
+                          ))}
+                        class="ml-0.5 text-indigo-400 hover:text-indigo-700 leading-none"
+                        >×</button
+                      >
+                    {/if}
                   </span>
                 {/each}
               </div>
+            {:else}
+              <p class="text-xs text-gray-400 mb-2">No workshop employees assigned yet</p>
+            {/if}
+
+            {#if canEditAssignees}
+              <div class="relative">
+                <button
+                  type="button"
+                  on:click={() => toggleDropdown("install-view")}
+                  class="w-full flex items-center justify-between px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 hover:bg-white transition text-left"
+                >
+                  <span class="text-gray-400"
+                    >{installForm.employees.length
+                      ? `${installForm.employees.length} selected`
+                      : "Select workshop employees..."}</span
+                  >
+                  <svg
+                    class="w-4 h-4 text-gray-400 transition-transform"
+                    class:rotate-180={dropdownOpen["install-view"]}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M19 9l-7 7-7-7"
+                    />
+                  </svg>
+                </button>
+                {#if dropdownOpen["install-view"]}
+                  <!-- svelte-ignore a11y-click-events-have-key-events -->
+                  <!-- svelte-ignore a11y-no-static-element-interactions -->
+                  <div
+                    class="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-52 overflow-y-auto"
+                    on:click|stopPropagation
+                  >
+                    {#each users as emp}
+                      {@const checked = (installForm.employees || []).some(
+                        (id) => String(id) === String(emp._id),
+                      )}
+                      {@const lockedHead = checked && isInstallHead(emp._id)}
+                      <button
+                        type="button"
+                        disabled={lockedHead}
+                        title={lockedHead
+                          ? "Head cannot be removed — change Head first"
+                          : ""}
+                        on:click={() => {
+                          installForm.employees = toggleInstallCrew(
+                            installForm.employees,
+                            emp._id,
+                          );
+                        }}
+                        class="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition text-left disabled:opacity-60 disabled:cursor-not-allowed"
+                        class:bg-indigo-50={checked}
+                      >
+                        <span
+                          class="w-4 h-4 rounded border flex items-center justify-center shrink-0 transition"
+                          class:bg-indigo-600={checked}
+                          class:border-indigo-600={checked}
+                          class:border-gray-300={!checked}
+                        >
+                          {#if checked}<svg
+                              class="w-2.5 h-2.5 text-white"
+                              fill="none"
+                              viewBox="0 0 12 12"
+                              stroke="currentColor"
+                              stroke-width="2.5"
+                              ><path d="M1 6l3.5 3.5L11 2" /></svg
+                            >{/if}
+                        </span>
+                        <span
+                          class="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-700 shrink-0"
+                          >{(emp.username || "?").charAt(0)}</span
+                        >
+                        <div class="min-w-0">
+                          <p class="text-sm font-medium text-gray-800 truncate mb-0">
+                            {emp.username}
+                          </p>
+                          <p class="text-xs text-gray-400 truncate mb-0">
+                            {emp.email || ""}
+                          </p>
+                        </div>
+                      </button>
+                    {/each}
+                    {#if users.length === 0}
+                      <p class="px-4 py-3 text-sm text-gray-400">
+                        No workshop employees found
+                      </p>
+                    {/if}
+                  </div>
+                {/if}
+              </div>
+            {/if}
+          </div>
+          {/if}
+
+          {#if canManageInstallHead}
+          <div class="mb-3 p-3 rounded-lg border border-indigo-100 bg-indigo-50/40">
+            <div class="flex items-start justify-between gap-2 mb-1.5">
+              <div>
+                <p class="text-[11px] font-semibold text-indigo-800">Installation Head (process login)</p>
+                <p class="text-[11px] text-gray-500 mt-0.5">
+                  Pick <b>one</b> workshop crew member. Creates/updates Installation App User — they sign in on ShipMate with <b>App User</b> login only (same email/password).
+                </p>
+              </div>
+              <button
+                type="button"
+                on:click={openHeadManagePopup}
+                disabled={headAssignLoading || !dispatchData?.id}
+                class="shrink-0 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {headAssignLoading
+                  ? "Saving…"
+                  : headCredsHint?.email
+                    ? "Manage login"
+                    : "Assign Head"}
+              </button>
+            </div>
+            {#if !(dispatchData?.employees ?? []).length && !installForm.employees.length}
+              <p class="text-xs text-amber-700 mb-1">
+                Assign workshop employees first, then choose Head.
+              </p>
+            {/if}
+            {#if headCredsHint?.email}
+              <div class="text-xs text-gray-700 bg-white border border-indigo-100 rounded-md p-2">
+                <div>Email: <b>{headCredsHint.email}</b></div>
+                {#if headCredsHint.password}
+                  <div>Password: <b>{headCredsHint.password}</b> <span class="text-amber-700">(shown once)</span></div>
+                {:else}
+                  <div class="text-gray-500">Password already issued — use Manage login to set a new one.</div>
+                {/if}
+                {#if headCredsHint.expiresAt}
+                  <div class="text-gray-500">Expires: {String(headCredsHint.expiresAt).slice(0, 19).replace("T", " ")}</div>
+                {/if}
+                {#if !dispatchData?.headAppUserId}
+                  <div class="text-amber-700 mt-1">
+                    App User not linked yet — open <b>Manage login</b> and save again (restart backend first if you just deployed).
+                  </div>
+                {:else}
+                  <div class="text-gray-500 mt-1">
+                    App User #{dispatchData.headAppUserId} (Installation role)
+                  </div>
+                {/if}
+              </div>
+            {:else}
+              <p class="text-xs text-gray-400">No Head login yet</p>
+            {/if}
+          </div>
+          {/if}
+
+          {#if dispatchData?.basicRequirement}
+            <div class="mb-2">
+              <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Basic requirement</p>
+              <p class="text-sm text-gray-800 whitespace-pre-wrap">{dispatchData.basicRequirement}</p>
             </div>
           {/if}
+          {#if dispatchData?.contactDetails}
+            <div class="mb-3">
+              <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Contact details</p>
+              <p class="text-sm text-gray-800 whitespace-pre-wrap">{dispatchData.contactDetails}</p>
+            </div>
+          {/if}
+
+          {#if canManageInstallHead && showPostInstallManager}
+          <div class="mb-3 flex flex-col sm:flex-row gap-2">
+            <div
+              class="flex-1 flex items-center justify-between gap-2 p-3 rounded-lg border border-gray-200 bg-gray-50"
+            >
+              <div class="min-w-0">
+                <p class="mb-0.5 text-[11px] font-semibold text-gray-700">
+                  Manager notes (history)
+                </p>
+                <p class="text-[11px] text-gray-500 truncate">
+                  {managerNotes.length
+                    ? `${managerNotes.length} note${managerNotes.length === 1 ? "" : "s"}`
+                    : "No notes yet"}
+                </p>
+              </div>
+              <button
+                type="button"
+                on:click={() => (showManagerNotesModal = true)}
+                class="shrink-0 px-3 py-1.5 text-xs font-semibold text-white bg-gray-700 rounded-lg hover:bg-gray-800"
+              >
+                Open notes
+              </button>
+            </div>
+            <div
+              class="flex-1 flex items-center justify-between gap-2 p-3 rounded-lg border border-emerald-100 bg-emerald-50/40"
+            >
+              <div class="min-w-0">
+                <p class="mb-0.5 text-[11px] font-semibold text-emerald-800">
+                  Close-out (review / video / final)
+                </p>
+                <p class="text-[11px] text-gray-500 truncate">
+                  {#if closeOutForm.finalClientDone}
+                    Final finish done
+                  {:else if closeOutForm.reviewDone}
+                    Review done
+                  {:else}
+                    Not started
+                  {/if}
+                </p>
+              </div>
+              <button
+                type="button"
+                on:click={() => {
+                  syncCloseOutForm(dispatchData);
+                  showCloseOutModal = true;
+                }}
+                class="shrink-0 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700"
+              >
+                Open close-out
+              </button>
+            </div>
+          </div>
+          {/if}
+
+          {#if canManageInstallHead}
+          <div class="mb-3 p-3 rounded-lg border border-slate-200 bg-slate-50">
+            <p class="mb-1.5 text-[11px] font-semibold text-slate-700">
+              Process logs (kept for future)
+            </p>
+            {#if processLogs.length}
+              <ul class="space-y-1.5 max-h-56 overflow-y-auto">
+                {#each [...processLogs].reverse() as log}
+                  <li class="text-xs bg-white border border-slate-100 rounded px-2 py-1.5">
+                    <div class="font-semibold text-slate-800">{log.title}</div>
+                    {#if log.detail}
+                      <div class="text-slate-600 whitespace-pre-wrap mt-0.5">{log.detail}</div>
+                    {/if}
+                    <div class="text-[10px] text-slate-400 mt-0.5">
+                      {log.createdBy || "System"} · {String(log.createdAt || "")
+                        .slice(0, 19)
+                        .replace("T", " ")}
+                      {#if log.type}
+                        · {String(log.type).replace(/_/g, " ")}
+                      {/if}
+                    </div>
+                  </li>
+                {/each}
+              </ul>
+            {:else}
+              <p class="text-xs text-slate-400">
+                No process logs yet — Head assign, daily updates, notes, and close-out will appear here.
+              </p>
+            {/if}
+          </div>
+          {/if}
+
           {#if (dispatchData?.images ?? []).length > 0}
             <div>
               <p class="mb-1.5 text-[11px] font-semibold text-gray-500">
@@ -1843,6 +2547,12 @@
                         <span class="text-sm font-semibold text-gray-800"
                           >Visit #{i + 1}</span
                         >
+                        {#if visit.byHead}
+                          <span
+                            class="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide bg-amber-50 text-amber-800 border border-amber-200"
+                            >Head update</span
+                          >
+                        {/if}
                         {#if visit.installationDate && !isEditing}
                           <span class="text-xs text-gray-400"
                             >{visit.installationDate}</span
@@ -2052,7 +2762,8 @@
                               rows="2"
                             />
                           </div>
-                          <!-- Employee multi-select -->
+                          <!-- Employee multi-select — Install Manager only -->
+                          {#if canManageInstallHead}
                           <div class="sm:col-span-2">
                             <label class={lc}>Assign Employees</label>
                             {#if visit.employees.length > 0}
@@ -2186,6 +2897,7 @@
                               {/if}
                             </div>
                           </div>
+                          {/if}
                         </div>
                         <div
                           class="flex justify-between mt-3 pt-3 border-t border-gray-100"
@@ -2288,7 +3000,37 @@
                         {#if visit.remark}
                           <div class="col-span-2 lg:col-span-4">
                             <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Remark</p>
-                            <p class="text-sm text-gray-800">{visit.remark}</p>
+                            <p class="text-sm text-gray-800 whitespace-pre-wrap">{visit.remark}</p>
+                          </div>
+                        {/if}
+                        {#if visit.challenges}
+                          <div class="col-span-2 lg:col-span-4">
+                            <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Challenges</p>
+                            <p class="text-sm text-amber-800 whitespace-pre-wrap">{visit.challenges}</p>
+                          </div>
+                        {/if}
+                        {#if (visit.images ?? []).length > 0}
+                          <div class="col-span-2 lg:col-span-4">
+                            <p class="mb-1.5 text-[11px] font-semibold text-gray-500">
+                              Photos ({visit.images.length})
+                            </p>
+                            <div class="flex flex-wrap gap-1.5">
+                              {#each visit.images as img}
+                                <a
+                                  href={installImgUrl(img)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  class="block w-14 h-14 rounded-md overflow-hidden border border-gray-200 hover:opacity-90 transition shrink-0"
+                                  title={img.originalName || img.fileName || "Photo"}
+                                >
+                                  <img
+                                    src={installImgUrl(img)}
+                                    alt={img.originalName || "Visit photo"}
+                                    class="w-full h-full object-cover"
+                                  />
+                                </a>
+                              {/each}
+                            </div>
                           </div>
                         {/if}
                         {#if visit.finalDesc}
@@ -2343,5 +3085,156 @@
         {/if}
     </section>
     {/if}
+  </div>
+{/if}
+
+{#if showManagerNotesModal}
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <!-- svelte-ignore a11y-no-static-element-interactions -->
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
+    on:click|self={() => (showManagerNotesModal = false)}
+  >
+    <div
+      class="w-full max-w-lg max-h-[85vh] overflow-y-auto bg-white rounded-xl shadow-xl border border-gray-200 p-4"
+      on:click|stopPropagation
+    >
+      <div class="flex items-start justify-between gap-2 mb-3">
+        <div>
+          <h3 class="text-sm font-semibold text-gray-800 mb-0">Manager notes</h3>
+          <p class="text-[11px] text-gray-500 mb-0">Client issues / follow-ups (history)</p>
+        </div>
+        <button
+          type="button"
+          class="text-gray-400 hover:text-gray-700 text-lg leading-none px-1"
+          on:click={() => (showManagerNotesModal = false)}
+          >×</button
+        >
+      </div>
+      {#if managerNotes.length}
+        <ul class="space-y-1.5 mb-3 max-h-48 overflow-y-auto">
+          {#each [...managerNotes].reverse() as note}
+            <li class="text-xs text-gray-700 bg-gray-50 border border-gray-100 rounded px-2 py-1.5">
+              <div class="flex justify-between gap-2">
+                <div class="text-gray-800 whitespace-pre-wrap flex-1">{note.text}</div>
+                <div class="flex flex-col gap-0.5 shrink-0">
+                  <button
+                    type="button"
+                    class="text-[10px] text-indigo-600"
+                    on:click={() => editManagerNote(note)}
+                    >Edit</button
+                  >
+                  <button
+                    type="button"
+                    class="text-[10px] text-red-500"
+                    on:click={() => deleteManagerNote(note.id)}
+                    >Delete</button
+                  >
+                </div>
+              </div>
+              <div class="text-[10px] text-gray-400 mt-0.5">
+                {note.createdBy || "Manager"} · {String(note.createdAt || "")
+                  .slice(0, 19)
+                  .replace("T", " ")}
+              </div>
+            </li>
+          {/each}
+        </ul>
+      {:else}
+        <p class="text-xs text-gray-400 mb-3">No notes yet</p>
+      {/if}
+      <textarea
+        class="{ic} bg-white mb-2"
+        rows="3"
+        placeholder="Client issue / follow-up note…"
+        bind:value={managerNoteDraft}
+      ></textarea>
+      <div class="flex justify-end gap-2">
+        <button
+          type="button"
+          on:click={() => (showManagerNotesModal = false)}
+          class="px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+          >Close</button
+        >
+        <button
+          type="button"
+          on:click={saveManagerNote}
+          disabled={managerNoteLoading || !managerNoteDraft.trim()}
+          class="px-3 py-1.5 text-xs font-semibold text-white bg-gray-700 rounded-lg hover:bg-gray-800 disabled:opacity-50"
+        >
+          {managerNoteLoading ? "Saving…" : "Add note"}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if showCloseOutModal}
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <!-- svelte-ignore a11y-no-static-element-interactions -->
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
+    on:click|self={() => (showCloseOutModal = false)}
+  >
+    <div
+      class="w-full max-w-lg max-h-[85vh] overflow-y-auto bg-white rounded-xl shadow-xl border border-gray-200 p-4"
+      on:click|stopPropagation
+    >
+      <div class="flex items-start justify-between gap-2 mb-3">
+        <div>
+          <h3 class="text-sm font-semibold text-emerald-800 mb-0">Close-out</h3>
+          <p class="text-[11px] text-gray-500 mb-0">Review / video / final finish with client</p>
+        </div>
+        <button
+          type="button"
+          class="text-gray-400 hover:text-gray-700 text-lg leading-none px-1"
+          on:click={() => (showCloseOutModal = false)}
+          >×</button
+        >
+      </div>
+      <label class="flex items-center gap-2 text-xs text-gray-700 mb-2">
+        <input type="checkbox" bind:checked={closeOutForm.reviewDone} />
+        Review done
+      </label>
+      <textarea
+        class="{ic} bg-white mb-2"
+        rows="2"
+        placeholder="Review notes…"
+        bind:value={closeOutForm.reviewNote}
+      ></textarea>
+      <label class="block text-[11px] font-semibold text-gray-600 mb-1">Video URL</label>
+      <input
+        type="url"
+        class="{ic} bg-white mb-2"
+        placeholder="https://…"
+        bind:value={closeOutForm.videoUrl}
+      />
+      <label class="flex items-center gap-2 text-xs text-gray-700 mb-2">
+        <input type="checkbox" bind:checked={closeOutForm.finalClientDone} />
+        Final finish with client
+      </label>
+      <textarea
+        class="{ic} bg-white mb-2"
+        rows="2"
+        placeholder="Final client notes…"
+        bind:value={closeOutForm.finalClientNote}
+      ></textarea>
+      <div class="flex justify-end gap-2 mt-1">
+        <button
+          type="button"
+          on:click={() => (showCloseOutModal = false)}
+          class="px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+          >Cancel</button
+        >
+        <button
+          type="button"
+          on:click={saveCloseOutCrm}
+          disabled={closeOutLoading}
+          class="px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+        >
+          {closeOutLoading ? "Saving…" : "Save close-out"}
+        </button>
+      </div>
+    </div>
   </div>
 {/if}

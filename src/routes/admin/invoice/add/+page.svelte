@@ -61,7 +61,7 @@
   let swiftCode = "";
   let currency = "INR";
   let paymentMethod = "Other";
-  let status = "Unpaid";
+  let status = "To Pay";
   let termsConditions = "";
   let remarks = "";
   let shipToSameAsBillTo = false;
@@ -579,7 +579,6 @@
                 <div>
                   <label class="form-label">Status</label>
                   <select class="form-select" bind:value={status}>
-                    <option value="Unpaid">Unpaid</option>
                     <option value="To Pay">To Pay</option>
                     <option value="COD">COD</option>
                     <option value="Paid">Paid</option>

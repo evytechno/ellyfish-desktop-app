@@ -319,6 +319,22 @@
                           <i class="ti ti-dashboard"></i><span>Dashboard</span>
                         </a>
                       </li>
+                      {#if ["master", "admin", "manager"].includes(currentUser?.role)}
+                        <li
+                          class:active={currentPath.startsWith(
+                            "/admin/shortcuts",
+                          )}
+                        >
+                          <a
+                            href="/admin/shortcuts"
+                            class:active={currentPath.startsWith(
+                              "/admin/shortcuts",
+                            )}
+                          >
+                            <i class="ti ti-layout-grid"></i><span>Shortcuts</span>
+                          </a>
+                        </li>
+                      {/if}
                     </ul>
                   </li>
 
@@ -615,6 +631,22 @@
                             <i class="ti ti-invoice"></i><span
                               >Invoice (PI)</span
                             >
+                          </a>
+                        </li>
+                        {/if}
+                        {#if ["master", "admin", "manager"].includes(currentUser?.role)}
+                        <li
+                          class:active={currentPath.startsWith(
+                            "/admin/installation",
+                          )}
+                        >
+                          <a
+                            href="/admin/installation"
+                            class:active={currentPath.startsWith(
+                              "/admin/installation",
+                            )}
+                          >
+                            <i class="ti ti-tool"></i><span>Installation</span>
                           </a>
                         </li>
                         {/if}

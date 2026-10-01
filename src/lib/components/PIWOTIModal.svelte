@@ -48,7 +48,7 @@
   let poDate           = null;
   let currency         = "INR";
   let paymentMethod    = "Other";
-  let piStatus         = "Unpaid";
+  let piStatus         = "To Pay";
   let priceTerms       = "";
   let swiftCode        = "";
   let termsConditions  = "";
@@ -144,7 +144,7 @@
   function piInCotermsByOptions(status) {
     const s = String(status || "").trim().toLowerCase();
     if (s === "paid") return inCotermsByPaid;
-    return inCotermsByToPay; // To Pay, COD, Unpaid, Partially Paid
+    return inCotermsByToPay; // To Pay, COD, Partially Paid
   }
 
   $: piAllowedInCotermsBy =
@@ -204,7 +204,11 @@
   }
 
   // ── Init on open ──────────────────────────────────────────────────────────
-  $: if (open && order) init();
+  let initSeq = 0;
+  $: if (open && order) {
+    const seq = ++initSeq;
+    init(seq);
+  }
 
   function today() { return new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split("T")[0]; }
 
@@ -228,18 +232,65 @@
     return parts.join(" — ");
   }
 
-  function init() {
+  /** Order detail often has empty companies cache — load if needed. */
+  async function ensureCompanies() {
+    let list = get(companiesAllStore) || [];
+    if (!Array.isArray(list) || list.length === 0) {
+      try {
+        list = await authApiFetch(`${API_ROUTES.COMPANY}/all`);
+        if (Array.isArray(list)) companiesAllStore.set(list);
+      } catch {
+        list = [];
+      }
+    }
+    companies = Array.isArray(list) ? list : [];
+    return companies;
+  }
+
+  /** Basic order payload may omit PI.company — fetch PI if needed. */
+  async function resolvePiCompanyId() {
+    let id = Number(pi?.company?.id ?? pi?.companyId ?? 0) || null;
+    if (id || !pi?.id) return id;
+    try {
+      const fullPi = await authApiFetch(`${API_ROUTES.ORDER_PAYMENT}/${pi.id}`);
+      return Number(fullPi?.company?.id ?? fullPi?.companyId ?? 0) || null;
+    } catch {
+      return null;
+    }
+  }
+
+  function applyCompanyId(id) {
+    const m = companies.find((c) => c.id === Number(id));
+    if (!m) return false;
+    companyId = m.id;
+    companyChange(m.id);
+    return true;
+  }
+
+  async function init(seq = initSeq) {
     step       = 1;
     formErrors = {};
     loading    = false;
     shipToSameAsBillTo = false;
 
     const currentUser = checkAuth();
-    companies = get(companiesAllStore) || [];
-    const targetCompanyId = preferredCompanyId || currentUser?.companyId;
-    if (!companyId && targetCompanyId) {
-      const m = companies.find(c => c.id === Number(targetCompanyId));
-      if (m) { companyId = m.id; companyChange(m.id); }
+    await ensureCompanies();
+    if (seq !== initSeq) return;
+
+    const piCompanyId =
+      type === "WO" ? await resolvePiCompanyId() : Number(pi?.company?.id ?? pi?.companyId ?? 0) || null;
+    if (seq !== initSeq) return;
+
+    // WO create: prefer company already set on the linked PI
+    const targetCompanyId =
+      (type === "WO" && piCompanyId) ||
+      preferredCompanyId ||
+      currentUser?.companyId;
+
+    if (type === "WO" && piCompanyId) {
+      applyCompanyId(piCompanyId);
+    } else if (!companyId && targetCompanyId) {
+      applyCompanyId(targetCompanyId);
     }
 
     if (type === "PI") {
@@ -249,7 +300,7 @@
       poNumber         = ""; poDate = null;
       currency         = order?.currency || "INR";
       paymentMethod    = "Other";
-      piStatus         = "Unpaid";
+      piStatus         = "To Pay";
       priceTerms       = order?.priceTerms || "";
       swiftCode        = "";
       termsConditions  = "";
@@ -283,8 +334,11 @@
 
     } else if (type === "WO") {
       workOrderDate        = today();
-      woOrderType          = "";
-      woPoNumber = "";
+      // Prefer PI orderType when creating WO from an order that already has a PI
+      woOrderType          = inferDocOrderType(
+        pi?.orderType, order?.category, order?.title, pi?.title,
+      );
+      woPoNumber           = "";
       dispatchAddress      = ""; dispatchPincode = "";
       transporterName      = "";
       packingType          = null; packingCharges = null;
@@ -843,7 +897,6 @@
                 <div class="col-md-4">
                   <label class="form-label fw-semibold" style="font-size:12px;">Status</label>
                   <select class="form-select form-select-sm" bind:value={piStatus}>
-                    <option value="Unpaid">Unpaid</option>
                     <option value="To Pay">To Pay</option>
                     <option value="COD">COD</option>
                     <option value="Paid">Paid</option>
@@ -1097,7 +1150,11 @@
               <div class="row g-3 mb-3">
                 <div class="col-md-4">
                   <label class="form-label fw-semibold" style="font-size:12px;">Company <span class="text-danger">*</span></label>
-                  <select class="form-select form-select-sm" class:is-invalid={formErrors.company} bind:value={companyId}>
+                  <select
+                    class="form-select form-select-sm"
+                    class:is-invalid={formErrors.company}
+                    bind:value={companyId}
+                    on:change={(e) => companyChange(e.target.value)}>
                     <option value={null}>— Select Company —</option>
                     {#each companies as c}<option value={c.id}>{c.name}</option>{/each}
                   </select>

@@ -35,9 +35,12 @@
 
   // Machine panel
   let machineCompletionDate = "";
+  let machineSalesCompletionDate = "";
+  let machineDispatchDate = "";
   let machineColor = "";
   let machineSize = "";
   let machineStage = "Meeting";
+  let machineStageSchedule = {};
   let machineSaving = false;
   let machineStageSaving = false;
   let machineMsg = "";
@@ -49,10 +52,16 @@
   let lightboxImages = [];
   let lightboxStart = 0;
   let showMachineModal = false;
+  let showScheduleModal = false;
   let machineModalError = "";
+  let scheduleModalError = "";
   let machineStageDraft = "Meeting";
   let machineRemarkDraft = "";
   let machineDateDraft = "";
+  let machineSalesDateDraft = "";
+  let machineDispatchDateDraft = "";
+  let machineScheduleDraft = {};
+  let machineScheduleBaseline = {};
   let machineColorDraft = "";
   let machineSizeDraft = "";
   let machinePhotoFiles = [];
@@ -60,6 +69,8 @@
   let machineModalBaseline = {
     stage: "Meeting",
     completionDate: "",
+    salesCompletionDate: "",
+    dispatchDate: "",
     color: "",
     size: "",
   };
@@ -96,7 +107,9 @@
   let workOrderId;
   $: workOrderId = $page.params.id;
 
-  $: stageEvents = (workOrder?.events || []).filter((e) => e.type === "stage");
+  $: stageEvents = (workOrder?.events || []).filter(
+    (e) => e.type === "stage" || e.type === "schedule" || e.type === "completion",
+  );
   $: statusEvents = Array.isArray(workOrder?.statusEvents)
     ? workOrder.statusEvents
     : [];
@@ -118,9 +131,47 @@
       return "";
     }
   }
+  function normalizeScheduleMap(raw) {
+    const out = {};
+    for (const st of MACHINE_STAGES) {
+      const v = toDateInput(raw?.[st]);
+      if (v) out[st] = v;
+    }
+    return out;
+  }
+  function schedulesEqual(a, b) {
+    for (const st of MACHINE_STAGES) {
+      if (String(a?.[st] || "") !== String(b?.[st] || "")) return false;
+    }
+    return true;
+  }
+  function formatUtcDate(d) {
+    if (!d) return "";
+    try {
+      return new Date(d).toLocaleDateString("en-IN", { dateStyle: "medium" });
+    } catch {
+      return "";
+    }
+  }
+  function plannedStageOverdue(stage, planned) {
+    if (!planned) return false;
+    const current = workOrder?.machine?.stage || machineStage;
+    const curIdx = MACHINE_STAGES.indexOf(current);
+    const stIdx = MACHINE_STAGES.indexOf(stage);
+    if (stIdx < 0) return false;
+    // Overdue if planned date passed and this stage is current or not yet reached
+    if (stIdx > curIdx) return false;
+    if (stIdx < curIdx) return false; // already passed
+    const end = new Date(planned);
+    end.setHours(23, 59, 59, 999);
+    return Date.now() > end.getTime();
+  }
   function syncMachineForm(wo) {
     const m = wo?.machine;
     machineCompletionDate = toDateInput(m?.completionDate);
+    machineSalesCompletionDate = toDateInput(m?.salesCompletionDate);
+    machineDispatchDate = toDateInput(m?.dispatchDate);
+    machineStageSchedule = normalizeScheduleMap(m?.stageSchedule);
     machineColor = m?.color || "";
     machineSize = m?.size || "";
     machineStage = m?.stage || "Meeting";
@@ -347,7 +398,10 @@
         },
       );
       if (res?.data?.machine) {
-        workOrder = { ...workOrder, machine: { ...(workOrder.machine || {}), ...res.data.machine } };
+        workOrder = {
+          ...workOrder,
+          machine: { ...(workOrder.machine || {}), ...res.data.machine },
+        };
       }
     }
     const attrs = await authApiFetch(
@@ -365,13 +419,55 @@
         ...workOrder,
         machine: {
           ...(workOrder.machine || {}),
-          color: attrs.data.color,
-          size: attrs.data.size,
+          ...attrs.data,
           completionDate:
-            attrs.data.completionDate ?? workOrder.machine?.completionDate ?? null,
+            attrs.data.completionDate ??
+            workOrder.machine?.completionDate ??
+            null,
         },
       };
     }
+  }
+
+  async function applySalesDates({ salesCompletionDate, dispatchDate }) {
+    const body = {};
+    if (salesCompletionDate !== undefined) {
+      body.salesCompletionDate = salesCompletionDate || null;
+    }
+    if (dispatchDate !== undefined) {
+      body.dispatchDate = dispatchDate || null;
+    }
+    const res = await authApiFetch(
+      `${API_ROUTES.WORK_ORDER}/${workOrderId}/sales-dates`,
+      {
+        method: "PUT",
+        data: JSON.stringify(body),
+      },
+    );
+    if (res?.data?.machine) {
+      workOrder = {
+        ...workOrder,
+        machine: { ...(workOrder.machine || {}), ...res.data.machine },
+      };
+    }
+    return res;
+  }
+
+  async function applyStageSchedule(schedule) {
+    const res = await authApiFetch(
+      `${API_ROUTES.WORK_ORDER}/${workOrderId}/stage-schedule`,
+      {
+        method: "PUT",
+        data: JSON.stringify({ schedule }),
+      },
+    );
+    if (res?.data?.machine) {
+      workOrder = {
+        ...workOrder,
+        machine: { ...(workOrder.machine || {}), ...res.data.machine },
+      };
+    }
+    return res;
   }
 
   function isHistoryImage(img) {
@@ -570,16 +666,44 @@
     const stage = workOrder.machine?.stage || machineStage || "Meeting";
     const completionDate =
       toDateInput(workOrder.machine?.completionDate) || machineCompletionDate || "";
+    const salesCompletionDate =
+      toDateInput(workOrder.machine?.salesCompletionDate) ||
+      machineSalesCompletionDate ||
+      "";
+    const dispatchDate =
+      toDateInput(workOrder.machine?.dispatchDate) || machineDispatchDate || "";
     const color = workOrder.machine?.color || machineColor || "";
     const size = workOrder.machine?.size || machineSize || "";
     machineStageDraft = stage;
     machineRemarkDraft = "";
     machineDateDraft = completionDate;
+    machineSalesDateDraft = salesCompletionDate;
+    machineDispatchDateDraft = dispatchDate;
     machineColorDraft = color;
     machineSizeDraft = size;
-    machineModalBaseline = { stage, completionDate, color, size };
+    machineModalBaseline = {
+      stage,
+      completionDate,
+      salesCompletionDate,
+      dispatchDate,
+      color,
+      size,
+    };
     clearMachinePhotos();
     showMachineModal = true;
+  }
+
+  function openStageScheduleModal() {
+    if (!workOrder?.id || machineSaving || machineStageSaving) return;
+    machineMsg = "";
+    machineErr = "";
+    scheduleModalError = "";
+    const stageSchedule = normalizeScheduleMap(
+      workOrder.machine?.stageSchedule || machineStageSchedule,
+    );
+    machineScheduleDraft = { ...stageSchedule };
+    machineScheduleBaseline = { ...stageSchedule };
+    showScheduleModal = true;
   }
 
   function closeMachineModal() {
@@ -587,6 +711,12 @@
     showMachineModal = false;
     machineModalError = "";
     clearMachinePhotos();
+  }
+
+  function closeScheduleModal() {
+    if (machineSaving) return;
+    showScheduleModal = false;
+    scheduleModalError = "";
   }
 
   function onMachinePhotosPick(e) {
@@ -621,18 +751,31 @@
     const stage = machineStageDraft || machineModalBaseline.stage;
     const remark = String(machineRemarkDraft || "").trim();
     const completionDate = String(machineDateDraft || "").trim();
+    const salesCompletionDate = String(machineSalesDateDraft || "").trim();
+    const dispatchDate = String(machineDispatchDateDraft || "").trim();
     const color = String(machineColorDraft || "").trim();
     const size = String(machineSizeDraft || "").trim();
     const files = machinePhotoFiles;
 
     const stageChanged = stage !== machineModalBaseline.stage;
+    const workshopDateChanged =
+      completionDate !== machineModalBaseline.completionDate;
+    const salesDatesChanged =
+      salesCompletionDate !== machineModalBaseline.salesCompletionDate ||
+      dispatchDate !== machineModalBaseline.dispatchDate;
     const attrsChanged =
-      completionDate !== machineModalBaseline.completionDate ||
       color !== machineModalBaseline.color ||
       size !== machineModalBaseline.size;
     const hasImages = files.length > 0;
 
-    if (!stageChanged && !remark && !attrsChanged && !hasImages) {
+    if (
+      !stageChanged &&
+      !remark &&
+      !workshopDateChanged &&
+      !salesDatesChanged &&
+      !attrsChanged &&
+      !hasImages
+    ) {
       machineModalError = "Change a field, add a remark, or attach images.";
       return;
     }
@@ -643,8 +786,24 @@
       if (stageChanged || remark || hasImages) {
         await applyMachineStage({ stage, remark: remark || undefined, files });
       }
-      if (attrsChanged) {
-        await applyMachineAttrs({ completionDate, color, size });
+      if (workshopDateChanged || attrsChanged) {
+        await applyMachineAttrs({
+          completionDate: workshopDateChanged ? completionDate : "",
+          color,
+          size,
+        });
+      }
+      if (salesDatesChanged) {
+        await applySalesDates({
+          salesCompletionDate:
+            salesCompletionDate !== machineModalBaseline.salesCompletionDate
+              ? salesCompletionDate
+              : undefined,
+          dispatchDate:
+            dispatchDate !== machineModalBaseline.dispatchDate
+              ? dispatchDate
+              : undefined,
+        });
       }
       syncMachineForm(workOrder);
       machineMsg = "Machine details saved.";
@@ -656,6 +815,36 @@
     } finally {
       machineSaving = false;
       machineStageSaving = false;
+    }
+  }
+
+  async function submitScheduleModal() {
+    if (!workOrder?.id || machineSaving) return;
+    scheduleModalError = "";
+    const schedule = normalizeScheduleMap(machineScheduleDraft);
+    if (schedulesEqual(schedule, machineScheduleBaseline)) {
+      scheduleModalError = "Change at least one planned stage date.";
+      return;
+    }
+    machineSaving = true;
+    try {
+      const res = await applyStageSchedule(
+        Object.keys(schedule).length ? schedule : null,
+      );
+      if (res?.data?.event && isMaster) {
+        workOrder = {
+          ...workOrder,
+          events: [...(workOrder.events || []), res.data.event],
+        };
+      }
+      syncMachineForm(workOrder);
+      machineMsg = "Stage schedule saved.";
+      showScheduleModal = false;
+    } catch (err) {
+      scheduleModalError = err?.message || "Failed to save stage schedule.";
+      machineErr = scheduleModalError;
+    } finally {
+      machineSaving = false;
     }
   }
 
@@ -1259,7 +1448,7 @@
             </div>
           </div>
 
-          <label class="form-label">Production stage <span class="text-danger">*</span></label>
+          <label class="form-label">Production stage <span class="text-danger">*</span> <span class="text-muted fw-normal">(workshop)</span></label>
           <div class="wo-st-opts mb-3">
             {#each MACHINE_STAGES as st}
               {@const style = MACHINE_STAGE_STYLE[st] || { bg: "#e5e7eb", color: "#374151" }}
@@ -1287,12 +1476,31 @@
           </div>
 
           <div class="mb-3">
-            <label class="form-label">Completion date</label>
+            <label class="form-label">Machine completion date <span class="text-muted fw-normal">(by workshop)</span></label>
             <input
               class="form-control"
               type="date"
               bind:value={machineDateDraft}
             />
+          </div>
+
+          <div class="row g-2 mb-3">
+            <div class="col-md-6">
+              <label class="form-label">Machine completion date <span class="text-muted fw-normal">(by sales)</span></label>
+              <input
+                class="form-control"
+                type="date"
+                bind:value={machineSalesDateDraft}
+              />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Machine dispatch date <span class="text-muted fw-normal">(by sales)</span></label>
+              <input
+                class="form-control"
+                type="date"
+                bind:value={machineDispatchDateDraft}
+              />
+            </div>
           </div>
 
           <div class="row g-2 mb-3">
@@ -1378,6 +1586,86 @@
             on:click={submitMachineModal}
           >
             {machineSaving || machineStageSaving ? "Saving…" : "Save details"}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if showScheduleModal && workOrder}
+  <div
+    class="modal fade show d-block"
+    tabindex="-1"
+    role="dialog"
+    style="background:rgba(0,0,0,0.5);z-index:1060;"
+    on:click|self={closeScheduleModal}
+  >
+    <div class="modal-dialog modal-dialog-centered" role="document">
+      <div class="modal-content">
+        <div class="modal-header py-2">
+          <h5 class="modal-title mb-0 fw-semibold">
+            <i class="ti ti-calendar-event me-2 text-primary"></i>Stage schedule
+          </h5>
+          <button
+            type="button"
+            class="btn-close"
+            aria-label="Close"
+            disabled={machineSaving}
+            on:click={closeScheduleModal}
+          ></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <div class="text-muted" style="font-size:12px;">Work order</div>
+            <div class="fw-semibold font-monospace">
+              {workOrder.workOrderNo || `WO #${workOrder.id}`}
+            </div>
+            <div class="text-muted mt-1" style="font-size:12px;">
+              Set planned dates per stage (separate from stage updates).
+            </div>
+          </div>
+          <div class="wo-st-schedule">
+            {#each MACHINE_STAGES as st}
+              <div class="wo-st-schedule__row">
+                <span class="wo-st-schedule__label">{st}</span>
+                <input
+                  class="form-control form-control-sm"
+                  type="date"
+                  value={machineScheduleDraft[st] || ""}
+                  on:change={(e) => {
+                    const v = e.currentTarget.value;
+                    if (v) machineScheduleDraft = { ...machineScheduleDraft, [st]: v };
+                    else {
+                      const next = { ...machineScheduleDraft };
+                      delete next[st];
+                      machineScheduleDraft = next;
+                    }
+                  }}
+                />
+              </div>
+            {/each}
+          </div>
+          {#if scheduleModalError}
+            <div class="alert alert-danger py-2 mb-0 mt-3" style="font-size:13px;">
+              {scheduleModalError}
+            </div>
+          {/if}
+        </div>
+        <div class="modal-footer py-2">
+          <button
+            type="button"
+            class="btn btn-light btn-sm"
+            disabled={machineSaving}
+            on:click={closeScheduleModal}
+          >Cancel</button>
+          <button
+            type="button"
+            class="btn btn-primary btn-sm"
+            disabled={machineSaving}
+            on:click={submitScheduleModal}
+          >
+            {machineSaving ? "Saving…" : "Save schedule"}
           </button>
         </div>
       </div>
@@ -1544,10 +1832,30 @@
 
         <dl class="wo-mach-meta">
           <div>
-            <dt>Completion date</dt>
+            <dt>Completion (workshop)</dt>
             <dd>
               {#if workOrder.machine?.completionDate}
-                {new Date(workOrder.machine.completionDate).toLocaleDateString("en-IN", { dateStyle: "medium" })}
+                {formatUtcDate(workOrder.machine.completionDate)}
+              {:else}
+                <span class="wo-mach-empty">Not set</span>
+              {/if}
+            </dd>
+          </div>
+          <div>
+            <dt>Completion (sales)</dt>
+            <dd>
+              {#if workOrder.machine?.salesCompletionDate}
+                {formatUtcDate(workOrder.machine.salesCompletionDate)}
+              {:else}
+                <span class="wo-mach-empty">Not set</span>
+              {/if}
+            </dd>
+          </div>
+          <div>
+            <dt>Dispatch (sales)</dt>
+            <dd>
+              {#if workOrder.machine?.dispatchDate}
+                {formatUtcDate(workOrder.machine.dispatchDate)}
               {:else}
                 <span class="wo-mach-empty">Not set</span>
               {/if}
@@ -1575,15 +1883,60 @@
           </div>
         </dl>
 
-        <button
-          type="button"
-          class="btn btn-outline-primary btn-sm w-100 wo-mach-edit-btn"
-          disabled={machineSaving || machineStageSaving}
-          on:click={openMachineDetailsModal}
-        >
-          <i class="ti ti-edit me-1"></i>
-          {machineSaving || machineStageSaving ? "Saving…" : "Edit machine details"}
-        </button>
+        <div class="wo-mach-schedule">
+          <div class="d-flex align-items-center justify-content-between gap-2">
+            <span class="wo-mach-label">Stage schedule</span>
+            <button
+              type="button"
+              class="btn btn-link btn-sm p-0"
+              style="font-size:12px;font-weight:600;"
+              disabled={machineSaving || machineStageSaving}
+              on:click={openStageScheduleModal}
+            >
+              {Object.keys(normalizeScheduleMap(workOrder.machine?.stageSchedule)).length
+                ? "Edit"
+                : "Add"}
+            </button>
+          </div>
+          {#if Object.keys(normalizeScheduleMap(workOrder.machine?.stageSchedule)).length}
+            <ul class="wo-mach-schedule__list">
+              {#each MACHINE_STAGES as st}
+                {@const planned = normalizeScheduleMap(workOrder.machine?.stageSchedule)[st]}
+                {#if planned}
+                  <li class:is-overdue={plannedStageOverdue(st, planned)}>
+                    <span>{st}</span>
+                    <span>{formatUtcDate(planned)}</span>
+                  </li>
+                {/if}
+              {/each}
+            </ul>
+          {:else}
+            <div class="wo-mach-empty" style="margin-top:6px;">No schedule yet</div>
+          {/if}
+        </div>
+
+        <div class="d-grid gap-2">
+          <button
+            type="button"
+            class="btn btn-outline-primary btn-sm w-100 wo-mach-edit-btn"
+            disabled={machineSaving || machineStageSaving}
+            on:click={openMachineDetailsModal}
+          >
+            <i class="ti ti-edit me-1"></i>
+            {machineSaving || machineStageSaving ? "Saving…" : "Edit machine details"}
+          </button>
+          <button
+            type="button"
+            class="btn btn-outline-secondary btn-sm w-100 wo-mach-edit-btn"
+            disabled={machineSaving || machineStageSaving}
+            on:click={openStageScheduleModal}
+          >
+            <i class="ti ti-calendar-event me-1"></i>
+            {Object.keys(normalizeScheduleMap(workOrder.machine?.stageSchedule)).length
+              ? "Edit stage schedule"
+              : "Add stage schedule"}
+          </button>
+        </div>
       </section>
 
       {#if isMaster}
@@ -1600,7 +1953,7 @@
         <div class="wo-mach-history__title">
           <div class="wo-mach-history__heading">
             <i class="ti ti-timeline"></i>
-            <span>Stage history</span>
+            <span>Machine history</span>
             {#if stageEvents.length}
               <span class="wo-mach-history__count">{stageEvents.length}</span>
             {/if}
@@ -1614,7 +1967,11 @@
                 <div class="wo-hist-item__rail" aria-hidden="true">
                   <span
                     class="wo-hist-item__dot"
-                    style="background:{(MACHINE_STAGE_STYLE[ev.meta?.stage || workOrder.machine?.stage] || {}).bg || '#94a3b8'};"
+                    style="background:{ev.type === 'schedule'
+                      ? '#0ea5e9'
+                      : ev.type === 'completion'
+                        ? '#16a34a'
+                        : (MACHINE_STAGE_STYLE[ev.meta?.stage || workOrder.machine?.stage] || {}).bg || '#94a3b8'};"
                   ></span>
                   {#if i < stageEvents.length - 1}
                     <span class="wo-hist-item__line"></span>
@@ -1624,16 +1981,33 @@
                 <div class="wo-hist-item__body">
                   <div class="wo-hist-item__top">
                     <div class="wo-hist-item__badges">
-                      <span
-                        class="wo-hist-stage"
-                        style={stageBadgeStyle(ev.meta?.stage || workOrder.machine?.stage)}
-                      >
-                        {ev.meta?.stage || workOrder.machine?.stage || "—"}
-                      </span>
-                      {#if ev.meta?.previousStage && ev.meta?.stageChanged !== false && ev.meta?.previousStage !== ev.meta?.stage}
-                        <span class="wo-hist-chip">from {ev.meta.previousStage}</span>
-                      {:else if ev.meta?.stageChanged === false}
-                        <span class="wo-hist-chip wo-hist-chip--muted">same stage</span>
+                      {#if ev.type === "schedule"}
+                        <span class="wo-hist-stage" style="background:#0ea5e9;color:#fff;">
+                          Schedule
+                        </span>
+                        {#if Array.isArray(ev.meta?.changedStages) && ev.meta.changedStages.length}
+                          <span class="wo-hist-chip">{ev.meta.changedStages.join(", ")}</span>
+                        {/if}
+                      {:else if ev.type === "completion"}
+                        <span class="wo-hist-stage" style="background:#16a34a;color:#fff;">
+                          {ev.meta?.kind === "sales"
+                            ? "Sales completion"
+                            : ev.meta?.kind === "dispatch"
+                              ? "Dispatch"
+                              : "Workshop completion"}
+                        </span>
+                      {:else}
+                        <span
+                          class="wo-hist-stage"
+                          style={stageBadgeStyle(ev.meta?.stage || workOrder.machine?.stage)}
+                        >
+                          {ev.meta?.stage || workOrder.machine?.stage || "—"}
+                        </span>
+                        {#if ev.meta?.previousStage && ev.meta?.stageChanged !== false && ev.meta?.previousStage !== ev.meta?.stage}
+                          <span class="wo-hist-chip">from {ev.meta.previousStage}</span>
+                        {:else if ev.meta?.stageChanged === false}
+                          <span class="wo-hist-chip wo-hist-chip--muted">same stage</span>
+                        {/if}
                       {/if}
                     </div>
 
@@ -1647,16 +2021,18 @@
                       </time>
                       {#if isMaster}
                         <div class="wo-hist-actions">
-                          <button
-                            type="button"
-                            class="wo-hist-action"
-                            title="Add images"
-                            aria-label="Add images"
-                            disabled={historyBusyId === ev.id}
-                            on:click={() => triggerAddHistoryImages(ev.id)}
-                          >
-                            <i class="ti ti-photo-plus"></i>
-                          </button>
+                          {#if ev.type === "stage"}
+                            <button
+                              type="button"
+                              class="wo-hist-action"
+                              title="Add images"
+                              aria-label="Add images"
+                              disabled={historyBusyId === ev.id}
+                              on:click={() => triggerAddHistoryImages(ev.id)}
+                            >
+                              <i class="ti ti-photo-plus"></i>
+                            </button>
+                          {/if}
                           <button
                             type="button"
                             class="wo-hist-action wo-hist-action--danger"
@@ -1674,6 +2050,25 @@
 
                   {#if ev.remark}
                     <p class="wo-hist-remark">{ev.remark}</p>
+                  {/if}
+
+                  {#if ev.type === "schedule" && ev.meta?.schedule}
+                    <div class="wo-hist-schedule-diff text-muted" style="font-size:12px;margin-top:6px;">
+                      {#each MACHINE_STAGES as st}
+                        {#if (ev.meta?.changedStages || []).includes(st)}
+                          <div>
+                            {st}:
+                            {ev.meta?.previousSchedule?.[st]
+                              ? formatUtcDate(ev.meta.previousSchedule[st])
+                              : "—"}
+                            →
+                            {ev.meta?.schedule?.[st]
+                              ? formatUtcDate(ev.meta.schedule[st])
+                              : "cleared"}
+                          </div>
+                        {/if}
+                      {/each}
+                    </div>
                   {/if}
 
                   {#if Array.isArray(ev.images) && ev.images.length}
@@ -1725,8 +2120,8 @@
         {:else}
           <div class="wo-mach-history__empty">
             <i class="ti ti-history"></i>
-            <div>No stage history yet</div>
-            <small>Updates from Edit machine details will appear here.</small>
+            <div>No machine history yet</div>
+            <small>Stage, schedule, and completion updates will appear here.</small>
           </div>
         {/if}
       </section>
@@ -2007,7 +2402,7 @@
   }
   .wo-mach-meta > div {
     display: grid;
-    grid-template-columns: 118px 1fr;
+    grid-template-columns: 140px 1fr;
     gap: 8px;
     font-size: 13px;
     align-items: baseline;
@@ -2025,6 +2420,52 @@
   .wo-mach-empty {
     color: #94a3b8;
     font-weight: 500;
+  }
+  .wo-mach-schedule {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #e5e7eb;
+  }
+  .wo-mach-schedule__list {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .wo-mach-schedule__list li {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 12px;
+    color: #374151;
+  }
+  .wo-mach-schedule__list li.is-overdue {
+    color: #b91c1c;
+    font-weight: 600;
+  }
+  .wo-st-schedule {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 220px;
+    overflow: auto;
+    padding: 8px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #f9fafb;
+  }
+  .wo-st-schedule__row {
+    display: grid;
+    grid-template-columns: minmax(110px, 1fr) minmax(140px, 1.2fr);
+    gap: 8px;
+    align-items: center;
+  }
+  .wo-st-schedule__label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #4b5563;
   }
   .wo-mach-edit-btn {
     border-radius: 10px;

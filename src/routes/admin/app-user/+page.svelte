@@ -55,6 +55,22 @@
       render: (val) => val || "—",
     },
     {
+      key: "appRole",
+      label: "Role",
+      render: (val) => {
+        const r = String(val || "office");
+        const cls =
+          r === "installation"
+            ? "bg-success-subtle text-success"
+            : r === "factory"
+              ? "bg-warning-subtle text-warning"
+              : r === "sales"
+                ? "bg-info-subtle text-info"
+                : "bg-secondary-subtle text-secondary";
+        return `<span class="badge border ${cls} text-capitalize">${r}</span>`;
+      },
+    },
+    {
       key: "workshopEmployeeId",
       label: "Workshop",
       render: (val) =>

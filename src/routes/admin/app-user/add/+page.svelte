@@ -12,6 +12,10 @@
     fetchWorkshopSalesEmployees,
     workshopEmployeeLabel,
   } from "$lib/api/workshopSales";
+  import {
+    APP_ROLE_OPTIONS,
+    permissionsForAppRole,
+  } from "$lib/constants/appUserRoles";
 
   let loadingData = true;
   let loading = false;
@@ -29,16 +33,11 @@
   let workshopLoadError = "";
   let appRole = "office";
 
-  let permissions = {
-    sample_view: true,
-    sample_update: true,
-    sample_hold: true,
-    work_order_view: true,
-    work_order_update: true,
-    work_order_hold: true,
-    installation_view: true,
-    installation_update: true,
-  };
+  let permissions = permissionsForAppRole("office");
+
+  $: if (appRole) {
+    permissions = permissionsForAppRole(appRole);
+  }
 
   function onWorkshopPick() {
     if (!workshopEmployeeId) return;
@@ -78,6 +77,14 @@
     event.preventDefault();
     errorMessage = "";
     formErrors = {};
+    if (appRole === "installation" && !workshopEmployeeId) {
+      Swal.fire(
+        "Workshop required",
+        "Installation role must be linked to a workshop employee.",
+        "warning",
+      );
+      return;
+    }
     loading = true;
 
     try {
@@ -88,7 +95,7 @@
           email,
           password,
           mobile,
-          permissions,
+          permissions: permissionsForAppRole(appRole),
           workshopEmployeeId: workshopEmployeeId || null,
           appRole,
         },
@@ -99,7 +106,7 @@
       const validationErrors = errorHandle(error);
       if (validationErrors && typeof validationErrors === "object")
         formErrors = validationErrors;
-      else errorMessage = "An unexpected error occurred.";
+      else errorMessage = error?.message || "An unexpected error occurred.";
     } finally {
       loading = false;
     }
@@ -148,7 +155,12 @@
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div class="sm:col-span-2">
                   <label class="form-label" for="workshopEmployeeId"
-                    >Workshop employee <span class="text-muted">(optional)</span></label
+                    >Workshop employee
+                    {#if appRole === "installation"}
+                      <span class="text-danger">*</span>
+                    {:else}
+                      <span class="text-muted">(optional)</span>
+                    {/if}</label
                   >
                   <select
                     class="form-select"
@@ -212,14 +224,17 @@
                 <div>
                   <label class="form-label" for="appRole">Job role</label>
                   <select class="form-select" id="appRole" bind:value={appRole}>
-                    <option value="office">Office</option>
-                    <option value="factory">Factory</option>
-                    <option value="sales">Sales</option>
-                    <option value="installation">Installation</option>
+                    {#each APP_ROLE_OPTIONS as opt}
+                      <option value={opt.value}>{opt.label}</option>
+                    {/each}
                   </select>
-                  <small class="text-muted"
-                    >Controls which module notifications this user receives</small
-                  >
+                  <small class="text-muted">
+                    {APP_ROLE_OPTIONS.find((o) => o.value === appRole)?.hint ||
+                      ""}
+                    {#if appRole === "installation"}
+                      · Permissions auto-set to Installation only
+                    {/if}
+                  </small>
                 </div>
 
                 <div>
@@ -287,7 +302,16 @@
             <!-- Right: permissions -->
             <div>
               <div class="fw-semibold mb-2">Permissions</div>
-              <AppUserPermissionsEditor bind:permissions />
+              {#if appRole === "installation"}
+                <p class="text-xs text-muted mb-2">
+                  Installation role: only Installation view/update. Sample & Work
+                  Order access stays off.
+                </p>
+              {/if}
+              <AppUserPermissionsEditor
+                bind:permissions
+                locked={appRole === "installation"}
+              />
             </div>
           </div>
 

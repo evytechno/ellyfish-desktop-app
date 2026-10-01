@@ -1,6 +1,8 @@
 <script>
   /** @type {Record<string, boolean>} */
   export let permissions;
+  /** When true (Installation role), toggles are disabled — role owns permissions */
+  export let locked = false;
 
   const groups = [
     {
@@ -35,10 +37,12 @@
   ];
 
   function toggle(key) {
+    if (locked) return;
     permissions = { ...permissions, [key]: !permissions[key] };
   }
 
   function setGroup(group, on) {
+    if (locked) return;
     const next = { ...permissions };
     for (const item of group.items) next[item.key] = on;
     permissions = next;
@@ -72,6 +76,7 @@
           <button
             type="button"
             class="btn btn-sm {groupAllOn(group) ? 'btn-soft-danger' : 'btn-soft-secondary'}"
+            disabled={locked}
             on:click={() => setGroup(group, !groupAllOn(group))}
           >
             {groupAllOn(group) ? "Clear" : "All"}
@@ -83,6 +88,8 @@
               type="button"
               class="app-perm__chip"
               class:is-on={permissions[item.key]}
+              class:is-locked={locked}
+              disabled={locked}
               on:click={() => toggle(item.key)}
             >
               <span class="app-perm__check">
@@ -199,6 +206,11 @@
     border-color: #f87171;
     background: #fff1f2;
     box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.08);
+  }
+  .app-perm__chip:disabled,
+  .app-perm__chip.is-locked {
+    opacity: 0.85;
+    cursor: not-allowed;
   }
   .app-perm__check {
     width: 1.25rem;
