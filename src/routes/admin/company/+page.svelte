@@ -14,13 +14,13 @@
   let currentUser;
   onMount(() => {
     currentUser = checkAuth();
-    if (currentUser?.role === "user") {
+    if (currentUser?.role !== "master") {
       loadingData = false;
       loading = false;
       Swal.fire({
         icon: "warning",
         title: "Access Denied",
-        text: "You are not authorized to view this page.",
+        text: "Only master can open the Companies list. Company dropdowns on other pages still work.",
         confirmButtonText: "Go Back",
       }).then(() => {
         window.history.back();
@@ -32,6 +32,24 @@
       firstLoad = true;
     }, 500);
   });
+
+  $: isMaster = currentUser?.role === "master";
+  $: actions = isMaster
+    ? [
+        {
+          label: "Edit",
+          icon: "ti ti-edit",
+          onClick: (id) => editRecord(id),
+          color: "btn-soft-info",
+        },
+        {
+          label: "Delete",
+          icon: "ti ti-trash",
+          onClick: (id) => deleteRecord(id),
+          color: "btn-soft-danger",
+        },
+      ]
+    : [];
 
   let refresh = false;
   let debounceRefreshTimeout;
@@ -77,20 +95,6 @@
     },
   ];
 
-  let actions = [
-    {
-      label: "Edit",
-      icon: "ti ti-edit",
-      onClick: (id) => editRecord(id),
-      color: "btn-soft-info",
-    },
-    {
-      label: "Delete",
-      icon: "ti ti-trash",
-      onClick: (id) => deleteRecord(id),
-      color: "btn-soft-danger",
-    },
-  ];
   async function fetchCompanies() {
     loadingData = true;
     try {
@@ -217,7 +221,7 @@
             <h5>Companies List</h5>
           </div>
           <div class="flex items-center gap-2 flex-wrap">
-            {#if currentUser?.role != "user"}
+            {#if isMaster}
               <div
                 class="d-flex align-items-center shadow p-1 rounded border view-icons bg-white"
               >
@@ -228,10 +232,10 @@
                   <i class="ti ti-trash"></i>
                 </button>
               </div>
+              <a href="/admin/company/add" class="btn btn-primary">
+                <i class="ti ti-square-rounded-plus-filled me-1"></i>Add Company
+              </a>
             {/if}
-            <a href="/admin/company/add" class="btn btn-primary">
-              <i class="ti ti-square-rounded-plus-filled me-1"></i>Add Company
-            </a>
           </div>
         {/if}
       </div>

@@ -68,6 +68,9 @@
           <div>
             <h6 class="mod-card__title">{group.label}</h6>
             <span class="mod-card__meta">{groupSummary(group.modules)}</span>
+            {#if group.hint}
+              <p class="mod-card__hint mb-0">{group.hint}</p>
+            {/if}
           </div>
           <div class="mod-card__bulk" title="Apply to all modules in this group">
             {#each LEVELS as opt}
@@ -160,6 +163,15 @@
     margin-top: 2px;
     font-size: 11px;
     color: #94a3b8;
+  }
+  .mod-card__hint {
+    margin: 6px 0 0;
+    font-size: 11px;
+    line-height: 1.35;
+    color: #64748b;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0;
   }
   .mod-card__bulk {
     display: flex;

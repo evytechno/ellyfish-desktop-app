@@ -51,13 +51,13 @@
     currentUser = checkAuth();
     loadingData = true;
 
-    if (currentUser?.role === "user") {
+    if (currentUser?.role !== "master") {
       loadingData = false;
       loading = false;
       Swal.fire({
         icon: "warning",
         title: "Access Denied",
-        text: "You are not authorized to view this page.",
+        text: "Only master can manage companies.",
         confirmButtonText: "Go Back",
       }).then(() => {
         window.history.back();

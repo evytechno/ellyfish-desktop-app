@@ -7,7 +7,7 @@
   import { errorHandle } from "$lib/utils/errorHandle";
   import Loader from "$lib/components/Loader.svelte";
   import { onMount } from "svelte";
-  import { checkAuth } from "$lib/utils/auth";
+  import { checkAuth, canAccess } from "$lib/utils/auth";
 
   let loadingData = true;
   let firstLoad = false;
@@ -29,12 +29,15 @@
 
   onMount(async () => {
     currentUser = checkAuth();
-    if (!["master", "admin", "manager"].includes(currentUser?.role)) {
+    if (
+      !["master", "admin", "manager"].includes(currentUser?.role) ||
+      !canAccess("installation", "view", currentUser)
+    ) {
       loadingData = false;
       Swal.fire({
         icon: "warning",
         title: "Access Denied",
-        text: "Only Installation Managers (master / admin / manager) can open this queue.",
+        text: "You do not have access to the Installation module.",
         confirmButtonText: "Go Back",
       }).then(() => window.history.back());
       return;

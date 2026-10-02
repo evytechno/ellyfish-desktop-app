@@ -634,7 +634,7 @@
                           </a>
                         </li>
                         {/if}
-                        {#if ["master", "admin", "manager"].includes(currentUser?.role)}
+                        {#if ["master", "admin", "manager"].includes(currentUser?.role) && canAccess("installation", "view", currentUser)}
                         <li
                           class:active={currentPath.startsWith(
                             "/admin/installation",
@@ -689,6 +689,7 @@
                           </a>
                         </li>
                         {/if}
+                        {#if canAccess('feedback', 'view', currentUser)}
                         <li
                           class:active={currentPath === "/admin/feedback"}
                         >
@@ -699,6 +700,7 @@
                             <i class="ti ti-message-star"></i><span>Feedback</span>
                           </a>
                         </li>
+                        {/if}
                         {#if canAccess('user_payments', 'view', currentUser)}
                         <li
                           class:active={currentPath.startsWith(
@@ -783,6 +785,7 @@
                               </a>
                             </li>
                             {/if}
+                            {#if currentUser?.role === "master"}
                             <li
                               class:active={currentPath.startsWith(
                                 "/admin/company",
@@ -797,6 +800,7 @@
                                 <i class="ti ti-building"></i><span>Companies</span>
                               </a>
                             </li>
+                            {/if}
                             {#if canAccess('users', 'view', currentUser)}
                             <li
                               class:active={currentPath.startsWith("/admin/user") && !currentPath.startsWith("/admin/app-user")}

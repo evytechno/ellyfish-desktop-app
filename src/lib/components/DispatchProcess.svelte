@@ -6,16 +6,16 @@
   import { API_ROUTES } from "$lib/constants/apiRoutes";
   import { authApiFetch } from "$lib/api/client";
   import { fetchWorkshopSalesEmployees } from "$lib/api/workshopSales";
-  import { checkAuth } from "$lib/utils/auth";
+  import { checkAuth, canAccess } from "$lib/utils/auth";
 
   // ── Props ────────────────────────────────────────────────
   export let order = { workOrderNumber: "" };
 
   const crmUser = checkAuth();
   /** Install Manager actions: Head login + manager notes (not plain sales `user`) */
-  $: canManageInstallHead = ["master", "admin", "manager"].includes(
-    crmUser?.role || "",
-  );
+  $: canManageInstallHead =
+    ["master", "admin", "manager"].includes(crmUser?.role || "") &&
+    canAccess("installation", "view", crmUser);
 
   // ── Work-order status helpers ────────────────────────────
   // Statuses in progression order
@@ -192,11 +192,51 @@
 
   // ── Multi-select dropdown state ──────────────────────────
   let dropdownOpen = {};
+  let employeeSearch = "";
+  $: filteredUsers = (() => {
+    const q = employeeSearch.trim().toLowerCase();
+    if (!q) return users;
+    return users.filter((emp) => {
+      const name = String(emp.username || emp.name || "").toLowerCase();
+      const email = String(emp.email || "").toLowerCase();
+      return name.includes(q) || email.includes(q);
+    });
+  })();
+  $: filteredVisitAssignees = (() => {
+    const list = installationAssigneeOptions();
+    const q = employeeSearch.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter((emp) => {
+      const name = String(emp.username || emp.name || "").toLowerCase();
+      const email = String(emp.email || "").toLowerCase();
+      return name.includes(q) || email.includes(q);
+    });
+  })();
+  function headDaysRemaining(expiresAt) {
+    if (!expiresAt) return null;
+    const ms = new Date(expiresAt).getTime() - Date.now();
+    if (!Number.isFinite(ms)) return null;
+    return Math.ceil(ms / (24 * 60 * 60 * 1000));
+  }
+  function closeOutVideoHref(url) {
+    if (!url) return "";
+    if (/^https?:\/\//i.test(url)) return url;
+    const base = String(API_BASE_URL || "").replace(/\/$/, "");
+    return `${base}/uploads/${String(url).replace(/^\//, "")}`;
+  }
+  function canPlayCloseOutInApp(url) {
+    if (!url) return false;
+    if (!/^https?:\/\//i.test(url)) return true;
+    return /\.(mp4|mov|m4v|webm|mkv)(\?|$)/i.test(url);
+  }
   function toggleDropdown(id) {
-    dropdownOpen = { ...dropdownOpen, [id]: !dropdownOpen[id] };
+    const next = !dropdownOpen[id];
+    dropdownOpen = { ...dropdownOpen, [id]: next };
+    employeeSearch = "";
   }
   function closeDropdown(id) {
     dropdownOpen = { ...dropdownOpen, [id]: false };
+    employeeSearch = "";
   }
   function toggleEmployee(arr, id) {
     const sid = String(id);
@@ -530,6 +570,7 @@
   let managerNoteLoading = false;
   let showManagerNotesModal = false;
   let showCloseOutModal = false;
+  let showCloseOutVideoModal = false;
   let closeOutLoading = false;
 
   let installNewFiles = [],
@@ -696,7 +737,16 @@
         <label class="block text-left text-xs font-semibold text-gray-600 mb-1">Email</label>
         <input id="swal-head-login" class="swal2-input" style="width:100%;margin:0 0 10px 0;" type="email" placeholder="email@company.com" value="${String(prefill).replace(/"/g, "&quot;")}">
         <label class="block text-left text-xs font-semibold text-gray-600 mb-1">Password (optional — blank = auto)</label>
-        <input id="swal-head-pass" class="swal2-input" style="width:100%;margin:0;" type="text" placeholder="Leave blank to auto-generate" autocomplete="new-password">
+        <input id="swal-head-pass" class="swal2-input" style="width:100%;margin:0 0 10px 0;" type="text" placeholder="Leave blank to auto-generate" autocomplete="new-password">
+        <label class="block text-left text-xs font-semibold text-gray-600 mb-1">Login valid for (days)</label>
+        <div id="swal-head-day-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px 0;">
+          <button type="button" data-days="3" class="swal-day-chip" style="border:1px solid #c7d2fe;background:#eef2ff;color:#3730a3;border-radius:999px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;">3</button>
+          <button type="button" data-days="7" class="swal-day-chip" style="border:1px solid #e5e7eb;background:#fff;color:#374151;border-radius:999px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;">7</button>
+          <button type="button" data-days="30" class="swal-day-chip" style="border:1px solid #e5e7eb;background:#fff;color:#374151;border-radius:999px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;">30</button>
+          <button type="button" data-days="60" class="swal-day-chip" style="border:1px solid #e5e7eb;background:#fff;color:#374151;border-radius:999px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;">60</button>
+        </div>
+        <input id="swal-head-days" class="swal2-input" style="width:100%;margin:0;" type="number" min="1" max="365" step="1" value="3" placeholder="3">
+        <p class="text-left text-[10px] text-gray-400 mt-1 mb-0">1–365 days. Default 3. ShipMate Head is blocked after this period.</p>
       `,
       focusConfirm: false,
       showCancelButton: true,
@@ -707,6 +757,25 @@
       didOpen: () => {
         const sel = document.getElementById("swal-head-person");
         const emailInput = document.getElementById("swal-head-login");
+        const daysInput = document.getElementById("swal-head-days");
+        const chips = document.querySelectorAll("#swal-head-day-chips .swal-day-chip");
+        const paintChips = () => {
+          const cur = String(daysInput?.value || "3");
+          chips.forEach((btn) => {
+            const on = btn.getAttribute("data-days") === cur;
+            btn.style.background = on ? "#eef2ff" : "#fff";
+            btn.style.borderColor = on ? "#c7d2fe" : "#e5e7eb";
+            btn.style.color = on ? "#3730a3" : "#374151";
+          });
+        };
+        chips.forEach((btn) => {
+          btn.addEventListener("click", () => {
+            if (daysInput) daysInput.value = btn.getAttribute("data-days") || "3";
+            paintChips();
+          });
+        });
+        daysInput?.addEventListener("input", paintChips);
+        paintChips();
         sel?.addEventListener("change", () => {
           const opt = sel.options[sel.selectedIndex];
           const fromEmp = opt?.getAttribute("data-email") || "";
@@ -723,6 +792,9 @@
         const pass = String(
           document.getElementById("swal-head-pass")?.value || "",
         );
+        const daysRaw = Number(
+          document.getElementById("swal-head-days")?.value || 3,
+        );
         if (!person) {
           Swal.showValidationMessage("Select a Head person");
           return false;
@@ -735,15 +807,24 @@
           Swal.showValidationMessage("Password must be at least 6 characters");
           return false;
         }
-        return { person, login, pass };
+        if (!Number.isFinite(daysRaw) || daysRaw < 1 || daysRaw > 365) {
+          Swal.showValidationMessage("Login days must be between 1 and 365");
+          return false;
+        }
+        return { person, login, pass, expiresInDays: Math.floor(daysRaw) };
       },
     });
 
     if (!form) return;
-    await assignHeadFromForm(form.person, form.login, form.pass);
+    await assignHeadFromForm(
+      form.person,
+      form.login,
+      form.pass,
+      form.expiresInDays,
+    );
   }
 
-  async function assignHeadFromForm(personId, loginRaw, passRaw) {
+  async function assignHeadFromForm(personId, loginRaw, passRaw, expiresInDays = 3) {
     try {
       headAssignLoading = true;
       const details =
@@ -752,6 +833,10 @@
           username: e.username,
           email: e.email,
         }))[0] || { _id: personId };
+      const days = Math.min(
+        365,
+        Math.max(1, Math.floor(Number(expiresInDays) || 3)),
+      );
       const resp = await crmFetch(
         `${API_ROUTES.DISPATCH}/${dispatchData.id}`,
         "PUT",
@@ -773,7 +858,7 @@
             username: e.username,
             email: e.email,
           })),
-          expiresInDays: 60,
+          expiresInDays: days,
         },
       );
       const data = resp?.data ?? resp;
@@ -792,7 +877,11 @@
       await Swal.fire({
         icon: "success",
         title: "Head assigned",
-        html: `<p class="text-left text-sm">Email: <b>${data.headEmail}</b><br/>Password: <b>${data.headPassword}</b><br/>${
+        html: `<p class="text-left text-sm">Email: <b>${data.headEmail}</b><br/>Password: <b>${data.headPassword}</b><br/>Valid for: <b>${days} day${days === 1 ? "" : "s"}</b>${
+          data.headLoginExpiresAt
+            ? ` (until ${String(data.headLoginExpiresAt).slice(0, 19).replace("T", " ")})`
+            : ""
+        }<br/>${
           data.appUserCreated
             ? "Installation <b>App User created</b>."
             : "Installation <b>App User updated</b>."
@@ -1878,65 +1967,78 @@
                   <!-- svelte-ignore a11y-click-events-have-key-events -->
                   <!-- svelte-ignore a11y-no-static-element-interactions -->
                   <div
-                    class="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-52 overflow-y-auto"
+                    class="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden"
                     on:click|stopPropagation
                   >
-                    {#each users as emp}
-                      {@const checked = (installForm.employees || []).some(
-                        (id) => String(id) === String(emp._id),
-                      )}
-                      {@const lockedHead = checked && isInstallHead(emp._id)}
-                      <button
-                        type="button"
-                        disabled={lockedHead}
-                        title={lockedHead
-                          ? "Head cannot be removed — change Head first"
-                          : ""}
-                        on:click={() => {
-                          installForm.employees = toggleInstallCrew(
-                            installForm.employees,
-                            emp._id,
-                          );
-                        }}
-                        class="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition text-left disabled:opacity-60 disabled:cursor-not-allowed"
-                        class:bg-indigo-50={checked}
-                      >
-                        <span
-                          class="w-4 h-4 rounded border flex items-center justify-center shrink-0 transition"
-                          class:bg-indigo-600={checked}
-                          class:border-indigo-600={checked}
-                          class:border-gray-300={!checked}
+                    <div class="p-2 border-b border-gray-100 bg-white">
+                      <input
+                        type="text"
+                        bind:value={employeeSearch}
+                        autofocus
+                        placeholder="Search by name or email..."
+                        class="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 focus:bg-white"
+                      />
+                    </div>
+                    <div class="max-h-44 overflow-y-auto">
+                      {#each filteredUsers as emp}
+                        {@const checked = (installForm.employees || []).some(
+                          (id) => String(id) === String(emp._id),
+                        )}
+                        {@const lockedHead = checked && isInstallHead(emp._id)}
+                        <button
+                          type="button"
+                          disabled={lockedHead}
+                          title={lockedHead
+                            ? "Head cannot be removed — change Head first"
+                            : ""}
+                          on:click={() => {
+                            installForm.employees = toggleInstallCrew(
+                              installForm.employees,
+                              emp._id,
+                            );
+                          }}
+                          class="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition text-left disabled:opacity-60 disabled:cursor-not-allowed"
+                          class:bg-indigo-50={checked}
                         >
-                          {#if checked}<svg
-                              class="w-2.5 h-2.5 text-white"
-                              fill="none"
-                              viewBox="0 0 12 12"
-                              stroke="currentColor"
-                              stroke-width="2.5"
-                              ><path d="M1 6l3.5 3.5L11 2" /></svg
-                            >{/if}
-                        </span>
-                        <span
-                          class="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-700 shrink-0"
-                          >{(emp.username || "?").charAt(0)}</span
-                        >
-                        <div class="min-w-0">
-                          <p
-                            class="text-sm font-medium text-gray-800 truncate mb-0"
+                          <span
+                            class="w-4 h-4 rounded border flex items-center justify-center shrink-0 transition"
+                            class:bg-indigo-600={checked}
+                            class:border-indigo-600={checked}
+                            class:border-gray-300={!checked}
                           >
-                            {emp.username}
-                          </p>
-                          <p class="text-xs text-gray-400 truncate mb-0">
-                            {emp.email || ""}
-                          </p>
-                        </div>
-                      </button>
-                    {/each}
-                    {#if users.length === 0}<p
-                        class="px-4 py-3 text-sm text-gray-400"
-                      >
-                        No workshop employees found
-                      </p>{/if}
+                            {#if checked}<svg
+                                class="w-2.5 h-2.5 text-white"
+                                fill="none"
+                                viewBox="0 0 12 12"
+                                stroke="currentColor"
+                                stroke-width="2.5"
+                                ><path d="M1 6l3.5 3.5L11 2" /></svg
+                              >{/if}
+                          </span>
+                          <span
+                            class="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-700 shrink-0"
+                            >{(emp.username || "?").charAt(0)}</span
+                          >
+                          <div class="min-w-0">
+                            <p
+                              class="text-sm font-medium text-gray-800 truncate mb-0"
+                            >
+                              {emp.username}
+                            </p>
+                            <p class="text-xs text-gray-400 truncate mb-0">
+                              {emp.email || ""}
+                            </p>
+                          </div>
+                        </button>
+                      {/each}
+                      {#if filteredUsers.length === 0}
+                        <p class="px-4 py-3 text-sm text-gray-400">
+                          {users.length === 0
+                            ? "No workshop employees found"
+                            : "No matching employees"}
+                        </p>
+                      {/if}
+                    </div>
                   </div>
                 {/if}
               </div>
@@ -2172,63 +2274,76 @@
                   <!-- svelte-ignore a11y-click-events-have-key-events -->
                   <!-- svelte-ignore a11y-no-static-element-interactions -->
                   <div
-                    class="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-52 overflow-y-auto"
+                    class="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden"
                     on:click|stopPropagation
                   >
-                    {#each users as emp}
-                      {@const checked = (installForm.employees || []).some(
-                        (id) => String(id) === String(emp._id),
-                      )}
-                      {@const lockedHead = checked && isInstallHead(emp._id)}
-                      <button
-                        type="button"
-                        disabled={lockedHead}
-                        title={lockedHead
-                          ? "Head cannot be removed — change Head first"
-                          : ""}
-                        on:click={() => {
-                          installForm.employees = toggleInstallCrew(
-                            installForm.employees,
-                            emp._id,
-                          );
-                        }}
-                        class="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition text-left disabled:opacity-60 disabled:cursor-not-allowed"
-                        class:bg-indigo-50={checked}
-                      >
-                        <span
-                          class="w-4 h-4 rounded border flex items-center justify-center shrink-0 transition"
-                          class:bg-indigo-600={checked}
-                          class:border-indigo-600={checked}
-                          class:border-gray-300={!checked}
+                    <div class="p-2 border-b border-gray-100 bg-white">
+                      <input
+                        type="text"
+                        bind:value={employeeSearch}
+                        autofocus
+                        placeholder="Search by name or email..."
+                        class="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 focus:bg-white"
+                      />
+                    </div>
+                    <div class="max-h-44 overflow-y-auto">
+                      {#each filteredUsers as emp}
+                        {@const checked = (installForm.employees || []).some(
+                          (id) => String(id) === String(emp._id),
+                        )}
+                        {@const lockedHead = checked && isInstallHead(emp._id)}
+                        <button
+                          type="button"
+                          disabled={lockedHead}
+                          title={lockedHead
+                            ? "Head cannot be removed — change Head first"
+                            : ""}
+                          on:click={() => {
+                            installForm.employees = toggleInstallCrew(
+                              installForm.employees,
+                              emp._id,
+                            );
+                          }}
+                          class="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition text-left disabled:opacity-60 disabled:cursor-not-allowed"
+                          class:bg-indigo-50={checked}
                         >
-                          {#if checked}<svg
-                              class="w-2.5 h-2.5 text-white"
-                              fill="none"
-                              viewBox="0 0 12 12"
-                              stroke="currentColor"
-                              stroke-width="2.5"
-                              ><path d="M1 6l3.5 3.5L11 2" /></svg
-                            >{/if}
-                        </span>
-                        <span
-                          class="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-700 shrink-0"
-                          >{(emp.username || "?").charAt(0)}</span
-                        >
-                        <div class="min-w-0">
-                          <p class="text-sm font-medium text-gray-800 truncate mb-0">
-                            {emp.username}
-                          </p>
-                          <p class="text-xs text-gray-400 truncate mb-0">
-                            {emp.email || ""}
-                          </p>
-                        </div>
-                      </button>
-                    {/each}
-                    {#if users.length === 0}
-                      <p class="px-4 py-3 text-sm text-gray-400">
-                        No workshop employees found
-                      </p>
-                    {/if}
+                          <span
+                            class="w-4 h-4 rounded border flex items-center justify-center shrink-0 transition"
+                            class:bg-indigo-600={checked}
+                            class:border-indigo-600={checked}
+                            class:border-gray-300={!checked}
+                          >
+                            {#if checked}<svg
+                                class="w-2.5 h-2.5 text-white"
+                                fill="none"
+                                viewBox="0 0 12 12"
+                                stroke="currentColor"
+                                stroke-width="2.5"
+                                ><path d="M1 6l3.5 3.5L11 2" /></svg
+                              >{/if}
+                          </span>
+                          <span
+                            class="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-700 shrink-0"
+                            >{(emp.username || "?").charAt(0)}</span
+                          >
+                          <div class="min-w-0">
+                            <p class="text-sm font-medium text-gray-800 truncate mb-0">
+                              {emp.username}
+                            </p>
+                            <p class="text-xs text-gray-400 truncate mb-0">
+                              {emp.email || ""}
+                            </p>
+                          </div>
+                        </button>
+                      {/each}
+                      {#if filteredUsers.length === 0}
+                        <p class="px-4 py-3 text-sm text-gray-400">
+                          {users.length === 0
+                            ? "No workshop employees found"
+                            : "No matching employees"}
+                        </p>
+                      {/if}
+                    </div>
                   </div>
                 {/if}
               </div>
@@ -2272,7 +2387,24 @@
                   <div class="text-gray-500">Password already issued — use Manage login to set a new one.</div>
                 {/if}
                 {#if headCredsHint.expiresAt}
-                  <div class="text-gray-500">Expires: {String(headCredsHint.expiresAt).slice(0, 19).replace("T", " ")}</div>
+                  {@const left = headDaysRemaining(headCredsHint.expiresAt)}
+                  <div class="text-gray-500">
+                    Expires: {String(headCredsHint.expiresAt).slice(0, 19).replace("T", " ")}
+                    {#if left != null}
+                      <span
+                        class="ml-1 font-semibold"
+                        class:text-amber-700={left <= 3}
+                        class:text-red-600={left <= 0}
+                        class:text-emerald-700={left > 3}
+                      >
+                        {left <= 0
+                          ? "(expired)"
+                          : left === 1
+                            ? "(1 day left)"
+                            : `(${left} days left)`}
+                      </span>
+                    {/if}
+                  </div>
                 {/if}
                 {#if !dispatchData?.headAppUserId}
                   <div class="text-amber-700 mt-1">
@@ -2645,9 +2777,19 @@
                           </button>
                           {#if dropdownOpen[`visit-${i}`]}
                             <div
-                              class="absolute z-20 mt-1 w-full max-h-48 overflow-auto bg-white border border-gray-200 rounded-lg shadow-lg"
+                              class="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden"
+                              on:click|stopPropagation
                             >
-                              {#each installationAssigneeOptions() as u}
+                              <div class="p-2 border-b border-gray-100">
+                                <input
+                                  type="text"
+                                  bind:value={employeeSearch}
+                                  placeholder="Search crew..."
+                                  class="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                                />
+                              </div>
+                              <div class="max-h-40 overflow-y-auto">
+                              {#each filteredVisitAssignees as u}
                                 {@const checked = (visit.employees || []).some(
                                   (id) => String(id) === String(u._id),
                                 )}
@@ -2672,9 +2814,12 @@
                                 </button>
                               {:else}
                                 <p class="px-3 py-2 text-xs text-gray-400">
-                                  Assign employees on Installation first
+                                  {installationAssigneeOptions().length === 0
+                                    ? "Assign employees on Installation first"
+                                    : "No matching employees"}
                                 </p>
                               {/each}
+                              </div>
                             </div>
                           {/if}
                         </div>
@@ -2829,10 +2974,20 @@
                                 <!-- svelte-ignore a11y-click-events-have-key-events -->
                                 <!-- svelte-ignore a11y-no-static-element-interactions -->
                                 <div
-                                  class="absolute z-30 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-52 overflow-y-auto"
+                                  class="absolute z-30 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden"
                                   on:click|stopPropagation
                                 >
-                                  {#each installationAssigneeOptions() as emp}
+                                  <div class="p-2 border-b border-gray-100">
+                                    <input
+                                      type="text"
+                                      bind:value={employeeSearch}
+                                      autofocus
+                                      placeholder="Search crew..."
+                                      class="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                                    />
+                                  </div>
+                                  <div class="max-h-44 overflow-y-auto">
+                                  {#each filteredVisitAssignees as emp}
                                     {@const checked = (visit.employees || []).some(
                                       (id) => String(id) === String(emp._id),
                                     )}
@@ -2890,9 +3045,12 @@
                                     </button>
                                   {:else}
                                     <p class="px-4 py-3 text-sm text-gray-400">
-                                      Assign employees on Installation first
+                                      {installationAssigneeOptions().length === 0
+                                        ? "Assign employees on Installation first"
+                                        : "No matching employees"}
                                     </p>
                                   {/each}
+                                  </div>
                                 </div>
                               {/if}
                             </div>
@@ -3202,13 +3360,27 @@
         placeholder="Review notes…"
         bind:value={closeOutForm.reviewNote}
       ></textarea>
-      <label class="block text-[11px] font-semibold text-gray-600 mb-1">Video URL</label>
-      <input
-        type="url"
-        class="{ic} bg-white mb-2"
-        placeholder="https://…"
-        bind:value={closeOutForm.videoUrl}
-      />
+      <label class="block text-[11px] font-semibold text-gray-600 mb-1">Video</label>
+      {#if closeOutForm.videoUrl}
+        {@const videoHref = closeOutVideoHref(closeOutForm.videoUrl)}
+        {@const playInApp = canPlayCloseOutInApp(closeOutForm.videoUrl)}
+        <div class="mb-2">
+          {#if playInApp}
+            <button
+              type="button"
+              class="text-xs text-indigo-600 underline"
+              on:click={() => (showCloseOutVideoModal = true)}
+            >Play video in CRM</button>
+            <span class="text-gray-400 ml-1 text-[10px]">(uploaded from ShipMate)</span>
+          {:else}
+            <a href={videoHref} target="_blank" rel="noopener noreferrer" class="text-xs text-indigo-600 underline"
+              >Open external video link</a
+            >
+          {/if}
+        </div>
+      {:else}
+        <p class="text-xs text-gray-400 mb-2">No video yet — Head uploads from ShipMate close-out.</p>
+      {/if}
       <label class="flex items-center gap-2 text-xs text-gray-700 mb-2">
         <input type="checkbox" bind:checked={closeOutForm.finalClientDone} />
         Final finish with client
@@ -3226,15 +3398,39 @@
           class="px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
           >Cancel</button
         >
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if showCloseOutVideoModal && closeOutForm.videoUrl}
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <!-- svelte-ignore a11y-no-static-element-interactions -->
+  <div
+    class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70"
+    on:click|self={() => (showCloseOutVideoModal = false)}
+  >
+    <div
+      class="w-full max-w-3xl bg-black rounded-xl overflow-hidden shadow-2xl"
+      on:click|stopPropagation
+    >
+      <div class="flex items-center justify-between gap-2 px-3 py-2 bg-gray-900">
+        <span class="text-xs text-white font-semibold">Close-out video</span>
         <button
           type="button"
-          on:click={saveCloseOutCrm}
-          disabled={closeOutLoading}
-          class="px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+          class="text-gray-300 hover:text-white text-lg leading-none px-1"
+          on:click={() => (showCloseOutVideoModal = false)}
+          >×</button
         >
-          {closeOutLoading ? "Saving…" : "Save close-out"}
-        </button>
       </div>
+      <video
+        class="w-full max-h-[75vh] bg-black"
+        controls
+        autoplay
+        src={closeOutVideoHref(closeOutForm.videoUrl)}
+      >
+        <track kind="captions" />
+      </video>
     </div>
   </div>
 {/if}

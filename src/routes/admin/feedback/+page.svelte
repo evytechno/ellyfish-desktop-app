@@ -4,7 +4,7 @@
   import { authApiFetch } from "$lib/api/client";
   import { errorHandle } from "$lib/utils/errorHandle";
   import { API_ROUTES } from "$lib/constants/apiRoutes";
-  import { checkAuth } from "$lib/utils/auth";
+  import { checkAuth, canAccess } from "$lib/utils/auth";
   import Loader from "$lib/components/Loader.svelte";
   import Swal from "sweetalert2";
   import { usersAllStore } from "$lib/stores/dataStores";
@@ -178,6 +178,16 @@
 
   onMount(async () => {
     currentUser = checkAuth();
+    if (!canAccess("feedback", "view", currentUser)) {
+      loadingData = false;
+      Swal.fire({
+        icon: "warning",
+        title: "Access Denied",
+        text: "You do not have access to the Feedback module.",
+        confirmButtonText: "Go Back",
+      }).then(() => window.history.back());
+      return;
+    }
     await Promise.all([refresh(), getAllUsers()]);
     loadingData = false;
   });

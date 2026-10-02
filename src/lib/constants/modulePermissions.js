@@ -8,7 +8,13 @@ export const MODULE_GROUPS = [
       { key: "work_order", label: "Work Order (WO)" },
       { key: "order_payments", label: "Order Payments" },
       { key: "transfer_orders", label: "Transfer Orders" },
+      { key: "feedback", label: "Feedback" },
     ],
+  },
+  {
+    label: "Installation",
+    hint: "Gates Installation queue, crew assign, and Head login actions for admins.",
+    modules: [{ key: "installation", label: "Installation queue" }],
   },
   {
     label: "Clients",
