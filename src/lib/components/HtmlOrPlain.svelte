@@ -51,37 +51,38 @@
   }
   .html-or-plain :global(ol),
   .html-or-plain :global(ul) {
-    margin: 0.25em 0 0.35em;
-    padding-left: 1.4em;
-    list-style-position: outside;
+    margin: 0.25em 0 0.35em !important;
+    padding-left: 1.4em !important;
+    list-style-position: outside !important;
   }
   .html-or-plain :global(ol) {
-    list-style-type: decimal;
+    list-style-type: decimal !important;
   }
   .html-or-plain :global(ul) {
-    list-style-type: disc;
+    list-style-type: disc !important;
   }
   .html-or-plain :global(li) {
     margin: 0.15em 0;
-    display: list-item;
+    display: list-item !important;
+    list-style: inherit !important;
   }
   .html-or-plain :global(li > p) {
     margin: 0;
   }
   .html-or-plain :global(strong),
   .html-or-plain :global(b) {
-    font-weight: 700;
+    font-weight: 700 !important;
   }
   .html-or-plain :global(em),
   .html-or-plain :global(i) {
-    font-style: italic;
+    font-style: italic !important;
   }
   .html-or-plain :global(u) {
-    text-decoration: underline;
+    text-decoration: underline !important;
   }
   .html-or-plain :global(s),
   .html-or-plain :global(strike) {
-    text-decoration: line-through;
+    text-decoration: line-through !important;
   }
   .html-or-plain :global(a) {
     color: inherit;
