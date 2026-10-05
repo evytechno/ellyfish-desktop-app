@@ -35,12 +35,34 @@ async function workshopFetch(path, method = 'GET', body = null) {
   return resp;
 }
 
-/** @returns {Promise<Array<{_id: string, username?: string, email?: string, name?: string}>>} */
+/**
+ * @typedef {{_id: string, username?: string, email?: string, name?: string, role?: string, isActive?: boolean}} WorkshopEmployee
+ */
+
+/** True for warehouse admins — excluded from assign-user pickers. */
+export function isWorkshopAdmin(emp) {
+  return String(emp?.role || '')
+    .trim()
+    .toLowerCase() === 'admin';
+}
+
+export function workshopEmployeeRoleLabel(emp) {
+  const role = String(emp?.role || '').trim();
+  if (!role) return '';
+  return role.charAt(0).toUpperCase() + role.slice(1).toLowerCase();
+}
+
+/** @returns {Promise<WorkshopEmployee[]>} */
 export async function fetchWorkshopSalesEmployees() {
   if (!WORKSHOP_BASE_URL) return [];
   try {
     const resp = await workshopFetch('/user/sales/all', 'GET');
-    return Array.isArray(resp?.data) ? resp.data : [];
+    const list = Array.isArray(resp?.data) ? resp.data : [];
+    return list.filter((emp) => {
+      if (!emp || isWorkshopAdmin(emp)) return false;
+      if (emp.isActive === false) return false;
+      return true;
+    });
   } catch {
     return [];
   }
@@ -50,5 +72,7 @@ export function workshopEmployeeLabel(emp) {
   if (!emp) return '';
   const name = emp.username || emp.name || emp._id || '';
   const email = emp.email ? ` · ${emp.email}` : '';
-  return `${name}${email}`;
+  const role = workshopEmployeeRoleLabel(emp);
+  const rolePart = role ? ` · ${role}` : '';
+  return `${name}${email}${rolePart}`;
 }

@@ -7,6 +7,7 @@
   import { errorHandle } from "$lib/utils/errorHandle";
   import Swal from "sweetalert2";
   import Loader from "$lib/components/Loader.svelte";
+  import QuillEditor from "$lib/components/QuillEditor.svelte";
 
   let loadingData = true;
   let loading = false;
@@ -971,23 +972,13 @@
               <div class="card-body">
                 <div class="mb-3">
                   <label class="form-label" for="termsConditions">Terms &amp; Conditions</label>
-                  <textarea
-                    id="termsConditions"
-                    class="form-control"
-                    rows="3"
-                    bind:value={termsConditions}
-                    placeholder="Terms and conditions"
-                  ></textarea>
+                  <QuillEditor bind:value={termsConditions} placeholder="Terms and conditions" height="140px"
+                    on:change={(e) => (termsConditions = e.detail)} />
                 </div>
                 <div class="mb-0">
                   <label class="form-label" for="remarks">Remarks</label>
-                  <textarea
-                    id="remarks"
-                    class="form-control"
-                    rows="2"
-                    bind:value={remarks}
-                    placeholder="Additional remarks"
-                  ></textarea>
+                  <QuillEditor bind:value={remarks} placeholder="Additional remarks" height="100px"
+                    on:change={(e) => (remarks = e.detail)} />
                 </div>
               </div>
             </div>

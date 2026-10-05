@@ -20,6 +20,21 @@
   $: totalInWord = numberToWords(Number.isFinite(total) ? Math.round(total) : 0) + " Only";
   $: taxTotalInWord = numberToWords(Number.isFinite(taxtotal) ? Math.round(taxtotal) : 0) + " Only";
 
+  function stripHtml(value) {
+    if (!value) return "";
+    if (!/<[a-z][\s\S]*>/i.test(value)) return value;
+    return String(value)
+      .replace(/<\/(p|div|li|h[1-6]|br)\s*>/gi, "\n")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
   const currencies = [
     { code: "INR", symbol: "₹" },
     { code: "USD", symbol: "$" },
@@ -229,7 +244,7 @@
     sheet.mergeCells("E7:H12");
     sheet.getCell("E7").value = [
       "Terms of Delivery :",
-      invoice?.termsConditions,
+      stripHtml(invoice?.termsConditions),
     ].join("\n");
     sheet.getCell("E7").font = { name: "Arial", size: 10 };
     sheet.getCell("E7").border = thinBorder;

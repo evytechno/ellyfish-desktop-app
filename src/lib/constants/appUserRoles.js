@@ -3,7 +3,7 @@
  * Used by CRM add/edit when role changes.
  */
 
-/** @typedef {'factory' | 'office' | 'sales' | 'installation'} AppUserRole */
+/** @typedef {'factory' | 'office' | 'sales' | 'installation' | 'manager' | 'admin'} AppUserRole */
 
 /**
  * @param {string} role
@@ -21,7 +21,19 @@ export function permissionsForAppRole(role) {
     installation_view: false,
     installation_update: false,
   };
-  if (r === "installation") {
+  if (r === "admin") {
+    return {
+      sample_view: true,
+      sample_update: true,
+      sample_hold: true,
+      work_order_view: true,
+      work_order_update: true,
+      work_order_hold: true,
+      installation_view: true,
+      installation_update: true,
+    };
+  }
+  if (r === "installation" || r === "manager") {
     return {
       ...off,
       installation_view: true,
@@ -46,7 +58,7 @@ export function permissionsForAppRole(role) {
       work_order_view: true,
     };
   }
-  // office — full app access by default
+  // office — samples + work orders (installation owned by Manager)
   return {
     sample_view: true,
     sample_update: true,
@@ -54,8 +66,8 @@ export function permissionsForAppRole(role) {
     work_order_view: true,
     work_order_update: true,
     work_order_hold: true,
-    installation_view: true,
-    installation_update: true,
+    installation_view: false,
+    installation_update: false,
   };
 }
 
@@ -64,6 +76,22 @@ export function permissionsForAppRole(role) {
  */
 export function notificationPrefsForAppRole(role) {
   const r = String(role || "office").toLowerCase();
+  if (r === "admin") {
+    return {
+      enabled: true,
+      sample: true,
+      workOrder: true,
+      installation: true,
+    };
+  }
+  if (r === "manager") {
+    return {
+      enabled: true,
+      sample: false,
+      workOrder: false,
+      installation: true,
+    };
+  }
   if (r === "installation") {
     return {
       enabled: true,
@@ -92,15 +120,20 @@ export function notificationPrefsForAppRole(role) {
     enabled: true,
     sample: true,
     workOrder: true,
-    installation: true,
+    installation: false,
   };
 }
 
 export const APP_ROLE_OPTIONS = [
   {
+    value: "admin",
+    label: "Admin",
+    hint: "Full access — all modules & all notifications",
+  },
+  {
     value: "office",
     label: "Office",
-    hint: "Samples, work orders & installation",
+    hint: "Samples & work orders",
   },
   {
     value: "factory",
@@ -113,8 +146,13 @@ export const APP_ROLE_OPTIONS = [
     hint: "View samples & work orders",
   },
   {
+    value: "manager",
+    label: "Manager",
+    hint: "Installation only — receives install notifications",
+  },
+  {
     value: "installation",
     label: "Installation",
-    hint: "Installation only — link a workshop employee",
+    hint: "Installation Head — link a workshop employee",
   },
 ];

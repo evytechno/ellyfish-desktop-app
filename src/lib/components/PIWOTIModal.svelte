@@ -6,6 +6,7 @@
   import { get } from "svelte/store";
   import { checkAuth } from "$lib/utils/auth";
   import Swal from "sweetalert2";
+  import QuillEditor from "$lib/components/QuillEditor.svelte";
 
   // ── Props ─────────────────────────────────────────────────────────────────
   export let open = false;
@@ -1132,11 +1133,13 @@
                 <!-- Notes & Terms -->
                 <div class="col-md-6">
                   <label class="form-label fw-semibold" style="font-size:12px;">Remarks</label>
-                  <textarea class="form-control form-control-sm" rows="3" bind:value={remarks} placeholder="Additional remarks..."></textarea>
+                  <QuillEditor bind:value={remarks} placeholder="Additional remarks..." height="120px"
+                    on:change={(e) => (remarks = e.detail)} />
                 </div>
                 <div class="col-md-6">
                   <label class="form-label fw-semibold" style="font-size:12px;">Terms & Conditions</label>
-                  <textarea class="form-control form-control-sm" rows="3" bind:value={termsConditions} placeholder="Terms and conditions..."></textarea>
+                  <QuillEditor bind:value={termsConditions} placeholder="Terms and conditions..." height="120px"
+                    on:change={(e) => (termsConditions = e.detail)} />
                 </div>
               </div>
             {/if}
@@ -1362,11 +1365,13 @@
                 </div>
                 <div class="col-md-6">
                   <label class="form-label fw-semibold" style="font-size:12px;">Remarks</label>
-                  <textarea class="form-control form-control-sm" rows="2" bind:value={remarks} placeholder="Additional remarks..."></textarea>
+                  <QuillEditor bind:value={remarks} placeholder="Additional remarks..." height="100px"
+                    on:change={(e) => (remarks = e.detail)} />
                 </div>
                 <div class="col-md-6">
                   <label class="form-label fw-semibold" style="font-size:12px;">Terms & Conditions</label>
-                  <textarea class="form-control form-control-sm" rows="2" bind:value={termsConditions} placeholder="Terms and conditions..."></textarea>
+                  <QuillEditor bind:value={termsConditions} placeholder="Terms and conditions..." height="100px"
+                    on:change={(e) => (termsConditions = e.detail)} />
                 </div>
               </div>
 

@@ -5,7 +5,11 @@
   import { API_BASE_URL } from "$lib/constants/constants";
   import { API_ROUTES } from "$lib/constants/apiRoutes";
   import { authApiFetch } from "$lib/api/client";
-  import { fetchWorkshopSalesEmployees } from "$lib/api/workshopSales";
+  import {
+    fetchWorkshopSalesEmployees,
+    workshopEmployeeLabel,
+    workshopEmployeeRoleLabel,
+  } from "$lib/api/workshopSales";
   import { checkAuth, canAccess } from "$lib/utils/auth";
 
   // ── Props ────────────────────────────────────────────────
@@ -199,7 +203,8 @@
     return users.filter((emp) => {
       const name = String(emp.username || emp.name || "").toLowerCase();
       const email = String(emp.email || "").toLowerCase();
-      return name.includes(q) || email.includes(q);
+      const role = String(emp.role || "").toLowerCase();
+      return name.includes(q) || email.includes(q) || role.includes(q);
     });
   })();
   $: filteredVisitAssignees = (() => {
@@ -209,7 +214,8 @@
     return list.filter((emp) => {
       const name = String(emp.username || emp.name || "").toLowerCase();
       const email = String(emp.email || "").toLowerCase();
-      return name.includes(q) || email.includes(q);
+      const role = String(emp.role || "").toLowerCase();
+      return name.includes(q) || email.includes(q) || role.includes(q);
     });
   })();
   function headDaysRemaining(expiresAt) {
@@ -708,34 +714,47 @@
       return;
     }
 
+    const escapeHtml = (s) =>
+      String(s ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+
     const headOptions = crew
-      .map(
-        (e) =>
-          `<option value="${e._id}" data-email="${String(e.email || "").replace(/"/g, "&quot;")}" ${
-            String(e._id) === String(headEmployeeId) ? "selected" : ""
-          }>${e.username || e.name || e._id}</option>`,
-      )
+      .map((e) => {
+        const email = String(e.email || "").trim();
+        const label = workshopEmployeeLabel(e) || e.username || e.name || e._id;
+        return `<option value="${escapeHtml(e._id)}" data-email="${escapeHtml(email)}" ${
+          String(e._id) === String(headEmployeeId) ? "selected" : ""
+        }>${escapeHtml(label)}</option>`;
+      })
       .join("");
 
+    // Prefer warehouse email of current/selected Head person for set-time login.
+    const selectedCrew =
+      crew.find((e) => String(e._id) === String(headEmployeeId)) || crew[0];
+    const warehouseEmail = String(selectedCrew?.email || "").trim();
     const prefill =
+      warehouseEmail ||
       headCredsHint?.email ||
       headLoginId ||
-      (crew.find((e) => String(e._id) === String(headEmployeeId))?.email || "");
+      "";
 
     const { value: form } = await Swal.fire({
       title: "Manage Head login",
       width: 480,
       html: `
         <p class="text-left text-xs text-gray-500 mb-3">
-          Creates / updates an <b>Installation App User</b> with the same email + password (role Installation). Also keeps Head process login. Password optional — blank auto-generates.
+          Creates / updates an <b>Installation App User</b> with the warehouse user email + password (role Installation). Also keeps Head process login. Password optional — blank auto-generates.
         </p>
         <label class="block text-left text-xs font-semibold text-gray-600 mb-1">Head person</label>
         <select id="swal-head-person" class="swal2-input" style="width:100%;margin:0 0 10px 0;height:2.5em;">
           <option value="">Select Head…</option>
           ${headOptions}
         </select>
-        <label class="block text-left text-xs font-semibold text-gray-600 mb-1">Email</label>
-        <input id="swal-head-login" class="swal2-input" style="width:100%;margin:0 0 10px 0;" type="email" placeholder="email@company.com" value="${String(prefill).replace(/"/g, "&quot;")}">
+        <label class="block text-left text-xs font-semibold text-gray-600 mb-1">Email (from warehouse user)</label>
+        <input id="swal-head-login" class="swal2-input" style="width:100%;margin:0 0 10px 0;" type="email" placeholder="email@company.com" value="${escapeHtml(prefill)}">
         <label class="block text-left text-xs font-semibold text-gray-600 mb-1">Password (optional — blank = auto)</label>
         <input id="swal-head-pass" class="swal2-input" style="width:100%;margin:0 0 10px 0;" type="text" placeholder="Leave blank to auto-generate" autocomplete="new-password">
         <label class="block text-left text-xs font-semibold text-gray-600 mb-1">Login valid for (days)</label>
@@ -746,7 +765,7 @@
           <button type="button" data-days="60" class="swal-day-chip" style="border:1px solid #e5e7eb;background:#fff;color:#374151;border-radius:999px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;">60</button>
         </div>
         <input id="swal-head-days" class="swal2-input" style="width:100%;margin:0;" type="number" min="1" max="365" step="1" value="3" placeholder="3">
-        <p class="text-left text-[10px] text-gray-400 mt-1 mb-0">1–365 days. Default 3. ShipMate Head is blocked after this period.</p>
+        <p class="text-left text-[10px] text-gray-400 mt-1 mb-0">1–365 days. Default 3. ShipMate Head is blocked after this period. Email follows the selected warehouse user.</p>
       `,
       focusConfirm: false,
       showCancelButton: true,
@@ -759,6 +778,12 @@
         const emailInput = document.getElementById("swal-head-login");
         const daysInput = document.getElementById("swal-head-days");
         const chips = document.querySelectorAll("#swal-head-day-chips .swal-day-chip");
+        const syncEmailFromPerson = () => {
+          if (!sel || !emailInput) return;
+          const opt = sel.options[sel.selectedIndex];
+          const fromEmp = String(opt?.getAttribute("data-email") || "").trim();
+          if (fromEmp) emailInput.value = fromEmp;
+        };
         const paintChips = () => {
           const cur = String(daysInput?.value || "3");
           chips.forEach((btn) => {
@@ -776,19 +801,22 @@
         });
         daysInput?.addEventListener("input", paintChips);
         paintChips();
-        sel?.addEventListener("change", () => {
-          const opt = sel.options[sel.selectedIndex];
-          const fromEmp = opt?.getAttribute("data-email") || "";
-          if (fromEmp && emailInput && !emailInput.value) {
-            emailInput.value = fromEmp;
-          }
-        });
+        sel?.addEventListener("change", syncEmailFromPerson);
+        // If a Head is already selected, lock email to that warehouse user.
+        syncEmailFromPerson();
       },
       preConfirm: () => {
-        const person = document.getElementById("swal-head-person")?.value || "";
-        const login = String(
+        const sel = document.getElementById("swal-head-person");
+        const person = sel?.value || "";
+        const opt = sel?.options?.[sel.selectedIndex];
+        const warehouseLogin = String(
+          opt?.getAttribute("data-email") || "",
+        ).trim();
+        let login = String(
           document.getElementById("swal-head-login")?.value || "",
         ).trim();
+        // Prefer warehouse email when setting Head login + days.
+        if (warehouseLogin) login = warehouseLogin;
         const pass = String(
           document.getElementById("swal-head-pass")?.value || "",
         );
@@ -800,7 +828,9 @@
           return false;
         }
         if (!login || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(login)) {
-          Swal.showValidationMessage("Enter a valid email");
+          Swal.showValidationMessage(
+            "Selected Head has no valid warehouse email",
+          );
           return false;
         }
         if (pass && pass.length < 6) {
@@ -2024,6 +2054,11 @@
                               class="text-sm font-medium text-gray-800 truncate mb-0"
                             >
                               {emp.username}
+                              {#if workshopEmployeeRoleLabel(emp)}
+                                <span class="font-normal text-gray-500"
+                                  >· {workshopEmployeeRoleLabel(emp)}</span
+                                >
+                              {/if}
                             </p>
                             <p class="text-xs text-gray-400 truncate mb-0">
                               {emp.email || ""}
@@ -2329,6 +2364,11 @@
                           <div class="min-w-0">
                             <p class="text-sm font-medium text-gray-800 truncate mb-0">
                               {emp.username}
+                              {#if workshopEmployeeRoleLabel(emp)}
+                                <span class="font-normal text-gray-500"
+                                  >· {workshopEmployeeRoleLabel(emp)}</span
+                                >
+                              {/if}
                             </p>
                             <p class="text-xs text-gray-400 truncate mb-0">
                               {emp.email || ""}
@@ -3033,6 +3073,11 @@
                                           class="text-sm font-medium text-gray-800 truncate mb-0"
                                         >
                                           {emp.username || emp.name || emp._id}
+                                          {#if workshopEmployeeRoleLabel(emp)}
+                                            <span class="font-normal text-gray-500"
+                                              >· {workshopEmployeeRoleLabel(emp)}</span
+                                            >
+                                          {/if}
                                         </p>
                                         {#if emp.email}
                                           <p

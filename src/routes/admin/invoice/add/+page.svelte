@@ -9,6 +9,7 @@
   import OrderSearchSelect from "$lib/components/OrderSearchSelect.svelte";
   import { companiesAllStore } from "$lib/stores/dataStores";
   import Loader from "$lib/components/Loader.svelte";
+  import QuillEditor from "$lib/components/QuillEditor.svelte";
   import { checkAuth } from "$lib/utils/auth";
   import { get } from "svelte/store";
 
@@ -938,13 +939,15 @@
               <div class="grid grid-cols-2 gap-2">
                 <div>
                   <label class="form-label">Terms & Conditions</label>
-                  <textarea class="form-control" rows="3" bind:value={termsConditions}
-                    placeholder="Enter payment terms, delivery conditions, warranty terms..."></textarea>
+                  <QuillEditor bind:value={termsConditions}
+                    placeholder="Enter payment terms, delivery conditions, warranty terms..." height="140px"
+                    on:change={(e) => (termsConditions = e.detail)} />
                 </div>
                 <div>
                   <label class="form-label">Remarks</label>
-                  <textarea class="form-control" rows="3" bind:value={remarks}
-                    placeholder="Any additional notes or remarks for the client..."></textarea>
+                  <QuillEditor bind:value={remarks}
+                    placeholder="Any additional notes or remarks for the client..." height="140px"
+                    on:change={(e) => (remarks = e.detail)} />
                 </div>
               </div>
             </div>

@@ -17,6 +17,7 @@
     saveToLocalStorage,
   } from "$lib/stores/dataStores";
   import Loader from "$lib/components/Loader.svelte";
+  import QuillEditor from "$lib/components/QuillEditor.svelte";
   let loadingData = true;
 
   import { checkAuth } from "$lib/utils/auth";
@@ -1908,32 +1909,20 @@
         <div class="row g-3">
           <div class="col-12">
             <label class="form-label" for="termsConditions">Terms &amp; Conditions</label>
-            <textarea
-              name="termsConditions"
-              id="termsConditions"
-              class="form-control"
-              class:is-invalid={fieldError("termsConditions")}
-              bind:value={termsConditions}
-              required
-              rows="3"
-              placeholder="Terms and conditions"
-            ></textarea>
+            <div class:is-invalid={fieldError("termsConditions")}>
+              <QuillEditor bind:value={termsConditions} placeholder="Terms and conditions" height="140px"
+                on:change={(e) => (termsConditions = e.detail)} />
+            </div>
             {#if fieldError("termsConditions")}
               <div class="invalid-feedback d-block">{fieldError("termsConditions")}</div>
             {/if}
           </div>
           <div class="col-12">
             <label class="form-label" for="remarks">Remarks</label>
-            <textarea
-              name="remarks"
-              id="remarks"
-              class="form-control"
-              class:is-invalid={fieldError("remarks")}
-              bind:value={remarks}
-              required
-              rows="2"
-              placeholder="Additional remarks"
-            ></textarea>
+            <div class:is-invalid={fieldError("remarks")}>
+              <QuillEditor bind:value={remarks} placeholder="Additional remarks" height="100px"
+                on:change={(e) => (remarks = e.detail)} />
+            </div>
             {#if fieldError("remarks")}
               <div class="invalid-feedback d-block">{fieldError("remarks")}</div>
             {/if}

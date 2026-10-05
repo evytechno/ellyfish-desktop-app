@@ -8,6 +8,8 @@
   import InvoiceExport from "$lib/components/InvoiceExport.svelte";
   import { ATTACHMENT_BASE_URL } from "$lib/constants/constants";
   import PIWOTIModal from "$lib/components/PIWOTIModal.svelte";
+  import HtmlOrPlain from "$lib/components/HtmlOrPlain.svelte";
+  import InvoiceRemarksBlock from "$lib/components/InvoiceRemarksBlock.svelte";
 
   let loadingData = true;
   let errorMessage = "";
@@ -474,16 +476,13 @@
                 <!-- Terms & Conditions -->
                 {#if invoice?.termsConditions}
                   <div class="text-left text-xs">
-                    <span class="font-semibold">Terms & Conditions: </span>{invoice?.termsConditions}
+                    <div class="font-semibold">Terms & Conditions:</div>
+                    <HtmlOrPlain value={invoice?.termsConditions} />
                   </div>
                 {/if}
 
                 <!-- Remarks -->
-                {#if invoice?.remarks}
-                  <div class="text-left text-xs">
-                    <span class="font-semibold">Remarks: </span>{invoice?.remarks}
-                  </div>
-                {/if}
+                <InvoiceRemarksBlock value={invoice?.remarks} />
 
               </div>
 

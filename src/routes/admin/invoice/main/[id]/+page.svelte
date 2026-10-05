@@ -5,6 +5,8 @@
   import { API_ROUTES } from "$lib/constants/apiRoutes";
   import { numberToWords } from "$lib/utils/numberToWords";
   import Loader from "$lib/components/Loader.svelte";
+  import HtmlOrPlain from "$lib/components/HtmlOrPlain.svelte";
+  import InvoiceRemarksBlock from "$lib/components/InvoiceRemarksBlock.svelte";
   let loadingData = true;
   import { ATTACHMENT_BASE_URL } from "$lib/constants/constants";
 
@@ -253,18 +255,11 @@
                           <h6 class="mb-1 fs-14 fw-semibold">
                             Terms and Conditions
                           </h6>
-                          <p class="mb-0">
-                            {invoice?.termsConditions}
-                          </p>
+                          <HtmlOrPlain value={invoice?.termsConditions} class="mb-0" />
                         </div>
                       {/if}
                       {#if invoice?.remarks}
-                        <div>
-                          <h6 class="mb-1 fs-14 fw-semibold">Notes</h6>
-                          <p class="mb-0">
-                            {invoice?.remarks}
-                          </p>
-                        </div>
+                        <InvoiceRemarksBlock value={invoice?.remarks} layout="block" />
                       {/if}
                     </div>
                   </div>

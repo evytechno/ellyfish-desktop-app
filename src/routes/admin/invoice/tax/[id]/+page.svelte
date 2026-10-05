@@ -5,6 +5,8 @@
   import { API_ROUTES } from "$lib/constants/apiRoutes";
   import { numberToWords } from "$lib/utils/numberToWords";
   import Loader from "$lib/components/Loader.svelte";
+  import HtmlOrPlain from "$lib/components/HtmlOrPlain.svelte";
+  import InvoiceRemarksBlock from "$lib/components/InvoiceRemarksBlock.svelte";
   import Swal from "sweetalert2";
 
   let loadingData = true;
@@ -380,14 +382,11 @@
                 </div>
                 {#if invoice?.termsConditions}
                   <div class="text-left text-xs">
-                    <span class="font-semibold">Terms & Conditions: </span>{invoice?.termsConditions}
+                    <div class="font-semibold">Terms & Conditions:</div>
+                    <HtmlOrPlain value={invoice?.termsConditions} />
                   </div>
                 {/if}
-                {#if invoice?.remarks}
-                  <div class="text-left text-xs">
-                    <span class="font-semibold">Remarks: </span>{invoice?.remarks}
-                  </div>
-                {/if}
+                <InvoiceRemarksBlock value={invoice?.remarks} />
               </div>
 
               <!-- Bottom Action Bar -->

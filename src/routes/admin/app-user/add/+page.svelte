@@ -231,7 +231,9 @@
                   <small class="text-muted">
                     {APP_ROLE_OPTIONS.find((o) => o.value === appRole)?.hint ||
                       ""}
-                    {#if appRole === "installation"}
+                    {#if appRole === "admin"}
+                      · Full access — all modules & notifications
+                    {:else if appRole === "installation" || appRole === "manager"}
                       · Permissions auto-set to Installation only
                     {/if}
                   </small>
@@ -302,15 +304,22 @@
             <!-- Right: permissions -->
             <div>
               <div class="fw-semibold mb-2">Permissions</div>
-              {#if appRole === "installation"}
+              {#if appRole === "admin"}
                 <p class="text-xs text-muted mb-2">
-                  Installation role: only Installation view/update. Sample & Work
-                  Order access stays off.
+                  Admin role: full Sample, Work Order & Installation access. Gets
+                  all notifications.
+                </p>
+              {:else if appRole === "installation" || appRole === "manager"}
+                <p class="text-xs text-muted mb-2">
+                  {appRole === "manager" ? "Manager" : "Installation"} role: only
+                  Installation view/update. Sample & Work Order access stays off.
                 </p>
               {/if}
               <AppUserPermissionsEditor
                 bind:permissions
-                locked={appRole === "installation"}
+                locked={appRole === "installation" ||
+                  appRole === "manager" ||
+                  appRole === "admin"}
               />
             </div>
           </div>
