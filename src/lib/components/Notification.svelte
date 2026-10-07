@@ -116,6 +116,9 @@
       query_open: "🎫 New Query",
       query: "💬 Query Reply",
       sub_query: "🔧 Sub-Query Update",
+      sample_status: "📦 Sample Status",
+      work_order_status: "🏭 Work Order Status",
+      order: "📋 Order",
     };
     const title = titles[notification.type] || "🔔 Notification";
     const body = notification.message ?? "";
@@ -226,7 +229,13 @@
     removeToast(toast.id);
     await readNotification(toast.notification.id);
     const { type, queryId, parentQueryId, order } = toast.notification;
-    if (type === "OrderReminder" && order?.id) {
+    if (
+      (type === "OrderReminder" ||
+        type === "sample_status" ||
+        type === "work_order_status" ||
+        type === "order") &&
+      order?.id
+    ) {
       goto(`/admin/order/${order.id}`);
     } else if (type === "query_open") {
       // tech_helpers get query_open for sub-queries → sub-queue page
@@ -242,6 +251,8 @@
       }
     } else if (queryId) {
       goto(`/admin/query/${queryId}`);
+    } else if (order?.id) {
+      goto(`/admin/order/${order.id}`);
     } else {
       goto("/admin/query");
     }
@@ -253,6 +264,9 @@
     if (type === "query_open") return "🎫";
     if (type === "query") return "💬";
     if (type === "sub_query") return "🔧";
+    if (type === "sample_status") return "📦";
+    if (type === "work_order_status") return "🏭";
+    if (type === "order") return "📋";
     return "🔔";
   }
 
@@ -261,6 +275,9 @@
     if (type === "query_open") return "#dc3545";
     if (type === "query") return "#0d6efd";
     if (type === "sub_query") return "#0dcaf0";
+    if (type === "sample_status") return "#198754";
+    if (type === "work_order_status") return "#6f42c1";
+    if (type === "order") return "#0d6efd";
     return "#6c757d";
   }
 
@@ -270,6 +287,9 @@
     if (type === "query_open") return "ti-ticket";
     if (type === "query") return "ti-message-circle";
     if (type === "sub_query") return "ti-subtask";
+    if (type === "sample_status") return "ti-package";
+    if (type === "work_order_status") return "ti-building-factory-2";
+    if (type === "order") return "ti-file-description";
     return "ti-bell";
   }
 
@@ -278,6 +298,9 @@
     if (type === "query_open") return "#dc3545";
     if (type === "query") return "#0d6efd";
     if (type === "sub_query") return "#0dcaf0";
+    if (type === "sample_status") return "#198754";
+    if (type === "work_order_status") return "#6f42c1";
+    if (type === "order") return "#0d6efd";
     return "#6c757d";
   }
 
@@ -286,6 +309,9 @@
     if (type === "query_open") return "New Query";
     if (type === "query") return "Chat Reply";
     if (type === "sub_query") return "Sub-Query";
+    if (type === "sample_status") return "Sample Status";
+    if (type === "work_order_status") return "Work Order Status";
+    if (type === "order") return "Order";
     return "Notification";
   }
 
@@ -294,6 +320,9 @@
     if (type === "query_open") return "bg-danger text-white";
     if (type === "query") return "bg-primary text-white";
     if (type === "sub_query") return "bg-info text-dark";
+    if (type === "sample_status") return "bg-success text-white";
+    if (type === "work_order_status") return "bg-dark text-white";
+    if (type === "order") return "bg-primary text-white";
     return "bg-secondary text-white";
   }
 
