@@ -343,6 +343,8 @@
       compressorLine: d.compressorLine ?? "notAvailable",
       employees: d.employees ?? [],
       basicRequirement: d.basicRequirement ?? "",
+      attendeeClientName: d.attendeeClientName ?? "",
+      attendeeClientMobile: d.attendeeClientMobile ?? "",
       contactDetails: d.contactDetails ?? "",
     };
     headEmployeeId = d.headEmployeeId ?? "";
@@ -561,6 +563,8 @@
     compressorLine: "notAvailable",
     employees: [],
     basicRequirement: "",
+    attendeeClientName: "",
+    attendeeClientMobile: "",
     contactDetails: "",
   };
 
@@ -621,6 +625,8 @@
         "welding",
         "compressorLine",
         "basicRequirement",
+        "attendeeClientName",
+        "attendeeClientMobile",
         "contactDetails",
       ].forEach((k) => fd.append(k, installForm[k] ?? ""));
       // Only Install Manager may change workshop crew assignment
@@ -1907,12 +1913,32 @@
                 bind:value={installForm.basicRequirement}
               ></textarea>
             </div>
+            <div>
+              <label class={lc}>Attendee client person name</label>
+              <input
+                class={ic}
+                bind:value={installForm.attendeeClientName}
+                placeholder="Client person present at site"
+                autocomplete="off"
+                maxlength="200"
+              />
+            </div>
+            <div>
+              <label class={lc}>Attendee client mobile</label>
+              <input
+                class={ic}
+                bind:value={installForm.attendeeClientMobile}
+                placeholder="Mobile number"
+                autocomplete="off"
+                maxlength="20"
+              />
+            </div>
             <div class="sm:col-span-2 lg:col-span-3">
-              <label class={lc}>Contact details</label>
+              <label class={lc}>Other contact notes</label>
               <textarea
                 class={ic}
                 rows="2"
-                placeholder="Site contact name, phone, address notes..."
+                placeholder="Address notes, alternate contacts..."
                 bind:value={installForm.contactDetails}
               ></textarea>
             </div>
@@ -2220,8 +2246,9 @@
             {/each}
           </div>
           {#if canManageInstallHead}
-          <div class="mb-3 p-3 rounded-lg border border-indigo-100 bg-white">
-            <div class="flex items-start justify-between gap-2 mb-1.5">
+          <div class="mb-3 flex flex-col gap-3">
+          <div class="p-3 rounded-lg border border-indigo-100 bg-white">
+            <div class="flex flex-col gap-2 mb-1.5">
               <div>
                 <p class="mb-0.5 text-[11px] font-semibold text-indigo-800">
                   Assign workshop employees
@@ -2235,7 +2262,7 @@
                   type="button"
                   on:click={saveInstallAssignees}
                   disabled={installLoading || installForm.employees.length === 0}
-                  class="shrink-0 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                  class="self-start px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
                 >
                   {installLoading ? "Saving…" : "Save crew"}
                 </button>
@@ -2389,11 +2416,9 @@
               </div>
             {/if}
           </div>
-          {/if}
 
-          {#if canManageInstallHead}
-          <div class="mb-3 p-3 rounded-lg border border-indigo-100 bg-indigo-50/40">
-            <div class="flex items-start justify-between gap-2 mb-1.5">
+          <div class="p-3 rounded-lg border border-indigo-100 bg-indigo-50/40">
+            <div class="flex flex-col gap-2 mb-1.5">
               <div>
                 <p class="text-[11px] font-semibold text-indigo-800">Installation Head (process login)</p>
                 <p class="text-[11px] text-gray-500 mt-0.5">
@@ -2404,7 +2429,7 @@
                 type="button"
                 on:click={openHeadManagePopup}
                 disabled={headAssignLoading || !dispatchData?.id}
-                class="shrink-0 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                class="self-start px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
               >
                 {headAssignLoading
                   ? "Saving…"
@@ -2460,6 +2485,7 @@
               <p class="text-xs text-gray-400">No Head login yet</p>
             {/if}
           </div>
+          </div>
           {/if}
 
           {#if dispatchData?.basicRequirement}
@@ -2468,17 +2494,37 @@
               <p class="text-sm text-gray-800 whitespace-pre-wrap">{dispatchData.basicRequirement}</p>
             </div>
           {/if}
+          <div class="mb-3 p-3 rounded-lg border border-sky-100 bg-sky-50/40">
+            <p class="mb-1.5 text-[11px] font-semibold text-sky-800">Attendee client detail</p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div>
+                <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Person name</p>
+                <p class="text-sm text-gray-800">{dispatchData?.attendeeClientName || "—"}</p>
+              </div>
+              <div>
+                <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Mobile</p>
+                {#if dispatchData?.attendeeClientMobile}
+                  <a
+                    href="tel:{dispatchData.attendeeClientMobile}"
+                    class="text-sm text-indigo-700 font-medium hover:underline"
+                  >{dispatchData.attendeeClientMobile}</a>
+                {:else}
+                  <p class="text-sm text-gray-800">—</p>
+                {/if}
+              </div>
+            </div>
+          </div>
           {#if dispatchData?.contactDetails}
             <div class="mb-3">
-              <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Contact details</p>
+              <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Other contact notes</p>
               <p class="text-sm text-gray-800 whitespace-pre-wrap">{dispatchData.contactDetails}</p>
             </div>
           {/if}
 
           {#if canManageInstallHead && showPostInstallManager}
-          <div class="mb-3 flex flex-col sm:flex-row gap-2">
+          <div class="mb-3 flex flex-col gap-2">
             <div
-              class="flex-1 flex items-center justify-between gap-2 p-3 rounded-lg border border-gray-200 bg-gray-50"
+              class="w-full flex items-center justify-between gap-2 p-3 rounded-lg border border-gray-200 bg-gray-50"
             >
               <div class="min-w-0">
                 <p class="mb-0.5 text-[11px] font-semibold text-gray-700">
@@ -2499,7 +2545,7 @@
               </button>
             </div>
             <div
-              class="flex-1 flex items-center justify-between gap-2 p-3 rounded-lg border border-emerald-100 bg-emerald-50/40"
+              class="w-full flex items-center justify-between gap-2 p-3 rounded-lg border border-emerald-100 bg-emerald-50/40"
             >
               <div class="min-w-0">
                 <p class="mb-0.5 text-[11px] font-semibold text-emerald-800">

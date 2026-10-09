@@ -325,17 +325,31 @@
     }
     opSavingClient = true;
     opEditClientErrors = {};
+    // Omit empty optional fields — email "" fails @IsEmail even though email is optional
+    const payload = Object.fromEntries(
+      Object.entries(opEditClientData).filter(
+        ([, v]) => v !== "" && v !== null && v !== undefined,
+      ),
+    );
     try {
       await authApiFetch(`${API_ROUTES.CLIENT}/${orderDrawerData.client.id}`, {
         method: "PUT",
-        data: JSON.stringify(opEditClientData),
+        data: JSON.stringify(payload),
       });
       orderDrawerData = { ...orderDrawerData, client: { ...orderDrawerData.client, ...opEditClientData } };
       opShowEditClientModal = false;
     } catch (e) {
       const errs = e?.data?.message;
-      if (typeof errs === "object") opEditClientErrors = errs;
-      else opEditClientErrors = { name: errs ?? "Failed to update client." };
+      if (typeof errs === "object" && errs !== null && !Array.isArray(errs)) {
+        opEditClientErrors = errs;
+      } else {
+        const msg = Array.isArray(errs) ? errs[0] : (errs ?? "Failed to update client.");
+        const lower = String(msg).toLowerCase();
+        if (lower.includes("email")) opEditClientErrors = { email: msg };
+        else if (lower.includes("gst")) opEditClientErrors = { gstNumber: msg };
+        else if (lower.includes("mobile")) opEditClientErrors = { mobile: msg };
+        else opEditClientErrors = { name: msg };
+      }
     } finally {
       opSavingClient = false;
     }
@@ -8107,7 +8121,8 @@
             </div>
             <div class="col-12">
               <label class="form-label">Email</label>
-              <input type="email" class="form-control" bind:value={opEditClientData.email} placeholder="Email" maxlength="100" />
+              <input type="email" class="form-control" class:is-invalid={opEditClientErrors.email} bind:value={opEditClientData.email} placeholder="Email" maxlength="100" />
+              {#if opEditClientErrors.email}<div class="invalid-feedback">{opEditClientErrors.email}</div>{/if}
             </div>
             <div class="col-12">
               <label class="form-label">Address</label>

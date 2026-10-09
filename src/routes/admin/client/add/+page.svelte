@@ -52,9 +52,14 @@
     loading = true;
     try {
       // 1. Create client
+      const clientPayload = Object.fromEntries(
+        Object.entries({ name, gstNumber, email, mobile, whatsapp, address, remark }).filter(
+          ([, v]) => v !== "" && v !== null && v !== undefined,
+        ),
+      );
       const clientRes = await authApiFetch(API_ROUTES.CLIENT, {
         method: "POST",
-        data: JSON.stringify({ name, gstNumber, email, mobile, whatsapp, address, remark }),
+        data: JSON.stringify(clientPayload),
       });
       const createdClient = clientRes.data;
 

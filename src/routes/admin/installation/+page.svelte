@@ -97,6 +97,19 @@
       },
     },
     {
+      key: "attendeeClient",
+      label: "Attendee client",
+      render: (_, row) => {
+        const name = row.attendeeClientName || "";
+        const mobile = row.attendeeClientMobile || "";
+        if (!name && !mobile) return `<span class="text-muted">—</span>`;
+        const mobileHtml = mobile
+          ? `<div><a href="tel:${mobile}" class="text-primary text-xs">${mobile}</a></div>`
+          : "";
+        return `<div class="fw-semibold text-sm">${name || "—"}</div>${mobileHtml}`;
+      },
+    },
+    {
       key: "status",
       label: "Stage",
       render: (val) => {
