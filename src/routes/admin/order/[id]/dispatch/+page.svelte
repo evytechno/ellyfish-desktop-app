@@ -14,6 +14,8 @@
   let currentUser = null;
   let order = null;
   let loading = true;
+  let refreshing = false;
+  let processKey = 0;
   let errorMessage = "";
 
   onMount(async () => {
@@ -21,9 +23,9 @@
     await loadOrder();
   });
 
-  async function loadOrder() {
+  async function loadOrder({ soft = false } = {}) {
     if (!orderId) return;
-    loading = true;
+    if (!soft) loading = true;
     errorMessage = "";
     try {
       const data = await authApiFetch(`${API_ROUTES.ORDER}/${orderId}/basic`);
@@ -51,7 +53,19 @@
       errorMessage = err?.message || "Failed to load order.";
       order = null;
     } finally {
-      loading = false;
+      if (!soft) loading = false;
+    }
+  }
+
+  async function refreshPage(e) {
+    e?.preventDefault?.();
+    if (refreshing || loading) return;
+    refreshing = true;
+    try {
+      await loadOrder({ soft: true });
+      processKey += 1;
+    } finally {
+      refreshing = false;
     }
   }
 </script>
@@ -92,7 +106,18 @@
           </div>
         {/if}
       </div>
-      <div class="d-flex flex-wrap gap-2">
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <button
+          type="button"
+          class="btn btn-outline-secondary btn-sm"
+          on:click={refreshPage}
+          disabled={refreshing || loading}
+          aria-label="Refresh"
+          title="Refresh"
+        >
+          <i class="ti ti-refresh" class:ti-spin={refreshing}></i>
+          <span class="ms-1">Refresh</span>
+        </button>
         <a href="/admin/order/{orderId}" class="btn btn-outline-secondary btn-sm">
           <i class="ti ti-arrow-left me-1"></i>Back to order
         </a>
@@ -110,7 +135,9 @@
     {:else if order}
       <div class="card border-0 shadow-sm">
         <div class="card-body p-3 p-md-4">
-          <DispatchProcess {order} />
+          {#key processKey}
+            <DispatchProcess {order} />
+          {/key}
         </div>
       </div>
     {/if}

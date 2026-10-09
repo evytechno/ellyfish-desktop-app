@@ -442,9 +442,11 @@
     existingImages = [];
   const imgUrl = (img) => {
     if (!img?.path) return "";
-    if (String(img.path).startsWith("http")) return img.path;
+    const p = String(img.path).trim();
+    // R2 / absolute CDN URLs (hybrid with old local paths)
+    if (/^https?:\/\//i.test(p)) return p;
     const base = String(API_BASE_URL || "").replace(/\/$/, "");
-    return `${base}/uploads/${String(img.path).replace(/^\//, "")}`;
+    return `${base}/uploads/${p.replace(/^\//, "")}`;
   };
 
   function syncImages(d) {
@@ -582,6 +584,13 @@
   let showCloseOutModal = false;
   let showCloseOutVideoModal = false;
   let closeOutLoading = false;
+  let showAttendeeModal = false;
+  let attendeeLoading = false;
+  let attendeeForm = {
+    attendeeClientName: "",
+    attendeeClientMobile: "",
+    contactDetails: "",
+  };
 
   let installNewFiles = [],
     installNewPreviews = [],
@@ -619,26 +628,40 @@
       [
         "deliveryDate",
         "installationType",
+        "basicRequirement",
+      ].forEach((k) => fd.append(k, installForm[k] ?? ""));
+      // Attendee / contact notes — edit via card modal only; preserve on install save
+      [
+        "attendeeClientName",
+        "attendeeClientMobile",
+        "contactDetails",
+      ].forEach((k) =>
+        fd.append(k, dispatchData?.[k] ?? installForm[k] ?? ""),
+      );
+      // Equipment requirements — Install Manager only; sales preserves existing
+      [
         "abrasive",
         "electric",
         "compressor",
         "welding",
         "compressorLine",
-        "basicRequirement",
-        "attendeeClientName",
-        "attendeeClientMobile",
-        "contactDetails",
-      ].forEach((k) => fd.append(k, installForm[k] ?? ""));
-      // Only Install Manager may change workshop crew assignment
-      let employeeIds = canManageInstallHead
-        ? [...(installForm.employees || [])]
-        : [...(dispatchData?.employees || [])];
+      ].forEach((k) => {
+        const val = canManageInstallHead
+          ? (installForm[k] ?? "")
+          : (dispatchData?.[k] ?? installForm[k] ?? "");
+        fd.append(k, val);
+      });
+      // Preserve crew — assign/change only on Installation view (Save crew)
+      let employeeIds = [
+        ...(dispatchData?.employees?.length
+          ? dispatchData.employees
+          : installForm.employees || []),
+      ];
       if (
         headEmployeeId &&
         !employeeIds.some((id) => String(id) === String(headEmployeeId))
       ) {
         employeeIds = [...employeeIds, headEmployeeId];
-        if (canManageInstallHead) installForm.employees = employeeIds;
       }
       employeeIds.forEach((id) => fd.append("employees", id));
       fd.append(
@@ -1056,6 +1079,59 @@
       Swal.fire("Error", error.message || "Could not add note", "error");
     } finally {
       managerNoteLoading = false;
+    }
+  }
+
+  function openAttendeeModal() {
+    attendeeForm = {
+      attendeeClientName: dispatchData?.attendeeClientName ?? "",
+      attendeeClientMobile: dispatchData?.attendeeClientMobile ?? "",
+      contactDetails: dispatchData?.contactDetails ?? "",
+    };
+    showAttendeeModal = true;
+  }
+
+  async function saveAttendeeClient() {
+    if (!canEditInstallation) {
+      Swal.fire(
+        "Access denied",
+        "Installation is read-only at this stage.",
+        "warning",
+      );
+      return;
+    }
+    if (!dispatchData?.id) {
+      Swal.fire(
+        "Warning",
+        "No dispatch record yet. Create dispatch first.",
+        "warning",
+      );
+      return;
+    }
+    try {
+      attendeeLoading = true;
+      const resp = await crmFetch(
+        `${API_ROUTES.DISPATCH}/${dispatchData.id}`,
+        "PUT",
+        {
+          attendeeClientName: attendeeForm.attendeeClientName ?? "",
+          attendeeClientMobile: attendeeForm.attendeeClientMobile ?? "",
+          contactDetails: attendeeForm.contactDetails ?? "",
+        },
+      );
+      dispatchData = resp?.data ?? resp;
+      syncForms(dispatchData);
+      dispatchedDetailsStore.set(dispatchData);
+      showAttendeeModal = false;
+      Swal.fire("Success", "Attendee client detail saved", "success");
+    } catch (error) {
+      Swal.fire(
+        "Error",
+        error?.message || "Could not save attendee details",
+        "error",
+      );
+    } finally {
+      attendeeLoading = false;
     }
   }
 
@@ -1913,199 +1989,18 @@
                 bind:value={installForm.basicRequirement}
               ></textarea>
             </div>
-            <div>
-              <label class={lc}>Attendee client person name</label>
-              <input
-                class={ic}
-                bind:value={installForm.attendeeClientName}
-                placeholder="Client person present at site"
-                autocomplete="off"
-                maxlength="200"
-              />
-            </div>
-            <div>
-              <label class={lc}>Attendee client mobile</label>
-              <input
-                class={ic}
-                bind:value={installForm.attendeeClientMobile}
-                placeholder="Mobile number"
-                autocomplete="off"
-                maxlength="20"
-              />
-            </div>
-            <div class="sm:col-span-2 lg:col-span-3">
-              <label class={lc}>Other contact notes</label>
-              <textarea
-                class={ic}
-                rows="2"
-                placeholder="Address notes, alternate contacts..."
-                bind:value={installForm.contactDetails}
-              ></textarea>
-            </div>
-            {#each REQUIREMENTS as req}
-              <div>
-                <label class={lc}>{req.label}</label>
-                <select class={ic} bind:value={installForm[req.field]}>
-                  {#each AVAILABLE_OPTIONS as opt}<option value={opt.value}
-                      >{opt.label}</option
-                    >{/each}
-                </select>
-              </div>
-            {/each}
-
             {#if canManageInstallHead}
-            <div class="sm:col-span-2 lg:col-span-3">
-              <label class={lc}>Assign Employees</label>
-              <p class="text-[10px] text-gray-400 mb-1.5">
-                Workshop users · save crew here or on the Installation view, then pick one as Head
-              </p>
-              {#if installForm.employees.length > 0}
-                <div class="flex flex-wrap gap-1.5 mb-2">
-                  {#each selectedLabels(installForm.employees) as emp}
-                    <span
-                      class="flex items-center gap-1.5 pl-1.5 pr-2 py-1 bg-indigo-50 border border-indigo-200 text-indigo-800 rounded-full text-xs font-medium"
-                    >
-                      <span
-                        class="w-4 h-4 rounded-full bg-indigo-200 flex items-center justify-center text-[9px] font-bold text-indigo-700 shrink-0"
-                        >{(emp.username || emp.name || "?").charAt(0)}</span
-                      >
-                      {emp.username || emp.name || emp._id}
-                      {#if isInstallHead(emp._id)}
-                        <span
-                          class="text-[9px] uppercase tracking-wide text-amber-700 bg-amber-50 border border-amber-200 px-1 rounded"
-                          >Head</span
-                        >
-                      {/if}
-                      {#if canEditAssignees && !isInstallHead(emp._id)}
-                        <button
-                          type="button"
-                          on:click={() =>
-                            (installForm.employees = toggleInstallCrew(
-                              installForm.employees,
-                              emp._id,
-                            ))}
-                          class="ml-0.5 text-indigo-400 hover:text-indigo-700 leading-none"
-                          >×</button
-                        >
-                      {/if}
-                    </span>
-                  {/each}
+            <div class="sm:col-span-2 lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
+              {#each REQUIREMENTS as req}
+                <div class="min-w-0">
+                  <label class={lc}>{req.label}</label>
+                  <select class={ic} bind:value={installForm[req.field]}>
+                    {#each AVAILABLE_OPTIONS as opt}<option value={opt.value}
+                        >{opt.label}</option
+                      >{/each}
+                  </select>
                 </div>
-              {/if}
-              {#if canEditAssignees}
-              <div class="relative">
-                <button
-                  type="button"
-                  on:click={() => toggleDropdown("install")}
-                  class="w-full flex items-center justify-between px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 hover:bg-white transition text-left"
-                >
-                  <span class="text-gray-400"
-                    >{installForm.employees.length
-                      ? `${installForm.employees.length} selected`
-                      : "Select workshop employees..."}</span
-                  >
-                  <svg
-                    class="w-4 h-4 text-gray-400 transition-transform"
-                    class:rotate-180={dropdownOpen["install"]}
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
-                </button>
-                {#if dropdownOpen["install"]}
-                  <!-- svelte-ignore a11y-click-events-have-key-events -->
-                  <!-- svelte-ignore a11y-no-static-element-interactions -->
-                  <div
-                    class="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden"
-                    on:click|stopPropagation
-                  >
-                    <div class="p-2 border-b border-gray-100 bg-white">
-                      <input
-                        type="text"
-                        bind:value={employeeSearch}
-                        autofocus
-                        placeholder="Search by name or email..."
-                        class="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 focus:bg-white"
-                      />
-                    </div>
-                    <div class="max-h-44 overflow-y-auto">
-                      {#each filteredUsers as emp}
-                        {@const checked = (installForm.employees || []).some(
-                          (id) => String(id) === String(emp._id),
-                        )}
-                        {@const lockedHead = checked && isInstallHead(emp._id)}
-                        <button
-                          type="button"
-                          disabled={lockedHead}
-                          title={lockedHead
-                            ? "Head cannot be removed — change Head first"
-                            : ""}
-                          on:click={() => {
-                            installForm.employees = toggleInstallCrew(
-                              installForm.employees,
-                              emp._id,
-                            );
-                          }}
-                          class="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition text-left disabled:opacity-60 disabled:cursor-not-allowed"
-                          class:bg-indigo-50={checked}
-                        >
-                          <span
-                            class="w-4 h-4 rounded border flex items-center justify-center shrink-0 transition"
-                            class:bg-indigo-600={checked}
-                            class:border-indigo-600={checked}
-                            class:border-gray-300={!checked}
-                          >
-                            {#if checked}<svg
-                                class="w-2.5 h-2.5 text-white"
-                                fill="none"
-                                viewBox="0 0 12 12"
-                                stroke="currentColor"
-                                stroke-width="2.5"
-                                ><path d="M1 6l3.5 3.5L11 2" /></svg
-                              >{/if}
-                          </span>
-                          <span
-                            class="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-700 shrink-0"
-                            >{(emp.username || "?").charAt(0)}</span
-                          >
-                          <div class="min-w-0">
-                            <p
-                              class="text-sm font-medium text-gray-800 truncate mb-0"
-                            >
-                              {emp.username}
-                              {#if workshopEmployeeRoleLabel(emp)}
-                                <span class="font-normal text-gray-500"
-                                  >· {workshopEmployeeRoleLabel(emp)}</span
-                                >
-                              {/if}
-                            </p>
-                            <p class="text-xs text-gray-400 truncate mb-0">
-                              {emp.email || ""}
-                            </p>
-                          </div>
-                        </button>
-                      {/each}
-                      {#if filteredUsers.length === 0}
-                        <p class="px-4 py-3 text-sm text-gray-400">
-                          {users.length === 0
-                            ? "No workshop employees found"
-                            : "No matching employees"}
-                        </p>
-                      {/if}
-                    </div>
-                  </div>
-                {/if}
-              </div>
-              {:else if installForm.employees.length === 0}
-                <p class="text-xs text-gray-400">No employees assigned yet</p>
-              {/if}
+              {/each}
             </div>
             {/if}
 
@@ -2190,17 +2085,12 @@
             >
             <button
               on:click={saveInstall}
-              disabled={installLoading ||
-                (canManageInstallHead && installForm.employees.length === 0)}
+              disabled={installLoading}
               class="px-4 py-2 text-xs font-semibold text-white rounded-lg transition"
-              class:bg-indigo-300={installLoading ||
-                (canManageInstallHead && installForm.employees.length === 0)}
-              class:cursor-not-allowed={installLoading ||
-                (canManageInstallHead && installForm.employees.length === 0)}
-              class:bg-indigo-600={!installLoading &&
-                !(canManageInstallHead && installForm.employees.length === 0)}
-              class:hover:bg-indigo-700={!installLoading &&
-                !(canManageInstallHead && installForm.employees.length === 0)}
+              class:bg-indigo-300={installLoading}
+              class:cursor-not-allowed={installLoading}
+              class:bg-indigo-600={!installLoading}
+              class:hover:bg-indigo-700={!installLoading}
             >
               {installLoading ? "Saving…" : "Save Changes"}
             </button>
@@ -2217,39 +2107,44 @@
               <p class="text-sm text-gray-800">{dispatchData?.installationType || "—"}</p>
             </div>
           </div>
-          <p class="mb-1.5 text-[11px] font-semibold text-gray-500">Equipment Requirements</p>
-          <div class="bg-gray-50 rounded-lg divide-y divide-gray-100 px-3 mb-3">
-            {#each REQUIREMENTS as req}
-              {@const val = installForm[req.field]}
-              {@const on = val === "available"}
-              {@const nr = val === "notRequired"}
-              <div class="flex items-center justify-between py-2">
-                <span class="text-sm text-gray-700">{req.label}</span>
-                <span
-                  class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium"
-                  class:bg-green-100={on}
-                  class:text-green-800={on}
-                  class:bg-gray-100={nr}
-                  class:text-gray-500={nr}
-                  class:bg-red-100={!on && !nr}
-                  class:text-red-700={!on && !nr}
-                >
-                  <span
-                    class="w-1.5 h-1.5 rounded-full"
-                    class:bg-green-500={on}
-                    class:bg-gray-400={nr}
-                    class:bg-red-400={!on && !nr}
-                  />
-                  {on ? "Available" : nr ? "Not Required" : "Not Available"}
-                </span>
+          <!-- Manageable columns: full-width equal cols & equal card height -->
+          <div class="w-full grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 mb-3 items-stretch auto-rows-fr">
+            {#if canManageInstallHead}
+            <div class="w-full h-full p-3 rounded-lg border border-gray-200 bg-white flex flex-col items-stretch min-h-0">
+              <p class="mb-1.5 text-[11px] font-semibold text-gray-700">Equipment Requirements</p>
+              <div class="bg-gray-50 rounded-lg divide-y divide-gray-100 px-3 flex-1">
+                {#each REQUIREMENTS as req}
+                  {@const val = installForm[req.field]}
+                  {@const on = val === "available"}
+                  {@const nr = val === "notRequired"}
+                  <div class="flex items-center justify-between py-2 gap-2">
+                    <span class="text-sm text-gray-700 truncate">{req.label}</span>
+                    <span
+                      class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium shrink-0"
+                      class:bg-green-100={on}
+                      class:text-green-800={on}
+                      class:bg-gray-100={nr}
+                      class:text-gray-500={nr}
+                      class:bg-red-100={!on && !nr}
+                      class:text-red-700={!on && !nr}
+                    >
+                      <span
+                        class="w-1.5 h-1.5 rounded-full"
+                        class:bg-green-500={on}
+                        class:bg-gray-400={nr}
+                        class:bg-red-400={!on && !nr}
+                      />
+                      {on ? "Available" : nr ? "Not Required" : "Not Available"}
+                    </span>
+                  </div>
+                {/each}
               </div>
-            {/each}
-          </div>
-          {#if canManageInstallHead}
-          <div class="mb-3 flex flex-col gap-3">
-          <div class="p-3 rounded-lg border border-indigo-100 bg-white">
-            <div class="flex flex-col gap-2 mb-1.5">
-              <div>
+            </div>
+            {/if}
+
+            {#if canManageInstallHead}
+            <div class="w-full h-full p-3 rounded-lg border border-indigo-100 bg-white flex flex-col items-stretch min-h-0">
+              <div class="mb-1.5">
                 <p class="mb-0.5 text-[11px] font-semibold text-indigo-800">
                   Assign workshop employees
                 </p>
@@ -2257,276 +2152,278 @@
                   Select the install crew first, then choose one of them as Head below.
                 </p>
               </div>
+
+              {#if installForm.employees.length > 0}
+                <div class="flex flex-wrap gap-1.5 mb-2">
+                  {#each selectedLabels(installForm.employees) as emp}
+                    <span
+                      class="flex items-center gap-1.5 pl-1.5 pr-2 py-1 bg-indigo-50 border border-indigo-200 text-indigo-800 rounded-full text-xs font-medium"
+                    >
+                      <span
+                        class="w-4 h-4 rounded-full bg-indigo-200 flex items-center justify-center text-[9px] font-bold text-indigo-700 shrink-0"
+                        >{(emp.username || emp.name || "?").charAt(0)}</span
+                      >
+                      {emp.username || emp.name || emp._id}
+                      {#if isInstallHead(emp._id)}
+                        <span
+                          class="text-[9px] uppercase tracking-wide text-amber-700 bg-amber-50 border border-amber-200 px-1 rounded"
+                          >Head</span
+                        >
+                      {/if}
+                      {#if canEditAssignees && !isInstallHead(emp._id)}
+                        <button
+                          type="button"
+                          on:click={() =>
+                            (installForm.employees = toggleInstallCrew(
+                              installForm.employees,
+                              emp._id,
+                            ))}
+                          class="ml-0.5 text-indigo-400 hover:text-indigo-700 leading-none"
+                          >×</button
+                        >
+                      {/if}
+                    </span>
+                  {/each}
+                </div>
+              {:else}
+                <p class="text-xs text-gray-400 mb-2">No workshop employees assigned yet</p>
+              {/if}
+
               {#if canEditAssignees}
-                <button
-                  type="button"
-                  on:click={saveInstallAssignees}
-                  disabled={installLoading || installForm.employees.length === 0}
-                  class="self-start px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
-                >
-                  {installLoading ? "Saving…" : "Save crew"}
-                </button>
+                <div class="relative mt-auto">
+                  <button
+                    type="button"
+                    on:click={() => toggleDropdown("install-view")}
+                    class="w-full flex items-center justify-between px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 hover:bg-white transition text-left"
+                  >
+                    <span class="text-gray-400"
+                      >{installForm.employees.length
+                        ? `${installForm.employees.length} selected`
+                        : "Select workshop employees..."}</span
+                    >
+                    <svg
+                      class="w-4 h-4 text-gray-400 transition-transform"
+                      class:rotate-180={dropdownOpen["install-view"]}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M19 9l-7 7-7-7"
+                      />
+                    </svg>
+                  </button>
+                  {#if dropdownOpen["install-view"]}
+                    <!-- svelte-ignore a11y-click-events-have-key-events -->
+                    <!-- svelte-ignore a11y-no-static-element-interactions -->
+                    <div
+                      class="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden"
+                      on:click|stopPropagation
+                    >
+                      <div class="p-2 border-b border-gray-100 bg-white">
+                        <input
+                          type="text"
+                          bind:value={employeeSearch}
+                          autofocus
+                          placeholder="Search by name or email..."
+                          class="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 focus:bg-white"
+                        />
+                      </div>
+                      <div class="max-h-44 overflow-y-auto">
+                        {#each filteredUsers as emp}
+                          {@const checked = (installForm.employees || []).some(
+                            (id) => String(id) === String(emp._id),
+                          )}
+                          {@const lockedHead = checked && isInstallHead(emp._id)}
+                          <button
+                            type="button"
+                            disabled={lockedHead}
+                            title={lockedHead
+                              ? "Head cannot be removed — change Head first"
+                              : ""}
+                            on:click={() => {
+                              installForm.employees = toggleInstallCrew(
+                                installForm.employees,
+                                emp._id,
+                              );
+                            }}
+                            class="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition text-left disabled:opacity-60 disabled:cursor-not-allowed"
+                            class:bg-indigo-50={checked}
+                          >
+                            <span
+                              class="w-4 h-4 rounded border flex items-center justify-center shrink-0 transition"
+                              class:bg-indigo-600={checked}
+                              class:border-indigo-600={checked}
+                              class:border-gray-300={!checked}
+                            >
+                              {#if checked}<svg
+                                  class="w-2.5 h-2.5 text-white"
+                                  fill="none"
+                                  viewBox="0 0 12 12"
+                                  stroke="currentColor"
+                                  stroke-width="2.5"
+                                  ><path d="M1 6l3.5 3.5L11 2" /></svg
+                                >{/if}
+                            </span>
+                            <span
+                              class="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-700 shrink-0"
+                              >{(emp.username || "?").charAt(0)}</span
+                            >
+                            <div class="min-w-0">
+                              <p class="text-sm font-medium text-gray-800 truncate mb-0">
+                                {emp.username}
+                                {#if workshopEmployeeRoleLabel(emp)}
+                                  <span class="font-normal text-gray-500"
+                                    >· {workshopEmployeeRoleLabel(emp)}</span
+                                  >
+                                {/if}
+                              </p>
+                              <p class="text-xs text-gray-400 truncate mb-0">
+                                {emp.email || ""}
+                              </p>
+                            </div>
+                          </button>
+                        {/each}
+                        {#if filteredUsers.length === 0}
+                          <p class="px-4 py-3 text-sm text-gray-400">
+                            {users.length === 0
+                              ? "No workshop employees found"
+                              : "No matching employees"}
+                          </p>
+                        {/if}
+                      </div>
+                    </div>
+                  {/if}
+                </div>
+                <div class="flex justify-end mt-2">
+                  <button
+                    type="button"
+                    on:click={saveInstallAssignees}
+                    disabled={installLoading || installForm.employees.length === 0}
+                    class="px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    {installLoading ? "Saving…" : "Save crew"}
+                  </button>
+                </div>
               {/if}
             </div>
 
-            {#if installForm.employees.length > 0}
-              <div class="flex flex-wrap gap-1.5 mb-2">
-                {#each selectedLabels(installForm.employees) as emp}
-                  <span
-                    class="flex items-center gap-1.5 pl-1.5 pr-2 py-1 bg-indigo-50 border border-indigo-200 text-indigo-800 rounded-full text-xs font-medium"
-                  >
-                    <span
-                      class="w-4 h-4 rounded-full bg-indigo-200 flex items-center justify-center text-[9px] font-bold text-indigo-700 shrink-0"
-                      >{(emp.username || emp.name || "?").charAt(0)}</span
-                    >
-                    {emp.username || emp.name || emp._id}
-                    {#if isInstallHead(emp._id)}
-                      <span
-                        class="text-[9px] uppercase tracking-wide text-amber-700 bg-amber-50 border border-amber-200 px-1 rounded"
-                        >Head</span
-                      >
-                    {/if}
-                    {#if canEditAssignees && !isInstallHead(emp._id)}
-                      <button
-                        type="button"
-                        on:click={() =>
-                          (installForm.employees = toggleInstallCrew(
-                            installForm.employees,
-                            emp._id,
-                          ))}
-                        class="ml-0.5 text-indigo-400 hover:text-indigo-700 leading-none"
-                        >×</button
-                      >
-                    {/if}
-                  </span>
-                {/each}
-              </div>
-            {:else}
-              <p class="text-xs text-gray-400 mb-2">No workshop employees assigned yet</p>
-            {/if}
-
-            {#if canEditAssignees}
-              <div class="relative">
-                <button
-                  type="button"
-                  on:click={() => toggleDropdown("install-view")}
-                  class="w-full flex items-center justify-between px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 hover:bg-white transition text-left"
-                >
-                  <span class="text-gray-400"
-                    >{installForm.employees.length
-                      ? `${installForm.employees.length} selected`
-                      : "Select workshop employees..."}</span
-                  >
-                  <svg
-                    class="w-4 h-4 text-gray-400 transition-transform"
-                    class:rotate-180={dropdownOpen["install-view"]}
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
-                </button>
-                {#if dropdownOpen["install-view"]}
-                  <!-- svelte-ignore a11y-click-events-have-key-events -->
-                  <!-- svelte-ignore a11y-no-static-element-interactions -->
-                  <div
-                    class="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden"
-                    on:click|stopPropagation
-                  >
-                    <div class="p-2 border-b border-gray-100 bg-white">
-                      <input
-                        type="text"
-                        bind:value={employeeSearch}
-                        autofocus
-                        placeholder="Search by name or email..."
-                        class="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 focus:bg-white"
-                      />
-                    </div>
-                    <div class="max-h-44 overflow-y-auto">
-                      {#each filteredUsers as emp}
-                        {@const checked = (installForm.employees || []).some(
-                          (id) => String(id) === String(emp._id),
-                        )}
-                        {@const lockedHead = checked && isInstallHead(emp._id)}
-                        <button
-                          type="button"
-                          disabled={lockedHead}
-                          title={lockedHead
-                            ? "Head cannot be removed — change Head first"
-                            : ""}
-                          on:click={() => {
-                            installForm.employees = toggleInstallCrew(
-                              installForm.employees,
-                              emp._id,
-                            );
-                          }}
-                          class="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition text-left disabled:opacity-60 disabled:cursor-not-allowed"
-                          class:bg-indigo-50={checked}
-                        >
-                          <span
-                            class="w-4 h-4 rounded border flex items-center justify-center shrink-0 transition"
-                            class:bg-indigo-600={checked}
-                            class:border-indigo-600={checked}
-                            class:border-gray-300={!checked}
-                          >
-                            {#if checked}<svg
-                                class="w-2.5 h-2.5 text-white"
-                                fill="none"
-                                viewBox="0 0 12 12"
-                                stroke="currentColor"
-                                stroke-width="2.5"
-                                ><path d="M1 6l3.5 3.5L11 2" /></svg
-                              >{/if}
-                          </span>
-                          <span
-                            class="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-700 shrink-0"
-                            >{(emp.username || "?").charAt(0)}</span
-                          >
-                          <div class="min-w-0">
-                            <p class="text-sm font-medium text-gray-800 truncate mb-0">
-                              {emp.username}
-                              {#if workshopEmployeeRoleLabel(emp)}
-                                <span class="font-normal text-gray-500"
-                                  >· {workshopEmployeeRoleLabel(emp)}</span
-                                >
-                              {/if}
-                            </p>
-                            <p class="text-xs text-gray-400 truncate mb-0">
-                              {emp.email || ""}
-                            </p>
-                          </div>
-                        </button>
-                      {/each}
-                      {#if filteredUsers.length === 0}
-                        <p class="px-4 py-3 text-sm text-gray-400">
-                          {users.length === 0
-                            ? "No workshop employees found"
-                            : "No matching employees"}
-                        </p>
-                      {/if}
-                    </div>
-                  </div>
-                {/if}
-              </div>
-            {/if}
-          </div>
-
-          <div class="p-3 rounded-lg border border-indigo-100 bg-indigo-50/40">
-            <div class="flex flex-col gap-2 mb-1.5">
-              <div>
+            <div class="w-full h-full p-3 rounded-lg border border-indigo-100 bg-indigo-50/40 flex flex-col items-stretch min-h-0">
+              <div class="mb-1.5">
                 <p class="text-[11px] font-semibold text-indigo-800">Installation Head (process login)</p>
                 <p class="text-[11px] text-gray-500 mt-0.5">
                   Pick <b>one</b> workshop crew member. Creates/updates Installation App User — they sign in on ShipMate with <b>App User</b> login only (same email/password).
                 </p>
               </div>
-              <button
-                type="button"
-                on:click={openHeadManagePopup}
-                disabled={headAssignLoading || !dispatchData?.id}
-                class="self-start px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
-              >
-                {headAssignLoading
-                  ? "Saving…"
-                  : headCredsHint?.email
-                    ? "Manage login"
-                    : "Assign Head"}
-              </button>
+              {#if !(dispatchData?.employees ?? []).length && !installForm.employees.length}
+                <p class="text-xs text-amber-700 mb-1">
+                  Assign workshop employees first, then choose Head.
+                </p>
+              {/if}
+              {#if headCredsHint?.email}
+                <div class="text-xs text-gray-700 bg-white border border-indigo-100 rounded-md p-2 mb-2">
+                  <div>Email: <b>{headCredsHint.email}</b></div>
+                  {#if headCredsHint.password}
+                    <div>Password: <b>{headCredsHint.password}</b> <span class="text-amber-700">(shown once)</span></div>
+                  {:else}
+                    <div class="text-gray-500">Password already issued — use Manage login to set a new one.</div>
+                  {/if}
+                  {#if headCredsHint.expiresAt}
+                    {@const left = headDaysRemaining(headCredsHint.expiresAt)}
+                    <div class="text-gray-500">
+                      Expires: {String(headCredsHint.expiresAt).slice(0, 19).replace("T", " ")}
+                      {#if left != null}
+                        <span
+                          class="ml-1 font-semibold"
+                          class:text-amber-700={left <= 3}
+                          class:text-red-600={left <= 0}
+                          class:text-emerald-700={left > 3}
+                        >
+                          {left <= 0
+                            ? "(expired)"
+                            : left === 1
+                              ? "(1 day left)"
+                              : `(${left} days left)`}
+                        </span>
+                      {/if}
+                    </div>
+                  {/if}
+                  {#if !dispatchData?.headAppUserId}
+                    <div class="text-amber-700 mt-1">
+                      App User not linked yet — open <b>Manage login</b> and save again (restart backend first if you just deployed).
+                    </div>
+                  {:else}
+                    <div class="text-gray-500 mt-1">
+                      App User #{dispatchData.headAppUserId} (Installation role)
+                    </div>
+                  {/if}
+                </div>
+              {:else}
+                <p class="text-xs text-gray-400 mb-2 flex-1">No Head login yet</p>
+              {/if}
+              <div class="flex justify-end mt-auto">
+                <button
+                  type="button"
+                  on:click={openHeadManagePopup}
+                  disabled={headAssignLoading || !dispatchData?.id}
+                  class="px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {headAssignLoading
+                    ? "Saving…"
+                    : headCredsHint?.email
+                      ? "Manage login"
+                      : "Assign Head"}
+                </button>
+              </div>
             </div>
-            {#if !(dispatchData?.employees ?? []).length && !installForm.employees.length}
-              <p class="text-xs text-amber-700 mb-1">
-                Assign workshop employees first, then choose Head.
-              </p>
             {/if}
-            {#if headCredsHint?.email}
-              <div class="text-xs text-gray-700 bg-white border border-indigo-100 rounded-md p-2">
-                <div>Email: <b>{headCredsHint.email}</b></div>
-                {#if headCredsHint.password}
-                  <div>Password: <b>{headCredsHint.password}</b> <span class="text-amber-700">(shown once)</span></div>
-                {:else}
-                  <div class="text-gray-500">Password already issued — use Manage login to set a new one.</div>
-                {/if}
-                {#if headCredsHint.expiresAt}
-                  {@const left = headDaysRemaining(headCredsHint.expiresAt)}
-                  <div class="text-gray-500">
-                    Expires: {String(headCredsHint.expiresAt).slice(0, 19).replace("T", " ")}
-                    {#if left != null}
-                      <span
-                        class="ml-1 font-semibold"
-                        class:text-amber-700={left <= 3}
-                        class:text-red-600={left <= 0}
-                        class:text-emerald-700={left > 3}
-                      >
-                        {left <= 0
-                          ? "(expired)"
-                          : left === 1
-                            ? "(1 day left)"
-                            : `(${left} days left)`}
-                      </span>
-                    {/if}
-                  </div>
-                {/if}
-                {#if !dispatchData?.headAppUserId}
-                  <div class="text-amber-700 mt-1">
-                    App User not linked yet — open <b>Manage login</b> and save again (restart backend first if you just deployed).
-                  </div>
-                {:else}
-                  <div class="text-gray-500 mt-1">
-                    App User #{dispatchData.headAppUserId} (Installation role)
-                  </div>
-                {/if}
-              </div>
-            {:else}
-              <p class="text-xs text-gray-400">No Head login yet</p>
-            {/if}
-          </div>
-          </div>
-          {/if}
 
-          {#if dispatchData?.basicRequirement}
-            <div class="mb-2">
-              <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Basic requirement</p>
-              <p class="text-sm text-gray-800 whitespace-pre-wrap">{dispatchData.basicRequirement}</p>
-            </div>
-          {/if}
-          <div class="mb-3 p-3 rounded-lg border border-sky-100 bg-sky-50/40">
-            <p class="mb-1.5 text-[11px] font-semibold text-sky-800">Attendee client detail</p>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <div>
-                <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Person name</p>
-                <p class="text-sm text-gray-800">{dispatchData?.attendeeClientName || "—"}</p>
+            <div class="w-full h-full p-3 rounded-lg border border-sky-100 bg-sky-50/40 flex flex-col items-stretch min-h-0">
+              <p class="mb-1.5 text-[11px] font-semibold text-sky-800">Attendee client detail</p>
+              <div class="grid grid-cols-1 gap-2 flex-1">
+                <div>
+                  <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Person name</p>
+                  <p class="text-sm text-gray-800">{dispatchData?.attendeeClientName || "—"}</p>
+                </div>
+                <div>
+                  <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Mobile</p>
+                  {#if dispatchData?.attendeeClientMobile}
+                    <a
+                      href="tel:{dispatchData.attendeeClientMobile}"
+                      class="text-sm text-indigo-700 font-medium hover:underline"
+                    >{dispatchData.attendeeClientMobile}</a>
+                  {:else}
+                    <p class="text-sm text-gray-800">—</p>
+                  {/if}
+                </div>
+                <div>
+                  <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Other contact notes</p>
+                  <p class="text-sm text-gray-800 whitespace-pre-wrap">
+                    {dispatchData?.contactDetails || "—"}
+                  </p>
+                </div>
               </div>
-              <div>
-                <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Mobile</p>
-                {#if dispatchData?.attendeeClientMobile}
-                  <a
-                    href="tel:{dispatchData.attendeeClientMobile}"
-                    class="text-sm text-indigo-700 font-medium hover:underline"
-                  >{dispatchData.attendeeClientMobile}</a>
-                {:else}
-                  <p class="text-sm text-gray-800">—</p>
-                {/if}
-              </div>
+              {#if canEditInstallation}
+                <div class="flex justify-end mt-auto pt-2">
+                  <button
+                    type="button"
+                    on:click={openAttendeeModal}
+                    class="px-3 py-1.5 text-xs font-semibold text-white bg-sky-600 rounded-lg hover:bg-sky-700"
+                  >
+                    Edit
+                  </button>
+                </div>
+              {/if}
             </div>
-          </div>
-          {#if dispatchData?.contactDetails}
-            <div class="mb-3">
-              <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Other contact notes</p>
-              <p class="text-sm text-gray-800 whitespace-pre-wrap">{dispatchData.contactDetails}</p>
-            </div>
-          {/if}
 
-          {#if canManageInstallHead && showPostInstallManager}
-          <div class="mb-3 flex flex-col gap-2">
+            {#if canManageInstallHead && showPostInstallManager}
             <div
-              class="w-full flex items-center justify-between gap-2 p-3 rounded-lg border border-gray-200 bg-gray-50"
+              class="w-full h-full p-3 rounded-lg border border-gray-200 bg-gray-50 flex flex-col items-stretch gap-2 min-h-0"
             >
-              <div class="min-w-0">
+              <div class="min-w-0 flex-1">
                 <p class="mb-0.5 text-[11px] font-semibold text-gray-700">
                   Manager notes (history)
                 </p>
@@ -2536,18 +2433,20 @@
                     : "No notes yet"}
                 </p>
               </div>
-              <button
-                type="button"
-                on:click={() => (showManagerNotesModal = true)}
-                class="shrink-0 px-3 py-1.5 text-xs font-semibold text-white bg-gray-700 rounded-lg hover:bg-gray-800"
-              >
-                Open notes
-              </button>
+              <div class="flex justify-end mt-auto">
+                <button
+                  type="button"
+                  on:click={() => (showManagerNotesModal = true)}
+                  class="px-3 py-1.5 text-xs font-semibold text-white bg-gray-700 rounded-lg hover:bg-gray-800"
+                >
+                  Open notes
+                </button>
+              </div>
             </div>
             <div
-              class="w-full flex items-center justify-between gap-2 p-3 rounded-lg border border-emerald-100 bg-emerald-50/40"
+              class="w-full h-full p-3 rounded-lg border border-emerald-100 bg-emerald-50/40 flex flex-col items-stretch gap-2 min-h-0"
             >
-              <div class="min-w-0">
+              <div class="min-w-0 flex-1">
                 <p class="mb-0.5 text-[11px] font-semibold text-emerald-800">
                   Close-out (review / video / final)
                 </p>
@@ -2561,18 +2460,27 @@
                   {/if}
                 </p>
               </div>
-              <button
-                type="button"
-                on:click={() => {
-                  syncCloseOutForm(dispatchData);
-                  showCloseOutModal = true;
-                }}
-                class="shrink-0 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700"
-              >
-                Open close-out
-              </button>
+              <div class="flex justify-end mt-auto">
+                <button
+                  type="button"
+                  on:click={() => {
+                    syncCloseOutForm(dispatchData);
+                    showCloseOutModal = true;
+                  }}
+                  class="px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700"
+                >
+                  Open close-out
+                </button>
+              </div>
             </div>
+            {/if}
           </div>
+
+          {#if dispatchData?.basicRequirement}
+            <div class="mb-2">
+              <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Basic requirement</p>
+              <p class="text-sm text-gray-800 whitespace-pre-wrap">{dispatchData.basicRequirement}</p>
+            </div>
           {/if}
 
           {#if canManageInstallHead}
@@ -3334,6 +3242,80 @@
         {/if}
     </section>
     {/if}
+  </div>
+{/if}
+
+{#if showAttendeeModal}
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <!-- svelte-ignore a11y-no-static-element-interactions -->
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
+    on:click|self={() => (showAttendeeModal = false)}
+  >
+    <div
+      class="w-full max-w-md max-h-[85vh] overflow-y-auto bg-white rounded-xl shadow-xl border border-gray-200 p-4"
+      on:click|stopPropagation
+    >
+      <div class="flex items-start justify-between gap-2 mb-3">
+        <div>
+          <h3 class="text-sm font-semibold text-gray-800 mb-0">Attendee client detail</h3>
+          <p class="text-[11px] text-gray-500 mb-0">Person name, mobile, and other contact notes</p>
+        </div>
+        <button
+          type="button"
+          class="text-gray-400 hover:text-gray-700 text-lg leading-none px-1"
+          on:click={() => (showAttendeeModal = false)}
+          >×</button
+        >
+      </div>
+      <div class="space-y-3">
+        <div>
+          <label class={lc}>Person name</label>
+          <input
+            class={ic}
+            bind:value={attendeeForm.attendeeClientName}
+            placeholder="Client person present at site"
+            autocomplete="off"
+            maxlength="200"
+          />
+        </div>
+        <div>
+          <label class={lc}>Mobile</label>
+          <input
+            class={ic}
+            bind:value={attendeeForm.attendeeClientMobile}
+            placeholder="Mobile number"
+            autocomplete="off"
+            maxlength="20"
+          />
+        </div>
+        <div>
+          <label class={lc}>Other contact notes</label>
+          <textarea
+            class={ic}
+            rows="3"
+            placeholder="Address notes, alternate contacts..."
+            bind:value={attendeeForm.contactDetails}
+          ></textarea>
+        </div>
+      </div>
+      <div class="flex justify-end gap-2 mt-4">
+        <button
+          type="button"
+          on:click={() => (showAttendeeModal = false)}
+          class="px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+          >Cancel</button
+        >
+        <button
+          type="button"
+          on:click={saveAttendeeClient}
+          disabled={attendeeLoading}
+          class="px-3 py-1.5 text-xs font-semibold text-white bg-sky-600 rounded-lg hover:bg-sky-700 disabled:opacity-50"
+        >
+          {attendeeLoading ? "Saving…" : "Save"}
+        </button>
+      </div>
+    </div>
   </div>
 {/if}
 
