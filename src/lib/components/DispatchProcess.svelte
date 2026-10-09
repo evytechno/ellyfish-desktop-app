@@ -226,9 +226,17 @@
   }
   function closeOutVideoHref(url) {
     if (!url) return "";
-    if (/^https?:\/\//i.test(url)) return url;
+    const p = String(url).trim();
+    if (/^https?:\/\//i.test(p)) return p;
     const base = String(API_BASE_URL || "").replace(/\/$/, "");
-    return `${base}/uploads/${String(url).replace(/^\//, "")}`;
+    // R2 proxy from API (works without public .r2.dev)
+    if (p.startsWith("/r2-media") || p.startsWith("r2-media")) {
+      return p.startsWith("/") ? `${base}${p}` : `${base}/${p}`;
+    }
+    if (p.startsWith("r2:")) {
+      return `${base}/r2-media?key=${encodeURIComponent(p.slice(3))}`;
+    }
+    return `${base}/uploads/${p.replace(/^\//, "")}`;
   }
   function canPlayCloseOutInApp(url) {
     if (!url) return false;
@@ -443,9 +451,27 @@
   const imgUrl = (img) => {
     if (!img?.path) return "";
     const p = String(img.path).trim();
-    // R2 / absolute CDN URLs (hybrid with old local paths)
-    if (/^https?:\/\//i.test(p)) return p;
     const base = String(API_BASE_URL || "").replace(/\/$/, "");
+    // Absolute URL — if it's a broken .r2.dev link, still try; API now returns /r2-media for R2
+    if (/^https?:\/\//i.test(p)) {
+      // Old stored public R2 URLs → load via backend proxy
+      try {
+        const u = new URL(p);
+        if (/\.r2\.dev$/i.test(u.hostname) || /r2\.cloudflarestorage\.com$/i.test(u.hostname)) {
+          const key = u.pathname.replace(/^\/+/, "");
+          if (key) return `${base}/r2-media?key=${encodeURIComponent(key)}`;
+        }
+      } catch {
+        /* use as-is */
+      }
+      return p;
+    }
+    if (p.startsWith("/r2-media") || p.startsWith("r2-media")) {
+      return p.startsWith("/") ? `${base}${p}` : `${base}/${p}`;
+    }
+    if (p.startsWith("r2:")) {
+      return `${base}/r2-media?key=${encodeURIComponent(p.slice(3))}`;
+    }
     return `${base}/uploads/${p.replace(/^\//, "")}`;
   };
 
