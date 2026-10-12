@@ -222,7 +222,7 @@
       loginEndTime: loginEndTime || null,
       allowedSalesUserIds: currentUser?.role === "master" && selectedRoles.includes("admin") ? (allowedSalesUserIds ?? null) : undefined,
       canViewAdmins: currentUser?.role === "master" && selectedRoles.includes("admin") ? !!canViewAdmins : undefined,
-      modulePermissions: currentUser?.role === "master" && selectedRoles.includes("admin") ? modulePermissions : undefined,
+      modulePermissions: currentUser?.role === "master" && (selectedRoles.includes("admin") || selectedRoles.includes("manager")) ? modulePermissions : undefined,
     };
 
     try {
@@ -477,6 +477,14 @@
           {#if currentUser?.role === "master" && selectedRoles.includes("admin")}
             <div class="mt-4">
               <ModuleAccessEditor
+                bind:modulePermissions
+                on:change={(e) => { modulePermissions = e.detail; }}
+              />
+            </div>
+          {:else if currentUser?.role === "master" && selectedRoles.includes("manager")}
+            <div class="mt-4">
+              <ModuleAccessEditor
+                groupLabels={["Installation"]}
                 bind:modulePermissions
                 on:change={(e) => { modulePermissions = e.detail; }}
               />

@@ -638,15 +638,35 @@
                         <li
                           class:active={currentPath.startsWith(
                             "/admin/installation",
-                          )}
+                          ) &&
+                            !currentPath.startsWith("/admin/installation-track")}
                         >
                           <a
                             href="/admin/installation"
                             class:active={currentPath.startsWith(
                               "/admin/installation",
-                            )}
+                            ) &&
+                              !currentPath.startsWith(
+                                "/admin/installation-track",
+                              )}
                           >
                             <i class="ti ti-tool"></i><span>Installation</span>
+                          </a>
+                        </li>
+                        <li
+                          class:active={currentPath.startsWith(
+                            "/admin/installation-track",
+                          )}
+                        >
+                          <a
+                            href="/admin/installation-track"
+                            class:active={currentPath.startsWith(
+                              "/admin/installation-track",
+                            )}
+                          >
+                            <i class="ti ti-map-pin"></i><span
+                              >Installation track</span
+                            >
                           </a>
                         </li>
                         {/if}

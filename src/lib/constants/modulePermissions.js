@@ -13,7 +13,7 @@ export const MODULE_GROUPS = [
   },
   {
     label: "Installation",
-    hint: "Gates Installation queue, crew assign, and Head login actions for admins.",
+    hint: "Required for admin and manager. Without this, Installation stays hidden.",
     modules: [{ key: "installation", label: "Installation queue" }],
   },
   {

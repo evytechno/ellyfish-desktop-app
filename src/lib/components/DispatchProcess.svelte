@@ -11,6 +11,8 @@
     workshopEmployeeRoleLabel,
   } from "$lib/api/workshopSales";
   import { checkAuth, canAccess } from "$lib/utils/auth";
+  import SiteLocationPicker from "$lib/components/SiteLocationPicker.svelte";
+  import { reverseIndiaPlace } from "$lib/utils/placeSearch";
 
   // ── Props ────────────────────────────────────────────────
   export let order = { workOrderNumber: "" };
@@ -70,6 +72,12 @@
   $: canEditInstallation =
     statusGte(workOrderStatus, "delivered") &&
     statusLte(workOrderStatus, "installationInProgress");
+  $: canSetSitePin =
+    crmUser?.role === "master" ||
+    (crmUser?.role === "user" &&
+      (order?.assignedUsers || []).some(
+        (person) => Number(person?.id) === Number(crmUser?.id),
+      ));
   /** Crew assign / change — Install Manager only (workshop users in the list). */
   $: canEditAssignees = canManageInstallHead && canEditInstallation;
   // Visits: add/edit while installationInProgress only
@@ -344,6 +352,14 @@
     installForm = {
       deliveryDate: d.deliveryDate ?? "",
       installationType: d.installationType ?? "offline",
+      siteLatitude:
+        d.siteLatitude == null || d.siteLatitude === ""
+          ? ""
+          : String(d.siteLatitude),
+      siteLongitude:
+        d.siteLongitude == null || d.siteLongitude === ""
+          ? ""
+          : String(d.siteLongitude),
       abrasive: d.abrasive ?? "notAvailable",
       electric: d.electric ?? "notAvailable",
       compressor: d.compressor ?? "notAvailable",
@@ -528,6 +544,10 @@
         "city",
         "state",
       ].forEach((k) => fd.append(k, dispatchForm[k] ?? ""));
+      if (canSetSitePin) {
+        fd.append("siteLatitude", installForm.siteLatitude ?? "");
+        fd.append("siteLongitude", installForm.siteLongitude ?? "");
+      }
       // Kept image list (so removals persist); new files use same field for multer
       fd.append("keptDispatchImages", JSON.stringify(existingImages));
       newImageFiles.forEach((f) => fd.append("dispatchImages", f));
@@ -584,6 +604,8 @@
   let installForm = {
     deliveryDate: "",
     installationType: "offline",
+    siteLatitude: "",
+    siteLongitude: "",
     abrasive: "notAvailable",
     electric: "notAvailable",
     compressor: "notAvailable",
@@ -609,8 +631,13 @@
   let showManagerNotesModal = false;
   let showCloseOutModal = false;
   let showCloseOutVideoModal = false;
+  let activityVideoUrl = "";
   let closeOutLoading = false;
   let showAttendeeModal = false;
+  let showSiteMapModal = false;
+  let siteMapReadonly = false;
+  let siteMapDraft = { latitude: "", longitude: "" };
+  let applyingSiteMap = false;
   let attendeeLoading = false;
   let attendeeForm = {
     attendeeClientName: "",
@@ -622,6 +649,41 @@
     installNewPreviews = [],
     installExisting = [];
   const installImgUrl = (img) => imgUrl(img);
+
+  function openSiteMap(readonly = false) {
+    siteMapReadonly = readonly || !canSetSitePin;
+    const lat = installForm.siteLatitude ?? dispatchData?.siteLatitude ?? "";
+    const lng = installForm.siteLongitude ?? dispatchData?.siteLongitude ?? "";
+    siteMapDraft = {
+      latitude: lat === "" || lat == null ? "" : String(lat),
+      longitude: lng === "" || lng == null ? "" : String(lng),
+    };
+    showSiteMapModal = true;
+  }
+
+  async function applySiteMap() {
+    if (siteMapReadonly || !canSetSitePin) {
+      showSiteMapModal = false;
+      return;
+    }
+    applyingSiteMap = true;
+    try {
+      installForm.siteLatitude = siteMapDraft.latitude;
+      installForm.siteLongitude = siteMapDraft.longitude;
+      try {
+        const place = await reverseIndiaPlace(siteMapDraft.latitude, siteMapDraft.longitude);
+        if (place?.city) dispatchForm.city = place.city;
+        if (place?.state) dispatchForm.state = place.state;
+      } catch {
+        /* keep the city and state already on the form */
+      }
+      if (canEditDispatch) dispatchEditing = true;
+      if (canEditInstallation) installEditing = true;
+      showSiteMapModal = false;
+    } finally {
+      applyingSiteMap = false;
+    }
+  }
 
   function syncInstallImages(d) {
     installExisting = d?.images ? structuredClone(d.images) : [];
@@ -656,6 +718,12 @@
         "installationType",
         "basicRequirement",
       ].forEach((k) => fd.append(k, installForm[k] ?? ""));
+      if (canSetSitePin) {
+        fd.append("siteLatitude", installForm.siteLatitude ?? "");
+        fd.append("siteLongitude", installForm.siteLongitude ?? "");
+        fd.append("city", dispatchForm.city ?? "");
+        fd.append("state", dispatchForm.state ?? "");
+      }
       // Attendee / contact notes — edit via card modal only; preserve on install save
       [
         "attendeeClientName",
@@ -1779,6 +1847,20 @@
                   autocomplete="address-level1"
                 />
               </div>
+              {#if canSetSitePin}
+                <div>
+                  <label class={lc}>Site location</label>
+                  <button
+                    type="button"
+                    class="{ic} text-left"
+                    on:click={() => openSiteMap(false)}
+                  >
+                    {installForm.siteLatitude && installForm.siteLongitude
+                      ? "Pin set — change on map"
+                      : "Pick on map"}
+                  </button>
+                </div>
+              {/if}
               <div class="sm:col-span-2 lg:col-span-3">
                 <label class={lc}>Description</label>
                 <textarea
@@ -1909,12 +1991,36 @@
         {:else}
           <!-- View mode -->
           <div class={formGrid}>
-              {#each [{ label: "Transport medium", value: dispatchData.medium }, { label: "Dispatch date", value: dispatchData.dispatchDate }, { label: "Packaging", value: dispatchData.packaging }, { label: "City", value: dispatchData.city }, { label: "State", value: dispatchData.state }] as f}
+              {#each [{ label: "Transport medium", value: dispatchData.medium }, { label: "Dispatch date", value: dispatchData.dispatchDate }, { label: "Packaging", value: dispatchData.packaging }, { label: "City", value: dispatchForm.city || dispatchData.city }, { label: "State", value: dispatchForm.state || dispatchData.state }] as f}
                 <div>
                   <p class="mb-0.5 text-[11px] font-semibold text-gray-500">{f.label}</p>
                   <p class="text-sm text-gray-900 font-medium">{f.value || "—"}</p>
                 </div>
               {/each}
+              <div>
+                <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Site location</p>
+                {#if canSetSitePin && canEditDispatch}
+                  <button
+                    type="button"
+                    class="text-sm text-indigo-600 hover:underline"
+                    on:click={() => openSiteMap(false)}
+                  >
+                    {installForm.siteLatitude && installForm.siteLongitude
+                      ? "Change on map"
+                      : "Pick on map"}
+                  </button>
+                {:else if installForm.siteLatitude && installForm.siteLongitude}
+                  <button
+                    type="button"
+                    class="text-sm text-indigo-600 hover:underline"
+                    on:click={() => openSiteMap(true)}
+                  >
+                    View on map
+                  </button>
+                {:else}
+                  <p class="text-sm text-gray-900 font-medium mb-0">Not set</p>
+                {/if}
+              </div>
               <div class="sm:col-span-2 lg:col-span-3">
                 <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Description</p>
                 <p class="text-sm text-gray-800 whitespace-pre-line leading-snug">
@@ -2005,6 +2111,32 @@
                     >{opt.label}</option
                   >{/each}
               </select>
+            </div>
+            <div>
+              <label class={lc}>Site location</label>
+              {#if canSetSitePin}
+                <button
+                  type="button"
+                  class="{ic} text-left"
+                  on:click={() => openSiteMap(false)}
+                >
+                  {installForm.siteLatitude && installForm.siteLongitude
+                    ? "Pin set — change on map"
+                    : "Pick on map"}
+                </button>
+              {:else if installForm.siteLatitude && installForm.siteLongitude}
+                <button
+                  type="button"
+                  class="{ic} text-left text-indigo-600"
+                  on:click={() => openSiteMap(true)}
+                >
+                  View on map
+                </button>
+                <p class="mt-1 mb-0 text-[11px] text-gray-400">Only the sales person or master can change this.</p>
+              {:else}
+                <p class="text-sm text-gray-800 mb-0">Not set</p>
+                <p class="mt-1 mb-0 text-[11px] text-gray-400">Only the sales person or master can set this.</p>
+              {/if}
             </div>
             <div class="sm:col-span-2 lg:col-span-3">
               <label class={lc}>Basic requirement</label>
@@ -2131,6 +2263,30 @@
             <div>
               <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Installation Type</p>
               <p class="text-sm text-gray-800">{dispatchData?.installationType || "—"}</p>
+            </div>
+            <div>
+              <p class="mb-0.5 text-[11px] font-semibold text-gray-500">Site location</p>
+              {#if canSetSitePin && (canEditInstallation || canEditDispatch)}
+                <button
+                  type="button"
+                  class="text-sm text-indigo-600 hover:underline"
+                  on:click={() => openSiteMap(false)}
+                >
+                  {installForm.siteLatitude && installForm.siteLongitude
+                    ? "Change on map"
+                    : "Pick on map"}
+                </button>
+              {:else if (dispatchData?.siteLatitude != null && dispatchData?.siteLongitude != null) || (installForm.siteLatitude && installForm.siteLongitude)}
+                <button
+                  type="button"
+                  class="text-sm text-indigo-600 hover:underline"
+                  on:click={() => openSiteMap(true)}
+                >
+                  View on map
+                </button>
+              {:else}
+                <p class="text-sm text-gray-800">Not set</p>
+              {/if}
             </div>
           </div>
           <!-- Manageable columns: full-width equal cols & equal card height -->
@@ -3192,6 +3348,18 @@
                             <p class="text-sm text-amber-800 whitespace-pre-wrap">{visit.challenges}</p>
                           </div>
                         {/if}
+                        {#if visit.videoUrl}
+                          <div class="col-span-2 lg:col-span-4">
+                            <p class="mb-1.5 text-[11px] font-semibold text-gray-500">Video</p>
+                            <button
+                              type="button"
+                              class="px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"
+                              on:click={() => (activityVideoUrl = visit.videoUrl)}
+                            >
+                              Play video
+                            </button>
+                          </div>
+                        {/if}
                         {#if (visit.images ?? []).length > 0}
                           <div class="col-span-2 lg:col-span-4">
                             <p class="mb-1.5 text-[11px] font-semibold text-gray-500">
@@ -3268,6 +3436,61 @@
         {/if}
     </section>
     {/if}
+  </div>
+{/if}
+
+{#if showSiteMapModal}
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <!-- svelte-ignore a11y-no-static-element-interactions -->
+  <div
+    class="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/40"
+    on:click|self={() => (showSiteMapModal = false)}
+  >
+    <div
+      class="w-full max-w-3xl bg-white rounded-xl shadow-xl border border-gray-200 p-4"
+      on:click|stopPropagation
+    >
+      <div class="flex items-start justify-between gap-2 mb-3">
+        <div>
+          <h3 class="text-sm font-semibold text-gray-800 mb-0">Site location</h3>
+          <p class="text-[11px] text-gray-500 mb-0">
+            {siteMapReadonly
+              ? "Installation site on the map"
+              : "Pick the pin. City and state on the form update from that place."}
+          </p>
+        </div>
+        <button
+          type="button"
+          class="text-gray-400 hover:text-gray-700 text-lg leading-none px-1"
+          on:click={() => (showSiteMapModal = false)}
+          >×</button
+        >
+      </div>
+      <SiteLocationPicker
+        bind:latitude={siteMapDraft.latitude}
+        bind:longitude={siteMapDraft.longitude}
+        city={dispatchForm.city || dispatchData?.city || ""}
+        state={dispatchForm.state || dispatchData?.state || ""}
+        readonly={siteMapReadonly}
+      />
+      <div class="flex justify-end gap-2 mt-4">
+        <button
+          type="button"
+          on:click={() => (showSiteMapModal = false)}
+          class="px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+          >{siteMapReadonly ? "Close" : "Cancel"}</button
+        >
+        {#if !siteMapReadonly}
+          <button
+            type="button"
+            on:click={applySiteMap}
+            disabled={applyingSiteMap}
+            class="px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-60"
+            >{applyingSiteMap ? "Saving place…" : "Use this location"}</button
+          >
+        {/if}
+      </div>
+    </div>
   </div>
 {/if}
 
@@ -3498,6 +3721,38 @@
           >Cancel</button
         >
       </div>
+    </div>
+  </div>
+{/if}
+
+{#if activityVideoUrl}
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <!-- svelte-ignore a11y-no-static-element-interactions -->
+  <div
+    class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70"
+    on:click|self={() => (activityVideoUrl = "")}
+  >
+    <div
+      class="w-full max-w-3xl bg-black rounded-xl overflow-hidden shadow-2xl"
+      on:click|stopPropagation
+    >
+      <div class="flex items-center justify-between gap-2 px-3 py-2 bg-gray-900">
+        <span class="text-xs text-white font-semibold">Activity video</span>
+        <button
+          type="button"
+          class="text-gray-300 hover:text-white text-lg leading-none px-1"
+          on:click={() => (activityVideoUrl = "")}
+          >×</button
+        >
+      </div>
+      <video
+        class="w-full max-h-[75vh] bg-black"
+        controls
+        autoplay
+        src={closeOutVideoHref(activityVideoUrl)}
+      >
+        <track kind="captions" />
+      </video>
     </div>
   </div>
 {/if}

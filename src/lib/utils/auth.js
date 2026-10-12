@@ -152,8 +152,9 @@ export const getRolePermissions = () => {
 
 /**
  * Check if the current user can access a module.
- * - master/manager/user: always true (role-based guards)
+ * - master/user: always true (role-based guards)
  * - admin: default none; only keys set to view/full are allowed
+ * - manager: same as master except Installation, which needs view/full
  * @param {string} moduleKey
  * @param {'view'|'full'} level
  * @param {object|null} user
@@ -161,8 +162,11 @@ export const getRolePermissions = () => {
 export const canAccess = (moduleKey, level = 'view', user = null) => {
   const u = user ?? checkAuth();
   if (!u) return false;
-  if (u.role !== 'admin') return true;
   if (moduleKey === 'group_chat') return true;
+
+  const installationGatedManager =
+    u.role === 'manager' && moduleKey === 'installation';
+  if (u.role !== 'admin' && !installationGatedManager) return true;
 
   const payload = parseJwtPayload();
   const perms = payload?.modulePermissions ?? u.modulePermissions;

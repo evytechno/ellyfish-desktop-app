@@ -9,6 +9,7 @@
   import Loader from "$lib/components/Loader.svelte";
   import OrderSearchSelect from "$lib/components/OrderSearchSelect.svelte";
   import TypeableSelect from "$lib/components/TypeableSelect.svelte";
+  import WoSiteLocation from "$lib/components/WoSiteLocation.svelte";
   import { get } from "svelte/store";
   import { companiesAllStore } from "$lib/stores/dataStores";
   import { checkAuth } from "$lib/utils/auth";
@@ -44,6 +45,10 @@
   let orderByName = "";
   let installationEngineer = "";
   let dispatchPincode = "";
+  let siteLatitude = "";
+  let siteLongitude = "";
+  let siteCity = "";
+  let siteState = "";
   let packingType = null;
   let packingCharges = null;
   let inCoterms = null;
@@ -85,7 +90,7 @@
 
   function stepForField(field) {
     const f = String(field || "");
-    if (["companyId", "orderType", "orderId", "title"].includes(f)) return 1;
+    if (["companyId", "orderType", "orderId", "title", "dispatchAddress", "dispatchPincode", "siteLocation"].includes(f)) return 1;
     return 2;
   }
 
@@ -103,6 +108,15 @@
     };
     if (companyId == null) mark("companyId", "Company is required.", 1, "field-company");
     if (!orderType) mark("orderType", "Order type is required.", 1, "field-orderType");
+    if (!String(dispatchAddress || "").trim()) {
+      mark("dispatchAddress", "Dispatch address is required.", 1, "field-dispatch-address");
+    }
+    if (!String(dispatchPincode || "").trim()) {
+      mark("dispatchPincode", "Dispatch pincode is required.", 1, "field-dispatch-pincode");
+    }
+    if (orderType === "Machine" && (!siteLatitude || !siteLongitude)) {
+      mark("siteLocation", "Pick the installation site on the map.", 1, "field-site-location");
+    }
     if (items.length === 0) {
       mark("items", "Please add at least one item.", 2, "field-items");
     } else {
@@ -181,6 +195,10 @@
     const newWorkOrder = {
       title, items, remarks, poNumber, dispatchAddress, orderByName,
       installationEngineer, dispatchPincode, packingType, packingCharges,
+      siteLatitude: siteLatitude === "" ? null : Number(siteLatitude),
+      siteLongitude: siteLongitude === "" ? null : Number(siteLongitude),
+      siteCity: siteCity || null,
+      siteState: siteState || null,
       inCoterms, inCotermsBy, transporterName, paymentMethod, status,
       orderType: orderType || null,
     };
@@ -471,14 +489,30 @@
           </div>
           <div class="card-body">
             <div class="grid grid-cols-3 gap-2">
-              <div>
-                <label class="form-label">Delivery / Dispatch Address <span class="text-muted small">(Full address where goods will be sent)</span></label>
-                <input type="text" class="form-control" bind:value={dispatchAddress} placeholder="e.g. 12, Industrial Area, Pune" />
+              <div id="field-dispatch-address">
+                <label class="form-label">Delivery / Dispatch Address <span class="text-danger">*</span> <span class="text-muted small">(Full address where goods will be sent)</span></label>
+                <input type="text" class="form-control" class:is-invalid={formErrors.dispatchAddress} bind:value={dispatchAddress} placeholder="e.g. 12, Industrial Area, Pune" />
+                {#if formErrors.dispatchAddress}<div class="text-danger small">{formErrors.dispatchAddress[0]}</div>{/if}
               </div>
-              <div>
-                <label class="form-label">Delivery Pincode <span class="text-muted small">(6-digit PIN of delivery location)</span></label>
-                <input type="text" class="form-control" bind:value={dispatchPincode} placeholder="e.g. 411001" />
+              <div id="field-dispatch-pincode">
+                <label class="form-label">Delivery Pincode <span class="text-danger">*</span> <span class="text-muted small">(6-digit PIN of delivery location)</span></label>
+                <input type="text" class="form-control" class:is-invalid={formErrors.dispatchPincode} bind:value={dispatchPincode} placeholder="e.g. 411001" />
+                {#if formErrors.dispatchPincode}<div class="text-danger small">{formErrors.dispatchPincode[0]}</div>{/if}
               </div>
+              {#if orderType === "Machine"}
+                <div class="col-span-3">
+                  <WoSiteLocation
+                    bind:latitude={siteLatitude}
+                    bind:longitude={siteLongitude}
+                    bind:city={siteCity}
+                    bind:state={siteState}
+                    bind:address={dispatchAddress}
+                    bind:pincode={dispatchPincode}
+                    addressHint={dispatchAddress}
+                  />
+                  {#if formErrors.siteLocation}<div class="text-danger small">{formErrors.siteLocation[0]}</div>{/if}
+                </div>
+              {/if}
               <div>
                 <label class="form-label">Transporter / Courier Name <span class="text-muted small">(Who will carry the goods)</span></label>
                 <input type="text" class="form-control" bind:value={transporterName} placeholder="e.g. DTDC, Gati, Self" />

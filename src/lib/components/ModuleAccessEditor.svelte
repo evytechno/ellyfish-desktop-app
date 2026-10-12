@@ -3,6 +3,8 @@
   import { MODULE_GROUPS } from "$lib/constants/modulePermissions";
 
   export let modulePermissions = {};
+  /** When set, only these group labels are shown (e.g. manager Installation only). */
+  export let groupLabels = null;
 
   const dispatch = createEventDispatcher();
   const LEVELS = [
@@ -62,7 +64,7 @@
 
   {#key tick}
   <div class="mod-access__grid">
-    {#each MODULE_GROUPS as group}
+    {#each MODULE_GROUPS.filter((group) => !groupLabels || groupLabels.includes(group.label)) as group}
       <section class="mod-card">
         <header class="mod-card__head">
           <div>

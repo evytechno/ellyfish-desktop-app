@@ -105,3 +105,20 @@ body.swal2-height-auto {
     display: none !important;
   }
 }
+
+/* Tailwind's img reset collapses Leaflet tiles into a blank map. */
+.leaflet-container img,
+.leaflet-container canvas {
+  max-width: none !important;
+  max-height: none !important;
+}
+
+.crm-pin {
+  background: transparent !important;
+  border: 0 !important;
+}
+
+.crm-pin svg {
+  display: block;
+  filter: drop-shadow(0 2px 3px rgba(15, 23, 42, 0.4));
+}

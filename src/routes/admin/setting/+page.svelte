@@ -6,6 +6,7 @@
   import Swal from "sweetalert2";
   import { checkAuth } from "$lib/utils/auth";
   import Loader from "$lib/components/Loader.svelte";
+  import SiteLocationPicker from "$lib/components/SiteLocationPicker.svelte";
   import { ATTACHMENT_BASE_URL } from "$lib/constants/constants";
   let loadingData = true;
 
@@ -28,6 +29,25 @@
   let locationRestrictionEnabled = false;
   let allowedIps = [];
   let allowedLocations = [];
+  let homeName = "Home";
+  let homeLatitude = "";
+  let homeLongitude = "";
+  let showHomeMap = false;
+  let homeMapDraft = { latitude: "", longitude: "" };
+
+  function openHomeMap() {
+    homeMapDraft = {
+      latitude: homeLatitude ? String(homeLatitude) : "",
+      longitude: homeLongitude ? String(homeLongitude) : "",
+    };
+    showHomeMap = true;
+  }
+
+  function applyHomeMap() {
+    homeLatitude = homeMapDraft.latitude;
+    homeLongitude = homeMapDraft.longitude;
+    showHomeMap = false;
+  }
 
   let loading = false;
   let errorMessage = "";
@@ -80,6 +100,15 @@
       locationRestrictionEnabled = data?.locationRestrictionEnabled ?? false;
       allowedIps = data?.allowedIps ?? [];
       allowedLocations = data?.allowedLocations ?? [];
+      homeName = data?.homeName || "Home";
+      homeLatitude =
+        data?.homeLatitude == null || data?.homeLatitude === ""
+          ? ""
+          : String(data.homeLatitude);
+      homeLongitude =
+        data?.homeLongitude == null || data?.homeLongitude === ""
+          ? ""
+          : String(data.homeLongitude);
     } catch (error) {
       errorMessage = "Failed to load setting data.";
       loading = false;
@@ -177,6 +206,10 @@
       "allowedIps",
       JSON.stringify(allowedIps.filter((ip) => ip.trim())),
     );
+
+    settingPayload.append("homeName", homeName || "Home");
+    settingPayload.append("homeLatitude", homeLatitude ?? "");
+    settingPayload.append("homeLongitude", homeLongitude ?? "");
 
     settingPayload.append(
       "allowedLocations",
@@ -468,6 +501,34 @@
                 </button>
               </div>
             </div>
+            <div class="col-span-3">
+              <div class="border rounded-2 overflow-hidden">
+                <div class="d-flex align-items-center justify-content-between p-3 bg-light border-bottom">
+                  <div class="d-flex align-items-center gap-2">
+                    <span class="d-flex align-items-center justify-content-center rounded-circle bg-primary bg-opacity-10 text-primary" style="width:32px;height:32px;">
+                      <i class="ti ti-home fs-16"></i>
+                    </span>
+                    <div>
+                      <h6 class="mb-0 fw-semibold">Home base</h6>
+                      <small class="text-muted">End point for an installation site to home route</small>
+                    </div>
+                  </div>
+                </div>
+                <div class="p-3 d-flex flex-wrap align-items-end gap-2">
+                  <div style="min-width: 12rem;">
+                    <label class="form-label text-xs fw-medium text-muted mb-1">Name</label>
+                    <input class="form-control form-control-sm" bind:value={homeName} placeholder="Home" />
+                  </div>
+                  <button type="button" class="btn btn-sm btn-outline-primary" on:click={openHomeMap}>
+                    {homeLatitude && homeLongitude ? "Change on map" : "Pick on map"}
+                  </button>
+                  <span class="text-muted text-sm">
+                    {homeLatitude && homeLongitude ? "Pin set" : "Not set"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
             <!-- ── Location Restriction ─────────────────────────────────── -->
             <div class="col-span-3">
               <div class="border rounded-2 overflow-hidden">
@@ -711,3 +772,33 @@
     </div>
   </div>
 </div>
+
+{#if showHomeMap}
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <!-- svelte-ignore a11y-no-static-element-interactions -->
+  <div
+    class="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/40"
+    on:click|self={() => (showHomeMap = false)}
+  >
+    <div
+      class="w-full max-w-3xl bg-white rounded-xl shadow-xl border border-gray-200 p-4"
+      on:click|stopPropagation
+    >
+      <div class="flex items-start justify-between gap-2 mb-3">
+        <div>
+          <h3 class="text-sm font-semibold text-gray-800 mb-0">Home base</h3>
+          <p class="text-[11px] text-gray-500 mb-0">Click the map to set the company home</p>
+        </div>
+        <button type="button" class="text-gray-400 hover:text-gray-700 text-lg leading-none px-1" on:click={() => (showHomeMap = false)}>×</button>
+      </div>
+      <SiteLocationPicker
+        bind:latitude={homeMapDraft.latitude}
+        bind:longitude={homeMapDraft.longitude}
+      />
+      <div class="flex justify-end gap-2 mt-4">
+        <button type="button" class="px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg" on:click={() => (showHomeMap = false)}>Cancel</button>
+        <button type="button" class="px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 rounded-lg" on:click={applyHomeMap}>Use this location</button>
+      </div>
+    </div>
+  </div>
+{/if}

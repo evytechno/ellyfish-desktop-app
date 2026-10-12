@@ -7,6 +7,7 @@
   import LightBox from "$lib/components/LightBox.svelte";
   import { ATTACHMENT_BASE_URL } from "$lib/constants/constants";
   import PIWOTIModal from "$lib/components/PIWOTIModal.svelte";
+  import WoSiteLocation from "$lib/components/WoSiteLocation.svelte";
   import { checkAuth } from "$lib/utils/auth";
   import Swal from "sweetalert2";
 
@@ -1151,6 +1152,20 @@
                     <div class="grid grid-cols-2 gap-2">
                       <div class="font-medium">Dispatch Pincode :</div>
                       <div>{workOrder?.dispatchPincode}</div>
+                    </div>
+                  {/if}
+                  {#if workOrder?.orderType === "Machine"}
+                    <div class="grid grid-cols-2 gap-2">
+                      <div class="font-medium">Site location :</div>
+                      <div>
+                        <WoSiteLocation
+                          latitude={workOrder?.siteLatitude ?? ""}
+                          longitude={workOrder?.siteLongitude ?? ""}
+                          city={workOrder?.siteCity || ""}
+                          state={workOrder?.siteState || ""}
+                          readonly={true}
+                        />
+                      </div>
                     </div>
                   {/if}
                   {#if workOrder?.inCoterms}

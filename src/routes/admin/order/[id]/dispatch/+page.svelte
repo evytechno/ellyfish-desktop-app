@@ -6,7 +6,8 @@
   import { API_ROUTES } from "$lib/constants/apiRoutes";
   import DispatchProcess from "$lib/components/DispatchProcess.svelte";
   import Loader from "$lib/components/Loader.svelte";
-  import { checkAuth } from "$lib/utils/auth";
+  import { checkAuth, canAccess } from "$lib/utils/auth";
+  import { dispatchedDetailsStore } from "$lib/stores/dataStores";
   import Swal from "sweetalert2";
 
   $: orderId = $page.params.id;
@@ -17,18 +18,37 @@
   let refreshing = false;
   let processKey = 0;
   let errorMessage = "";
+  let openingHomeRoute = false;
 
   onMount(async () => {
     currentUser = checkAuth();
     await loadOrder();
   });
 
+  $: hasOrdersAccess = canAccess("orders", "view", currentUser);
+  $: hasInstallationAccess = canAccess("installation", "view", currentUser);
+
+  function leaveDispatch() {
+    const ordersOk = canAccess("orders", "view", currentUser);
+    goto(ordersOk ? `/admin/order/${orderId}` : "/admin/installation");
+  }
+
   async function loadOrder({ soft = false } = {}) {
     if (!orderId) return;
     if (!soft) loading = true;
     errorMessage = "";
+    const ordersOk = canAccess("orders", "view", currentUser);
+    const installOk = canAccess("installation", "view", currentUser);
     try {
-      const data = await authApiFetch(`${API_ROUTES.ORDER}/${orderId}/basic`);
+      if (!ordersOk && !installOk) {
+        errorMessage = "You do not have access to this installation.";
+        order = null;
+        return;
+      }
+      const path = ordersOk
+        ? `${API_ROUTES.ORDER}/${orderId}/basic`
+        : `${API_ROUTES.DISPATCH}/order/${orderId}`;
+      const data = await authApiFetch(path);
       order = data;
 
       const status = String(data?.status || "");
@@ -38,7 +58,7 @@
           title: "Dispatch not available",
           text: "Dispatch management opens when the order is Dispatched or Completed.",
         });
-        goto(`/admin/order/${orderId}`);
+        leaveDispatch();
         return;
       }
       if (!data?.workOrderNumber) {
@@ -47,13 +67,74 @@
           title: "Work order required",
           text: "Add a work order number on this order before managing dispatch.",
         });
-        goto(`/admin/order/${orderId}`);
+        leaveDispatch();
       }
     } catch (err) {
       errorMessage = err?.message || "Failed to load order.";
       order = null;
     } finally {
       if (!soft) loading = false;
+    }
+  }
+
+  async function openSiteToHome() {
+    if (!order?.workOrderNumber || openingHomeRoute) return;
+    openingHomeRoute = true;
+    try {
+      const stored = $dispatchedDetailsStore;
+      let details = stored?.workOrder === order.workOrderNumber ? stored : null;
+      if (!details) {
+        const loaded = await authApiFetch(
+          `${API_ROUTES.DISPATCH_BY_WO}/${encodeURIComponent(order.workOrderNumber)}`,
+        );
+        details = loaded?.data ?? loaded;
+      }
+      const settings = await authApiFetch(API_ROUTES.SETTING);
+      const homeLat = settings?.homeLatitude;
+      const homeLng = settings?.homeLongitude;
+      if (homeLat == null || homeLng == null || homeLat === "" || homeLng === "") {
+        await Swal.fire({
+          icon: "info",
+          title: "Home not set",
+          text: "Save the company home on the Settings page, then open this route again.",
+        });
+        return;
+      }
+      const fromName =
+        [details?.city, details?.state].filter(Boolean).join(", ") ||
+        "Installation site";
+      const hasPin =
+        details?.siteLatitude != null &&
+        details?.siteLatitude !== "" &&
+        details?.siteLongitude != null &&
+        details?.siteLongitude !== "";
+      if (!hasPin && !details?.city) {
+        await Swal.fire({
+          icon: "info",
+          title: "Site not set",
+          text: "Add the dispatch city, or pick the installation site on the map.",
+        });
+        return;
+      }
+      const params = new URLSearchParams({
+        from: fromName,
+        to: settings?.homeName || "Home",
+        toLat: String(homeLat),
+        toLng: String(homeLng),
+      });
+      if (hasPin) {
+        params.set("fromLat", String(details.siteLatitude));
+        params.set("fromLng", String(details.siteLongitude));
+      }
+      goto(`/admin/installation-track?${params.toString()}`);
+    } catch (err) {
+      await Swal.fire({
+        icon: "error",
+        title: "Could not open the route",
+        text: err?.message || "Try again.",
+      });
+    } finally {
+      openingHomeRoute = false;
     }
   }
 
@@ -77,10 +158,15 @@
         <nav aria-label="breadcrumb">
           <ol class="breadcrumb mb-1" style="font-size:12px;">
             <li class="breadcrumb-item"><a href="/admin">Home</a></li>
-            <li class="breadcrumb-item"><a href="/admin/order">Orders</a></li>
-            <li class="breadcrumb-item">
-              <a href="/admin/order/{orderId}">{order?.title || `Order #${orderId}`}</a>
-            </li>
+            {#if hasOrdersAccess}
+              <li class="breadcrumb-item"><a href="/admin/order">Orders</a></li>
+              <li class="breadcrumb-item">
+                <a href="/admin/order/{orderId}">{order?.title || `Order #${orderId}`}</a>
+              </li>
+            {:else}
+              <li class="breadcrumb-item"><a href="/admin/installation">Installation</a></li>
+              <li class="breadcrumb-item">{order?.title || `Order #${orderId}`}</li>
+            {/if}
             <li class="breadcrumb-item active" aria-current="page">Dispatch</li>
           </ol>
         </nav>
@@ -107,6 +193,17 @@
         {/if}
       </div>
       <div class="d-flex flex-wrap align-items-center gap-2">
+        {#if ["master", "admin", "manager"].includes(currentUser?.role) && hasInstallationAccess && order}
+          <button
+            type="button"
+            class="btn btn-outline-primary btn-sm"
+            on:click={openSiteToHome}
+            disabled={openingHomeRoute || loading}
+          >
+            <i class="ti ti-route me-1"></i>
+            {openingHomeRoute ? "Opening…" : "Site to home route"}
+          </button>
+        {/if}
         <button
           type="button"
           class="btn btn-outline-secondary btn-sm"
@@ -118,8 +215,11 @@
           <i class="ti ti-refresh" class:ti-spin={refreshing}></i>
           <span class="ms-1">Refresh</span>
         </button>
-        <a href="/admin/order/{orderId}" class="btn btn-outline-secondary btn-sm">
-          <i class="ti ti-arrow-left me-1"></i>Back to order
+        <a
+          href={hasOrdersAccess ? `/admin/order/${orderId}` : "/admin/installation"}
+          class="btn btn-outline-secondary btn-sm"
+        >
+          <i class="ti ti-arrow-left me-1"></i>{hasOrdersAccess ? "Back to order" : "Back to installation"}
         </a>
       </div>
     </div>

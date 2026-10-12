@@ -7,6 +7,7 @@
   import { checkAuth } from "$lib/utils/auth";
   import Swal from "sweetalert2";
   import QuillEditor from "$lib/components/QuillEditor.svelte";
+  import WoSiteLocation from "$lib/components/WoSiteLocation.svelte";
 
   // ── Props ─────────────────────────────────────────────────────────────────
   export let open = false;
@@ -107,6 +108,10 @@
   let woPoNumber           = "";
   let dispatchAddress      = "";
   let dispatchPincode      = "";
+  let siteLatitude = "";
+  let siteLongitude = "";
+  let siteCity = "";
+  let siteState = "";
   let transporterName      = "";
   let packingType          = null;
   let packingCharges       = null;
@@ -341,6 +346,7 @@
       );
       woPoNumber           = "";
       dispatchAddress      = ""; dispatchPincode = "";
+      siteLatitude = ""; siteLongitude = ""; siteCity = ""; siteState = "";
       transporterName      = "";
       packingType          = null; packingCharges = null;
       inCoterms            = null; inCotermsBy = null;
@@ -481,6 +487,18 @@
     if (type === "WO" && step === 1) {
       if (!woOrderType) { formErrors.orderType = "Order type is required."; return; }
       if (!woItems.length) { Swal.fire("Warning", "Add at least one item.", "warning"); return; }
+      if (!String(dispatchAddress || "").trim()) {
+        Swal.fire("Warning", "Dispatch address is required.", "warning");
+        return;
+      }
+      if (!String(dispatchPincode || "").trim()) {
+        Swal.fire("Warning", "Dispatch pincode is required.", "warning");
+        return;
+      }
+      if (woOrderType === "Machine" && (!siteLatitude || !siteLongitude)) {
+        Swal.fire("Warning", "Pick the installation site on the map.", "warning");
+        return;
+      }
     }
 
     if (type === "TI" && step === 1) {
@@ -516,6 +534,18 @@
       if (!woItems.length) { Swal.fire("Warning", "Add at least one item.", "warning"); return; }
       const emptyIdx = woItems.findIndex(i => !i.item.trim());
       if (emptyIdx !== -1) { Swal.fire("Warning", `Item #${emptyIdx + 1} has no description.`, "warning"); return; }
+      if (!String(dispatchAddress || "").trim()) {
+        Swal.fire("Warning", "Dispatch address is required.", "warning");
+        return;
+      }
+      if (!String(dispatchPincode || "").trim()) {
+        Swal.fire("Warning", "Dispatch pincode is required.", "warning");
+        return;
+      }
+      if (woOrderType === "Machine" && (!siteLatitude || !siteLongitude)) {
+        Swal.fire("Warning", "Pick the installation site on the map.", "warning");
+        return;
+      }
     }
 
     loading = true;
@@ -561,6 +591,10 @@
       orderType: woOrderType,
       items: woItems, remarks: woRemarks,
       dispatchAddress, dispatchPincode, transporterName,
+      siteLatitude: siteLatitude === "" ? null : Number(siteLatitude),
+      siteLongitude: siteLongitude === "" ? null : Number(siteLongitude),
+      siteCity: siteCity || null,
+      siteState: siteState || null,
       packingType, packingCharges, inCoterms, inCotermsBy,
       paymentMethod: woPaymentMethod,
       installationEngineer,
@@ -1191,13 +1225,26 @@
               <div class="fw-semibold small text-uppercase text-muted mb-2">Dispatch & Logistics</div>
               <div class="row g-3 mb-3">
                 <div class="col-md-6">
-                  <label class="form-label fw-semibold" style="font-size:12px;">Dispatch Address</label>
+                  <label class="form-label fw-semibold" style="font-size:12px;">Dispatch Address <span class="text-danger">*</span></label>
                   <input type="text" class="form-control form-control-sm" bind:value={dispatchAddress} placeholder="Dispatch address" />
                 </div>
                 <div class="col-md-3">
-                  <label class="form-label fw-semibold" style="font-size:12px;">Dispatch Pincode</label>
+                  <label class="form-label fw-semibold" style="font-size:12px;">Dispatch Pincode <span class="text-danger">*</span></label>
                   <input type="text" class="form-control form-control-sm" bind:value={dispatchPincode} placeholder="Pincode" />
                 </div>
+                {#if woOrderType === "Machine"}
+                  <div class="col-12">
+                    <WoSiteLocation
+                      bind:latitude={siteLatitude}
+                      bind:longitude={siteLongitude}
+                      bind:city={siteCity}
+                      bind:state={siteState}
+                      bind:address={dispatchAddress}
+                      bind:pincode={dispatchPincode}
+                      addressHint={dispatchAddress || shipToAddress}
+                    />
+                  </div>
+                {/if}
                 <div class="col-md-3">
                   <label class="form-label fw-semibold" style="font-size:12px;">Transporter</label>
                   <input type="text" class="form-control form-control-sm" bind:value={transporterName} placeholder="Transporter name" />

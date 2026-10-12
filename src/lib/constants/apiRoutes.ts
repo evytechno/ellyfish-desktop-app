@@ -35,5 +35,6 @@ export const API_ROUTES = {
   APP_AUTH_LOGIN: `app-auth/login`,
   APP_AUTH_LOGOUT: `app-auth/logout`,
   DISPATCH: `dispatch`,
+  DISPATCH_ROUTE: `dispatch/route`,
   DISPATCH_BY_WO: `dispatch/work-order`,
 };
