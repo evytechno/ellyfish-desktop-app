@@ -154,7 +154,7 @@ export const getRolePermissions = () => {
  * Check if the current user can access a module.
  * - master/user: always true (role-based guards)
  * - admin: default none; only keys set to view/full are allowed
- * - manager: same as master except Installation, which needs view/full
+ * - manager: same as master except Installation queue and Installation track, which need view/full
  * @param {string} moduleKey
  * @param {'view'|'full'} level
  * @param {object|null} user
@@ -164,9 +164,10 @@ export const canAccess = (moduleKey, level = 'view', user = null) => {
   if (!u) return false;
   if (moduleKey === 'group_chat') return true;
 
-  const installationGatedManager =
-    u.role === 'manager' && moduleKey === 'installation';
-  if (u.role !== 'admin' && !installationGatedManager) return true;
+  const managerGated =
+    u.role === 'manager' &&
+    (moduleKey === 'installation' || moduleKey === 'installation_track');
+  if (u.role !== 'admin' && !managerGated) return true;
 
   const payload = parseJwtPayload();
   const perms = payload?.modulePermissions ?? u.modulePermissions;

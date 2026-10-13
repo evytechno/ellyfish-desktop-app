@@ -7,8 +7,8 @@
   import LightBox from "$lib/components/LightBox.svelte";
   import { ATTACHMENT_BASE_URL } from "$lib/constants/constants";
   import PIWOTIModal from "$lib/components/PIWOTIModal.svelte";
-  import WoSiteLocation from "$lib/components/WoSiteLocation.svelte";
   import { checkAuth } from "$lib/utils/auth";
+  import { patchWorkOrderListCaches } from "$lib/stores/dataStores";
   import Swal from "sweetalert2";
 
   let loadingData = true;
@@ -177,8 +177,14 @@
     machineSize = m?.size || "";
     machineStage = m?.stage || "Meeting";
   }
+  function statusLabel(st) {
+    if (st === "InProgress") return "In progress";
+    return st || "Pending";
+  }
+
   function statusBadgeClass(st) {
     if (st === "Completed") return "bg-success";
+    if (st === "InProgress") return "bg-info text-dark";
     if (st === "Dispatched") return "bg-primary";
     if (st === "Hold") return "bg-warning text-dark";
     return "bg-secondary";
@@ -237,13 +243,13 @@
       const prevEvents = Array.isArray(workOrder.statusEvents)
         ? workOrder.statusEvents
         : [];
+      const savedStatus = next.status ?? nextStatus;
+      const savedRemarks =
+        next.remarks !== undefined ? next.remarks : remarkVal || workOrder.remarks;
       workOrder = {
         ...workOrder,
-        status: next.status ?? nextStatus,
-        remarks:
-          next.remarks !== undefined
-            ? next.remarks
-            : remarkVal || workOrder.remarks,
+        status: savedStatus,
+        remarks: savedRemarks,
         sentDelay: next.sentDelay ?? workOrder.sentDelay,
         statusEvents: next.statusEvent
           ? [next.statusEvent, ...prevEvents]
@@ -255,6 +261,11 @@
           sentDelay: computeClientSentDelay(workOrder),
         };
       }
+      patchWorkOrderListCaches(workOrder.id, {
+        status: savedStatus,
+        remarks: savedRemarks,
+        sentDelay: workOrder.sentDelay,
+      });
     } catch (err) {
       statusError = err?.message || "Failed to update work order status.";
       errorMessage = statusError;
@@ -266,8 +277,12 @@
 
   function statusOptionsForWo(wo) {
     const isDispatch = isDispatchCat(wo);
+    const isMachine = isMachineCat(wo);
     return [
       { value: "Pending", label: "Pending", bg: "#eab308", color: "#1f2937" },
+      ...(isMachine
+        ? [{ value: "InProgress", label: "In progress", bg: "#0ea5e9", color: "#fff" }]
+        : []),
       ...(isDispatch
         ? [
             { value: "Dispatched", label: "Dispatched", bg: "#2563eb", color: "#fff" },
@@ -984,7 +999,7 @@
                 disabled={statusUpdating}
                 on:click={openStatusChangeModal}
               >
-                {workOrder.status || "Pending"}
+                {statusLabel(workOrder.status)}
               </button>
               {#if workOrder.orderType}
                 {@const ot = orderTypeBadge(workOrder.orderType)}
@@ -1152,20 +1167,6 @@
                     <div class="grid grid-cols-2 gap-2">
                       <div class="font-medium">Dispatch Pincode :</div>
                       <div>{workOrder?.dispatchPincode}</div>
-                    </div>
-                  {/if}
-                  {#if workOrder?.orderType === "Machine"}
-                    <div class="grid grid-cols-2 gap-2">
-                      <div class="font-medium">Site location :</div>
-                      <div>
-                        <WoSiteLocation
-                          latitude={workOrder?.siteLatitude ?? ""}
-                          longitude={workOrder?.siteLongitude ?? ""}
-                          city={workOrder?.siteCity || ""}
-                          state={workOrder?.siteState || ""}
-                          readonly={true}
-                        />
-                      </div>
                     </div>
                   {/if}
                   {#if workOrder?.inCoterms}
@@ -1740,10 +1741,10 @@
               <div class="wo-status-drawer-item__body">
                 <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
                   {#if ev.fromStatus}
-                    <span class="badge border {statusBadgeClass(ev.fromStatus)}" style="font-size:10px;">{ev.fromStatus}</span>
+                    <span class="badge border {statusBadgeClass(ev.fromStatus)}" style="font-size:10px;">{statusLabel(ev.fromStatus)}</span>
                     <i class="ti ti-arrow-right text-muted" style="font-size:12px;"></i>
                   {/if}
-                  <span class="badge {statusBadgeClass(ev.toStatus)}" style="font-size:11px;">{ev.toStatus}</span>
+                  <span class="badge {statusBadgeClass(ev.toStatus)}" style="font-size:11px;">{statusLabel(ev.toStatus)}</span>
                 </div>
                 <div class="text-muted mb-1" style="font-size:11px;">
                   {#if ev.createdAt}

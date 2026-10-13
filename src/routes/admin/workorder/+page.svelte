@@ -12,6 +12,7 @@
     ordersAllStore,
     getFromLocalStorage,
     saveToLocalStorage,
+    patchWorkOrderListCaches,
   } from "$lib/stores/dataStores";
   import { goto } from "$app/navigation";
   import { page } from "$app/stores";
@@ -396,15 +397,18 @@
       label: "Status",
       render: (val, row) => {
         const st = row?.status || "Pending";
+        const label = st === "InProgress" ? "In progress" : st;
         const style =
           st === "Completed"
             ? "background:#16a34a;color:#fff;"
+            : st === "InProgress"
+              ? "background:#0ea5e9;color:#fff;"
             : st === "Dispatched"
               ? "background:#2563eb;color:#fff;"
               : st === "Hold"
                 ? "background:#f59e0b;color:#1f2937;"
                 : "background:#eab308;color:#1f2937;";
-        return `<button type="button" class="badge border-0" style="font-size:10px;cursor:pointer;${style}" title="Click to change status" onclick="event.stopPropagation();window.__changeWorkOrderStatus&&window.__changeWorkOrderStatus(${row.id})">${st}</button>`;
+        return `<button type="button" class="badge border-0" style="font-size:10px;cursor:pointer;${style}" title="Click to change status" onclick="event.stopPropagation();window.__changeWorkOrderStatus&&window.__changeWorkOrderStatus(${row.id})">${label}</button>`;
       },
     },
     {
@@ -636,8 +640,12 @@
   function listStatusOptions(row) {
     const isDispatch =
       row?.orderType === "Abrasive" || row?.orderType === "SpareParts";
+    const isMachine = row?.orderType === "Machine";
     return [
       { value: "Pending", label: "Pending", bg: "#eab308", color: "#1f2937" },
+      ...(isMachine
+        ? [{ value: "InProgress", label: "In progress", bg: "#0ea5e9", color: "#fff" }]
+        : []),
       ...(isDispatch
         ? [
             { value: "Dispatched", label: "Dispatched", bg: "#2563eb", color: "#fff" },
@@ -749,21 +757,29 @@
         });
       }
       const next = data?.data || {};
+      const savedStatus = next.status ?? listStatusDraft;
+      const savedRemarks =
+        next.remarks !== undefined
+          ? next.remarks
+          : listStatusDraft === "Hold"
+            ? listStatusRemark
+            : undefined;
+      const savedDelay = next.sentDelay;
       workorders = workorders.map((w) =>
         w.id === row.id
           ? {
               ...w,
-              status: next.status ?? listStatusDraft,
-              remarks:
-                next.remarks !== undefined
-                  ? next.remarks
-                  : listStatusDraft === "Hold"
-                    ? listStatusRemark
-                    : w.remarks,
-              sentDelay: next.sentDelay ?? w.sentDelay,
+              status: savedStatus,
+              remarks: savedRemarks !== undefined ? savedRemarks : w.remarks,
+              sentDelay: savedDelay ?? w.sentDelay,
             }
           : w,
       );
+      patchWorkOrderListCaches(row.id, {
+        status: savedStatus,
+        remarks: savedRemarks,
+        sentDelay: savedDelay,
+      });
       showListStatusModal = false;
       clearListStatusPhotos();
       listStatusRow = null;

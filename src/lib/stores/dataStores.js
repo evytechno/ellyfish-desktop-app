@@ -85,6 +85,44 @@ export function saveToLocalStorage(keyObj, data) {
     }
 }
 
+/** Rewrite a work order inside every saved work-order list after a successful update. */
+export function patchWorkOrderListCaches(workOrderId, patch) {
+  const id = Number(workOrderId);
+  if (!Number.isFinite(id) || !patch || typeof patch !== "object") return;
+  const storageKeys = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const storageKey = localStorage.key(i);
+      if (storageKey && storageKey.startsWith("data_")) storageKeys.push(storageKey);
+    }
+  } catch (_) {
+    return;
+  }
+  for (const storageKey of storageKeys) {
+    let keyObj;
+    try {
+      keyObj = JSON.parse(storageKey.slice(5));
+    } catch (_) {
+      continue;
+    }
+    if (typeof keyObj !== "string" || !keyObj.startsWith("workorders_")) continue;
+    const cached = getFromLocalStorage(keyObj);
+    if (!cached || !Array.isArray(cached.workorders)) continue;
+    if (!cached.workorders.some((row) => Number(row?.id) === id)) continue;
+    saveToLocalStorage(keyObj, {
+      ...cached,
+      workorders: cached.workorders.map((row) => {
+        if (Number(row?.id) !== id) return row;
+        const next = { ...row };
+        for (const [field, value] of Object.entries(patch)) {
+          if (value !== undefined) next[field] = value;
+        }
+        return next;
+      }),
+    });
+  }
+}
+
 export function getFromLocalStorage(keyObj) {
     const key = 'data_' + JSON.stringify(keyObj);
     const raw = localStorage.getItem(key);

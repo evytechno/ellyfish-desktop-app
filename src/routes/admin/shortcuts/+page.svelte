@@ -22,6 +22,13 @@
           module: "installation",
         },
         {
+          href: "/admin/installation-track",
+          label: "Installation track",
+          hint: "Site map and route",
+          icon: "ti ti-map-pin",
+          module: "installation_track",
+        },
+        {
           href: "/admin/order-list/completed",
           label: "Completed",
           hint: "Finished orders",

@@ -27,6 +27,7 @@
 
   $: hasOrdersAccess = canAccess("orders", "view", currentUser);
   $: hasInstallationAccess = canAccess("installation", "view", currentUser);
+  $: hasInstallationTrackAccess = canAccess("installation_track", "view", currentUser);
 
   function leaveDispatch() {
     const ordersOk = canAccess("orders", "view", currentUser);
@@ -193,7 +194,7 @@
         {/if}
       </div>
       <div class="d-flex flex-wrap align-items-center gap-2">
-        {#if ["master", "admin", "manager"].includes(currentUser?.role) && hasInstallationAccess && order}
+        {#if ["master", "admin", "manager"].includes(currentUser?.role) && hasInstallationTrackAccess && order}
           <button
             type="button"
             class="btn btn-outline-primary btn-sm"

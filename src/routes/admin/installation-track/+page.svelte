@@ -42,13 +42,13 @@
     currentUser = checkAuth();
     if (
       !["master", "admin", "manager"].includes(currentUser?.role) ||
-      !canAccess("installation", "view", currentUser)
+      !canAccess("installation_track", "view", currentUser)
     ) {
       denied = true;
       Swal.fire({
         icon: "warning",
         title: "Access Denied",
-        text: "You do not have access to the Installation module.",
+        text: "You do not have access to Installation track.",
         confirmButtonText: "Go Back",
       }).then(() => window.history.back());
       return;
@@ -212,7 +212,8 @@
 
   const NOT_STARTED = ["dispatchInProgress", "dispatched", "inTransit", "delivered"];
   const PIN_COLOR = {
-    preparing: "#4f46e5",
+    woInProgress: "#4f46e5",
+    woCompleted: "#16a34a",
     dispatchInProgress: "#ca8a04",
     dispatched: "#ea580c",
     inTransit: "#9333ea",
@@ -222,7 +223,8 @@
   };
 
   function matchesPinFilter(site) {
-    if (pinFilter === "preparing") return site.status === "preparing";
+    if (pinFilter === "woInProgress") return site.status === "woInProgress";
+    if (pinFilter === "woCompleted") return site.status === "woCompleted";
     if (pinFilter === "notStarted") return NOT_STARTED.includes(site.status);
     if (pinFilter === "dispatching") return site.status === "dispatchInProgress";
     if (pinFilter === "dispatched") return site.status === "dispatched";
@@ -362,7 +364,8 @@
       });
       const place = sitePlace(site);
       const link =
-        site.status === "preparing" && site.workOrderRecordId
+        (site.status === "woInProgress" || site.status === "woCompleted") &&
+        site.workOrderRecordId
           ? `<br/><a href="/admin/workorder/${site.workOrderRecordId}">Open work order</a>`
           : site.orderId
             ? `<br/><a href="/admin/order/${site.orderId}/dispatch">Open job</a>`
@@ -574,6 +577,7 @@
             </button>
             <button type="button" class="btn btn-sm btn-outline-secondary" on:click={showIndia}>Show India</button>
             <button type="button" class="btn btn-sm btn-outline-secondary" on:click={toggleMapFull}>
+              <i class="ti {mapFull ? 'ti-minimize' : 'ti-maximize'} me-1"></i>
               {mapFull ? "Exit full view" : "Full view"}
             </button>
           </div>
@@ -592,8 +596,11 @@
           <div class="india-map" bind:this={mapEl} role="img" aria-label="India installation map"></div>
           <div class="d-flex flex-wrap gap-2 px-2 py-2 text-xs text-muted align-items-center">
             <button type="button" class="btn btn-sm {pinFilter === 'all' ? 'btn-dark' : 'btn-outline-secondary'}" on:click={() => (pinFilter = "all")}>All</button>
-            <button type="button" class="btn btn-sm {pinFilter === 'preparing' ? 'btn-primary' : 'btn-outline-secondary'}" on:click={() => (pinFilter = "preparing")}>
-              <i class="legend preparing"></i> Preparing
+            <button type="button" class="btn btn-sm {pinFilter === 'woInProgress' ? 'btn-primary' : 'btn-outline-secondary'}" on:click={() => (pinFilter = "woInProgress")}>
+              <i class="legend wo-in-progress"></i> WO in progress
+            </button>
+            <button type="button" class="btn btn-sm {pinFilter === 'woCompleted' ? 'btn-success' : 'btn-outline-secondary'}" on:click={() => (pinFilter = "woCompleted")}>
+              <i class="legend wo-completed"></i> WO completed
             </button>
             <button type="button" class="btn btn-sm {pinFilter === 'notStarted' ? 'btn-secondary' : 'btn-outline-secondary'}" on:click={() => (pinFilter = "notStarted")}>
               <i class="legend not-started"></i> Not started
@@ -675,7 +682,7 @@
                         on:click={() => focusSite(site.id)}
                       >
                         <td>
-                          {#if site.status === "preparing" && site.workOrderRecordId}
+                          {#if (site.status === "woInProgress" || site.status === "woCompleted") && site.workOrderRecordId}
                             <a href="/admin/workorder/{site.workOrderRecordId}">{site.workOrder}</a>
                           {:else if site.orderId}
                             <a href="/admin/order/{site.orderId}/dispatch">{site.workOrder}</a>
@@ -791,8 +798,11 @@
     margin-right: 0.25rem;
     vertical-align: middle;
   }
-  .legend.preparing {
+  .legend.wo-in-progress {
     background: #4f46e5;
+  }
+  .legend.wo-completed {
+    background: #16a34a;
   }
   .legend.not-started {
     background: #64748b;

@@ -653,6 +653,8 @@
                             <i class="ti ti-tool"></i><span>Installation</span>
                           </a>
                         </li>
+                        {/if}
+                        {#if ["master", "admin", "manager"].includes(currentUser?.role) && canAccess("installation_track", "view", currentUser)}
                         <li
                           class:active={currentPath.startsWith(
                             "/admin/installation-track",

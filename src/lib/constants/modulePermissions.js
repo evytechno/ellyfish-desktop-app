@@ -13,8 +13,11 @@ export const MODULE_GROUPS = [
   },
   {
     label: "Installation",
-    hint: "Required for admin and manager. Without this, Installation stays hidden.",
-    modules: [{ key: "installation", label: "Installation queue" }],
+    hint: "Required for admin and manager. Queue and track are separate.",
+    modules: [
+      { key: "installation", label: "Installation queue" },
+      { key: "installation_track", label: "Installation track" },
+    ],
   },
   {
     label: "Clients",

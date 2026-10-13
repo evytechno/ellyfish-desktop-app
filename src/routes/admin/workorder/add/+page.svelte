@@ -40,6 +40,7 @@
   let remarks = "";
   let status = "Pending";
   let orderType = "";
+  $: if (orderType !== "Machine" && status === "InProgress") status = "Pending";
   let dispatchAddress = "";
   let installationDate = null;
   let orderByName = "";
@@ -468,9 +469,12 @@
                 {/if}
               </div>
               <div>
-                <label class="form-label fw-semibold">Status <span class="text-muted small">(Pending / Completed for guest sync)</span></label>
+                <label class="form-label fw-semibold">Status <span class="text-muted small">(Pending / In progress / Completed for a machine)</span></label>
                 <select class="form-select" bind:value={status}>
                   <option value="Pending">Pending</option>
+                  {#if orderType === "Machine"}
+                    <option value="InProgress">In progress</option>
+                  {/if}
                   <option value="Completed">Completed</option>
                 </select>
               </div>
