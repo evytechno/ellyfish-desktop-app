@@ -93,7 +93,7 @@
 
   function toggleMapFull() {
     mapFull = !mapFull;
-    setTimeout(() => map?.invalidateSize(), 60);
+    setTimeout(() => map?.invalidateSize(), 120);
   }
 
   async function loadHome() {
@@ -552,9 +552,9 @@
         </div>
       </div>
 
-      <div class="row g-3 mb-3 track-row">
+      <div class="row g-3 mb-3 track-row" class:track-full={mapFull}>
         <div class="col-lg-8">
-      <div class="card border-0 shadow-sm rounded-3 overflow-hidden map-shell h-100" class:map-full={mapFull}>
+      <div class="card border-0 shadow-sm rounded-3 overflow-hidden map-shell h-100">
         <div class="card-body p-2">
           <div class="d-flex flex-wrap gap-2 px-2 pt-2 pb-2 align-items-center">
             <form class="d-flex gap-2 flex-grow-1" style="min-width: 16rem;" on:submit|preventDefault={searchMapPlace}>
@@ -734,27 +734,54 @@
     z-index: 0;
     background: #e8eef4;
   }
-  .map-shell.map-full {
+  .track-row.track-full {
     position: fixed;
     inset: 0;
     z-index: 2000;
     margin: 0;
-    border-radius: 0;
+    height: 100vh;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    background: #fff;
+    padding: 0.75rem;
+  }
+  .track-row.track-full > :global(.col-lg-8),
+  .track-row.track-full > :global(.col-lg-4) {
+    display: flex;
+    min-height: 0;
+    height: 100%;
+    max-width: none;
+  }
+  .track-row.track-full > :global(.col-lg-8) {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+  }
+  .track-row.track-full > :global(.col-lg-4) {
+    flex: 0 0 26rem;
+    width: 26rem;
+  }
+  .track-row.track-full .map-shell {
     display: flex;
     flex-direction: column;
-    background: #fff;
+    width: 100%;
+    height: 100%;
+    margin: 0;
   }
-  .map-shell.map-full :global(.card-body) {
+  .track-row.track-full .map-shell :global(.card-body) {
     flex: 1;
     display: flex;
     flex-direction: column;
     min-height: 0;
   }
-  .map-shell.map-full .india-map {
+  .track-row.track-full .india-map {
     flex: 1;
     height: auto;
     min-height: 0;
     border-radius: 0;
+  }
+  .track-row.track-full .site-list-scroll {
+    max-height: none;
   }
   .site-list-card {
     min-height: 0;
