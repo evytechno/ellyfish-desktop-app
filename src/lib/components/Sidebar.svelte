@@ -697,7 +697,7 @@
                           </li>
                         {/if}
                         {/if}
-                        {#if currentUser?.role === 'master' || currentUser?.role === 'admin'}
+                        {#if (currentUser?.role === 'master' || currentUser?.role === 'admin') && canAccess('old_inquiries', 'view', currentUser)}
                         <li class:active={currentPath.startsWith("/admin/old-inquiries") && !currentPath.startsWith("/admin/old-inquiries/my")}>
                           <a href="/admin/old-inquiries" class:active={currentPath.startsWith("/admin/old-inquiries") && !currentPath.startsWith("/admin/old-inquiries/my")}>
                             <i class="ti ti-database-import"></i><span>Old Inquiries</span>

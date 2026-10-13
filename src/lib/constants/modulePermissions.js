@@ -31,6 +31,11 @@ export const MODULE_GROUPS = [
     modules: [{ key: "queries", label: "Queries" }],
   },
   {
+    label: "Old Inquiries",
+    hint: "Required for admin. Without this, Old Inquiries stays hidden.",
+    modules: [{ key: "old_inquiries", label: "Old Inquiries" }],
+  },
+  {
     label: "Finance",
     modules: [{ key: "user_payments", label: "Employee Payments" }],
   },

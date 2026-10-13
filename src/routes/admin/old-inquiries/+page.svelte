@@ -4,7 +4,7 @@
   import { errorHandle } from "$lib/utils/errorHandle";
   import { API_ROUTES } from "$lib/constants/apiRoutes";
   import { goto } from "$app/navigation";
-  import { checkAuth } from "$lib/utils/auth";
+  import { checkAuth, canAccess } from "$lib/utils/auth";
   import { usersAllStore } from "$lib/stores/dataStores";
   import { get } from "svelte/store";
   import DynamicDataTable from "$lib/components/DynamicDataTable.svelte";
@@ -190,6 +190,16 @@
     currentUser = checkAuth();
     if (!currentUser) {
       goto("/admin/dashboard");
+      return;
+    }
+    if (currentUser.role === "admin" && !canAccess("old_inquiries", "view", currentUser)) {
+      loadingData = false;
+      Swal.fire({
+        icon: "warning",
+        title: "Access Denied",
+        text: "You do not have access to Old Inquiries.",
+        confirmButtonText: "Go Back",
+      }).then(() => window.history.back());
       return;
     }
     await Promise.all([fetchList(), loadUsers()]);
