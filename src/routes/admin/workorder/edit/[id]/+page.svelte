@@ -229,7 +229,7 @@
       newWorkOrder.title = title;
     } else if (isMaster && workOrderType === 'order') {
       newWorkOrder.orderId = orderId ?? null;
-      delete newWorkOrder.title;
+      newWorkOrder.title = title;
     } else {
       if (linkedOrder && orderId) newWorkOrder.orderId = orderId;
       else if (!linkedOrder) newWorkOrder.orderId = null;
@@ -453,18 +453,22 @@
                     {/if}
                   </div>
 
-                  <!-- Title input — shown when no order linked -->
-                  <div id="field-title" style:display={workOrderType === 'self' ? 'block' : 'none'}>
+                  <div id="field-title" class="mt-2">
                     <label class="form-label fw-semibold">
-                      Work Order Title / Description <span class="text-danger">*</span>
+                      Work Order Title / Description
+                      {#if workOrderType === 'self'}<span class="text-danger">*</span>{/if}
+                      <span class="text-muted fw-normal small ms-1">(Brief name for this work order — what is being made or supplied)</span>
                     </label>
                     <input
                       type="text"
                       class="form-control"
                       class:is-invalid={formErrors.title}
                       bind:value={title}
-                      placeholder="e.g. Hydraulic Press Assembly, Panel Wiring for ABC Ltd"
+                      placeholder="e.g. Hydraulic Press Assembly, Panel Wiring for ABC Ltd, Pump Installation – Phase 2"
                     />
+                    <div class="form-text text-muted" style="font-size:11px;">
+                      <i class="ti ti-info-circle me-1"></i>Keep it short but clear — this title appears on the printed work order sheet.
+                    </div>
                     {#if formErrors.title}<ul class="text-danger mt-1 text-xs"><li>{formErrors.title[0]}</li></ul>{/if}
                   </div>
                 </div>
@@ -483,6 +487,23 @@
                         <span class="text-muted fw-normal ms-1">{linkedOrder.title}</span>
                       {/if}
                     </a>
+                  </div>
+                  <div id="field-title" class="mt-2">
+                    <label class="form-label fw-semibold">
+                      Work Order Title / Description
+                      <span class="text-muted fw-normal small ms-1">(Brief name for this work order — what is being made or supplied)</span>
+                    </label>
+                    <input
+                      type="text"
+                      class="form-control"
+                      class:is-invalid={formErrors.title}
+                      bind:value={title}
+                      placeholder="e.g. Hydraulic Press Assembly, Panel Wiring for ABC Ltd, Pump Installation – Phase 2"
+                    />
+                    <div class="form-text text-muted" style="font-size:11px;">
+                      <i class="ti ti-info-circle me-1"></i>Keep it short but clear — this title appears on the printed work order sheet.
+                    </div>
+                    {#if formErrors.title}<ul class="text-danger mt-1 text-xs"><li>{formErrors.title[0]}</li></ul>{/if}
                   </div>
                 </div>
               {:else}

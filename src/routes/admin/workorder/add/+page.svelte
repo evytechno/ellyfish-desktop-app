@@ -387,10 +387,10 @@
           </div>
           <div class="card-body">
             <div class="grid grid-cols-3 gap-2">
-              {#if fromOrder && linkedOrder}
-                <div class="col-span-2">
+              <div class="col-span-2">
+                {#if fromOrder && linkedOrder}
                   <label class="form-label">Order</label>
-                  <div class="form-control d-flex align-items-center gap-2" style="background:#f8f9fa;cursor:default;">
+                  <div class="form-control d-flex align-items-center gap-2 mb-2" style="background:#f8f9fa;cursor:default;">
                     <i class="ti ti-file-description text-primary" style="font-size:15px;flex-shrink:0;"></i>
                     <a href="/admin/order/{linkedOrder.id}" class="fw-semibold text-primary text-decoration-none text-truncate" style="font-size:13px;">
                       {#if linkedOrder.financialYear && linkedOrder.pId}
@@ -403,12 +403,11 @@
                       {/if}
                     </a>
                   </div>
-                </div>
-              {:else}
-                <div id="field-title" class="col-span-2">
+                {/if}
+                <div id="field-title">
                   <label class="form-label fw-semibold">
                     Work Order Title / Description
-                    <span class="text-danger">*</span>
+                    {#if !(fromOrder && linkedOrder)}<span class="text-danger">*</span>{/if}
                     <span class="text-muted fw-normal small ms-1">(Brief name for this work order — what is being made or supplied)</span>
                   </label>
                   <input
@@ -423,7 +422,7 @@
                   </div>
                   {#if formErrors.title}<ul class="text-danger mt-1 text-xs"><li>{formErrors.title[0]}</li></ul>{/if}
                 </div>
-              {/if}
+              </div>
 
               <div id="field-company">
                 <label class="form-label fw-semibold">

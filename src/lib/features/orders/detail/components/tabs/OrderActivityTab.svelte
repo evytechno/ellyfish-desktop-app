@@ -1,5 +1,5 @@
 <script>
-  import { convertDate, newDateFormate, normalizeTypes } from "../../utils/index.js";
+  import { convertDate, normalizeTypes } from "../../utils/index.js";
 
   export let order;
   export let currentUser;
@@ -230,7 +230,7 @@
                         </p>
                       {/if}
                       <p class="mb-0">
-                        {newDateFormate(activity?.createdAt, {
+                        {convertDate(activity?.createdAt, {
                           timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: true,
                         })}
                       </p>
