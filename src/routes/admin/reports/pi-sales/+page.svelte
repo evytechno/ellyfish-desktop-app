@@ -934,6 +934,11 @@
     padding: 6px 14px 10px;
   }
 
+  .ps-table {
+    table-layout: fixed;
+    width: 100%;
+  }
+
   .ps-table th {
     font-size: 11px;
     font-weight: 600;
@@ -946,6 +951,27 @@
     vertical-align: middle;
   }
 
+  .ps-table th:nth-child(1),
+  .ps-table td:nth-child(1) { width: 9%; }
+  .ps-table th:nth-child(2),
+  .ps-table td:nth-child(2),
+  .ps-table th:nth-child(3),
+  .ps-table td:nth-child(3) { width: 8%; }
+  .ps-table th:nth-child(4),
+  .ps-table td:nth-child(4) { width: 26%; }
+  .ps-table th:nth-child(5),
+  .ps-table td:nth-child(5) { width: 9%; }
+  .ps-table th:nth-child(6),
+  .ps-table td:nth-child(6) { width: 7%; }
+  .ps-table th:nth-child(7),
+  .ps-table td:nth-child(7),
+  .ps-table th:nth-child(8),
+  .ps-table td:nth-child(8),
+  .ps-table th:nth-child(9),
+  .ps-table td:nth-child(9) { width: 8%; }
+  .ps-table th:nth-child(10),
+  .ps-table td:nth-child(10) { width: 9%; }
+
   .ps-person {
     font-weight: 600;
     color: #212529;
@@ -954,7 +980,8 @@
   .ps-order-link {
     display: block;
     width: 100%;
-    max-width: 280px;
+    max-width: 100%;
+    min-width: 0;
     padding: 0;
     border: 0;
     background: none;
@@ -969,12 +996,21 @@
   }
 
   .ps-order-main {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
     font-weight: 600;
     color: #0d6efd;
     line-height: 1.25;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   .ps-order-sub {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-size: 11px;
     color: #868e96;
     margin-top: 2px;
