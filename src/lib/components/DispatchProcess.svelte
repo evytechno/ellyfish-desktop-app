@@ -12,6 +12,7 @@
   } from "$lib/api/workshopSales";
   import { checkAuth, canAccess } from "$lib/utils/auth";
   import SiteLocationPicker from "$lib/components/SiteLocationPicker.svelte";
+  import LightBox from "$lib/components/LightBox.svelte";
   import { reverseIndiaPlace } from "$lib/utils/placeSearch";
 
   // ── Props ────────────────────────────────────────────────
@@ -649,6 +650,18 @@
     installNewPreviews = [],
     installExisting = [];
   const installImgUrl = (img) => imgUrl(img);
+  let visitPhotoLightbox = [];
+  let visitPhotoStart = 0;
+
+  function openVisitPhotos(images, index) {
+    visitPhotoStart = index;
+    visitPhotoLightbox = (images || [])
+      .map((img) => ({
+        url: installImgUrl(img),
+        fileName: img?.originalName || img?.fileName || "Visit photo",
+      }))
+      .filter((item) => item.url);
+  }
 
   function openSiteMap(readonly = false) {
     siteMapReadonly = readonly || !canSetSitePin;
@@ -3366,20 +3379,19 @@
                               Photos ({visit.images.length})
                             </p>
                             <div class="flex flex-wrap gap-1.5">
-                              {#each visit.images as img}
-                                <a
-                                  href={installImgUrl(img)}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  class="block w-14 h-14 rounded-md overflow-hidden border border-gray-200 hover:opacity-90 transition shrink-0"
+                              {#each visit.images as img, photoIdx}
+                                <button
+                                  type="button"
+                                  class="block p-0 w-14 h-14 rounded-md overflow-hidden border border-gray-200 hover:opacity-90 transition shrink-0 bg-transparent"
                                   title={img.originalName || img.fileName || "Photo"}
+                                  on:click={() => openVisitPhotos(visit.images, photoIdx)}
                                 >
                                   <img
                                     src={installImgUrl(img)}
                                     alt={img.originalName || "Visit photo"}
                                     class="w-full h-full object-cover"
                                   />
-                                </a>
+                                </button>
                               {/each}
                             </div>
                           </div>
@@ -3788,3 +3800,5 @@
     </div>
   </div>
 {/if}
+
+<LightBox bind:data={visitPhotoLightbox} startIndex={visitPhotoStart} />

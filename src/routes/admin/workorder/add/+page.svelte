@@ -512,6 +512,7 @@
                     bind:address={dispatchAddress}
                     bind:pincode={dispatchPincode}
                     addressHint={dispatchAddress}
+                    autoLocate
                   />
                   {#if formErrors.siteLocation}<div class="text-danger small">{formErrors.siteLocation[0]}</div>{/if}
                 </div>

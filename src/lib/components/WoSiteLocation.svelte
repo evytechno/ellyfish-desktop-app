@@ -10,6 +10,8 @@
   export let pincode = "";
   export let addressHint = "";
   export let readonly = false;
+  /** Work Order add: first open with no pin starts at the current location. */
+  export let autoLocate = false;
 
   let open = false;
   let applying = false;
@@ -89,6 +91,7 @@
         {state}
         searchHint={addressHint}
         {readonly}
+        autoLocate={autoLocate && !pinSet}
       />
       <div class="d-flex justify-content-end gap-2 mt-3">
         <button type="button" class="btn btn-light btn-sm" on:click={() => (open = false)}>
