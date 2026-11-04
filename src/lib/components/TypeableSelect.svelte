@@ -161,6 +161,10 @@
   }
 
   $: if (jqSelect && ready) {
+    jqSelect.prop("disabled", !!disabled);
+  }
+
+  $: if (jqSelect && ready) {
     const val = objectMode ? String(value ?? "") : (value ?? "");
     if ((jqSelect.val() || "") !== (val || "")) {
       if (val && jqSelect.find(`option[value="${CSS.escape(String(val))}"]`).length === 0) {

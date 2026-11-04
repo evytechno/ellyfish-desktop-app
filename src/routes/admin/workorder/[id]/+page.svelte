@@ -1104,9 +1104,6 @@
                     <div class="text-lg text-center font-semibold text-black">
                       Work Order
                     </div>
-                    <div class="text-lg text-center font-semibold">
-                      {workOrder?.title}
-                    </div>
                   </div>
                 </div>
                 <hr />

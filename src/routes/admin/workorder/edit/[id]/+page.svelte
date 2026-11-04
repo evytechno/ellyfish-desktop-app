@@ -533,19 +533,25 @@
                   <span class="text-danger">*</span>
                   <span class="text-muted fw-normal small ms-1">(Which company is this work order for?)</span>
                 </label>
-                <TypeableSelect
-                  objectMode={true}
-                  options={companies.map(c => ({ value: c.id, label: c.name }))}
-                  value={companyId}
-                  placeholder="Search and select company..."
-                  disabled={true}
-                  on:change={(e) => { companyId = e.detail; formErrors.companyId = null; }}
-                />
+                {#key isMaster}
+                  <TypeableSelect
+                    objectMode={true}
+                    options={companies.map(c => ({ value: c.id, label: c.name }))}
+                    value={companyId}
+                    placeholder="Search and select company..."
+                    disabled={!isMaster}
+                    on:change={(e) => { companyId = e.detail; formErrors.companyId = null; }}
+                  />
+                {/key}
                 {#if formErrors.companyId}
                   <ul class="text-danger mt-1 text-xs"><li>{formErrors.companyId[0]}</li></ul>
+                {:else if isMaster}
+                  <div class="form-text text-muted" style="font-size:11px;">
+                    <i class="ti ti-search me-1"></i>Type a few letters to search. Changing the company does not change the existing Work Order Number.
+                  </div>
                 {:else}
                   <div class="form-text text-muted" style="font-size:11px;">
-                    <i class="ti ti-search me-1"></i>Type a few letters to search. The Work Order Number is generated from this company name.
+                    <i class="ti ti-lock me-1"></i>Company cannot be changed after the work order is created.
                   </div>
                 {/if}
               </div>
