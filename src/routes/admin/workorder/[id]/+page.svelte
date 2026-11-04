@@ -80,6 +80,7 @@
     "Meeting",
     "Design",
     "Cutting/Bending",
+    "Fabrication",
     "Painting",
     "Fitting",
     "Testing",
@@ -90,6 +91,7 @@
     Meeting: { bg: "#6366f1", color: "#fff" },
     Design: { bg: "#0ea5e9", color: "#fff" },
     "Cutting/Bending": { bg: "#14b8a6", color: "#fff" },
+    Fabrication: { bg: "#f97316", color: "#fff" },
     Painting: { bg: "#f59e0b", color: "#1f2937" },
     Fitting: { bg: "#8b5cf6", color: "#fff" },
     Testing: { bg: "#ef4444", color: "#fff" },
@@ -187,6 +189,8 @@
     if (st === "InProgress") return "bg-info text-dark";
     if (st === "Dispatched") return "bg-primary";
     if (st === "Hold") return "bg-warning text-dark";
+    if (st === "Returned") return "wo-badge-returned";
+    if (st === "Cancelled") return "bg-danger";
     return "bg-secondary";
   }
 
@@ -284,11 +288,11 @@
         ? [{ value: "InProgress", label: "In progress", bg: "#0ea5e9", color: "#fff" }]
         : []),
       ...(isDispatch
-        ? [
-            { value: "Dispatched", label: "Dispatched", bg: "#2563eb", color: "#fff" },
-            { value: "Hold", label: "Hold", bg: "#f59e0b", color: "#1f2937" },
-          ]
+        ? [{ value: "Dispatched", label: "Dispatched", bg: "#2563eb", color: "#fff" }]
         : []),
+      { value: "Hold", label: "Hold", bg: "#f59e0b", color: "#1f2937" },
+      { value: "Returned", label: "Returned", bg: "#7c3aed", color: "#fff" },
+      { value: "Cancelled", label: "Cancelled", bg: "#dc2626", color: "#fff" },
       { value: "Completed", label: "Completed", bg: "#16a34a", color: "#fff" },
     ];
   }
@@ -2150,6 +2154,10 @@
 {/if}
 
 <style>
+  .wo-badge-returned {
+    background: #7c3aed;
+    color: #fff;
+  }
   .wo-st-opts {
     display: flex;
     flex-wrap: wrap;

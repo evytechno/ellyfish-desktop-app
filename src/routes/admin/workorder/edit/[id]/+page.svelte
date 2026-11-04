@@ -38,6 +38,7 @@
   let status = "Pending";
   let orderType = "";
   $: if (orderType !== "Machine" && status === "InProgress") status = "Pending";
+  $: if (orderType === "Machine" && status === "Dispatched") status = "Pending";
   let dispatchAddress = "";
   let installationDate = null;
   let orderByName = "";
@@ -146,6 +147,9 @@
     }
     if (orderType === "Machine" && (!siteLatitude || !siteLongitude)) {
       mark("siteLocation", "Pick the installation site on the map.", 1, "field-site-location");
+    }
+    if (status === "Hold" && !String(remarks || "").trim()) {
+      mark("remarks", "Hold requires a remark.", 2, "field-remarks");
     }
     if (items.length === 0) {
       mark("items", "Please add at least one item.", 2, "field-items");
@@ -303,7 +307,7 @@
       if (data?.workOrderDate) workOrderDate = formatDateForInput(data.workOrderDate);
       if (data?.installationDate) installationDate = formatDateForInput(data.installationDate);
       const st = data?.status || "Pending";
-      status = ["Pending", "InProgress", "Completed", "Dispatched", "Hold"].includes(st)
+      status = ["Pending", "InProgress", "Completed", "Dispatched", "Hold", "Returned", "Cancelled"].includes(st)
         ? st
         : "Pending";
       orderType = data?.orderType || "";
@@ -596,12 +600,17 @@
                 {/if}
               </div>
               <div>
-                <label class="form-label fw-semibold">Status <span class="text-muted small">(Pending / In progress / Completed for a machine)</span></label>
+                <label class="form-label fw-semibold">Status</label>
                 <select class="form-select" bind:value={status}>
                   <option value="Pending">Pending</option>
                   {#if orderType === "Machine"}
                     <option value="InProgress">In progress</option>
+                  {:else if orderType === "Abrasive" || orderType === "SpareParts"}
+                    <option value="Dispatched">Dispatched</option>
                   {/if}
+                  <option value="Hold">Hold</option>
+                  <option value="Returned">Returned</option>
+                  <option value="Cancelled">Cancelled</option>
                   <option value="Completed">Completed</option>
                 </select>
               </div>
@@ -804,7 +813,8 @@
             <h6 class="mb-0 fw-semibold"><i class="ti ti-notes me-2 text-primary"></i>Remarks / Special Instructions — Any Additional Notes for This Work Order</h6>
           </div>
           <div class="card-body">
-            <textarea class="form-control" rows="3" bind:value={remarks} placeholder="e.g. Handle with care, deliver before 5PM, contact site manager before arrival..."></textarea>
+            <textarea id="field-remarks" class="form-control" class:is-invalid={formErrors.remarks} rows="3" bind:value={remarks} placeholder="e.g. Handle with care, deliver before 5PM, contact site manager before arrival..."></textarea>
+            {#if formErrors.remarks}<div class="text-danger small mt-1">{formErrors.remarks[0]}</div>{/if}
           </div>
         </div>
 

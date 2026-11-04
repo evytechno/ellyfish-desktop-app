@@ -407,7 +407,11 @@
               ? "background:#2563eb;color:#fff;"
               : st === "Hold"
                 ? "background:#f59e0b;color:#1f2937;"
-                : "background:#eab308;color:#1f2937;";
+                : st === "Returned"
+                  ? "background:#7c3aed;color:#fff;"
+                  : st === "Cancelled"
+                    ? "background:#dc2626;color:#fff;"
+                    : "background:#eab308;color:#1f2937;";
         return `<button type="button" class="badge border-0" style="font-size:10px;cursor:pointer;${style}" title="Click to change status" onclick="event.stopPropagation();window.__changeWorkOrderStatus&&window.__changeWorkOrderStatus(${row.id})">${label}</button>`;
       },
     },
@@ -647,11 +651,11 @@
         ? [{ value: "InProgress", label: "In progress", bg: "#0ea5e9", color: "#fff" }]
         : []),
       ...(isDispatch
-        ? [
-            { value: "Dispatched", label: "Dispatched", bg: "#2563eb", color: "#fff" },
-            { value: "Hold", label: "Hold", bg: "#f59e0b", color: "#1f2937" },
-          ]
+        ? [{ value: "Dispatched", label: "Dispatched", bg: "#2563eb", color: "#fff" }]
         : []),
+      { value: "Hold", label: "Hold", bg: "#f59e0b", color: "#1f2937" },
+      { value: "Returned", label: "Returned", bg: "#7c3aed", color: "#fff" },
+      { value: "Cancelled", label: "Cancelled", bg: "#dc2626", color: "#fff" },
       { value: "Completed", label: "Completed", bg: "#16a34a", color: "#fff" },
     ];
   }
