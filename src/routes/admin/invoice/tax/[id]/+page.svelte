@@ -67,6 +67,15 @@
     return name.trim().split(" ")[0].toUpperCase();
   }
 
+  function formatDocDate(value) {
+    if (value == null || value === "") return "—";
+    const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) return `${match[3]}-${match[2]}-${match[1]}`;
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return "—";
+    return `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
+  }
+
   // Use companySnapshot if it has data, else fall back to PI's company relation
   $: displayCompany = invoice?.companySnapshot?.name
     ? invoice.companySnapshot
@@ -198,9 +207,7 @@
                       </div>
                       <div class="flex items-center justify-between p-2 px-0">
                         <div>Date</div>
-                        <div>
-                          {`${String(new Date(invoice.invoiceDate).getDate()).padStart(2, "0")}-${String(new Date(invoice.invoiceDate).getMonth() + 1).padStart(2, "0")}-${new Date(invoice.invoiceDate).getFullYear()}`}
-                        </div>
+                        <div>{formatDocDate(invoice.invoiceDate)}</div>
                       </div>
                     </div>
                     {#if invoice?.poNumber || invoice?.poDate}
@@ -214,7 +221,7 @@
                         {#if invoice?.poDate}
                           <div class="flex items-center justify-between pb-1 px-0">
                             <div>PO Date</div>
-                            <div>{`${String(new Date(invoice.poDate).getDate()).padStart(2,"0")}-${String(new Date(invoice.poDate).getMonth()+1).padStart(2,"0")}-${new Date(invoice.poDate).getFullYear()}`}</div>
+                            <div>{formatDocDate(invoice.poDate)}</div>
                           </div>
                         {/if}
                       </div>

@@ -692,11 +692,12 @@
     { key: "attach", label: "Attachments", width: 200, minWidth: 140, visible: true },
     { key: "remind", label: "Reminders", width: 200, minWidth: 140, visible: true },
     { key: "status", label: "Status", width: 140, minWidth: 100, visible: true },
-    { key: "user", label: "Sales User", width: 110, minWidth: 80, visible: true, masterOnly: true },
+    { key: "user", label: "Sales User", width: 110, minWidth: 80, visible: false, adminOrMaster: true },
     { key: "date", label: "Date", width: 110, minWidth: 80, visible: true },
     { key: "actions", label: "PI / WO / TI", width: 170, minWidth: 140, visible: true },
   ];
-  const DEFAULT_COLS = ALL_COLS.filter((c) => !c.masterOnly || isMaster);
+  const showUserCol = isMaster || currentUser?.role === "admin";
+  const DEFAULT_COLS = ALL_COLS.filter((c) => !c.adminOrMaster || showUserCol);
   let cols = DEFAULT_COLS.map((c) => ({ ...c }));
   let resizing = null;
 
