@@ -17,6 +17,7 @@
   let loading = false;
   let formErrors = {};
   let currentUser = null;
+  let isMaster = false;
   let companies = [];
   let invoiceId;
   $: invoiceId = $page.params.id;
@@ -187,6 +188,26 @@
     }
   }
 
+  function clearOrderLink() {
+    orderId = null;
+    linkedOrder = null;
+    orderInitialTitle = "";
+  }
+
+  function setInvoiceType(type) {
+    if (!isMaster) return;
+    invoiceType = type;
+    if (type !== "self") return;
+    if (!String(title || "").trim()) {
+      title = linkedOrder?.title || "";
+    }
+    clearOrderLink();
+  }
+
+  $: if (isMaster && invoiceType === "self" && (orderId != null || linkedOrder)) {
+    clearOrderLink();
+  }
+
   function companyChange(id) {
     const company = companies.find(c => c.id == id);
     bankAccounts = company?.bankAccounts || [];
@@ -246,6 +267,11 @@
         scrollId = sid;
       }
     };
+    if (isMaster && invoiceType === "self" && !String(title || "").trim()) {
+      mark("title", "Title is required when no order is linked.", 1, "field-title");
+    } else if (!isMaster && !linkedOrder && !String(title || "").trim()) {
+      mark("title", "Title is required when no order is linked.", 1, "field-title");
+    }
     if (!companyId) mark("companyId", "Company is required.", 1, "field-company");
     if (!orderType) mark("orderType", "Order type is required.", 1, "field-orderType");
     if (items.length === 0) {
@@ -273,6 +299,8 @@
       scrollId =
         keys[0] === "companyId"
           ? "field-company"
+          : keys[0] === "title"
+            ? "field-title"
           : keys[0] === "orderType"
             ? "field-orderType"
             : keys[0] === "items"
@@ -288,7 +316,7 @@
 
   function goToStep2() {
     const { errors, step, scrollId } = collectClientErrors();
-    const step1Keys = ["companyId", "orderType", "items"];
+    const step1Keys = ["companyId", "orderType", "items", "title"];
     const step1Errors = {};
     for (const k of step1Keys) {
       if (errors[k]) step1Errors[k] = errors[k];
@@ -320,7 +348,11 @@
       };
       if (invoiceDate) payload.invoiceDate = invoiceDate;
       if (poDate) payload.poDate = poDate;
-      if (linkedOrder && orderId) payload.orderId = orderId;
+      if (isMaster && invoiceType === "self") {
+        payload.orderId = "";
+      } else if (isMaster && invoiceType === "order") {
+        payload.orderId = orderId ?? null;
+      }
 
       const data = await authApiFetch(`${API_ROUTES.ORDER_PAYMENT}/${invoiceId}`, {
         method: "PUT",
@@ -340,6 +372,7 @@
 
   onMount(async () => {
     currentUser = checkAuth();
+    isMaster = currentUser?.role === "master";
     loadingData = true;
     try {
       const [comp, inv] = await Promise.all([
@@ -348,10 +381,10 @@
       ]);
       companies = comp;
 
-      invoiceType      = inv.orderId ? "order" : "self";
+      orderId          = inv.order?.id ?? inv.orderId ?? null;
+      invoiceType      = orderId ? "order" : "self";
       title            = inv.title || "";
       orderType        = inv.orderType || "";
-      orderId          = inv.orderId || null;
       orderInitialTitle = inv.order ? (inv.order.pId ? `#${inv.order.pId} - ${inv.order.title || ""}` : (inv.order.title || "")) : "";
       if (inv.order) linkedOrder = { id: inv.order.id, title: inv.order.title, financialYear: inv.order.financialYear, pId: inv.order.pId };
       companyId        = inv.companyId || inv.company?.id || null;
@@ -477,7 +510,66 @@
             </div>
             <div class="card-body">
               <div class="grid grid-cols-3 gap-2">
-                {#if linkedOrder}
+                {#if isMaster}
+                  <div class="col-span-3" id="field-title">
+                    <label class="form-label fw-semibold">Proforma Invoice Type</label>
+                    <div class="d-flex gap-4 mb-2">
+                      <div class="form-check">
+                        <input
+                          class="form-check-input"
+                          type="radio"
+                          id="pi-type-order"
+                          value="order"
+                          bind:group={invoiceType}
+                          on:change={() => setInvoiceType("order")}
+                        />
+                        <label class="form-check-label" for="pi-type-order">Link to Order</label>
+                      </div>
+                      <div class="form-check">
+                        <input
+                          class="form-check-input"
+                          type="radio"
+                          id="pi-type-self"
+                          value="self"
+                          bind:group={invoiceType}
+                          on:change={() => setInvoiceType("self")}
+                        />
+                        <label class="form-check-label" for="pi-type-self">Without Order (Title only)</label>
+                      </div>
+                    </div>
+                    {#if invoiceType === "order"}
+                      <label class="form-label">Order</label>
+                      {#key orderId}
+                        <OrderSearchSelect
+                          initialValue={orderId}
+                          initialTitle={orderInitialTitle}
+                          on:change={(e) => {
+                            orderId = e.detail?.id ?? null;
+                            orderInitialTitle = e.detail?.text ?? "";
+                            linkedOrder = e.detail?.id
+                              ? { id: Number(e.detail.id), title: e.detail.text || "", financialYear: null, pId: null }
+                              : null;
+                            if (orderId) orderValueChange(orderId);
+                          }}
+                        />
+                      {/key}
+                    {/if}
+                    <div class="mt-2">
+                      <label class="form-label">
+                        Title
+                        {#if invoiceType === "self"}<span class="text-danger">*</span>{/if}
+                      </label>
+                      <input
+                        type="text"
+                        class="form-control"
+                        class:is-invalid={formErrors.title}
+                        bind:value={title}
+                        placeholder="Enter invoice title"
+                      />
+                      {#if formErrors.title}<ul class="text-danger mt-1 text-xs"><li>{formErrors.title[0]}</li></ul>{/if}
+                    </div>
+                  </div>
+                {:else if linkedOrder}
                   <div class="col-span-1">
                     <label class="form-label">Order</label>
                     <div class="form-control d-flex align-items-center gap-2" style="background:#f8f9fa;cursor:default;">
@@ -495,9 +587,10 @@
                     </div>
                   </div>
                 {:else}
-                  <div class="col-span-1">
+                  <div class="col-span-1" id="field-title">
                     <label class="form-label">Title <span class="text-danger">*</span></label>
-                    <input type="text" class="form-control" bind:value={title} placeholder="Enter invoice title" />
+                    <input type="text" class="form-control" class:is-invalid={formErrors.title} bind:value={title} placeholder="Enter invoice title" />
+                    {#if formErrors.title}<ul class="text-danger mt-1 text-xs"><li>{formErrors.title[0]}</li></ul>{/if}
                   </div>
                 {/if}
 
